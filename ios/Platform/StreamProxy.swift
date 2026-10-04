@@ -61,6 +61,8 @@ final class StreamProxy {
   private let listenerQueue = DispatchQueue(label: "airwave.proxy.listener")
   private var listener: NWListener?
   private var port: UInt16 = 0
+  /// The last port bound: a replacement listener tries it first.
+  private var lastPort: UInt16?
   private var routes: [String: Route] = [:]
   /// Recently retired tokens (bounded: an older late request gets 404, which
   /// is just as final — it never reaches the station either).
@@ -93,8 +95,14 @@ final class StreamProxy {
 
   /// Registers a route and returns the URL AVPlayer should open (nil if the
   /// listener cannot start — callers then fall back to the original URL).
+  ///
+  /// The listener is health-checked first: iOS reclaims the sockets of a
+  /// suspended app (a paused player in the background, minutes later), and a
+  /// reclaimed listener can still report `.ready`. Every open would then go to
+  /// a dead port, time out, reconnect to the same port, forever.
   func register(_ route: Route) -> URL? {
-    queue.sync {
+    healListener()
+    return queue.sync {
       guard ensureListening() else { return nil }
       let token = UUID().uuidString.lowercased()
       routes[token] = route
@@ -122,25 +130,69 @@ final class StreamProxy {
     }
   }
 
+  /// The app returns to the foreground, possibly after a suspension: check the
+  /// listener now (off the caller's thread) rather than on the next play.
+  func revalidate() {
+    DispatchQueue.global(qos: .userInitiated).async { [self] in healListener() }
+  }
+
   // MARK: - Listener
+
+  /// Replaces a listener that no longer answers, on the same port when possible.
+  /// Never call on `queue`.
+  private func healListener() {
+    let (probed, current) = queue.sync { (listener, listener?.state == .ready ? port : 0) }
+    guard current != 0, !Self.probe(port: current) else { return }
+    queue.sync {
+      // Another check (foreground + play) may have replaced it meanwhile.
+      guard listener === probed else { return }
+      proxyLog.error("listener on \(current) is not answering: recreating it")
+      replaceListener(preferring: current)
+    }
+  }
 
   /// Called on `queue`. The listener reports its state on its own queue, so
   /// waiting for `.ready` here cannot deadlock.
   private func ensureListening() -> Bool {
     if let listener, listener.state == .ready, port != 0 { return true }
+    return replaceListener(preferring: lastPort)
+  }
+
+  /// Called on `queue`. Starts a new listener, on `preferred` if it can be
+  /// bound again: the URLs AVPlayer already holds then keep working.
+  @discardableResult
+  private func replaceListener(preferring preferred: UInt16?) -> Bool {
     listener?.cancel()
     listener = nil
     port = 0
+    if let preferred, let port = NWEndpoint.Port(rawValue: preferred), startListener(on: port) { return true }
+    return startListener(on: .any)
+  }
+
+  private func startListener(on requested: NWEndpoint.Port) -> Bool {
     do {
       let parameters = NWParameters.tcp
+      parameters.allowLocalEndpointReuse = true
       // Bound to loopback only: nothing off-device can reach it.
-      parameters.requiredLocalEndpoint = NWEndpoint.hostPort(host: "127.0.0.1", port: .any)
+      parameters.requiredLocalEndpoint = NWEndpoint.hostPort(host: "127.0.0.1", port: requested)
       let created = try NWListener(using: parameters)
       let ready = DispatchSemaphore(value: 0)
-      created.stateUpdateHandler = { state in
+      created.stateUpdateHandler = { [weak self, weak created] state in
         switch state {
-        case .ready, .failed, .cancelled: ready.signal()
-        default: break
+        case .ready:
+          ready.signal()
+        case .failed, .cancelled, .waiting:
+          ready.signal()
+          // A listener that fails later (sockets reclaimed) is replaced by the next register.
+          self?.queue.async {
+            guard let self, let created, self.listener === created else { return }
+            proxyLog.error("listener lost: \(String(describing: state), privacy: .public)")
+            created.cancel()
+            self.listener = nil
+            self.port = 0
+          }
+        default:
+          break
         }
       }
       created.newConnectionHandler = { [weak self] connection in
@@ -157,10 +209,43 @@ final class StreamProxy {
       proxyLog.debug("listening on 127.0.0.1:\(bound)")
       listener = created
       port = bound
+      lastPort = bound
       return true
     } catch {
       return false
     }
+  }
+
+  private static let healthPath = "airwave-health"
+  private static let probeQueue = DispatchQueue(label: "airwave.proxy.probe")
+
+  /// A full request through the listener (not only a TCP connect): true when
+  /// the proxy answers. ~1 ms when healthy. Never call on `queue`, which serves it.
+  static func probe(port: UInt16, timeout: TimeInterval = 1) -> Bool {
+    guard let endpointPort = NWEndpoint.Port(rawValue: port) else { return false }
+    final class Outcome { var healthy = false }
+    let outcome = Outcome()
+    let done = DispatchSemaphore(value: 0)
+    let connection = NWConnection(host: "127.0.0.1", port: endpointPort, using: .tcp)
+    connection.stateUpdateHandler = { state in
+      switch state {
+      case .ready:
+        let request = "GET /\(healthPath) HTTP/1.1\r\nhost: 127.0.0.1\r\n\r\n"
+        connection.send(content: Data(request.utf8), completion: .contentProcessed { _ in })
+        connection.receive(minimumIncompleteLength: 12, maximumLength: 512) { data, _, _, _ in
+          outcome.healthy = data.map { String(decoding: $0, as: UTF8.self).hasPrefix("HTTP/1.1 204") } ?? false
+          done.signal()
+        }
+      case .waiting, .failed:
+        done.signal()
+      default:
+        break
+      }
+    }
+    connection.start(queue: probeQueue)
+    let answered = done.wait(timeout: .now() + timeout) == .success
+    connection.cancel()
+    return answered && probeQueue.sync { outcome.healthy }
   }
 
   // MARK: - Connections
@@ -254,6 +339,7 @@ final class StreamProxy {
     guard parts.count >= 2 else { return respond(downstream, status: 400) }
     let token = Self.token(of: URL(string: "http://h" + String(parts[1])))
     downstream.token = token
+    if token == Self.healthPath { return respond(downstream, status: 204) }
     guard let route = routes[token] else {
       return respond(downstream, status: retired.contains(token) ? 410 : 404)
     }

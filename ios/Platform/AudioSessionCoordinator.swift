@@ -17,8 +17,10 @@ protocol AudioSessionListener: AnyObject {
 ///   suspend a backgrounded app, freezing recovery with it. It is deactivated
 ///   (notifying other apps) only when nothing is loaded/paused any more.
 /// - An interruption `.began` delivered late for a session the system already
-///   deactivated while the app was suspended (`.appWasSuspended`) is ignored:
-///   nothing was rendering, and pausing would cancel the app's own recovery.
+///   deactivated while the app was suspended (`.appWasSuspended`) does not
+///   pause: nothing was rendering, and pausing would cancel the app's own
+///   recovery. The session is only marked inactive, so the next play
+///   re-activates it.
 /// - Resuming after an interruption requires `.shouldResume` AND that no other
 ///   app became the primary audio source meanwhile
 ///   (`secondaryAudioShouldBeSilencedHint`), otherwise we would steal audio
@@ -77,10 +79,10 @@ final class AudioSessionCoordinator {
         }
         configured = (AVAudioSession.Category.playback.rawValue, speech, mixWithOthers)
       }
-      if !active {
-        try session.setActive(true)
-        active = true
-      }
+      // Every time (only play and autoplay-load ask): the system can deactivate
+      // the session of a suspended app without telling it, so `active` may lie.
+      try session.setActive(true)
+      active = true
       return .granted
     } catch {
       // `.insufficientPriority` ('!pri'): another app (a call) owns the session.
@@ -106,6 +108,9 @@ final class AudioSessionCoordinator {
       if let reasonRaw = info[AVAudioSessionInterruptionReasonKey] as? UInt,
         AVAudioSession.InterruptionReason(rawValue: reasonRaw) == .appWasSuspended
       {
+        // Not a pause, but the session *is* inactive now: the next play
+        // (from the app or Control Center) must activate it again.
+        active = false
         return
       }
       active = false

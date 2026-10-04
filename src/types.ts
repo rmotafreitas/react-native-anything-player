@@ -230,6 +230,9 @@ export interface PlayerOptions {
      * Extra remote commands to enable and forward to JS as `remoteCommand`
      * events (`next`, `previous`, `skipForward`, `skipBackward`). Play, pause,
      * stop and seek are always handled natively — they work while JS is frozen.
+     * A `play` / `togglePlayPause` while nothing is loaded is always forwarded:
+     * only the app knows what to load (e.g. iOS relaunched the app in the
+     * background because Play was pressed in Control Center).
      */
     commands?: RemoteCommand[];
   };

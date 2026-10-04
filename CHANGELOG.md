@@ -10,9 +10,12 @@ All notable changes to this project are documented here. The format follows
 
 - `player.setAudioSampling()` and the `audioSample` event: decoded-audio windows for visualizers. Android: an ExoPlayer audio-sink tap. iOS: an audio tap for files, and for live streams a parallel AudioToolbox decode of the proxied bytes, released against the item's clock.
 - `updateNowPlaying({ duration, elapsed })`: song progress on the lock screen / notification for live streams, advanced natively only while audio plays.
+- System controls answer as soon as a player with a media session exists, even with nothing loaded. A `play` / `togglePlayPause` that finds nothing loaded is forwarded to JS as `remoteCommand`, so an app iOS relaunched from Control Center can load its source and play.
 
 ### Fixed
 
+- iOS: play stuck in loading after a long paused suspension. iOS reclaims a suspended app's sockets, and the stream proxy kept handing AVPlayer its dead listener: every open timed out and reconnected to the same dead port. The listener is now health-checked (a request through it, ~1 ms) before every open and on return to the foreground. A dead one is replaced, on the same port when possible.
+- iOS: the audio session is activated on every play. The system deactivates a suspended app's session (`.appWasSuspended`, or silently), and the cached "active" flag skipped re-activation.
 - Android: local (`file://`) artwork is now published as image bytes. The system media controls load an artwork URI themselves, cross-process, and could not open the app's private file (`ENOENT`), so the cover was missing.
 
 ## [0.1.0] — 2026-10-03

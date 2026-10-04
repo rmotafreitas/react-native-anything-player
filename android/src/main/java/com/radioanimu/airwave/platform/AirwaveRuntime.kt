@@ -15,6 +15,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.ListenableFuture
+import com.radioanimu.airwave.core.ErrorCode
 import com.radioanimu.airwave.core.FocusResult
 import com.radioanimu.airwave.core.InterruptionReason
 import com.radioanimu.airwave.core.NetworkState
@@ -254,6 +255,7 @@ internal object AirwaveRuntime : FocusListener {
   /** A command from the system media controls (lock screen, headset, car, Bluetooth). */
   fun remote(command: String, position: Double? = null) {
     val target = active ?: return
+    var nothingLoaded = false
     try {
       when (command) {
         "play" -> target.engine.play()
@@ -263,11 +265,13 @@ internal object AirwaveRuntime : FocusListener {
         else -> Unit
       }
     } catch (e: PlayerError) {
+      // Play with nothing loaded: only the app knows what to load.
+      nothingLoaded = e.code == ErrorCode.NO_SOURCE
       Log.w(TAG, "remote $command refused: ${e.code.wire} ${e.message}")
     }
     // Commands the app opted into are also forwarded to JS (next/previous have
     // no native meaning: a radio app maps them to station switching).
-    if (command in target.options.remoteCommands) target.emitRemoteCommand(command, position)
+    if (nothingLoaded || command in target.options.remoteCommands) target.emitRemoteCommand(command, position)
   }
 
   // ── App foreground ──

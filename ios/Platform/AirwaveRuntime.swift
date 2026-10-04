@@ -61,17 +61,22 @@ final class AirwaveRuntime: AudioSessionListener, RemoteCommandTarget {
         [weak self] _ in
         guard let self else { return }
         self.inBackground = false
+        // A suspension may have reclaimed the stream proxy's socket.
+        StreamProxy.shared.revalidate()
         self.all.forEach { $0.engine.appForegrounded() }
         self.keepaliveCheck()
       },
     ]
   }
 
+  /// Main thread.
   func register(_ controller: PlayerController) {
     lock.sync {
       registry[controller.id] = controller
       order.append(controller.id)
     }
+    // Answer the system controls from the start (see `publishNowPlaying`).
+    refresh()
   }
 
   /// Main thread.
@@ -142,11 +147,24 @@ final class AirwaveRuntime: AudioSessionListener, RemoteCommandTarget {
     publishNowPlaying()
   }
 
+  /// Who gets remote commands when no player is active: the newest player
+  /// that shows on the system controls, even with nothing loaded.
+  private var standby: PlayerController? { all.last { $0.options.mediaSession && !$0.options.mixWithOthers } }
+
   private func publishNowPlaying() {
     guard let active, active.options.mediaSession,
       ![.idle, .stopped, .error].contains(active.status.state)
     else {
       nowPlaying.update(nil)
+      // Nothing to show, but keep answering the system controls: iOS relaunches
+      // (or wakes) the last Now Playing app in the background when Play is
+      // pressed in Control Center / on the lock screen, and the command is
+      // dropped unless a target is registered by then.
+      if let standby {
+        nowPlaying.configureCommands(forwarded: standby.options.remoteCommands, seekable: false)
+      } else {
+        nowPlaying.clear()
+      }
       return
     }
     nowPlaying.configureCommands(forwarded: active.options.remoteCommands, seekable: active.status.seekable)
@@ -167,7 +185,8 @@ final class AirwaveRuntime: AudioSessionListener, RemoteCommandTarget {
   // MARK: - Remote commands (lock screen, Control Center, headphones, CarPlay)
 
   func remote(_ command: String, position: Double?) {
-    guard let target = active else { return }
+    guard let target = active ?? standby else { return }
+    var nothingLoaded = false
     do {
       switch command {
       case "play": try target.engine.play()
@@ -178,10 +197,14 @@ final class AirwaveRuntime: AudioSessionListener, RemoteCommandTarget {
       case "seek": if let position { try target.engine.seek(to: position) }
       default: break
       }
+    } catch let error as PlayerError where error.code == .noSource {
+      // Play with nothing loaded (the app was just relaunched for it): only
+      // the app knows what to load, so the command always goes to JS.
+      nothingLoaded = true
     } catch {
       // Refusals (e.g. focus denied during a call) are reported through status.
     }
-    if target.options.remoteCommands.contains(command) {
+    if nothingLoaded || target.options.remoteCommands.contains(command) {
       target.emitRemoteCommand(command, position: position)
     }
   }

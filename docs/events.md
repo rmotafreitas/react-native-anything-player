@@ -34,7 +34,7 @@ off(); // unsubscribe
 | `metadata` | `MediaMetadata` | new stream metadata became audible (or station info arrived) |
 | `error` | `(PlayerError, { fatal })` | a failure; `fatal: false` means recovery is running |
 | `ended` | – | a file played to its end |
-| `remoteCommand` | `{ command, position? }` | an opted-in remote command (`mediaSession.commands`) |
+| `remoteCommand` | `{ command, position? }` | an opted-in remote command (`mediaSession.commands`), or `play` / `togglePlayPause` while nothing is loaded |
 | `diagnostic` | `DiagnosticEntry` | engine trace, only while diagnostics are enabled |
 | `audioSample` | `AudioSample` | decoded-audio window, only while `setAudioSampling` is on ([visualizer](visualizer.md)) |
 

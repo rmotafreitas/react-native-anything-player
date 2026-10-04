@@ -30,6 +30,20 @@ player.on('remoteCommand', ({ command, position }) => { … });
 
 Tapping the Android notification opens the app.
 
+### Play from Control Center when nothing is loaded
+
+iOS keeps showing the last Now Playing app in Control Center and on the lock screen after it is suspended or terminated. Pressing Play wakes or relaunches it in the background and delivers the command. A suspended app's player is still loaded, so the engine handles it natively. A relaunched app has nothing loaded yet. The command targets are registered as soon as a player with `mediaSession.enabled` exists, even with nothing loaded. A `play` / `togglePlayPause` that finds nothing loaded is forwarded to JS, whatever `mediaSession.commands` says. Create the player at startup and load your source when it arrives:
+
+```ts
+player.on('remoteCommand', ({ command }) => {
+  if ((command === 'play' || command === 'togglePlayPause') && player.status.state === 'idle') {
+    player.load(source, { autoplay: true });
+  }
+});
+```
+
+iOS reclaims the sockets of a suspended app. The stream proxy checks its listener before every open and when the app returns to the foreground, and replaces a dead one (on the same port when possible). A play after a long paused suspension therefore opens normally. The audio session is re-activated on every play, because the system deactivates it during a suspension without always saying so.
+
 ### What the lock screen shows
 
 For each field, the first available value wins:
