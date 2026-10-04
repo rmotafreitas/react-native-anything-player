@@ -214,6 +214,39 @@ describe('events', () => {
     await p.release();
   });
 
+  it('streams decoded-audio windows while sampling is on', async () => {
+    const p = new Player();
+    expect(p.setAudioSampling({ enabled: true })).toBe(true);
+    expect(fake.calls).toContainEqual(['setAudioSampling', p.id, true, 1024]);
+    p.setAudioSampling({ enabled: true, points: 256 });
+    expect(fake.calls).toContainEqual(['setAudioSampling', p.id, true, 256]);
+    expect(() => p.setAudioSampling({ enabled: true, points: NaN })).toThrow(
+      expect.objectContaining({ code: 'INVALID_ARGUMENT' })
+    );
+    const windows: unknown[] = [];
+    p.on('audioSample', (w) => windows.push(w));
+    fake.emit({
+      playerId: p.id,
+      type: 'audioSample',
+      waveform: [0, 0.5, -0.5],
+      level: 0.4,
+      duration: 0.023,
+      outputLatency: 0.12,
+      timestamp: 7,
+    });
+    expect(windows).toEqual([
+      {
+        waveform: [0, 0.5, -0.5],
+        level: 0.4,
+        duration: 0.023,
+        outputLatency: 0.12,
+        timestamp: 7,
+      },
+    ]);
+    await p.release();
+    expect(p.setAudioSampling({ enabled: true })).toBe(false);
+  });
+
   it('a throwing listener does not break other listeners', async () => {
     jest.useFakeTimers();
     const p = new Player();
@@ -434,6 +467,25 @@ describe('source normalization', () => {
     expect(
       normalizeSource({ uri: 'https://a.example/s', metadata: { title: 'S' } })
     ).toEqual({ uri: 'https://a.example/s', metadata: { title: 'S' } });
+  });
+
+  it('passes song progress for the lock screen and validates it', () => {
+    expect(normalizeNowPlaying({ duration: 205.9, elapsed: 12.5 })).toEqual({
+      duration: 205.9,
+      elapsed: 12.5,
+    });
+    // Negative readings clamp; elapsed without a duration means nothing.
+    expect(normalizeNowPlaying({ duration: 30, elapsed: -2 })).toEqual({
+      duration: 30,
+      elapsed: 0,
+    });
+    expect(normalizeNowPlaying({ elapsed: 5 })).toEqual({});
+    expect(() => normalizeNowPlaying({ duration: Number.NaN })).toThrow(
+      expect.objectContaining({ code: 'INVALID_ARGUMENT' })
+    );
+    expect(() =>
+      normalizeNowPlaying({ duration: 10, elapsed: Infinity })
+    ).toThrow(expect.objectContaining({ code: 'INVALID_ARGUMENT' }));
   });
 });
 

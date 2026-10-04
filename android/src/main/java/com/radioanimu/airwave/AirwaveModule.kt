@@ -148,6 +148,12 @@ class AirwaveModule(reactContext: ReactApplicationContext) : NativeAirwaveSpec(r
     AirwaveRuntime.players[playerId]?.diagnosticsEnabled = enabled
   }
 
+  override fun setAudioSampling(playerId: String, enabled: Boolean, points: Double): Boolean {
+    val clamped = points.toInt().coerceIn(16, 4096)
+    main.post { AirwaveRuntime.players[playerId]?.setAudioSampling(enabled, clamped) }
+    return true
+  }
+
   /** JS reload / React host teardown: no JS can control these players any more. */
   override fun invalidate() {
     synchronized(sinkLock) { invalidated = true }

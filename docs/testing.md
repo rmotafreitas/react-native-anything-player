@@ -50,6 +50,8 @@ The Expo example (`example-expo/`, bundle id `airwave.expo.example`) runs the sa
 | `flapping-server-no-storm` | server accepts and closes every 0.3 s: bounded connection rate |
 | `stall-recovers` | a socket that goes silent forever is replaced, audio returns, and the dead socket is closed within 2 s (it used to linger until Android's 10 s read timeout) |
 | `pause-releases-connection` | a paused live stream closes its connection (~30 s), resume re-opens |
+| `song-progress` | `updateNowPlaying({ duration, elapsed })` on a live stream (inspected: iOS Now Playing log, Android `dumpsys media_session`: advances while playing, frozen while paused, not seekable) |
+| `audio-sampling` | sampling enabled mid-stream: ≥ 20 windows in 3 s at the requested size, carrying audio, none after disabling |
 | `bench-sync-reads` | cost of the synchronous JSI reads (`getProgress()`, `refresh()`) while a stream plays; `getProgress` p50 < 100 µs, p99 < 5 ms |
 | `release-frees-resources` | `release()` closes the connection, rejects later commands, clears listeners |
 | `invalid-sources` | empty / unsupported URIs, `NO_SOURCE`, non-finite arguments |
@@ -57,12 +59,12 @@ The Expo example (`example-expo/`, bundle id `airwave.expo.example`) runs the sa
 
 ### Results (this release)
 
-Release builds, 18 scenarios, iOS 27 simulator and Android 16 emulator:
+Release builds, iOS 27 simulator and Android 16 emulator:
 
 | | iOS | Android |
 |---|---|---|
-| Bare example | 18 / 18 | 18 / 18 |
-| Expo example (package installed from its tarball) | 18 / 18 | 18 / 18 |
+| Bare example, 20 scenarios (incl. `song-progress`, `audio-sampling`) | 20 / 20 | 20 / 20 |
+| Expo example (package installed from its tarball), the 18 scenarios before those two | 18 / 18 | 18 / 18 |
 | Connection closed after `stop()` / `release()` | 7–32 ms | 34–51 ms |
 | `getProgress()` p50 / p99 | 5–10 µs / 22–28 µs | 11–20 µs / 270–600 µs |
 | `refresh()` (status + metadata) p50 | 20–23 µs | 92–100 µs |
@@ -92,7 +94,7 @@ Verified on the iOS 27 simulator:
 
 `scripts/soak/monitor.sh <minutes> <csv>` samples, once a minute, Android PSS, the iOS simulator process RSS and thread count, the session state and the server's connection counts while both example apps stream.
 
-### Results (this release)
+### Soak results
 
 45 minutes, Release builds, both bare example apps in the background, playing the test station that **drops the connection every 15 s** (so the whole run exercises recovery: iOS proxy splicing, Android gapless continuations):
 

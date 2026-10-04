@@ -93,6 +93,8 @@ internal class ExoPlayerDriver(
    * with each observation, so staleness is still checked by the engine.
    */
   private val main = Handler(Looper.getMainLooper())
+  /** Decoded-PCM tap for visualizers (installed always, silent until enabled). */
+  val sampler = AudioSampler(context)
   private var generation = 0
   private var readyGeneration = -1
   private var playedGeneration = -1
@@ -223,7 +225,7 @@ internal class ExoPlayerDriver(
         .setContentType(if (speech) C.AUDIO_CONTENT_TYPE_SPEECH else C.AUDIO_CONTENT_TYPE_MUSIC)
         .build()
     val created =
-      ExoPlayer.Builder(context)
+      ExoPlayer.Builder(context, sampler.renderersFactory(context))
         .setLooper(context.mainLooper)
         .setAudioAttributes(attributes, /* handleAudioFocus= */ false)
         .setHandleAudioBecomingNoisy(true)

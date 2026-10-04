@@ -9,7 +9,12 @@
  *   adb shell am start -W -a android.intent.action.VIEW -d "airwave-example://test/all"
  *   xcrun simctl openurl booted "airwave-example://test/all"
  */
-import { Player, type PlayerStatus, isPlayerError } from 'react-native-airwave';
+import {
+  Player,
+  type AudioSample,
+  type PlayerStatus,
+  isPlayerError,
+} from 'react-native-airwave';
 import { LOCAL_TONE, STREAM_HOST, serverControl, serverStats } from './config';
 
 type Scenario = {
@@ -493,6 +498,68 @@ export const SCENARIOS: Scenario[] = [
           10_000,
           'resume re-opens at the live edge'
         );
+      }),
+  },
+  {
+    // Lock-screen song progress on a live stream (inspect with dumpsys / the log).
+    name: 'song-progress',
+    timeoutMs: 20_000,
+    run: (log) =>
+      withPlayer(async (p) => {
+        await p.load(live(), { autoplay: true });
+        await waitFor(p, (s) => s.state === 'playing', 10_000, 'playing');
+        await p.updateNowPlaying({
+          title: 'Song Progress Test',
+          artist: 'Airwave',
+          duration: 200,
+          elapsed: 50,
+        });
+        await sleep(3_000);
+        await p.pause();
+        await sleep(2_000);
+        await p.play();
+        await waitFor(p, (s) => s.state === 'playing', 10_000, 'playing again');
+        await sleep(2_000);
+        log('set 50/200 s; then 3 s playing, 2 s paused, 2 s playing');
+      }),
+  },
+  {
+    // Decoded-PCM windows for visualizers, from a live stream.
+    name: 'audio-sampling',
+    timeoutMs: 25_000,
+    run: (log) =>
+      withPlayer(async (p) => {
+        const windows: AudioSample[] = [];
+        p.on('audioSample', (w) => windows.push(w));
+        await p.load(live(), { autoplay: true });
+        await waitFor(p, (s) => s.state === 'playing', 10_000, 'playing');
+        expect(
+          p.setAudioSampling({ enabled: true, points: 256 }),
+          'sampling must be supported'
+        );
+        await sleep(3_000);
+        const got = windows.length;
+        const loud = windows.filter((w) => w.level > 0.01).length;
+        const w = windows[windows.length - 1];
+        log(
+          `${got} windows in 3 s; level=${w?.level.toFixed(3)} span=${(
+            (w?.duration ?? 0) * 1000
+          ).toFixed(
+            1
+          )}ms outputLatency=${((w?.outputLatency ?? 0) * 1000).toFixed(0)}ms`
+        );
+        expect(got >= 20, `expected a steady stream of windows, got ${got}`);
+        expect(w!.waveform.length === 256, `points: ${w!.waveform.length}`);
+        expect(loud > got / 2, 'the windows must carry the audio');
+        expect(
+          w!.waveform.every((v) => v >= -1 && v <= 1),
+          'samples are normalized'
+        );
+        p.setAudioSampling({ enabled: false });
+        await sleep(300);
+        const after = windows.length;
+        await sleep(1_000);
+        expect(windows.length === after, 'no windows after disabling');
       }),
   },
   {

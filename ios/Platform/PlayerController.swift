@@ -55,12 +55,17 @@ struct NowPlayingFields: Equatable {
   var artist: String?
   var album: String?
   var artwork: String?
+  /// The song's length and position (seconds) — a progress bar for a live stream.
+  var duration: Double?
+  var elapsed: Double?
 
   init(_ dict: NSDictionary?) {
     title = dict?["title"] as? String
     artist = dict?["artist"] as? String
     album = dict?["album"] as? String
     artwork = dict?["artwork"] as? String ?? (dict?["artwork"] as? NSDictionary)?["uri"] as? String
+    duration = (dict?["duration"] as? NSNumber)?.doubleValue
+    elapsed = (dict?["elapsed"] as? NSNumber)?.doubleValue
   }
 }
 
@@ -89,6 +94,8 @@ final class PlayerController: EngineDelegate, DriverObserver {
   private var eventSeq: Int64 = 0
   private var sourceFields = NowPlayingFields(nil)
   private var overrides = NowPlayingFields(nil)
+  /// Song progress set by the app (`updateNowPlaying` with a duration).
+  private var trackClock: TrackClock?
   private var pendingLoads: [Int: (Resolve, Reject)] = [:]
   private var wakeup: DispatchWorkItem?
   private var released = false
@@ -110,6 +117,7 @@ final class PlayerController: EngineDelegate, DriverObserver {
             resolve: @escaping Resolve, reject: @escaping Reject) throws {
     sourceFields = fields
     overrides = NowPlayingFields(nil)
+    trackClock = nil
     lock.sync { snapshotMetadata = nil }
     try engine.load(source, autoplay: autoplay, startPosition: start)
     pendingLoads[engine.loadId] = (resolve, reject)
@@ -118,12 +126,40 @@ final class PlayerController: EngineDelegate, DriverObserver {
 
   func updateNowPlaying(_ fields: NowPlayingFields) {
     overrides = fields
+    trackClock = fields.duration.map {
+      TrackClock(
+        elapsed: fields.elapsed ?? 0, duration: $0, now: SystemClock.shared.monotonicMs,
+        running: status.state == .playing)
+    }
     runtime.nowPlayingChanged(self)
+  }
+
+  /// Decoded-audio windows as `audioSample` events, emitted straight from the
+  /// render thread and outside the status sequence (a stream, not a state).
+  func setAudioSampling(enabled: Bool, points: Int) {
+    let emitWindow: ((AudioWindow) -> Void)? =
+      enabled
+      ? { [weak self] window in
+        guard let self, !self.released else { return }
+        self.emitEvent([
+          "playerId": self.id, "type": "audioSample",
+          "waveform": window.waveform.map { Double($0) },
+          "level": window.level, "duration": window.duration,
+          "outputLatency": window.outputLatency, "timestamp": Double(window.timestampMs),
+        ])
+      } : nil
+    driver.tap.points = points
+    driver.tap.onWindow = emitWindow
+    driver.streamVisualizer.points = points
+    driver.streamVisualizer.onWindow = emitWindow
+    driver.setSampling(enabled)
   }
 
   func release() {
     guard !released else { return }
     released = true
+    driver.tap.onWindow = nil
+    driver.streamVisualizer.onWindow = nil
     wakeup?.cancel()
     engine.release()
     driver.destroy()
@@ -188,6 +224,14 @@ final class PlayerController: EngineDelegate, DriverObserver {
     info.duration = s.duration
     info.position = progress.position
     info.rate = s.state == .playing ? s.rate : 0
+    if let clock = trackClock {
+      // The song, not the stream: a progress bar the OS advances at rate 1
+      // (still not seekable — that follows the stream).
+      info.isLive = false
+      info.duration = clock.duration
+      info.position = clock.elapsed(now: SystemClock.shared.monotonicMs)
+      info.rate = s.state == .playing ? 1 : 0
+    }
     return info
   }
 
@@ -221,6 +265,8 @@ final class PlayerController: EngineDelegate, DriverObserver {
     event["playerId"] = id
     event["type"] = "status"
     emitEvent(event)
+    // The song advances with the audio, not the wall clock.
+    trackClock?.setRunning(status.state == .playing, now: SystemClock.shared.monotonicMs)
     runtime.statusChanged(self)
   }
 

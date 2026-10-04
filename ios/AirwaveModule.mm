@@ -144,6 +144,11 @@
   [_bridge setDiagnosticsEnabled:playerId enabled:enabled];
 }
 
+- (NSNumber *)setAudioSampling:(NSString *)playerId enabled:(BOOL)enabled points:(double)points
+{
+  return @([_bridge setAudioSampling:playerId enabled:enabled points:(NSInteger)points]);
+}
+
 - (void)invalidate
 {
   // Sever events first: the TurboModule's emitter is being torn down, and the

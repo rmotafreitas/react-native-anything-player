@@ -10,6 +10,8 @@ export {
 export type {
   Artwork,
   AssetModule,
+  AudioSample,
+  AudioSamplingOptions,
   DiagnosticEntry,
   Interruption,
   InterruptionReason,

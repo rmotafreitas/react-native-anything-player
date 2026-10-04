@@ -2,6 +2,7 @@ import { AppState, Image } from 'react-native';
 import NativeAirwave from './native/NativeAirwave';
 import { PlayerError, toPlayerError } from './errors';
 import type {
+  AudioSamplingOptions,
   DiagnosticEntry,
   LoadOptions,
   MediaMetadata,
@@ -105,6 +106,14 @@ export function normalizeNowPlaying(
   if (typeof art === 'number') out.artwork = resolveAsset(art);
   else if (typeof art === 'string') out.artwork = art;
   else if (art && typeof art.uri === 'string') out.artwork = art.uri;
+  if (metadata.duration != null) {
+    assertFinite('duration', metadata.duration);
+    out.duration = Math.max(0, metadata.duration);
+    if (metadata.elapsed != null) {
+      assertFinite('elapsed', metadata.elapsed);
+      out.elapsed = Math.max(0, metadata.elapsed);
+    }
+  }
   return out;
 }
 
@@ -296,6 +305,20 @@ export class Player {
     if (!this.released) NativeAirwave.setDiagnosticsEnabled(this.id, enabled);
   }
 
+  // ── Visualizer ──
+
+  /**
+   * Streams decoded audio as `audioSample` events (for oscilloscopes and
+   * spectrum views). Off by default; costs nothing while off. Returns whether
+   * the platform supports it.
+   */
+  setAudioSampling(options: AudioSamplingOptions): boolean {
+    if (this.released) return false;
+    const points = options.points ?? 1024;
+    assertFinite('points', points);
+    return NativeAirwave.setAudioSampling(this.id, options.enabled, points);
+  }
+
   /** The last ~300 engine traces (kept natively even while diagnostics are off). */
   getDiagnostics(): DiagnosticEntry[] {
     if (this.released) return [];
@@ -384,6 +407,15 @@ export class Player {
         break;
       case 'diagnostic':
         this.emit('diagnostic', event.entry as DiagnosticEntry);
+        break;
+      case 'audioSample':
+        this.emit('audioSample', {
+          waveform: event.waveform as number[],
+          level: event.level as number,
+          duration: event.duration as number,
+          outputLatency: event.outputLatency as number,
+          timestamp: event.timestamp as number,
+        });
         break;
       default:
         break;

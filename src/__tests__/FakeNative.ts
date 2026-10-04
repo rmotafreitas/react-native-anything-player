@@ -144,6 +144,10 @@ export class FakeNative {
   setDiagnosticsEnabled = (id: string, enabled: boolean) => {
     this.calls.push(['setDiagnosticsEnabled', id, enabled]);
   };
+  setAudioSampling = (id: string, enabled: boolean, points: number) => {
+    this.calls.push(['setAudioSampling', id, enabled, points]);
+    return true;
+  };
 }
 
 export const fake = new FakeNative();

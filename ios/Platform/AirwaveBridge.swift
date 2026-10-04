@@ -153,6 +153,14 @@ public final class AirwaveBridge: NSObject {
     runtime.player(id)?.diagnosticsEnabled = enabled
   }
 
+  @objc public func setAudioSampling(_ id: String, enabled: Bool, points: Int) -> Bool {
+    let clamped = min(max(points, 16), 4096)
+    DispatchQueue.main.async { [weak self] in
+      self?.runtime.player(id)?.setAudioSampling(enabled: enabled, points: clamped)
+    }
+    return AudioTap.isSupported
+  }
+
   /// JS reload / bridge teardown: no JS can control these players any more.
   @objc public func invalidate() {
     let ids = lock.sync { () -> [String] in

@@ -168,6 +168,6 @@ final class NowPlayingController {
     }
     MPNowPlayingInfoCenter.default().nowPlayingInfo = dict
     nowPlayingLog.debug(
-      "published title=\(info.title ?? "-", privacy: .public) artist=\(info.artist ?? "-", privacy: .public) live=\(info.isLive) rate=\(info.rate) artwork=\(dict[MPMediaItemPropertyArtwork] != nil)")
+      "published title=\(info.title ?? "-", privacy: .public) artist=\(info.artist ?? "-", privacy: .public) live=\(info.isLive) elapsed=\(info.position) duration=\(info.duration ?? -1) rate=\(info.rate) artwork=\(dict[MPMediaItemPropertyArtwork] != nil)")
   }
 }

@@ -36,6 +36,7 @@ off(); // unsubscribe
 | `ended` | – | a file played to its end |
 | `remoteCommand` | `{ command, position? }` | an opted-in remote command (`mediaSession.commands`) |
 | `diagnostic` | `DiagnosticEntry` | engine trace, only while diagnostics are enabled |
+| `audioSample` | `AudioSample` | decoded-audio window, only while `setAudioSampling` is on ([visualizer](visualizer.md)) |
 
 There are deliberately no progress events: progress is a synchronous read ([playback](playback.md#progress)). Stalls shorter than 500 ms are not published.
 

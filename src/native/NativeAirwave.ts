@@ -53,6 +53,8 @@ export interface Spec extends TurboModule {
   getMetadata(playerId: string): CodegenTypes.UnsafeObject;
   getDiagnostics(playerId: string): CodegenTypes.UnsafeObject[];
   setDiagnosticsEnabled(playerId: string, enabled: boolean): void;
+  /** Returns whether decoded-audio sampling is supported here. */
+  setAudioSampling(playerId: string, enabled: boolean, points: number): boolean;
 
   readonly onPlayerEvent: CodegenTypes.EventEmitter<CodegenTypes.UnsafeObject>;
 }

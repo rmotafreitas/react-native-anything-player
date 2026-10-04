@@ -17,7 +17,7 @@ Pod::Spec.new do |s|
   # the AVFoundation/MediaPlayer layer, AirwaveModule.mm the TurboModule shim.
   s.source_files = "ios/Core/**/*.swift", "ios/Platform/**/*.swift", "ios/AirwaveModule.{h,mm}"
   s.private_header_files = "ios/AirwaveModule.h"
-  s.frameworks = "AVFoundation", "MediaPlayer", "Network"
+  s.frameworks = "AVFoundation", "AudioToolbox", "MediaPlayer", "MediaToolbox", "Network"
   s.swift_version = "5.9"
 
   install_modules_dependencies(s)

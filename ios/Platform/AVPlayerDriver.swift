@@ -46,6 +46,25 @@ struct ProgressReading {
 ///   app owns every connection (see there for what that fixes).
 final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPushDelegate {
   private(set) var player = AVPlayer()
+  /// Decoded-PCM tap for visualizers; attached to each item while sampling is on.
+  let tap = AudioTap()
+  /// Live streams: AVPlayer never runs a tap on them, so the proxied bytes are
+  /// decoded in parallel and released against the item's clock.
+  let streamVisualizer = StreamVisualizer()
+  private var samplingEnabled = false
+  /// Generation whose proxied bytes feed the visualizer (-1: none). Read on the proxy queue.
+  private let feedLock = NSLock()
+  private var feedGeneration = -1
+  /// The most recent relayed audio of the current item, to start a visualizer
+  /// mid-stream without waiting for the buffer to play out (guarded by `feedLock`).
+  /// Relayed chunks with the stream time (s) each one starts at, from `packetClock`.
+  private var recentAudio: [(start: Double, data: Data)] = []
+  private var recentBytes = 0
+  private var recentContentType: String?
+  /// Parses (never decodes) the relayed audio: the stream time of every byte.
+  private var packetClock: StreamDecoder?
+  private static let recentAudioLimit = 512 * 1024
+  private var itemIsLive = false
   weak var observer: DriverObserver?
   private let titleFormat: StreamTitleFormat
 
@@ -143,8 +162,37 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
             DispatchQueue.main.async {
               self?.observer?.driverNote(generation: gen, event: "upstream spliced", details: details)
             }
+          },
+          onAudio: { [weak self] data, contentType in
+            guard let self else { return }
+            let feeding = self.feedLock.sync { () -> Bool in
+              guard self.generation == gen else { return false }
+              if self.packetClock == nil {
+                let clock = StreamDecoder(contentType: contentType)
+                clock.countOnly = true
+                self.packetClock = clock
+              }
+              // Every packet before this chunk is parsed: this is its start time.
+              self.recentAudio.append((self.packetClock?.parsedSeconds ?? 0, data))
+              self.recentBytes += data.count
+              self.packetClock?.feed(data)
+              while self.recentBytes > Self.recentAudioLimit, self.recentAudio.count > 1 {
+                self.recentBytes -= self.recentAudio.removeFirst().data.count
+              }
+              self.recentContentType = contentType
+              return self.feedGeneration == gen
+            }
+            if feeding { self.streamVisualizer.feed(data, contentType: contentType) }
           }))
     }
+    itemIsLive = false
+    feedLock.sync {
+      recentAudio = []
+      recentBytes = 0
+      recentContentType = nil
+      packetClock = nil
+    }
+    if samplingEnabled { startStreamFeed() }
     if let proxied {
       asset = AVURLAsset(url: proxied)
     } else {
@@ -236,7 +284,53 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
     return reading
   }
 
+  /// Turns the decoded-PCM tap on/off (the controller owns `tap.onWindow`).
+  func setSampling(_ enabled: Bool) {
+    guard enabled != samplingEnabled else { return }
+    samplingEnabled = enabled
+    guard enabled else {
+      feedLock.sync { feedGeneration = -1 }
+      streamVisualizer.stop()
+      return
+    }
+    if let item, item.status == .readyToPlay, proxied != nil {
+      // Mid-stream: prime from the recently relayed audio, which ends where
+      // the player's loaded range ends.
+      let playhead = item.currentTime().seconds
+      let gen = generation
+      feedLock.sync {
+        streamVisualizer.prime(
+          recent: recentAudio.reduce(into: Data()) { $0.append($1.data) },
+          recentStart: recentAudio.first?.start ?? 0, contentType: recentContentType,
+          playhead: playhead.isFinite ? playhead : 0)
+        feedGeneration = gen
+      }
+    } else {
+      startStreamFeed()
+    }
+    if let item, item.status == .readyToPlay { attachSampling(item) }
+  }
+
+  private func startStreamFeed() {
+    guard proxied != nil else { return }
+    streamVisualizer.reset()
+    let gen = generation
+    feedLock.sync { feedGeneration = gen }
+  }
+
+  /// Live: decoded proxy bytes against the item clock. Finite: the PCM tap.
+  private func attachSampling(_ item: AVPlayerItem) {
+    if itemIsLive && proxied != nil {
+      streamVisualizer.start(timebase: item.timebase)
+    } else {
+      feedLock.sync { feedGeneration = -1 }
+      tap.attach(to: item)
+    }
+  }
+
   func destroy() {
+    feedLock.sync { feedGeneration = -1 }
+    streamVisualizer.stop()
     releaseConnection()
     playerObservers.forEach { $0.invalidate() }
     playerObservers = []
@@ -353,6 +447,8 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
       // completes (the stream never ends) and outlives the item — a phantom
       // listener on the station's server. Live metadata is timed anyway.
       if !isLive { loadAssetMetadata(changed.asset, gen) }
+      itemIsLive = isLive
+      if samplingEnabled { attachSampling(changed) }
       if let start = pendingStart, !isLive {
         pendingStart = nil
         player.seek(to: CMTime(seconds: start, preferredTimescale: 1000), toleranceBefore: .zero, toleranceAfter: .zero) {
@@ -395,6 +491,8 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
       // (readiness re-reports playing, see `itemStatusChanged`).
       guard item.status == .readyToPlay, readyGeneration == gen else { return }
       playedGeneration = gen
+      // The item's track list can still be empty at readiness: retry here.
+      if samplingEnabled && !itemIsLive { tap.attach(to: item) }
       observer?.driverPlaying(generation: gen)
     case .waitingToPlayAtSpecifiedRate:
       if readyGeneration == gen && player.reasonForWaitingToPlay != .noItemToPlay {

@@ -20,6 +20,8 @@ import com.radioanimu.airwave.core.ReadyInfo
 import com.radioanimu.airwave.core.SourceDescriptor
 import com.radioanimu.airwave.core.Status
 import com.radioanimu.airwave.core.StreamMetadata
+import com.radioanimu.airwave.core.TrackClock
+import com.radioanimu.airwave.core.PlaybackState
 
 /** Where a player's events go (the TurboModule's `onPlayerEvent` emitter). */
 internal fun interface EventSink {
@@ -64,6 +66,8 @@ internal class PlayerController(
 
   private var sourceFields = NowPlayingFields()
   private var overrides = NowPlayingFields()
+  /** Song progress set by the app (`updateNowPlaying` with a duration). */
+  private var trackClock: TrackClock? = null
   private val pendingLoads = HashMap<Int, Promise>()
   private var released = false
 
@@ -81,6 +85,7 @@ internal class PlayerController(
   fun load(source: SourceDescriptor, fields: NowPlayingFields, autoplay: Boolean?, start: Double?, promise: Promise) {
     sourceFields = fields
     overrides = NowPlayingFields()
+    trackClock = null
     streamMetadata = null
     engine.load(source, autoplay, start)
     // `load` settles synchronously only when it supersedes; this load is pending.
@@ -98,12 +103,17 @@ internal class PlayerController(
 
   fun updateNowPlaying(fields: NowPlayingFields) {
     overrides = fields
+    trackClock = fields.duration?.let {
+      TrackClock(fields.elapsed ?: 0.0, it, AndroidClock.monotonicMs, statusSnapshot.first.state == PlaybackState.PLAYING)
+    }
     runtime.onNowPlayingChanged(this)
   }
 
   fun release() {
     if (released) return
     released = true
+    driver.sampler.enabled = false
+    driver.sampler.onWindow = null
     handler.removeCallbacks(wakeup)
     engine.release()
     driver.destroy()
@@ -138,6 +148,10 @@ internal class PlayerController(
       artist = overrides.artist ?: stream?.artist ?: sourceFields.artist,
       album = overrides.album ?: stream?.album ?: sourceFields.album ?: stream?.station,
       artwork = overrides.artwork ?: stream?.artworkUri ?: sourceFields.artwork,
+      track = trackClock?.let {
+        val now = AndroidClock.monotonicMs
+        TrackProgress(it.duration, it.elapsed(now), now)
+      },
     )
   }
 
@@ -150,6 +164,36 @@ internal class PlayerController(
         position?.let { putDouble("position", it) }
       },
     )
+  }
+
+  /**
+   * Decoded-audio windows as `audioSample` events. Emitted straight from the
+   * playback thread (no main-thread hop at ~40–100 Hz) and outside the status
+   * sequence: a sample is a stream, never a state to order.
+   */
+  fun setAudioSampling(enabled: Boolean, points: Int) {
+    val sampler = driver.sampler
+    sampler.points = points
+    sampler.onWindow =
+      if (!enabled) null
+      else { window ->
+        if (!released) {
+          val waveform = Arguments.createArray()
+          window.waveform.forEach { waveform.pushDouble(it.toDouble()) }
+          sink.emit(
+            Arguments.createMap().apply {
+              putString("playerId", id)
+              putString("type", "audioSample")
+              putArray("waveform", waveform)
+              putDouble("level", window.level)
+              putDouble("duration", window.durationSeconds)
+              putDouble("outputLatency", window.outputLatencySeconds)
+              putDouble("timestamp", window.timestampMs.toDouble())
+            }
+          )
+        }
+      }
+    sampler.enabled = enabled
   }
 
   private fun emit(type: String, payload: WritableMap) {
@@ -172,6 +216,8 @@ internal class PlayerController(
     event.putString("playerId", id)
     event.putString("type", "status")
     sink.emit(event)
+    // The song advances with the audio, not the wall clock.
+    trackClock?.setRunning(status.state == PlaybackState.PLAYING, AndroidClock.monotonicMs)
     runtime.onStatusChanged(this)
   }
 

@@ -1,6 +1,7 @@
 package com.radioanimu.airwave.platform
 
 import android.net.Uri
+import java.io.File
 import android.os.Looper
 import androidx.annotation.OptIn
 import androidx.media3.common.C
@@ -31,6 +32,31 @@ import com.radioanimu.airwave.core.PlaybackState
  */
 @OptIn(UnstableApi::class)
 internal class SessionPlayer : SimpleBasePlayer(Looper.getMainLooper()) {
+  /** The last local artwork read (uri → bytes): states are rebuilt often. */
+  private var localArtwork: Pair<String, ByteArray?>? = null
+
+  /**
+   * Remote artwork is loaded by Media3 in this process. Local artwork
+   * (`file://`, an absolute path) is read here and attached as bytes: the
+   * system UI (notification, media controls) loads an artwork *URI* itself,
+   * cross-process, and cannot open the app's private files — reproduced:
+   * SystemUI's ImageLoader failed with ENOENT on the app's cache file.
+   */
+  private fun setArtwork(builder: MediaMetadata.Builder, artwork: String?) {
+    if (artwork == null) return
+    val uri = Uri.parse(artwork)
+    val path = if (uri.scheme == null) artwork else if (uri.scheme == "file") uri.path else null
+    if (path == null) {
+      builder.setArtworkUri(uri)
+      return
+    }
+    val bytes =
+      localArtwork?.takeIf { it.first == artwork }?.second
+        ?: runCatching { File(path).readBytes().takeIf { it.isNotEmpty() } }.getOrNull()
+          .also { localArtwork = artwork to it }
+    bytes?.let { builder.setArtworkData(it, MediaMetadata.PICTURE_TYPE_FRONT_COVER) }
+  }
+
   fun refresh() = invalidateState()
 
   override fun getState(): State {
@@ -45,7 +71,18 @@ internal class SessionPlayer : SimpleBasePlayer(Looper.getMainLooper()) {
     val now = controller.nowPlaying()
     val reading = controller.progress()
     val elapsed = (AndroidClock.monotonicMs - reading.takenAtMonotonic).coerceAtLeast(0)
-    val positionMs = (reading.reading.position * 1000).toLong() + if (status.state == PlaybackState.PLAYING) (elapsed * status.rate).toLong() else 0L
+    val track = now.track
+    val playing = status.state == PlaybackState.PLAYING
+    // With a song duration from the app, the session shows the song's timeline
+    // (advancing at rate 1 while audio plays) instead of the stream's.
+    val positionMs =
+      if (track != null) {
+        val sinceMs = if (playing) (AndroidClock.monotonicMs - track.atMonotonic).coerceAtLeast(0) else 0L
+        ((track.elapsed * 1000).toLong() + sinceMs).coerceAtMost((track.duration * 1000).toLong())
+      } else {
+        (reading.reading.position * 1000).toLong() + if (playing) (elapsed * status.rate).toLong() else 0L
+      }
+    val positionRate = if (track != null) 1f else status.rate.toFloat()
     val remote = controller.options.remoteCommands
 
     val commands =
@@ -70,7 +107,7 @@ internal class SessionPlayer : SimpleBasePlayer(Looper.getMainLooper()) {
         .setTitle(now.title)
         .setArtist(now.artist)
         .setAlbumTitle(now.album)
-        .setArtworkUri(now.artwork?.let(Uri::parse))
+        .also { setArtwork(it, now.artwork) }
         .setIsPlayable(true)
         .setIsBrowsable(false)
         .setMediaType(if (status.isLive) MediaMetadata.MEDIA_TYPE_RADIO_STATION else MediaMetadata.MEDIA_TYPE_MUSIC)
@@ -80,9 +117,11 @@ internal class SessionPlayer : SimpleBasePlayer(Looper.getMainLooper()) {
         .setMediaItem(MediaItem.Builder().setMediaId("airwave").setMediaMetadata(metadata).build())
         .setMediaMetadata(metadata)
         .setIsSeekable(status.seekable)
-        .setIsDynamic(status.isLive)
-        .setDurationUs(status.duration?.let { (it * 1_000_000).toLong() } ?: C.TIME_UNSET)
-    if (status.isLive) itemBuilder.setLiveConfiguration(MediaItem.LiveConfiguration.Builder().build())
+        .setIsDynamic(status.isLive && track == null)
+        .setDurationUs(
+          (track?.duration ?: status.duration)?.let { (it * 1_000_000).toLong() } ?: C.TIME_UNSET
+        )
+    if (status.isLive && track == null) itemBuilder.setLiveConfiguration(MediaItem.LiveConfiguration.Builder().build())
 
     val interruption = status.interruption
     val builder =
@@ -92,8 +131,8 @@ internal class SessionPlayer : SimpleBasePlayer(Looper.getMainLooper()) {
         .setCurrentMediaItemIndex(0)
         .setPlaybackParameters(PlaybackParameters(status.rate.toFloat()))
         .setContentPositionMs(
-          if (status.state == PlaybackState.PLAYING) {
-            PositionSupplier.getExtrapolating(positionMs, status.rate.toFloat())
+          if (playing) {
+            PositionSupplier.getExtrapolating(positionMs, positionRate)
           } else {
             PositionSupplier.getConstant(positionMs)
           }

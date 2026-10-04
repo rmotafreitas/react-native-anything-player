@@ -52,6 +52,9 @@ final class StreamProxy {
     let onError: (Error) -> Void
     /// Diagnostics: a dropped upstream was replaced inside the response.
     let onSplice: ([String: String]) -> Void
+    /// The compressed audio of the main endless response (ICY removed) and its
+    /// content type — what a visualizer decodes. Called on the proxy queue.
+    var onAudio: ((Data, String?) -> Void)? = nil
   }
 
   private let queue = DispatchQueue(label: "airwave.proxy")
@@ -187,6 +190,7 @@ final class StreamProxy {
     var head: Data?
     /// 200 without a content length: an endless stream, may be spliced.
     var endless = false
+    var contentType: String?
     var suspended = false
     /// Current connection: when its response arrived, audio bytes it carried.
     var since: Int64?
@@ -321,6 +325,7 @@ final class StreamProxy {
       return true
     }
     upstream.endless = http.statusCode == 200 && headers["content-length"] == nil
+    upstream.contentType = headers["content-type"]
     upstream.reframer = IcyReframer(metaint: metaint)
     var head = "HTTP/1.1 \(http.statusCode) \(HTTPURLResponse.localizedString(forStatusCode: http.statusCode))\r\n"
     for (name, value) in headers {
@@ -342,6 +347,9 @@ final class StreamProxy {
     if upstream.endless {
       let chunk = upstream.deinterleaver.consume([UInt8](data))
       upstream.bytes += Int64(chunk.audio.count)
+      if upstream.range == nil, !chunk.audio.isEmpty, let onAudio = routes[upstream.token]?.onAudio {
+        onAudio(Data(chunk.audio), upstream.contentType)
+      }
       let framed = upstream.reframer.frame(chunk, audioEnd: upstream.deinterleaver.audioBytes)
       guard !framed.isEmpty else { return }
       out = Data(framed)

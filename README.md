@@ -25,6 +25,8 @@ It was designed from years of production failure reports of the [Rádio Animu](h
 - **Recovery**: stall and silent-stall detection, dead-socket re-open, jittered exponential backoff, offline-aware probing, network-handoff awareness, a give-up limit, circuit breakers against connection storms.
 - **System integration**: background playback, lock screen / Control Center / notification, headset, Bluetooth, car and Wear controls, Android audio focus (incl. Android 15 rules), iOS interruptions, output disconnects, media-services reset.
 - **Correctness**: per-open generations reject stale native events; commands are applied in call order; status snapshots are sequence-numbered; events are ordered after the status they imply.
+- **Visualizer**: decoded-audio windows (`audioSample`) on both platforms — including live HTTP streams on iOS, where AVPlayer's audio tap never runs.
+- **Song progress for radio**: give the current song's duration and the lock screen shows its progress, advanced natively.
 - **Observability**: a native ring buffer of structured engine traces, readable any time with `player.getDiagnostics()`.
 - **Small and fast**: a TurboModule with zero JS dependencies; progress is a synchronous JSI read (~10 µs), so no progress events cross the bridge.
 
@@ -90,6 +92,7 @@ function NowPlaying() {
 | [Internet radio & ICY](docs/internet-radio.md) | Live streams, ICY metadata, live edge, recovery |
 | [Background & system](docs/background-and-system.md) | Background, lock screen, media sessions, interruptions, audio focus, artwork |
 | [Events](docs/events.md) | Status, events, ordering and threading guarantees |
+| [Visualizer](docs/visualizer.md) | Decoded-audio windows for oscilloscopes and meters (iOS streams included) |
 | [Errors](docs/errors.md) | Normalized error codes |
 | [Configuration](docs/configuration.md) | Every `PlayerOptions` field |
 | [Recovery policy](docs/recovery.md) | Every recovery constant and why it exists |

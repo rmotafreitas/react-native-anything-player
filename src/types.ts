@@ -138,7 +138,7 @@ export interface MediaMetadata {
   title?: string | null;
   artist?: string | null;
   album?: string | null;
-  /** Station name (ICY `icy-name`; Android only — iOS does not expose ICY headers). */
+  /** Station name (ICY `icy-name` response header). */
   station?: string | null;
   genre?: string | null;
   artwork?: Artwork | null;
@@ -158,6 +158,14 @@ export interface NowPlayingMetadata {
   album?: string;
   /** Remote URL, local file URI, or `require('./cover.png')`. */
   artwork?: string | Artwork | AssetModule;
+  /**
+   * The song's length in seconds. On a live stream (radio), giving it shows
+   * the *song's* progress on the lock screen / notification instead of a
+   * "live" badge; it stays non-seekable. Advances only while audio plays.
+   */
+  duration?: number;
+  /** Seconds into the song when this call is made (default 0). Needs `duration`. */
+  elapsed?: number;
 }
 
 export interface Source {
@@ -276,6 +284,34 @@ export interface PlayerEventMap {
   remoteCommand: (event: RemoteCommandEvent) => void;
   /** Structured engine trace (only while diagnostics are enabled). */
   diagnostic: (entry: DiagnosticEntry) => void;
+  /** A decoded-audio window (only while `setAudioSampling` is enabled). */
+  audioSample: (sample: AudioSample) => void;
+}
+
+/**
+ * One window of decoded audio, for visualizers. Produced natively from the
+ * PCM on its way to the speaker: already downmixed to mono and resampled.
+ */
+export interface AudioSample {
+  /** `points` values in -1…1 covering {@link duration} seconds of audio. */
+  waveform: number[];
+  /** RMS loudness of the window, 0…1. */
+  level: number;
+  /** Seconds of audio the window spans. */
+  duration: number;
+  /**
+   * Seconds until this window is heard (output buffers + device latency).
+   * Delay drawing by this much to match what the listener hears.
+   */
+  outputLatency: number;
+  /** Epoch ms when the window was decoded. */
+  timestamp: number;
+}
+
+export interface AudioSamplingOptions {
+  enabled: boolean;
+  /** Points per waveform (16…4096, default 1024). */
+  points?: number;
 }
 
 export type PlayerEvent = keyof PlayerEventMap;

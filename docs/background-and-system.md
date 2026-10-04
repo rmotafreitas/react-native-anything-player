@@ -40,12 +40,25 @@ For each field, the first available value wins:
 
 The album line falls back to the station name. Live sources show as live (no scrubber).
 
+### Song progress on a live stream
+
+A radio stream has no duration, but your app may know the song's (from its own API or the ICY title). Pass it and the lock screen / notification shows the song's progress instead of a "live" badge:
+
+```ts
+player.on('metadata', async (m) => {
+  const song = await lookUp(m.raw.StreamTitle); // your catalogue
+  await player.updateNowPlaying({ title: song.title, artist: song.artist, artwork: song.cover, duration: song.duration, elapsed: 0 });
+});
+```
+
+`elapsed` is the position at the moment of the call (default 0). From then on the bar advances natively, and only while audio plays: pauses and stalls freeze it, like the audio. It never needs updates from JS, which matters on Android, where JS timers do not run in the background. The bar is not seekable: seeking follows the stream. The next `load()`, or an `updateNowPlaying` without `duration`, returns to the live display.
+
 ### Artwork
 
 `artwork` may be a remote URL, a `file://` URI or `require('./cover.png')`. Artwork never blocks playback or metadata: the info is published immediately and the image is attached when it arrives (10 s timeout), only if it is still the current artwork.
 
 - iOS: downloaded by a dedicated `URLSession` (20 MB disk cache) plus an in-memory cache of 8 images; concurrent requests for the same URL share one download.
-- Android: Media3 loads and caches it in-process, so app-private `file://` artwork works (the system UI never has to open the file).
+- Android: remote artwork is loaded and cached by Media3 in-process. Local artwork (`file://`, a path) is read in-process and published as image bytes: the system UI loads an artwork URI itself, cross-process, and cannot open an app's private files (reproduced: SystemUI failed with `ENOENT` on an app cache file).
 
 ## Audio focus and interruptions
 
