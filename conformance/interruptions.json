@@ -1,0 +1,172 @@
+[
+  {
+    "name": "a short transient interruption resumes from the buffer",
+    "steps": [
+      { "network": "online" },
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "advance": 1000 },
+      { "interruption": "began", "reason": "interruption", "resumable": true },
+      { "expect": { "state": "paused", "playWhenReady": false, "interruption": "interruption", "interruptionResumable": true, "needsAudioFocus": true, "commands": ["open(gen=1,start=-,play=true)", "pause"] } },
+      { "advance": 2000 },
+      { "interruption": "ended", "shouldResume": true },
+      { "expect": { "state": "buffering", "playWhenReady": true, "interruption": null, "commands": ["play"] } }
+    ]
+  },
+  {
+    "name": "a long interruption releases the stream and resumes at the live edge",
+    "steps": [
+      { "network": "online" },
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "interruption": "began", "reason": "audio-focus-loss-transient", "resumable": true },
+      { "advance": 60000 },
+      { "expect": { "state": "paused", "commands": ["open(gen=1,start=-,play=true)", "pause", "release"] } },
+      { "interruption": "ended", "shouldResume": true },
+      { "expect": { "state": "loading", "playWhenReady": true, "commands": ["open(gen=2,start=-,play=true)"] } }
+    ]
+  },
+  {
+    "name": "an interruption that ends without shouldResume stays paused",
+    "steps": [
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "interruption": "began", "reason": "interruption", "resumable": true },
+      { "interruption": "ended", "shouldResume": false },
+      { "expect": { "state": "paused", "playWhenReady": false, "interruption": "interruption", "interruptionResumable": false, "needsAudioFocus": false, "commands": ["open(gen=1,start=-,play=true)", "pause"] } }
+    ]
+  },
+  {
+    "name": "a user pause during an interruption cancels the system resume",
+    "steps": [
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "interruption": "began", "reason": "interruption", "resumable": true },
+      { "call": "pause" },
+      { "expect": { "interruption": null, "commands": ["open(gen=1,start=-,play=true)", "pause"] } },
+      { "interruption": "ended", "shouldResume": true },
+      { "expect": { "state": "paused", "playWhenReady": false, "commands": [] } }
+    ]
+  },
+  {
+    "name": "a permanent focus loss never resumes on its own",
+    "steps": [
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "interruption": "began", "reason": "audio-focus-loss", "resumable": false },
+      { "expect": { "state": "paused", "interruption": "audio-focus-loss", "interruptionResumable": false, "needsAudioFocus": false } },
+      { "interruption": "ended", "shouldResume": true },
+      { "expect": { "state": "paused", "playWhenReady": false, "commands": [] } }
+    ]
+  },
+  {
+    "name": "an output disconnect pauses and is not resumable",
+    "steps": [
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "buffering" },
+      { "interruption": "began", "reason": "output-disconnected", "resumable": false },
+      { "expect": { "state": "paused", "playWhenReady": false, "interruption": "output-disconnected", "commands": ["open(gen=1,start=-,play=true)", "pause"] } }
+    ]
+  },
+  {
+    "name": "denied focus rejects play without touching the player",
+    "steps": [
+      { "call": "load", "uri": "https://radio.example/live", "live": true },
+      { "native": "ready", "live": true },
+      { "expect": { "commands": ["open(gen=1,start=-,play=false)"] } },
+      { "focus": "denied" },
+      { "call": "play", "throws": "AUDIO_FOCUS_DENIED" },
+      { "expect": { "state": "paused", "playWhenReady": false, "interruption": "audio-focus-denied", "commands": [] } },
+      { "focus": "granted" },
+      { "call": "play" },
+      { "expect": { "state": "buffering", "interruption": null, "commands": ["play"] } }
+    ]
+  },
+  {
+    "name": "delayed focus starts playback when focus is granted",
+    "steps": [
+      { "call": "load", "uri": "https://radio.example/live", "live": true },
+      { "native": "ready", "live": true },
+      { "focus": "delayed" },
+      { "call": "play" },
+      { "expect": { "state": "paused", "playWhenReady": false, "interruption": "audio-focus-delayed", "interruptionResumable": true, "needsAudioFocus": true, "commands": ["open(gen=1,start=-,play=false)"] } },
+      { "focus": "granted" },
+      { "interruption": "ended", "shouldResume": true },
+      { "expect": { "state": "buffering", "playWhenReady": true, "interruption": null, "commands": ["play"] } }
+    ]
+  },
+  {
+    "name": "load with autoplay and denied focus opens without playing",
+    "steps": [
+      { "focus": "denied" },
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "expect": { "state": "loading", "playWhenReady": false, "interruption": "audio-focus-denied", "commands": ["open(gen=1,start=-,play=false)"] } }
+    ]
+  },
+  {
+    "name": "an interruption while paused changes nothing",
+    "steps": [
+      { "call": "load", "uri": "https://radio.example/live", "live": true },
+      { "native": "ready", "live": true },
+      { "interruption": "began", "reason": "interruption", "resumable": true },
+      { "interruption": "ended", "shouldResume": true },
+      { "expect": { "state": "paused", "playWhenReady": false, "interruption": null, "commands": ["open(gen=1,start=-,play=false)"] } }
+    ]
+  },
+  {
+    "name": "an interruption during a reconnect cancels it; the resume re-opens",
+    "steps": [
+      { "network": "online" },
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "native": "failed", "code": "NETWORK_ERROR", "recoverable": true },
+      { "interruption": "began", "reason": "interruption", "resumable": true },
+      { "advance": 10000 },
+      { "expect": { "state": "paused", "reconnectAttempt": null, "commands": ["open(gen=1,start=-,play=true)", "pause"] } },
+      { "interruption": "ended", "shouldResume": true },
+      { "expect": { "state": "loading", "commands": ["open(gen=2,start=-,play=true)"] } }
+    ]
+  },
+  {
+    "name": "the platform pausing by itself is adopted as a system pause",
+    "steps": [
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "native": "pausedExternally", "reason": "system" },
+      { "expect": { "state": "paused", "playWhenReady": false, "interruption": "system", "interruptionResumable": false } },
+      { "native": "pausedExternally", "reason": "system", "gen": "prev" },
+      { "expect": { "state": "paused" } }
+    ]
+  },
+  {
+    "name": "auto-resume can be disabled",
+    "options": { "autoResumeAfterInterruption": false },
+    "steps": [
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "interruption": "began", "reason": "interruption", "resumable": true },
+      { "interruption": "ended", "shouldResume": true },
+      { "expect": { "state": "paused", "playWhenReady": false, "interruptionResumable": false, "commands": ["open(gen=1,start=-,play=true)", "pause"] } }
+    ]
+  },
+  {
+    "name": "play during a system pause takes playback back when focus is granted",
+    "steps": [
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "interruption": "began", "reason": "interruption", "resumable": true },
+      { "call": "play" },
+      { "expect": { "state": "buffering", "playWhenReady": true, "interruption": null, "commands": ["open(gen=1,start=-,play=true)", "pause", "play"] } }
+    ]
+  }
+]

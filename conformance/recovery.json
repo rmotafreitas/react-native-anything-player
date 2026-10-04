@@ -1,0 +1,451 @@
+[
+  {
+    "name": "a recoverable failure reconnects; stable playback resets the backoff",
+    "steps": [
+      { "network": "online" },
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "advance": 2000 },
+      { "native": "failed", "code": "NETWORK_ERROR", "recoverable": true },
+      { "expect": { "state": "reconnecting", "playWhenReady": true, "reconnectAttempt": 1, "errors": ["NETWORK_ERROR:recoverable"], "commands": ["open(gen=1,start=-,play=true)"], "wantsKeepalive": true } },
+      { "advance": 999 },
+      { "expect": { "state": "reconnecting", "commands": [] } },
+      { "advance": 1 },
+      { "expect": { "state": "loading", "reconnectAttempt": 1, "commands": ["open(gen=2,start=-,play=true)"] } },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "expect": { "state": "playing", "reconnectAttempt": null } },
+      { "native": "failed", "code": "NETWORK_ERROR", "recoverable": true },
+      { "expect": { "state": "reconnecting", "reconnectAttempt": 2 } },
+      { "advance": 2000 },
+      { "expect": { "commands": ["open(gen=3,start=-,play=true)"] } },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "advance": 10000 },
+      { "native": "failed", "code": "NETWORK_ERROR", "recoverable": true },
+      { "expect": { "state": "reconnecting", "reconnectAttempt": 1, "commands": [] } },
+      { "advance": 0 },
+      { "expect": { "state": "loading", "commands": ["open(gen=4,start=-,play=true)"] } },
+      { "native": "failed", "code": "NETWORK_ERROR", "recoverable": true },
+      { "expect": { "state": "reconnecting", "reconnectAttempt": 2 } },
+      { "advance": 1999 },
+      { "expect": { "commands": [] } },
+      { "advance": 1 },
+      { "expect": { "commands": ["open(gen=5,start=-,play=true)"] } }
+    ]
+  },
+  {
+    "name": "the backoff doubles and caps at 30 s",
+    "steps": [
+      { "network": "online" },
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "failed", "code": "NETWORK_ERROR", "recoverable": true },
+      { "expect": { "state": "reconnecting", "reconnectAttempt": 1, "loads": ["1:failed:NETWORK_ERROR"], "errors": ["NETWORK_ERROR:recoverable"] } },
+      { "advance": 1000 },
+      { "native": "failed", "code": "NETWORK_ERROR", "recoverable": true },
+      { "expect": { "reconnectAttempt": 2, "commands": ["open(gen=2,start=-,play=true)"] } },
+      { "advance": 2000 },
+      { "native": "failed", "code": "NETWORK_ERROR", "recoverable": true },
+      { "expect": { "reconnectAttempt": 3, "commands": ["open(gen=3,start=-,play=true)"] } },
+      { "advance": 4000 },
+      { "native": "failed", "code": "NETWORK_ERROR", "recoverable": true },
+      { "expect": { "reconnectAttempt": 4, "commands": ["open(gen=4,start=-,play=true)"] } },
+      { "advance": 8000 },
+      { "native": "failed", "code": "NETWORK_ERROR", "recoverable": true },
+      { "expect": { "reconnectAttempt": 5, "commands": ["open(gen=5,start=-,play=true)"] } },
+      { "advance": 16000 },
+      { "native": "failed", "code": "NETWORK_ERROR", "recoverable": true },
+      { "expect": { "reconnectAttempt": 6, "commands": ["open(gen=6,start=-,play=true)"] } },
+      { "advance": 29999 },
+      { "expect": { "state": "reconnecting", "commands": [] } },
+      { "advance": 1 },
+      { "expect": { "state": "loading", "commands": ["open(gen=7,start=-,play=true)"] } }
+    ]
+  },
+  {
+    "name": "a non-recoverable failure stops without reconnecting",
+    "steps": [
+      { "network": "online" },
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "native": "failed", "code": "SOURCE_NOT_FOUND", "recoverable": false },
+      { "expect": { "state": "error", "error": "SOURCE_NOT_FOUND", "playWhenReady": false, "errors": ["SOURCE_NOT_FOUND:fatal"], "commands": ["open(gen=1,start=-,play=true)", "release"], "wantsKeepalive": false } },
+      { "advance": 60000 },
+      { "expect": { "state": "error", "commands": [] } }
+    ]
+  },
+  {
+    "name": "a failed initial load without autoplay is an error; play retries",
+    "steps": [
+      { "call": "load", "uri": "https://cdn.example/song.mp3" },
+      { "native": "failed", "code": "NETWORK_ERROR", "recoverable": true },
+      { "expect": { "state": "error", "error": "NETWORK_ERROR", "loads": ["1:failed:NETWORK_ERROR"], "errors": ["NETWORK_ERROR:fatal"], "commands": ["open(gen=1,start=-,play=false)", "release"] } },
+      { "call": "play" },
+      { "expect": { "state": "loading", "error": null, "playWhenReady": true, "commands": ["open(gen=2,start=-,play=true)"] } }
+    ]
+  },
+  {
+    "name": "a stream that dies while paused is re-opened silently on play",
+    "steps": [
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "call": "pause" },
+      { "expect": { "commands": ["open(gen=1,start=-,play=true)", "pause"] } },
+      { "native": "failed", "code": "NETWORK_ERROR", "recoverable": true },
+      { "expect": { "state": "paused", "errors": [], "error": null, "commands": [] } },
+      { "call": "play" },
+      { "expect": { "state": "loading", "commands": ["open(gen=2,start=-,play=true)"] } }
+    ]
+  },
+  {
+    "name": "an open that never becomes ready times out after 12 s",
+    "steps": [
+      { "network": "online" },
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "advance": 11999 },
+      { "expect": { "state": "loading", "commands": ["open(gen=1,start=-,play=true)"] } },
+      { "advance": 1 },
+      { "expect": { "state": "reconnecting", "reconnectAttempt": 1, "loads": ["1:failed:TIMEOUT"], "errors": ["TIMEOUT:recoverable"] } }
+    ]
+  },
+  {
+    "name": "a live stall with no incoming data re-opens after 3 s",
+    "steps": [
+      { "network": "online" },
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "advance": 3000 },
+      { "native": "buffering" },
+      { "expect": { "state": "playing", "commands": ["open(gen=1,start=-,play=true)"] } },
+      { "advance": 500 },
+      { "expect": { "state": "buffering", "commands": [] } },
+      { "advance": 1500 },
+      { "expect": { "state": "buffering", "commands": [] } },
+      { "advance": 1000 },
+      { "expect": { "state": "loading", "reconnectAttempt": 1, "commands": ["open(gen=2,start=-,play=true)"] } }
+    ]
+  },
+  {
+    "name": "a slow but progressing stall is not torn down until the 20 s cap",
+    "steps": [
+      { "network": "online" },
+      { "call": "load", "uri": "https://cdn.example/long.mp3", "autoplay": true },
+      { "native": "ready", "duration": 600, "seekable": true },
+      { "native": "playing" },
+      { "advance": 2000 },
+      { "native": "buffering" },
+      { "driver": "trickle" },
+      { "advance": 19000 },
+      { "expect": { "state": "buffering", "commands": ["open(gen=1,start=-,play=true)"] } },
+      { "advance": 1000 },
+      { "expect": { "state": "loading", "commands": ["open(gen=2,start=2.0,play=true)"] } }
+    ]
+  },
+  {
+    "name": "short live stalls accumulate drift until the stream is re-opened at the live edge",
+    "steps": [
+      { "network": "online" },
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "advance": 3000 },
+      { "native": "buffering" },
+      { "driver": "trickle" },
+      { "advance": 2000 },
+      { "native": "playing" },
+      { "expect": { "state": "playing", "commands": ["open(gen=1,start=-,play=true)"] } },
+      { "advance": 3000 },
+      { "native": "buffering" },
+      { "driver": "trickle" },
+      { "advance": 2000 },
+      { "expect": { "state": "buffering", "commands": [] } },
+      { "advance": 1000 },
+      { "expect": { "state": "loading", "commands": ["open(gen=2,start=-,play=true)"] } }
+    ]
+  },
+  {
+    "name": "a short live stall recovers from the buffer without re-opening",
+    "steps": [
+      { "network": "online" },
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "advance": 1000 },
+      { "native": "buffering" },
+      { "driver": "trickle" },
+      { "advance": 2000 },
+      { "native": "playing" },
+      { "advance": 5000 },
+      { "expect": { "state": "playing", "commands": ["open(gen=1,start=-,play=true)"] } }
+    ]
+  },
+  {
+    "name": "a silent stall (playhead frozen, no native report) is detected and recovered",
+    "steps": [
+      { "network": "online" },
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "advance": 2000 },
+      { "driver": "frozen" },
+      { "advance": 3000 },
+      { "expect": { "state": "playing" } },
+      { "advance": 1000 },
+      { "expect": { "state": "buffering", "commands": [] } },
+      { "advance": 1000 },
+      { "expect": { "state": "loading", "commands": ["open(gen=2,start=-,play=true)"] } }
+    ]
+  },
+  {
+    "name": "offline: attempts are skipped with probes; the restore edge reconnects at once",
+    "steps": [
+      { "network": "online" },
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "network": "offline" },
+      { "advance": 1000 },
+      { "native": "failed", "code": "NETWORK_UNAVAILABLE", "recoverable": true },
+      { "expect": { "state": "reconnecting", "reconnectAttempt": 1, "commands": ["open(gen=1,start=-,play=true)"] } },
+      { "advance": 1000 },
+      { "expect": { "state": "reconnecting", "reconnectAttempt": 2, "commands": [] } },
+      { "advance": 2000 },
+      { "expect": { "reconnectAttempt": 3, "commands": [] } },
+      { "advance": 4000 },
+      { "expect": { "reconnectAttempt": 4, "commands": [] } },
+      { "advance": 8000 },
+      { "expect": { "state": "loading", "commands": ["open(gen=2,start=-,play=true)"] } },
+      { "native": "failed", "code": "NETWORK_UNAVAILABLE", "recoverable": true },
+      { "expect": { "state": "reconnecting", "reconnectAttempt": 5 } },
+      { "advance": 500 },
+      { "network": "online" },
+      { "expect": { "state": "loading", "reconnectAttempt": 1, "commands": ["open(gen=3,start=-,play=true)"] } }
+    ]
+  },
+  {
+    "name": "a network restore does not touch healthy playback",
+    "steps": [
+      { "network": "online" },
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "network": "offline" },
+      { "advance": 2000 },
+      { "network": "online" },
+      { "expect": { "state": "playing", "commands": ["open(gen=1,start=-,play=true)"] } }
+    ]
+  },
+  {
+    "name": "a handoff while playing only makes stall detection eager",
+    "steps": [
+      { "network": "online" },
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "advance": 1000 },
+      { "network": "online", "handoff": true },
+      { "native": "buffering" },
+      { "advance": 500 },
+      { "expect": { "state": "buffering", "commands": ["open(gen=1,start=-,play=true)"] } },
+      { "advance": 1000 },
+      { "expect": { "state": "buffering", "commands": [] } },
+      { "advance": 1000 },
+      { "expect": { "state": "loading", "commands": ["open(gen=2,start=-,play=true)"] } }
+    ]
+  },
+  {
+    "name": "a handoff during a stall reconnects immediately",
+    "steps": [
+      { "network": "online" },
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "advance": 1000 },
+      { "native": "buffering" },
+      { "advance": 600 },
+      { "network": "online", "handoff": true },
+      { "expect": { "state": "loading", "commands": ["open(gen=1,start=-,play=true)", "open(gen=2,start=-,play=true)"] } }
+    ]
+  },
+  {
+    "name": "recovery gives up after the configured limit",
+    "options": { "giveUpAfterMs": 10000 },
+    "steps": [
+      { "network": "online" },
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "failed", "code": "NETWORK_ERROR", "recoverable": true },
+      { "advance": 1000 },
+      { "native": "failed", "code": "NETWORK_ERROR", "recoverable": true },
+      { "advance": 2000 },
+      { "native": "failed", "code": "NETWORK_ERROR", "recoverable": true },
+      { "advance": 4000 },
+      { "native": "failed", "code": "NETWORK_ERROR", "recoverable": true },
+      { "expect": { "state": "reconnecting", "reconnectAttempt": 4 } },
+      { "advance": 2999 },
+      { "expect": { "state": "reconnecting" } },
+      { "advance": 1 },
+      { "expect": { "state": "error", "error": "NETWORK_ERROR", "playWhenReady": false, "errors": ["NETWORK_ERROR:fatal"], "commands": ["release"], "wantsKeepalive": false } }
+    ]
+  },
+  {
+    "name": "reconnect can be disabled",
+    "options": { "reconnect": false },
+    "steps": [
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "native": "failed", "code": "NETWORK_ERROR", "recoverable": true },
+      { "expect": { "state": "error", "error": "NETWORK_ERROR", "errors": ["NETWORK_ERROR:fatal"] } }
+    ]
+  },
+  {
+    "name": "a live stream closed by the server reconnects",
+    "steps": [
+      { "network": "online" },
+      { "call": "load", "uri": "https://radio.example/live", "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "native": "ended" },
+      { "expect": { "state": "reconnecting", "ended": 0, "errors": ["STREAM_ENDED:recoverable"] } }
+    ]
+  },
+  {
+    "name": "pausing during a reconnect cancels it; play re-opens at once",
+    "steps": [
+      { "network": "online" },
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "native": "failed", "code": "NETWORK_ERROR", "recoverable": true },
+      { "call": "pause" },
+      { "expect": { "state": "paused", "reconnectAttempt": null, "wantsKeepalive": false, "commands": ["open(gen=1,start=-,play=true)", "pause"] } },
+      { "advance": 5000 },
+      { "expect": { "state": "paused", "commands": [] } },
+      { "call": "play" },
+      { "expect": { "state": "loading", "commands": ["open(gen=2,start=-,play=true)"] } }
+    ]
+  },
+  {
+    "name": "live pause: short resumes from the buffer, long re-opens, very long releases the connection",
+    "steps": [
+      { "network": "online" },
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "advance": 1000 },
+      { "call": "pause" },
+      { "advance": 2000 },
+      { "call": "play" },
+      { "expect": { "state": "buffering", "commands": ["open(gen=1,start=-,play=true)", "pause", "play"] } },
+      { "native": "playing" },
+      { "advance": 1000 },
+      { "call": "pause" },
+      { "advance": 6000 },
+      { "call": "play" },
+      { "expect": { "state": "loading", "commands": ["pause", "open(gen=2,start=-,play=true)"] } },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "call": "pause" },
+      { "advance": 29999 },
+      { "expect": { "commands": ["pause"] } },
+      { "advance": 1 },
+      { "expect": { "state": "paused", "commands": ["release"] } },
+      { "call": "play" },
+      { "expect": { "state": "loading", "commands": ["open(gen=3,start=-,play=true)"] } }
+    ]
+  },
+  {
+    "name": "a paused local file is never released",
+    "steps": [
+      { "call": "load", "uri": "file:///music/a.mp3", "autoplay": true },
+      { "native": "ready", "duration": 200, "seekable": true },
+      { "native": "playing" },
+      { "call": "pause" },
+      { "advance": 120000 },
+      { "expect": { "state": "paused", "commands": ["open(gen=1,start=-,play=true)", "pause"] } }
+    ]
+  },
+  {
+    "name": "a file reconnects at the last position",
+    "steps": [
+      { "network": "online" },
+      { "call": "load", "uri": "https://cdn.example/long.mp3", "autoplay": true },
+      { "native": "ready", "duration": 600, "seekable": true },
+      { "native": "playing" },
+      { "advance": 5000 },
+      { "native": "failed", "code": "NETWORK_ERROR", "recoverable": true },
+      { "advance": 1000 },
+      { "expect": { "commands": ["open(gen=1,start=-,play=true)", "open(gen=2,start=5.0,play=true)"] } }
+    ]
+  },
+  {
+    "name": "foregrounding skips the backoff wait but never interrupts an open in flight",
+    "steps": [
+      { "network": "online" },
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "failed", "code": "NETWORK_ERROR", "recoverable": true },
+      { "advance": 1000 },
+      { "native": "failed", "code": "NETWORK_ERROR", "recoverable": true },
+      { "advance": 2000 },
+      { "native": "failed", "code": "NETWORK_ERROR", "recoverable": true },
+      { "expect": { "state": "reconnecting", "reconnectAttempt": 3 } },
+      { "call": "foreground" },
+      { "expect": { "state": "loading", "commands": ["open(gen=4,start=-,play=true)"] } },
+      { "advance": 500 },
+      { "call": "foreground" },
+      { "expect": { "state": "loading", "commands": [] } }
+    ]
+  },
+  {
+    "name": "a native stall shorter than the debounce is never published",
+    "steps": [
+      { "network": "online" },
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "advance": 2000 },
+      { "native": "buffering" },
+      { "advance": 100 },
+      { "native": "playing" },
+      { "advance": 1000 },
+      { "native": "buffering" },
+      { "advance": 499 },
+      { "expect": { "state": "playing", "commands": ["open(gen=1,start=-,play=true)"] } },
+      { "native": "playing" },
+      { "advance": 5000 },
+      { "expect": { "state": "playing", "commands": [] } }
+    ]
+  },
+  {
+    "name": "flowing audio is never cut for drift; the drift is applied at the next silent moment",
+    "steps": [
+      { "network": "online" },
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "advance": 2000 },
+      { "native": "buffering" },
+      { "driver": "trickle" },
+      { "advance": 4000 },
+      { "native": "playing" },
+      { "advance": 3000 },
+      { "native": "buffering" },
+      { "advance": 400 },
+      { "native": "playing" },
+      { "advance": 700 },
+      { "native": "buffering" },
+      { "driver": "trickle" },
+      { "advance": 700 },
+      { "native": "playing" },
+      { "expect": { "state": "playing", "commands": ["open(gen=1,start=-,play=true)"] } },
+      { "call": "pause" },
+      { "advance": 1000 },
+      { "call": "play" },
+      { "expect": { "state": "loading", "commands": ["pause", "open(gen=2,start=-,play=true)"] } }
+    ]
+  }
+]

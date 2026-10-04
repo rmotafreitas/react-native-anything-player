@@ -1,15 +1,18 @@
 buildscript {
   ext.Airwave = [
-    kotlinVersion: "2.0.21",
+    kotlinVersion: "2.1.20",
     minSdkVersion: 24,
-    compileSdkVersion: 36
+    compileSdkVersion: 36,
+    // Media3 is the only runtime dependency. Apps can pin another 1.x via
+    // `airwaveMedia3Version` in their root `ext` (e.g. to share a version with
+    // another library).
+    media3Version: "1.11.1",
   ]
 
   ext.getExtOrDefault = { prop ->
     if (rootProject.ext.has(prop)) {
       return rootProject.ext.get(prop)
     }
-
     return Airwave[prop]
   }
 
@@ -25,31 +28,64 @@ buildscript {
   }
 }
 
-
 apply plugin: "com.android.library"
 
 if (project.extensions.findByName("kotlin") == null) {
   apply plugin: "kotlin-android"
 }
 
-
 apply plugin: "com.facebook.react"
 
+def media3Version = rootProject.ext.has("airwaveMedia3Version") ? rootProject.ext.get("airwaveMedia3Version") : Airwave.media3Version
+// HLS is on by default (many stations and podcasts are HLS-only). Apps that
+// only play progressive streams can drop ~300 KB with `airwaveHls=false` in
+// gradle.properties.
+def includeHls = !project.hasProperty("airwaveHls") || project.property("airwaveHls") != "false"
+
 android {
-  namespace "com.airwave"
+  namespace "com.radioanimu.airwave"
 
   compileSdkVersion getExtOrDefault("compileSdkVersion")
 
   defaultConfig {
     minSdkVersion getExtOrDefault("minSdkVersion")
+    consumerProguardFiles "proguard-rules.pro"
   }
 
   compileOptions {
     sourceCompatibility JavaVersion.VERSION_17
     targetCompatibility JavaVersion.VERSION_17
   }
+
+  testOptions {
+    unitTests.all {
+      testLogging {
+        events "failed"
+        exceptionFormat "full"
+        showStandardStreams true
+      }
+    }
+  }
 }
 
 dependencies {
   implementation "com.facebook.react:react-android"
+  implementation "androidx.media3:media3-exoplayer:$media3Version"
+  implementation "androidx.media3:media3-session:$media3Version"
+  // HTTP through OkHttp (already in every React Native app): a call can be
+  // cancelled from any thread, which closes even a socket blocked in a read.
+  implementation "androidx.media3:media3-datasource-okhttp:$media3Version"
+  if (includeHls) {
+    implementation "androidx.media3:media3-exoplayer-hls:$media3Version"
+  }
+
+  testImplementation "junit:junit:4.13.2"
+  testImplementation "org.json:json:20240303"
+}
+
+// The shared engine spec lives outside this module: make it a test input so a
+// change to a scenario re-runs the Kotlin conformance tests.
+tasks.withType(Test).configureEach {
+  def spec = file("${projectDir}/../conformance")
+  if (spec.exists()) inputs.dir(spec).withPropertyName("conformanceSpec")
 }

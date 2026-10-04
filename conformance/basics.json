@@ -1,0 +1,253 @@
+[
+  {
+    "name": "load with autoplay opens, becomes ready, then plays",
+    "steps": [
+      { "network": "online" },
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "expect": { "state": "loading", "playWhenReady": true, "commands": ["open(gen=1,start=-,play=true)"], "loads": [] } },
+      { "native": "ready", "live": true },
+      { "expect": { "state": "buffering", "isLive": true, "seekable": false, "loads": ["1:ready"], "wantsKeepalive": true } },
+      { "native": "playing" },
+      { "expect": { "state": "playing", "commands": [], "wantsKeepalive": false, "needsAudioFocus": true } }
+    ]
+  },
+  {
+    "name": "load without autoplay lands paused and play resumes",
+    "steps": [
+      { "call": "load", "uri": "https://cdn.example/song.mp3" },
+      { "expect": { "state": "loading", "playWhenReady": false, "commands": ["open(gen=1,start=-,play=false)"] } },
+      { "native": "ready", "duration": 180, "seekable": true },
+      { "expect": { "state": "paused", "duration": 180, "seekable": true, "isLive": false, "loads": ["1:ready"], "needsAudioFocus": false } },
+      { "call": "play" },
+      { "expect": { "state": "buffering", "playWhenReady": true, "commands": ["play"] } },
+      { "native": "playing" },
+      { "expect": { "state": "playing" } }
+    ]
+  },
+  {
+    "name": "play without a source throws NO_SOURCE",
+    "steps": [
+      { "call": "play", "throws": "NO_SOURCE" },
+      { "call": "seek", "value": 3, "throws": "NO_SOURCE" },
+      { "expect": { "state": "idle", "playWhenReady": false, "commands": [] } }
+    ]
+  },
+  {
+    "name": "duplicate play while playing does nothing",
+    "steps": [
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "expect": { "state": "playing", "commands": ["open(gen=1,start=-,play=true)"] } },
+      { "call": "play" },
+      { "call": "play" },
+      { "expect": { "state": "playing", "commands": [] } }
+    ]
+  },
+  {
+    "name": "pause pauses once; a second pause is a no-op",
+    "steps": [
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "expect": { "commands": ["open(gen=1,start=-,play=true)"] } },
+      { "call": "pause" },
+      { "expect": { "state": "paused", "playWhenReady": false, "commands": ["pause"] } },
+      { "call": "pause" },
+      { "expect": { "state": "paused", "commands": [] } }
+    ]
+  },
+  {
+    "name": "a new load supersedes the pending one and its events become stale",
+    "steps": [
+      { "call": "load", "uri": "https://radio.example/a", "live": true, "autoplay": true },
+      { "call": "load", "uri": "https://radio.example/b", "live": true, "autoplay": true },
+      { "expect": { "commands": ["open(gen=1,start=-,play=true)", "open(gen=2,start=-,play=true)"], "loads": ["1:superseded"] } },
+      { "native": "ready", "live": true, "gen": 1 },
+      { "native": "playing", "gen": 1 },
+      { "expect": { "state": "loading", "loads": [], "commands": [] } },
+      { "native": "ready", "live": true },
+      { "expect": { "state": "buffering", "loads": ["2:ready"] } }
+    ]
+  },
+  {
+    "name": "rapid load A, B, C only accepts C",
+    "steps": [
+      { "call": "load", "uri": "https://radio.example/a", "autoplay": true },
+      { "call": "load", "uri": "https://radio.example/b" },
+      { "call": "load", "uri": "https://radio.example/c" },
+      { "expect": { "loads": ["1:superseded", "2:superseded"], "commands": ["open(gen=1,start=-,play=true)", "open(gen=2,start=-,play=true)", "open(gen=3,start=-,play=true)"] } },
+      { "native": "failed", "code": "NETWORK_ERROR", "recoverable": true, "gen": 1 },
+      { "native": "ready", "duration": 10, "gen": 2 },
+      { "expect": { "state": "loading", "errors": [], "loads": [] } },
+      { "native": "ready", "duration": 10, "seekable": true },
+      { "native": "playing" },
+      { "expect": { "state": "playing", "loads": ["3:ready"], "duration": 10 } }
+    ]
+  },
+  {
+    "name": "play/pause storm while loading ends with the last intent",
+    "steps": [
+      { "call": "load", "uri": "https://cdn.example/song.mp3" },
+      { "call": "play" },
+      { "call": "pause" },
+      { "call": "play" },
+      { "call": "pause" },
+      { "expect": { "state": "loading", "playWhenReady": false, "commands": ["open(gen=1,start=-,play=false)", "play", "pause", "play", "pause"] } },
+      { "native": "ready", "duration": 60, "seekable": true },
+      { "expect": { "state": "paused", "loads": ["1:ready"] } },
+      { "native": "playing" },
+      { "expect": { "state": "paused", "playWhenReady": false, "commands": ["pause"] } }
+    ]
+  },
+  {
+    "name": "stop releases the connection; play re-opens",
+    "steps": [
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "expect": { "commands": ["open(gen=1,start=-,play=true)"] } },
+      { "call": "stop" },
+      { "expect": { "state": "stopped", "playWhenReady": false, "commands": ["release"] } },
+      { "call": "play" },
+      { "expect": { "state": "loading", "playWhenReady": true, "commands": ["open(gen=2,start=-,play=true)"] } }
+    ]
+  },
+  {
+    "name": "stop on a file restarts from the beginning",
+    "steps": [
+      { "call": "load", "uri": "file:///music/a.mp3", "autoplay": true },
+      { "native": "ready", "duration": 200, "seekable": true },
+      { "native": "playing" },
+      { "advance": 5000 },
+      { "call": "stop" },
+      { "call": "play" },
+      { "expect": { "commands": ["open(gen=1,start=-,play=true)", "release", "open(gen=2,start=0.0,play=true)"] } }
+    ]
+  },
+  {
+    "name": "reset unloads; play then has no source",
+    "steps": [
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "call": "reset" },
+      { "expect": { "state": "idle", "playWhenReady": false, "isLive": false, "commands": ["open(gen=1,start=-,play=true)", "unload"] } },
+      { "native": "playing", "gen": 1 },
+      { "call": "play", "throws": "NO_SOURCE" },
+      { "expect": { "state": "idle", "commands": [] } }
+    ]
+  },
+  {
+    "name": "a finite file ends; play restarts it",
+    "steps": [
+      { "call": "load", "uri": "https://cdn.example/song.mp3", "autoplay": true },
+      { "native": "ready", "duration": 3, "seekable": true },
+      { "native": "playing" },
+      { "native": "ended" },
+      { "expect": { "state": "ended", "playWhenReady": false, "ended": 1 } },
+      { "call": "play" },
+      { "expect": { "state": "buffering", "commands": ["seek(0.0)", "play"] } }
+    ]
+  },
+  {
+    "name": "seek is refused on live streams and clamped on files",
+    "steps": [
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true, "seekable": true },
+      { "call": "seek", "value": 10, "throws": "NOT_SEEKABLE" },
+      { "call": "load", "uri": "https://cdn.example/song.mp3" },
+      { "native": "ready", "duration": 180, "seekable": true },
+      { "call": "seek", "value": 30 },
+      { "call": "seek", "value": 500 },
+      { "call": "seek", "value": -1, "throws": "INVALID_ARGUMENT" },
+      { "expect": { "commands": ["open(gen=1,start=-,play=true)", "open(gen=2,start=-,play=true)", "seek(30.0)", "seek(180.0)"] } }
+    ]
+  },
+  {
+    "name": "volume, mute and ducking compose into one effective volume",
+    "steps": [
+      { "call": "load", "uri": "https://cdn.example/song.mp3" },
+      { "expect": { "commands": ["open(gen=1,start=-,play=false)"] } },
+      { "call": "volume", "value": 0.5 },
+      { "call": "muted", "value": true },
+      { "call": "muted", "value": false },
+      { "call": "duck", "value": true },
+      { "call": "volume", "value": 2 },
+      { "call": "duck", "value": false },
+      { "call": "rate", "value": 1.5 },
+      { "call": "rate", "value": 0, "throws": "INVALID_ARGUMENT" },
+      { "expect": { "commands": ["volume(0.50)", "volume(0.00)", "volume(0.50)", "volume(0.10)", "volume(0.20)", "volume(1.00)", "rate(1.50)"] } }
+    ]
+  },
+  {
+    "name": "release unloads, rejects further commands and ignores stragglers",
+    "steps": [
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "expect": { "commands": ["open(gen=1,start=-,play=true)"] } },
+      { "call": "release" },
+      { "expect": { "state": "idle", "commands": ["unload"] } },
+      { "call": "play", "throws": "PLAYER_RELEASED" },
+      { "native": "playing", "gen": 1 },
+      { "advance": 5000 },
+      { "expect": { "commands": [] } }
+    ]
+  },
+  {
+    "name": "release while loading rejects the pending load",
+    "steps": [
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "call": "release" },
+      { "expect": { "loads": ["1:failed:PLAYER_RELEASED"] } }
+    ]
+  },
+  {
+    "name": "loading a new source while playing keeps playing",
+    "steps": [
+      { "call": "load", "uri": "https://radio.example/a", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "call": "load", "uri": "https://radio.example/b", "live": true },
+      { "expect": { "state": "loading", "playWhenReady": true, "commands": ["open(gen=1,start=-,play=true)", "open(gen=2,start=-,play=true)"] } }
+    ]
+  },
+  {
+    "name": "loading after a fatal error does not inherit the old intent",
+    "steps": [
+      { "call": "load", "uri": "https://radio.example/a", "autoplay": true },
+      { "native": "failed", "code": "UNSUPPORTED_FORMAT", "recoverable": false },
+      { "expect": { "state": "error", "error": "UNSUPPORTED_FORMAT", "playWhenReady": false, "errors": ["UNSUPPORTED_FORMAT:fatal"], "loads": ["1:failed:UNSUPPORTED_FORMAT"], "commands": ["open(gen=1,start=-,play=true)", "release"] } },
+      { "call": "load", "uri": "https://radio.example/b" },
+      { "expect": { "state": "loading", "error": null, "commands": ["open(gen=2,start=-,play=false)"] } }
+    ]
+  },
+  {
+    "name": "media services reset re-opens with the same intent",
+    "steps": [
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "platformReset": true },
+      { "expect": { "state": "loading", "playWhenReady": true, "commands": ["open(gen=1,start=-,play=true)", "open(gen=2,start=-,play=true)"] } },
+      { "call": "pause" },
+      { "native": "ready", "live": true },
+      { "platformReset": true },
+      { "expect": { "state": "loading", "commands": ["pause", "open(gen=3,start=-,play=false)"] } }
+    ]
+  },
+  {
+    "name": "observations delivered re-entrantly from inside a command land on a consistent state",
+    "steps": [
+      { "driver": "reentrant" },
+      { "call": "load", "uri": "file:///music/a.mp3", "autoplay": true },
+      { "expect": { "state": "playing", "playWhenReady": true, "loads": ["1:ready"], "commands": ["open(gen=1,start=-,play=true)"] } },
+      { "call": "pause" },
+      { "expect": { "state": "paused", "commands": ["pause"] } },
+      { "call": "play" },
+      { "expect": { "state": "playing", "commands": ["play"] } },
+      { "advance": 6000 },
+      { "expect": { "state": "playing", "commands": [] } }
+    ]
+  }
+]

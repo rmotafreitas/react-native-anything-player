@@ -32,6 +32,39 @@ jobs:
         run: yarn typecheck
 
 
+  test-js:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - name: Setup
+        uses: ./.github/actions/setup
+      - name: Unit tests (with coverage thresholds)
+        run: yarn test --coverage
+
+  test-engine-ios:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - name: Swift engine conformance + ICY tests
+        run: cd ios && swift test
+
+  test-engine-android:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - name: Setup
+        uses: ./.github/actions/setup
+      - name: Install JDK
+        uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+      - name: Kotlin engine conformance + ICY tests
+        run: cd example/android && ./gradlew :react-native-airwave:testDebugUnitTest --no-daemon
+
   build-library:
     runs-on: ubuntu-latest
 

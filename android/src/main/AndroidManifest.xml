@@ -1,2 +1,22 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <!-- Streams and artwork. -->
+  <uses-permission android:name="android.permission.INTERNET" />
+  <!-- Connectivity edges (offline / restored / Wi-Fi ↔ cellular handoff). -->
+  <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+  <!-- Wake + Wi-Fi locks while streaming (and recovering) with the screen off. -->
+  <uses-permission android:name="android.permission.WAKE_LOCK" />
+  <!-- Background playback: a mediaPlayback foreground service (Android 14+ typed). -->
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+
+  <application>
+    <service
+      android:name="com.radioanimu.airwave.platform.AirwavePlaybackService"
+      android:exported="true"
+      android:foregroundServiceType="mediaPlayback">
+      <intent-filter>
+        <action android:name="androidx.media3.session.MediaSessionService" />
+      </intent-filter>
+    </service>
+  </application>
 </manifest>

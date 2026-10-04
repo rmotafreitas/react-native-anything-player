@@ -1,0 +1,26 @@
+{
+  "expo": {
+    "name": "Airwave Expo",
+    "slug": "airwave-expo-example",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "airwave-example",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "bundleIdentifier": "airwave.expo.example",
+      "infoPlist": {
+        "NSAppTransportSecurity": {
+          "NSAllowsLocalNetworking": true
+        }
+      }
+    },
+    "android": {
+      "package": "airwave.expo.example"
+    },
+    "plugins": [
+      "react-native-airwave",
+      "./plugins/withTestServerCleartext",
+      "./plugins/withSceneLifecycle"
+    ]
+  }
+}
