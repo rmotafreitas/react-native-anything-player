@@ -16,7 +16,6 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.common.util.Util
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
-import androidx.media3.datasource.RawResourceDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
@@ -423,7 +422,7 @@ internal class ExoPlayerDriver(
         // A React Native release asset (`require('./a.mp3')`) is a raw resource name.
         @Suppress("DiscouragedApi")
         val id = context.resources.getIdentifier(uri, "raw", context.packageName)
-        if (id != 0) RawResourceDataSource.buildRawResourceUri(id) else Uri.parse(uri)
+        if (id != 0) Uri.Builder().scheme("android.resource").authority(context.packageName).path(id.toString()).build() else Uri.parse(uri)
       }
     }
   }

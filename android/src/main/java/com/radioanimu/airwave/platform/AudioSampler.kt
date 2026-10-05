@@ -69,7 +69,7 @@ internal class AudioSampler(context: Context) : TeeAudioProcessor.AudioBufferSin
       ): AudioSink =
         DefaultAudioSink.Builder(context)
           .setEnableFloatOutput(enableFloatOutput)
-          .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+          .setEnableAudioOutputPlaybackParameters(enableAudioTrackPlaybackParams)
           .setAudioProcessors(arrayOf<AudioProcessor>(tee))
           .build()
           .also { audioSink = it }
