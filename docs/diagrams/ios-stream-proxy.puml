@@ -1,0 +1,27 @@
+@startuml ios-stream-proxy
+!include _theme.puml
+participant "AVPlayer" as A
+participant "StreamProxy\n127.0.0.1 (NWListener)" as P #EEF4FC
+participant "URLSession\n(app-owned)" as U
+participant "Station" as S
+
+A -> P : GET /<token>
+P -> U : GET stream (app headers)
+U -> S : connect
+S --> U : 200 · icy-metaint · audio
+U --> P : bytes
+P --> A : same response (ICY kept)
+
+== The station drops a connection that streamed ≥ 3 s ==
+S -x U : connection closed
+P -> U : new upstream at the live edge
+U -> S : connect
+S --> U : audio
+P --> A : spliced into the SAME response\nICY re-framed at the original cadence
+note right of A: AVPlayer never sees the drop:\nno gap, no state change
+
+== The item is replaced (reconnect / stop / release) ==
+P -> U : cancel upstream immediately
+A -> P : late internal retry for the old token
+P --> A : 410 Gone (never reaches the station)
+@enduml

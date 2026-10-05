@@ -187,3 +187,17 @@ jobs:
         run: |
           yarn turbo run build:ios --cache-dir="${{ env.TURBO_CACHE_DIR }}"
 
+
+  build-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          fetch-depth: 0 # "last updated" dates come from git history
+
+      - name: Setup
+        uses: ./.github/actions/setup
+
+      - name: Build the docs site
+        run: yarn docs:build

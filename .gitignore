@@ -93,3 +93,7 @@ scripts/stream-server/media/
 
 # Package archived by the Jenkins job
 /react-native-airwave.tgz
+
+# Docs site build output
+website/.vitepress/dist/
+website/.vitepress/cache/

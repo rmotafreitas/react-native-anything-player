@@ -1,0 +1,283 @@
+{
+  "measuredAt": "2026-10-05",
+  "method": "benchmarks/size/measure.mjs",
+  "packages": [
+    {
+      "name": "react-native-airwave",
+      "label": "Airwave",
+      "role": "player (this repo)",
+      "version": "0.1.0",
+      "license": "PolyForm-Noncommercial-1.0.0",
+      "tarballBytes": 126154,
+      "unpackedBytes": 449742,
+      "jsMinBytes": 7708,
+      "jsGzipBytes": 2865,
+      "runtimeDependencies": [],
+      "requiredPeers": [],
+      "native": {
+        "files": 37,
+        "bytes": 323341,
+        "lines": 7802
+      },
+      "androidDependencies": [
+        "androidx.media3:media3-datasource-okhttp",
+        "androidx.media3:media3-exoplayer",
+        "androidx.media3:media3-exoplayer-hls",
+        "androidx.media3:media3-session"
+      ],
+      "vendoredBinaries": false
+    },
+    {
+      "name": "@rntp/player",
+      "label": "RNTP 5 (@rntp/player)",
+      "role": "player, commercial",
+      "version": "5.12.1",
+      "license": "SEE LICENSE IN <license.txt>",
+      "tarballBytes": 259505,
+      "unpackedBytes": 1239680,
+      "jsMinBytes": 6164,
+      "jsGzipBytes": 2480,
+      "runtimeDependencies": [],
+      "requiredPeers": [],
+      "native": {
+        "files": 70,
+        "bytes": 510180,
+        "lines": 13232
+      },
+      "androidDependencies": [
+        "androidx.media3:media3-cast",
+        "androidx.media3:media3-common",
+        "androidx.media3:media3-exoplayer",
+        "androidx.media3:media3-exoplayer-hls",
+        "androidx.media3:media3-session",
+        "androidx.mediarouter:mediarouter",
+        "org.jetbrains.kotlinx:kotlinx-serialization-json"
+      ],
+      "vendoredBinaries": false
+    },
+    {
+      "name": "react-native-track-player",
+      "label": "RNTP 4",
+      "role": "player, last Apache-2.0 line",
+      "version": "4.1.2",
+      "license": "Apache-2.0",
+      "tarballBytes": 84745,
+      "unpackedBytes": 386892,
+      "jsMinBytes": 10149,
+      "jsGzipBytes": 3624,
+      "runtimeDependencies": [],
+      "requiredPeers": [],
+      "native": {
+        "files": 33,
+        "bytes": 153707,
+        "lines": 3500
+      },
+      "androidDependencies": [
+        "androidx.core:core-ktx",
+        "androidx.lifecycle:lifecycle-process",
+        "androidx.localbroadcastmanager:localbroadcastmanager",
+        "com.github.doublesymmetry:kotlinaudio",
+        "org.jetbrains.kotlinx:kotlinx-coroutines-core"
+      ],
+      "vendoredBinaries": false
+    },
+    {
+      "name": "expo-audio",
+      "label": "expo-audio",
+      "role": "player + recorder",
+      "version": "57.0.5",
+      "license": "MIT",
+      "tarballBytes": 688132,
+      "unpackedBytes": 1329801,
+      "jsMinBytes": 8288,
+      "jsGzipBytes": 2994,
+      "runtimeDependencies": [],
+      "requiredPeers": [
+        "expo",
+        "expo-asset"
+      ],
+      "native": {
+        "files": 36,
+        "bytes": 221239,
+        "lines": 6410
+      },
+      "androidDependencies": [
+        "androidx.appcompat:appcompat",
+        "androidx.core:core-ktx",
+        "androidx.media3:media3-datasource",
+        "androidx.media3:media3-datasource-okhttp",
+        "androidx.media3:media3-exoplayer",
+        "androidx.media3:media3-exoplayer-dash",
+        "androidx.media3:media3-exoplayer-hls",
+        "androidx.media3:media3-exoplayer-smoothstreaming",
+        "androidx.media3:media3-session",
+        "androidx.media3:media3-ui"
+      ],
+      "vendoredBinaries": false
+    },
+    {
+      "name": "expo-av",
+      "label": "expo-av",
+      "role": "deprecated audio/video",
+      "version": "16.0.8",
+      "license": "MIT",
+      "tarballBytes": 574112,
+      "unpackedBytes": 1298146,
+      "jsMinBytes": 22097,
+      "jsGzipBytes": 6804,
+      "runtimeDependencies": [],
+      "requiredPeers": [
+        "expo"
+      ],
+      "native": {
+        "files": 60,
+        "bytes": 356675,
+        "lines": 8660
+      },
+      "androidDependencies": [
+        "com.google.android.exoplayer:exoplayer",
+        "com.google.android.exoplayer:extension-okhttp",
+        "com.squareup.okhttp3:okhttp",
+        "com.squareup.okhttp3:okhttp-urlconnection"
+      ],
+      "vendoredBinaries": true
+    },
+    {
+      "name": "react-native-audio-pro",
+      "label": "react-native-audio-pro",
+      "role": "player",
+      "version": "10.1.2",
+      "license": "MIT",
+      "tarballBytes": 56273,
+      "unpackedBytes": 274346,
+      "jsMinBytes": 10696,
+      "jsGzipBytes": 3599,
+      "runtimeDependencies": [
+        "zustand"
+      ],
+      "requiredPeers": [],
+      "native": {
+        "files": 9,
+        "bytes": 100331,
+        "lines": 2734
+      },
+      "androidDependencies": [
+        "androidx.core:core-ktx",
+        "androidx.lifecycle:lifecycle-runtime-ktx",
+        "androidx.media3:media3-common",
+        "androidx.media3:media3-common-ktx",
+        "androidx.media3:media3-exoplayer",
+        "androidx.media3:media3-session",
+        "org.jetbrains.kotlinx:kotlinx-coroutines-guava"
+      ],
+      "vendoredBinaries": false
+    },
+    {
+      "name": "react-native-nitro-sound",
+      "label": "react-native-nitro-sound",
+      "role": "player + recorder",
+      "version": "0.2.20",
+      "license": "MIT",
+      "tarballBytes": 91748,
+      "unpackedBytes": 520006,
+      "jsMinBytes": 6830,
+      "jsGzipBytes": 2230,
+      "runtimeDependencies": [
+        "@react-native-community/slider"
+      ],
+      "requiredPeers": [
+        "react-native-nitro-modules"
+      ],
+      "native": {
+        "files": 82,
+        "bytes": 352260,
+        "lines": 7758
+      },
+      "androidDependencies": [
+        "org.jetbrains.kotlinx:kotlinx-coroutines-android"
+      ],
+      "vendoredBinaries": false
+    },
+    {
+      "name": "react-native-video",
+      "label": "react-native-video",
+      "role": "video player",
+      "version": "6.19.3",
+      "license": "MIT",
+      "tarballBytes": 193431,
+      "unpackedBytes": 959507,
+      "jsMinBytes": 20981,
+      "jsGzipBytes": 6629,
+      "runtimeDependencies": [],
+      "requiredPeers": [],
+      "native": {
+        "files": 106,
+        "bytes": 535209,
+        "lines": 11785
+      },
+      "androidDependencies": [
+        "androidx.activity:activity-ktx",
+        "androidx.core:core-ktx",
+        "androidx.media3:media3-common",
+        "androidx.media3:media3-datasource",
+        "androidx.media3:media3-datasource-okhttp",
+        "androidx.media3:media3-exoplayer",
+        "androidx.media3:media3-exoplayer-dash",
+        "androidx.media3:media3-exoplayer-hls",
+        "androidx.media3:media3-exoplayer-ima",
+        "androidx.media3:media3-exoplayer-rtsp",
+        "androidx.media3:media3-exoplayer-smoothstreaming",
+        "androidx.media3:media3-session",
+        "androidx.media3:media3-ui"
+      ],
+      "vendoredBinaries": false
+    },
+    {
+      "name": "react-native-audio-api",
+      "label": "react-native-audio-api",
+      "role": "Web Audio engine",
+      "version": "0.13.6",
+      "license": "MIT",
+      "tarballBytes": 1811696,
+      "unpackedBytes": 9464977,
+      "jsMinBytes": 58617,
+      "jsGzipBytes": 17095,
+      "runtimeDependencies": [
+        "semver"
+      ],
+      "requiredPeers": [],
+      "native": {
+        "files": 492,
+        "bytes": 7422368,
+        "lines": 164791
+      },
+      "androidDependencies": [
+        "androidx.core:core-ktx",
+        "androidx.media:media",
+        "com.facebook.fbjni:fbjni",
+        "com.google.oboe:oboe"
+      ],
+      "vendoredBinaries": true
+    },
+    {
+      "name": "react-native-sound",
+      "label": "react-native-sound",
+      "role": "sound effects",
+      "version": "0.13.0",
+      "license": "MIT",
+      "tarballBytes": 23969,
+      "unpackedBytes": 94449,
+      "jsMinBytes": 4634,
+      "jsGzipBytes": 1752,
+      "runtimeDependencies": [],
+      "requiredPeers": [],
+      "native": {
+        "files": 7,
+        "bytes": 31291,
+        "lines": 878
+      },
+      "androidDependencies": [],
+      "vendoredBinaries": false
+    }
+  ]
+}

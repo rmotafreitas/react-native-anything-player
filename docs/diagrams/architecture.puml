@@ -1,0 +1,39 @@
+@startuml architecture
+!include _theme.puml
+top to bottom direction
+
+package "JavaScript  (src/)" {
+  rectangle "<b>Player · hooks · PlayerError" as JS #EEF4FC
+}
+
+package "TurboModule  (Codegen spec: src/native/NativeAirwave.ts)" {
+  rectangle "<b>AirwaveModule.mm → AirwaveBridge.swift" as BridgeIOS
+  rectangle "<b>AirwaveModule.kt" as BridgeAndroid
+}
+
+package "Host  (one per platform)" {
+  rectangle "<b>PlayerController\n<size:11><color:#52514E>engine delegate · snapshots · events" as Controller
+  rectangle "<b>Runtime\n<size:11><color:#52514E>audio session / focus · network · lifecycle\n<size:11><color:#52514E>media session · keepalive / wake locks" as Runtime
+}
+
+package "Engine  (twins, no media framework imports)" {
+  rectangle "<b>PlaybackEngine\n<size:11><color:#52514E>intent · state machine · recovery · timing\n<size:11><color:#52514E>Swift: ios/Core/ · Kotlin: android/…/core/" as Engine #EEF4FC
+  rectangle "<b>conformance/*.json\n<size:11><color:#52514E>59 shared scenarios" as Spec
+}
+
+package "Drivers" {
+  rectangle "<b>AVPlayerDriver + StreamProxy" as AV
+  rectangle "<b>ExoPlayerDriver (Media3)" as Exo
+}
+
+JS -down-> BridgeIOS : commands\n(in call order)
+JS -down-> BridgeAndroid : sync reads (JSI)\ngetProgress / getStatus
+BridgeIOS -down-> Controller
+BridgeAndroid -down-> Controller
+Controller -up-> JS : seq-numbered\nstatus + events
+Controller -down-> Engine
+Runtime -down-> Engine : interruptions · focus\nnetwork edges
+Engine -down-> AV : open / play / pause\nseek / release
+Engine -down-> Exo
+Spec .left.> Engine : both twins pass
+@enduml

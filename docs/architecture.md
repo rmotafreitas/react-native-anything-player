@@ -4,25 +4,7 @@
 
 React Native freezes JS timers in the background, can suspend or reload the JS runtime, and delivers native events asynchronously to a thread that may be busy. A player whose logic lives in JS (as the Rádio Animu app's did, out of necessity — it could only patch `expo-audio`) needs workarounds for every one of those: timers pumped by native frames, keepalives gated on JS state, stale-frame filters. Airwave moves the whole player into native code. JS is a client: it sends commands and mirrors snapshots.
 
-```
-┌────────────────────── JavaScript ──────────────────────┐
-│ Player · hooks · PlayerError      (src/)               │
-│   commands ▼        ▲ events (seq-numbered snapshots)   │
-│   sync reads ▼  (getProgress / getStatus over JSI)      │
-├────────────── TurboModule (Codegen spec) ──────────────┤
-│ AirwaveModule.mm → AirwaveBridge.swift │ AirwaveModule.kt│
-├────────────── host (one per platform) ─────────────────┤
-│ PlayerController: engine delegate, snapshots, events     │
-│ Runtime: audio session/focus, network, lifecycle,        │
-│          media session, keepalive / wake locks           │
-├──────────────────── engine (twins) ────────────────────┤
-│ PlaybackEngine: intent, state machine, recovery, timing  │
-│   Swift: ios/Core/      Kotlin: android/.../core/       │
-│   pure: no AVFoundation / Media3 imports, injected clock │
-├──────────────────── drivers ───────────────────────────┤
-│ AVPlayerDriver + StreamProxy  │ ExoPlayerDriver         │
-└─────────────────────────────────────────────────────────┘
-```
+![Layers: JavaScript mirrors a native host, which drives one platform-free engine per platform over AVPlayer or ExoPlayer](assets/diagrams/architecture.svg)
 
 ### The engine
 

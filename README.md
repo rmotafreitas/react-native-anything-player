@@ -18,6 +18,10 @@ Playback logic that lives in JavaScript breaks in exactly the situations a playe
 
 It was designed from years of production failure reports of the [Rádio Animu](https://www.animu.moe) app (see [docs/recovery.md](docs/recovery.md) for the failure each recovery rule exists for).
 
+![What you get out of the box: Airwave, RNTP 5, RNTP 4 and expo-audio compared](docs/assets/charts/capabilities.svg)
+
+Read from each library's published source; sizes, methodology and the gaps Airwave still has are in [Comparison & benchmarks](docs/comparison.md) and the [roadmap](docs/roadmap.md).
+
 ## Features
 
 - **Sources**: local files, bundled assets (`require('./a.mp3')`), `content://` URIs, HTTP(S) files, progressive streams, HLS, ICY (Shoutcast/Icecast) radio.
@@ -88,6 +92,7 @@ function NowPlaying() {
 | | |
 |---|---|
 | [Getting started](docs/getting-started.md) | Installation (Expo, bare), first player, permissions |
+| [Comparison & benchmarks](docs/comparison.md) | Airwave against RNTP, expo-audio and the rest: capabilities, install size |
 | [Playback](docs/playback.md) | Sources, commands, state model, progress, volume, seeking |
 | [Internet radio & ICY](docs/internet-radio.md) | Live streams, ICY metadata, live edge, recovery |
 | [Background & system](docs/background-and-system.md) | Background, lock screen, media sessions, interruptions, audio focus, artwork |
@@ -99,6 +104,9 @@ function NowPlaying() {
 | [Debugging & troubleshooting](docs/debugging.md) | Diagnostics, logs, common problems, FAQ |
 | [Architecture](docs/architecture.md) | Design decisions and research |
 | [Testing](docs/testing.md) | Test layers, conformance suite, device tests, soak results |
+| [Roadmap](docs/roadmap.md) | What Airwave still needs, in priority order |
+
+The same pages are published as a site (search included): `yarn docs` runs it locally, `yarn docs:build` builds it. Diagrams are PlantUML sources in `docs/diagrams/` (`node scripts/render-diagrams.mjs`); charts come from `benchmarks/` (`node benchmarks/size/measure.mjs && node benchmarks/charts/render.mjs`).
 
 ## License
 

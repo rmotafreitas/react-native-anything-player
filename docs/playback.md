@@ -51,13 +51,7 @@ Rapid sequences are safe: `play(); pause(); play(); pause();` ends paused; `load
 
 ## State model
 
-```
-idle ──load──▶ loading ──ready──▶ paused ⇄ buffering ⇄ playing
-                 │                   ▲          │
-                 └──── failure ──▶ reconnecting ┘
-                                     │
-           unrecoverable / gave up ──▶ error         ended (files)   stopped
-```
+![Playback state machine: idle, loading, buffering, playing, paused, reconnecting, ended, stopped, error](assets/diagrams/state-machine.svg)
 
 | `state` | Meaning |
 |---|---|

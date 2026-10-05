@@ -24,6 +24,15 @@ export default defineConfig([
     },
   },
   {
-    ignores: ['node_modules/', 'lib/', 'example-expo/', 'coverage/', '**/build/', 'ios/.build/'],
+    ignores: [
+      'node_modules/',
+      'lib/',
+      'example-expo/',
+      'coverage/',
+      '**/build/',
+      'ios/.build/',
+      'website/.vitepress/dist/',
+      'website/.vitepress/cache/',
+    ],
   },
 ]);

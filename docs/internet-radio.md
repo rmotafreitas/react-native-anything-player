@@ -23,6 +23,8 @@ radio.on('remoteCommand', ({ command }) => { /* next/previous → switch station
 - when the station drops the connection after streaming for a while, the proxy reconnects and continues the same response, so playback goes on from the buffer without a gap (ICY metadata is re-framed across the new connection);
 - AVFoundation occasionally opens two identical requests for one item; the proxy serves both from one station connection.
 
+![iOS stream proxy: AVPlayer talks to a loopback proxy; the app's URLSession owns the station connection, splices dropped connections and refuses late retries](assets/diagrams/ios-stream-proxy.svg)
+
 The ICY response headers (`icy-name`, `icy-genre`, `icy-br`) are read from the proxied response. HLS (`.m3u8`) is played by AVFoundation directly. The proxy only listens on loopback and needs no `Info.plist` entry (verified with `NSAllowsLocalNetworking` removed: AVPlayer's requests to `127.0.0.1` are not blocked by App Transport Security). The connection to the station is subject to ATS as usual: `https`, or an exception for cleartext stations — a blocked cleartext URL fails with `INVALID_SOURCE`.
 
 **Android.** Media3's ICY support de-interleaves the stream; Airwave reads the raw metadata bytes and normalizes them with the same rules as iOS.
@@ -79,6 +81,8 @@ A paused live stream keeps downloading audio that resuming will never play, so i
 | Wi-Fi ↔ cellular handoff | Stall detection becomes eager; a stall in progress re-opens immediately. |
 | HTTP 404/410/403/401, unsupported format | Fatal: `state: 'error'`, no retries. |
 | 10 minutes without stable playback | Gives up (`recovery.giveUpAfterMs`, `null` = never). |
+
+![Recovery from a Wi-Fi drop: the engine detects the dead socket, waits out the outage and re-opens at the live edge, with or without JavaScript](assets/diagrams/recovery-sequence.svg)
 
 Every constant and the production failure behind it: [recovery.md](recovery.md).
 

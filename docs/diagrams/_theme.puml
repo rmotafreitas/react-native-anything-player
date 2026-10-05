@@ -1,0 +1,66 @@
+' Shared look for every Airwave diagram: white background (legible on light
+' and dark pages alike), system sans, hairline borders, one accent blue.
+' Rendered (PlantUML + Graphviz) by
+'   node scripts/render-diagrams.mjs
+' Text is measured with Liberation Sans (metric-compatible with Arial); the
+' script then gives the SVGs an Arial / Helvetica / sans-serif font stack.
+skinparam backgroundColor #FFFFFF
+skinparam defaultFontName "Liberation Sans"
+skinparam defaultFontSize 13
+skinparam defaultFontColor #0B0B0B
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam ArrowColor #52514E
+skinparam ArrowFontColor #52514E
+skinparam ArrowFontSize 11
+skinparam ArrowThickness 1.2
+
+skinparam rectangle {
+  BackgroundColor #FFFFFF
+  BorderColor #C3C2B7
+  StereotypeFontColor #898781
+  StereotypeFontSize 11
+}
+skinparam component {
+  BackgroundColor #F7F7F5
+  BorderColor #C3C2B7
+  StereotypeFontColor #898781
+}
+skinparam package {
+  BackgroundColor #FFFFFF
+  BorderColor #C3C2B7
+  FontColor #52514E
+}
+skinparam note {
+  BackgroundColor #F7F7F5
+  BorderColor #E1E0D9
+  FontColor #52514E
+  FontSize 11
+}
+skinparam state {
+  BackgroundColor #FFFFFF
+  BorderColor #C3C2B7
+  FontStyle bold
+  AttributeFontColor #52514E
+  AttributeFontSize 11
+  StartColor #0B0B0B
+  EndColor #0B0B0B
+}
+skinparam sequence {
+  LifeLineBorderColor #C3C2B7
+  ParticipantBackgroundColor #F7F7F5
+  ParticipantBorderColor #C3C2B7
+  ParticipantFontStyle bold
+  GroupBackgroundColor #F7F7F5
+  GroupBorderColor #E1E0D9
+  DividerBackgroundColor #F7F7F5
+  DividerBorderColor #E1E0D9
+  BoxBackgroundColor #FBFBFA
+  BoxBorderColor #E1E0D9
+}
+skinparam activity {
+  BackgroundColor #FFFFFF
+  BorderColor #C3C2B7
+  DiamondBackgroundColor #F7F7F5
+  DiamondBorderColor #C3C2B7
+}

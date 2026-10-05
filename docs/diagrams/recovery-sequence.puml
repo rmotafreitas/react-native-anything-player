@@ -1,0 +1,29 @@
+@startuml recovery-sequence
+!include _theme.puml
+autonumber "<b>0"
+participant "Station" as S
+participant "Driver\n(AVPlayer / ExoPlayer)" as D
+participant "PlaybackEngine" as E #EEF4FC
+participant "Runtime\n(network monitor)" as N
+participant "JS" as J
+
+S -> D : audio
+D -> E : playing
+E -> J : status: playing
+== Wi-Fi drops ==
+N -> E : network offline
+note right of E: detection turns eager\n(networkSuspectMs 20 s)
+D -> E : buffering (buffer drained)
+E -> E : no buffer progress 3 s\n→ socket is dead
+E -> J : status: reconnecting\nattempt 1 · offline probe
+...offline: attempts are skipped, every third runs as a probe...
+N -> E : network online (restore edge)
+E -> E : reset backoff
+E -> D : open(gen + 1)\nat the live edge
+D -> S : new connection
+S -> D : audio
+D -> E : playing (gen + 1)
+E -> J : status: playing
+note over D, E: Events from the old generation are dropped:\na late "failed" from the dead item cannot undo the recovery.
+note over J: JS only mirrors. With JS frozen in the background,\nsteps 4–14 happen exactly the same.
+@enduml

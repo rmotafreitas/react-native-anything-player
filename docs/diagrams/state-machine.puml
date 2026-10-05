@@ -1,0 +1,42 @@
+@startuml state-machine
+!include _theme.puml
+hide empty description
+skinparam nodesep 46
+skinparam ranksep 40
+
+[*] -down-> idle
+idle -down-> loading : load()
+
+loading -down-> buffering : ready [play wanted]
+loading -down-> paused : ready [paused]
+buffering -down-> playing : audio flowing
+playing -up-> buffering : stall > 500 ms ·\nsilent stall
+playing -up-> paused : pause() · interruption ·\noutput disconnected
+paused -left-> buffering : play()
+paused -up-> loading : play() · released or\nlive drift > 5 s
+
+buffering -left-> reconnecting : dead socket · offline ·\nstall > 20 s
+playing -left-> reconnecting : stream dropped
+reconnecting -up-> loading : backoff elapsed ·\nnetwork restored
+
+playing -down-> ended : end of file
+ended -up-> buffering : play()
+
+loading -left-> error : unrecoverable\n(404, format)
+reconnecting -up-> error : gave up (10 min)
+error -right-> loading : play()
+
+paused -down-> stopped : stop()
+stopped -up-> loading : play()
+
+state playing #EEF4FC
+state reconnecting #FFF3EA
+state error #FBECEC
+
+note right of idle
+  From any state: reset() → idle,
+  stop() → stopped, pause() → paused.
+  A recoverable failure while paused
+  waits for the next play().
+end note
+@enduml
