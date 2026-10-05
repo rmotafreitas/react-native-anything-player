@@ -148,6 +148,16 @@ export class Player {
   private released = false;
 
   constructor(options: PlayerOptions = {}) {
+    if (options.progressInterval != null) {
+      assertFinite('progressInterval', options.progressInterval);
+      if (options.progressInterval < 0) {
+        throw new PlayerError({
+          code: 'INVALID_ARGUMENT',
+          message: 'progressInterval must be ≥ 0 (ms).',
+          recoverable: false,
+        });
+      }
+    }
     ensureSubscription();
     this.id = NativeAirwave.createPlayer(options as object);
     players.set(this.id, this);
@@ -407,6 +417,16 @@ export class Player {
         break;
       case 'diagnostic':
         this.emit('diagnostic', event.entry as DiagnosticEntry);
+        break;
+      case 'progress':
+        this.emit('progress', {
+          position: event.position as number,
+          duration: (event.duration as number | null) ?? null,
+          buffered: event.buffered as number,
+          bufferedAhead: event.bufferedAhead as number,
+          liveOffset: (event.liveOffset as number | null) ?? null,
+          timestamp: event.timestamp as number,
+        });
         break;
       case 'audioSample':
         this.emit('audioSample', {

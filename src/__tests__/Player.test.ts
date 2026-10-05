@@ -247,6 +247,44 @@ describe('events', () => {
     expect(p.setAudioSampling({ enabled: true })).toBe(false);
   });
 
+  it('passes progressInterval to native and maps progress events', async () => {
+    expect(() => new Player({ progressInterval: -1 })).toThrow(
+      expect.objectContaining({ code: 'INVALID_ARGUMENT' })
+    );
+    expect(() => new Player({ progressInterval: NaN })).toThrow(
+      expect.objectContaining({ code: 'INVALID_ARGUMENT' })
+    );
+    const p = new Player({ progressInterval: 1000 });
+    expect(fake.calls).toContainEqual([
+      'createPlayer',
+      expect.objectContaining({ progressInterval: 1000 }),
+    ]);
+    const readings: unknown[] = [];
+    p.on('progress', (r) => readings.push(r));
+    fake.emit({
+      playerId: p.id,
+      type: 'progress',
+      position: 12.5,
+      duration: null,
+      buffered: 18,
+      bufferedAhead: 5.5,
+      liveOffset: null,
+      timestamp: 9,
+      seq: 4,
+    });
+    expect(readings).toEqual([
+      {
+        position: 12.5,
+        duration: null,
+        buffered: 18,
+        bufferedAhead: 5.5,
+        liveOffset: null,
+        timestamp: 9,
+      },
+    ]);
+    await p.release();
+  });
+
   it('a throwing listener does not break other listeners', async () => {
     jest.useFakeTimers();
     const p = new Player();

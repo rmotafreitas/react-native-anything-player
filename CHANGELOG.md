@@ -10,6 +10,7 @@ All notable changes to this project are documented here. The format follows
 
 - `player.setAudioSampling()` and the `audioSample` event: decoded-audio windows for visualizers. Android: an ExoPlayer audio-sink tap. iOS: an audio tap for files, and for live streams a parallel AudioToolbox decode of the proxied bytes, released against the item's clock.
 - `updateNowPlaying({ duration, elapsed })`: song progress on the lock screen / notification for live streams, advanced natively only while audio plays.
+- `progressInterval` option and the `progress` event: readings from a native timer while playing, which also run JS where the app's timers are frozen (Android background).
 - System controls answer as soon as a player with a media session exists, even with nothing loaded. A `play` / `togglePlayPause` that finds nothing loaded is forwarded to JS as `remoteCommand`, so an app iOS relaunched from Control Center can load its source and play.
 
 ### Fixed

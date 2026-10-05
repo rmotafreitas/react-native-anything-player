@@ -12,7 +12,9 @@
 import {
   Player,
   type AudioSample,
+  type PlayerOptions,
   type PlayerStatus,
+  type Progress,
   isPlayerError,
 } from 'react-native-airwave';
 import { LOCAL_TONE, STREAM_HOST, serverControl, serverStats } from './config';
@@ -101,8 +103,11 @@ const live = (query = '') => ({
 /** Native engine trace of the last failing scenario (printed by the runner). */
 let failureTrace: string[] = [];
 
-async function withPlayer(body: (player: Player) => Promise<void>) {
-  const player = new Player({ diagnostics: false });
+async function withPlayer(
+  body: (player: Player) => Promise<void>,
+  options: PlayerOptions = {}
+) {
+  const player = new Player({ diagnostics: false, ...options });
   try {
     await body(player);
   } catch (error) {
@@ -561,6 +566,44 @@ export const SCENARIOS: Scenario[] = [
         await sleep(1_000);
         expect(windows.length === after, 'no windows after disabling');
       }),
+  },
+  {
+    // `progressInterval`: native-timer readings while playing, none paused.
+    name: 'progress-events',
+    timeoutMs: 25_000,
+    run: (log) =>
+      withPlayer(
+        async (p) => {
+          const readings: Progress[] = [];
+          p.on('progress', (r) => readings.push(r));
+          await p.load(live(), { autoplay: true });
+          await waitFor(p, (s) => s.state === 'playing', 10_000, 'playing');
+          const from = readings.length;
+          await sleep(2_000);
+          const got = readings.slice(from);
+          const last = got[got.length - 1];
+          log(
+            `${got.length} readings in 2 s; bufferedAhead=${last?.bufferedAhead.toFixed(2)}s position=${last?.position.toFixed(2)}s`
+          );
+          expect(got.length >= 6, `expected ~8 readings, got ${got.length}`);
+          expect(
+            got.every((r, i) => i === 0 || r.timestamp > got[i - 1]!.timestamp),
+            'readings are fresh'
+          );
+          expect(
+            got.every(
+              (r) => Number.isFinite(r.bufferedAhead) && r.bufferedAhead >= 0
+            ),
+            'bufferedAhead is a finite reading'
+          );
+          await p.pause();
+          await sleep(300);
+          const paused = readings.length;
+          await sleep(1_000);
+          expect(readings.length === paused, 'no readings while paused');
+        },
+        { progressInterval: 250 }
+      ),
   },
   {
     // Synchronous JSI reads while a stream plays: cost per call.

@@ -37,8 +37,9 @@ off(); // unsubscribe
 | `remoteCommand` | `{ command, position? }` | an opted-in remote command (`mediaSession.commands`), or `play` / `togglePlayPause` while nothing is loaded |
 | `diagnostic` | `DiagnosticEntry` | engine trace, only while diagnostics are enabled |
 | `audioSample` | `AudioSample` | decoded-audio window, only while `setAudioSampling` is on ([visualizer](visualizer.md)) |
+| `progress` | `Progress` | every `progressInterval` ms while playing, only when that option is set |
 
-There are deliberately no progress events: progress is a synchronous read ([playback](playback.md#progress)). Stalls shorter than 500 ms are not published.
+Progress is a synchronous read ([playback](playback.md#progress)), so a foreground UI needs no events. `progress` events are opt-in (`new Player({ progressInterval: 1000 })`). They come from a native timer while playing, so they also run JS where the app's own timers are frozen: an Android app in the background keeps receiving them. Use them for work that must follow the audio there, such as switching the lock screen to the next song at the moment it is heard. Stalls shorter than 500 ms are not published.
 
 ## Guarantees
 

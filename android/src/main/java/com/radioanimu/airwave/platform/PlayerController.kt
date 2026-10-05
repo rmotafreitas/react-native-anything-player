@@ -73,6 +73,29 @@ internal class PlayerController(
 
   private val wakeup = Runnable { engine.onWakeup() }
 
+  /**
+   * `progress` events while playing (`progressInterval`). A native timer: it
+   * runs JS even while the app's JS timers are frozen (Android background).
+   */
+  private var progressTicking = false
+  private val progressTick =
+    object : Runnable {
+      override fun run() {
+        if (released || !progressTicking) return
+        progressSnapshot = ProgressSnapshot(driver.progress(), AndroidClock.monotonicMs, AndroidClock.wallMs)
+        emit("progress", progressMap())
+        handler.postDelayed(this, options.progressIntervalMs)
+      }
+    }
+
+  private fun updateProgressTicks(state: PlaybackState) {
+    val wanted = options.progressIntervalMs > 0 && state == PlaybackState.PLAYING && !released
+    if (wanted == progressTicking) return
+    progressTicking = wanted
+    handler.removeCallbacks(progressTick)
+    if (wanted) handler.post(progressTick)
+  }
+
   init {
     engine.delegate = this
   }
@@ -115,6 +138,8 @@ internal class PlayerController(
     driver.sampler.enabled = false
     driver.sampler.onWindow = null
     handler.removeCallbacks(wakeup)
+    progressTicking = false
+    handler.removeCallbacks(progressTick)
     engine.release()
     driver.destroy()
     pendingLoads.clear()
@@ -218,6 +243,7 @@ internal class PlayerController(
     sink.emit(event)
     // The song advances with the audio, not the wall clock.
     trackClock?.setRunning(status.state == PlaybackState.PLAYING, AndroidClock.monotonicMs)
+    updateProgressTicks(status.state)
     runtime.onStatusChanged(this)
   }
 

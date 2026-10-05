@@ -254,6 +254,13 @@ export interface PlayerOptions {
   };
   /** Start with diagnostics enabled (see `setDiagnosticsEnabled`). */
   diagnostics?: boolean;
+  /**
+   * Emit `progress` events this often (ms) while playing. They come from a
+   * native timer, so they also run JS where the app's own timers are frozen
+   * (Android in the background). Off by default; `getProgress()` is
+   * synchronous and cheap for foreground UIs.
+   */
+  progressInterval?: number;
 }
 
 export interface DiagnosticEntry {
@@ -289,6 +296,8 @@ export interface PlayerEventMap {
   diagnostic: (entry: DiagnosticEntry) => void;
   /** A decoded-audio window (only while `setAudioSampling` is enabled). */
   audioSample: (sample: AudioSample) => void;
+  /** A progress reading, every `progressInterval` ms while playing. */
+  progress: (progress: Progress) => void;
 }
 
 /**

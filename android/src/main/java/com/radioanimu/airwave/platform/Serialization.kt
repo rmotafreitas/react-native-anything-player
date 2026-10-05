@@ -23,6 +23,8 @@ internal data class PlayerOptions(
   val titleFormat: StreamTitleFormat = StreamTitleFormat.ARTIST_TITLE,
   val useStreamMetadata: Boolean = true,
   val stopOnTaskRemoved: Boolean = false,
+  /** `progress` events while playing, this often (ms); 0 = off. */
+  val progressIntervalMs: Long = 0,
 )
 
 /** Lock-screen fields given by the app (source metadata or overrides). */
@@ -96,6 +98,7 @@ internal fun parseOptions(map: ReadableMap): PlayerOptions {
     titleFormat = StreamTitleFormat.fromWire(metadata?.optString("streamTitleFormat")),
     useStreamMetadata = metadata?.optBoolean("useStreamMetadataForNowPlaying") ?: true,
     stopOnTaskRemoved = map.optMap("android")?.optBoolean("stopOnTaskRemoved") ?: false,
+    progressIntervalMs = map.optDouble("progressInterval")?.takeIf { it.isFinite() && it > 0 }?.toLong() ?: 0,
   )
 }
 

@@ -20,8 +20,13 @@ struct PlayerOptions {
   var mixWithOthers = false
   var titleFormat: StreamTitleFormat = .artistTitle
   var useStreamMetadata = true
+  /// `progress` events while playing, this often (ms); 0 = off.
+  var progressIntervalMs: Int64 = 0
 
   init(_ dict: NSDictionary) {
+    if let v = (dict["progressInterval"] as? NSNumber)?.doubleValue, v.isFinite, v > 0 {
+      progressIntervalMs = Int64(v)
+    }
     if let recovery = dict["recovery"] as? NSDictionary {
       if let v = recovery["reconnect"] as? Bool { engine.reconnect = v }
       if recovery["giveUpAfterMs"] is NSNull {
@@ -98,6 +103,9 @@ final class PlayerController: EngineDelegate, DriverObserver {
   private var trackClock: TrackClock?
   private var pendingLoads: [Int: (Resolve, Reject)] = [:]
   private var wakeup: DispatchWorkItem?
+  /// `progress` events while playing (`progressInterval`): a native timer, so
+  /// JS hears about the audio's progress even while its own timers are frozen.
+  private var progressTimer: DispatchSourceTimer?
   private var released = false
 
   init(id: String, options: PlayerOptions, runtime: AirwaveRuntime, emit: @escaping ([String: Any]) -> Void) {
@@ -161,6 +169,8 @@ final class PlayerController: EngineDelegate, DriverObserver {
     driver.tap.onWindow = nil
     driver.streamVisualizer.onWindow = nil
     wakeup?.cancel()
+    progressTimer?.cancel()
+    progressTimer = nil
     engine.release()
     driver.destroy()
     pendingLoads.removeAll()
@@ -267,7 +277,28 @@ final class PlayerController: EngineDelegate, DriverObserver {
     emitEvent(event)
     // The song advances with the audio, not the wall clock.
     trackClock?.setRunning(status.state == .playing, now: SystemClock.shared.monotonicMs)
+    updateProgressTicks(status.state)
     runtime.statusChanged(self)
+  }
+
+  private func updateProgressTicks(_ state: PlaybackState) {
+    let wanted = options.progressIntervalMs > 0 && state == .playing && !released
+    guard wanted != (progressTimer != nil) else { return }
+    progressTimer?.cancel()
+    progressTimer = nil
+    guard wanted else { return }
+    let timer = DispatchSource.makeTimerSource(queue: .main)
+    let interval = DispatchTimeInterval.milliseconds(Int(options.progressIntervalMs))
+    timer.schedule(deadline: .now(), repeating: interval, leeway: .milliseconds(50))
+    timer.setEventHandler { [weak self] in
+      guard let self, !self.released else { return }
+      let reading = self.driver.progress()
+      let clock = SystemClock.shared
+      self.lock.sync { self.snapshotProgress = (reading, clock.monotonicMs, clock.wallMs) }
+      self.emit("progress", self.progressDictionary())
+    }
+    progressTimer = timer
+    timer.resume()
   }
 
   func engine(loadSettled loadId: Int, outcome: LoadOutcome) {
