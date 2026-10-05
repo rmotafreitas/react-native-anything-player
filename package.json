@@ -65,14 +65,14 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/RadioAnimu/react-native-airwave.git"
+    "url": "git+https://github.com/rmotafreitas/react-native-airwave.git"
   },
   "author": "Radio Animu <rmotafreitas@gmail.com> (https://github.com/RadioAnimu)",
   "license": "PolyForm-Noncommercial-1.0.0",
   "bugs": {
-    "url": "https://github.com/RadioAnimu/react-native-airwave/issues"
+    "url": "https://github.com/rmotafreitas/react-native-airwave/issues"
   },
-  "homepage": "https://github.com/RadioAnimu/react-native-airwave#readme",
+  "homepage": "https://github.com/rmotafreitas/react-native-airwave#readme",
   "publishConfig": {
     "registry": "https://registry.npmjs.org/"
   },
@@ -98,9 +98,11 @@
     "react-native": "0.86.2",
     "react-native-builder-bob": "^0.43.1",
     "react-test-renderer": "19.2.3",
-    "test-renderer": "^1.3.0",
+    "test-renderer": "1.2.0",
     "turbo": "^2.10.8",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "hermes-eslint": "0.37.0",
+    "@babel/core": "^7.29.7"
   },
   "peerDependencies": {
     "expo": "*",
@@ -161,5 +163,8 @@
     "expo": {
       "optional": true
     }
+  },
+  "resolutions": {
+    "eslint-plugin-ft-flow": "3.0.11"
   }
 }
