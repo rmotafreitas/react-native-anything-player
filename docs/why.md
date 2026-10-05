@@ -1,6 +1,6 @@
 # Why RNAP exists
 
-React Native Anything Player (RNAP) was built by the developer of [animu.moe](https://www.animu.moe), an internet radio app, after two problems landed at the same time.
+React Native Anything Player (RNAP) was built by [@rmotafreitas](https://github.com/rmotafreitas), developer of the Rádio Animu mobile app and part of the [animu.moe](https://www.animu.moe) team, after two problems landed at the same time.
 
 ## The default player went commercial
 

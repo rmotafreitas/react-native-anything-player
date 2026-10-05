@@ -157,8 +157,9 @@ const stats = [
       <p class="eyebrow">Why it exists</p>
       <h2>Born at a radio app</h2>
       <p class="sub">
-        RNAP was built by the developer of <a href="https://www.animu.moe" target="_blank" rel="noopener">animu.moe</a>
-        when two things happened at once.
+        RNAP was built by <a href="https://github.com/rmotafreitas" target="_blank" rel="noopener">@rmotafreitas</a>,
+        developer of the Rádio Animu mobile app and part of the
+        <a href="https://www.animu.moe" target="_blank" rel="noopener">animu.moe</a> team, when two things happened at once.
       </p>
       <div class="reasons">
         <article>

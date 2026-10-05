@@ -18,7 +18,7 @@ That is the whole integration for a radio that reconnects on its own, survives W
 
 Playback logic that lives in JavaScript breaks in exactly the situations a player must handle: React Native suspends JS timers in the background, the JS thread can be frozen or reloaded, and native events race JS commands. RNAP keeps the whole player — state machine, recovery, audio focus, interruptions, media session, clocks — in native code. JavaScript sends commands and mirrors native state; it is never required for playback to work.
 
-RNAP was built by the developer of [animu.moe](https://www.animu.moe), an internet radio app, when React Native Track Player went commercial (v5 needs a paid licence even for a free app from a non-profit) and staying on air through a dropped network, a phone call or a switch to Instagram still took a pile of app code with every available player. [docs/why.md](docs/why.md) has the full story with sources; [docs/recovery.md](docs/recovery.md) lists every recovery rule and the failure behind it.
+RNAP was built by [@rmotafreitas](https://github.com/rmotafreitas), developer of the Rádio Animu mobile app and part of the [animu.moe](https://www.animu.moe) team, when React Native Track Player went commercial (v5 needs a paid licence even for a free app from a non-profit) and staying on air through a dropped network, a phone call or a switch to Instagram still took a pile of app code with every available player. [docs/why.md](docs/why.md) has the full story with sources; [docs/recovery.md](docs/recovery.md) lists every recovery rule and the failure behind it.
 
 ![What you get out of the box: RNAP, RNTP 5, RNTP 4 and expo-audio compared](docs/assets/charts/capabilities.svg)
 
