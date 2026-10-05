@@ -1,6 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Airwave">
-  <!-- The badge on the mascot's headphones: an orange disc with a pulse line. -->
-  <circle cx="32" cy="32" r="30" fill="#ff6428" stroke="#7a1c18" stroke-width="3"/>
-  <circle cx="32" cy="32" r="24" fill="none" stroke="#ffffff" stroke-opacity="0.35" stroke-width="2"/>
-  <path d="M12 34h10l4-10 6 20 5-16 3 6h12" fill="none" stroke="#ffffff" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
-</svg>

@@ -10,6 +10,7 @@ import { defineConfig } from 'vitepress';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
 const pkg = require('../../package.json');
+const BASE = process.env.AIRWAVE_DOCS_BASE ?? '/';
 const REPO = (pkg.repository.url as string).replace(/^git\+/, '').replace(/\.git$/, '');
 
 export default defineConfig({
@@ -39,7 +40,7 @@ export default defineConfig({
       alias: [{ find: /^vue(\/.*)?$/, replacement: `${path.resolve(HERE, '../node_modules/vue')}$1` }],
     },
   },
-  base: process.env.AIRWAVE_DOCS_BASE ?? '/',
+  base: BASE,
   cleanUrls: true,
   lastUpdated: true,
 
@@ -48,7 +49,11 @@ export default defineConfig({
   description:
     'The React Native audio player that does not give up: files, streams and internet radio that survive dead sockets, network switches, calls and frozen JavaScript.',
   head: [
-    ['link', { rel: 'icon', type: 'image/svg+xml', href: `${process.env.AIRWAVE_DOCS_BASE ?? '/'}logo.svg` }],
+    // Favicons stay PNG: Safari does not accept WebP icons.
+    ['link', { rel: 'icon', type: 'image/png', sizes: '32x32', href: `${BASE}favicon-32.png` }],
+    ['link', { rel: 'icon', type: 'image/png', sizes: '192x192', href: `${BASE}icon-192.png` }],
+    ['link', { rel: 'apple-touch-icon', sizes: '180x180', href: `${BASE}apple-touch-icon.png` }],
+    ['meta', { property: 'og:image', content: `${BASE}icon-512.webp` }],
     ['meta', { name: 'theme-color', content: '#ff6428' }],
     ['meta', { property: 'og:title', content: 'Airwave — the audio player that does not give up' }],
     [
@@ -83,7 +88,7 @@ export default defineConfig({
   },
 
   themeConfig: {
-    logo: '/logo.svg',
+    logo: { src: '/logo.webp', alt: 'Airwave' },
     nav: [
       { text: 'Docs', link: '/docs/getting-started', activeMatch: '^/docs/(?!comparison|roadmap)' },
       { text: 'Compare', link: '/docs/comparison' },
