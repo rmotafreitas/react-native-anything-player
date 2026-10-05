@@ -35,7 +35,9 @@ for (const file of sources.map((f) => f.replace(/\.puml$/, '.svg'))) {
   const p = path.join(OUT, file);
   const svg = fs
     .readFileSync(p, 'utf8')
-    .replaceAll('font-family="Liberation Sans"', 'font-family="Arial, \'Liberation Sans\', Helvetica, sans-serif"');
+    .replaceAll('font-family="Liberation Sans"', 'font-family="Arial, \'Liberation Sans\', Helvetica, sans-serif"')
+    // PlantUML embeds its source as a processing instruction; drop it.
+    .replace(/<\?plantuml[^?]*\?>/g, '');
   fs.writeFileSync(p, svg);
   console.log(`wrote ${path.relative(ROOT, p)}`);
 }

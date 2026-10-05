@@ -49,7 +49,7 @@ export default defineConfig({
     'The React Native audio player that does not give up: files, streams and internet radio that survive dead sockets, network switches, calls and frozen JavaScript.',
   head: [
     ['link', { rel: 'icon', type: 'image/svg+xml', href: `${process.env.AIRWAVE_DOCS_BASE ?? '/'}logo.svg` }],
-    ['meta', { name: 'theme-color', content: '#2a78d6' }],
+    ['meta', { name: 'theme-color', content: '#ff6428' }],
     ['meta', { property: 'og:title', content: 'Airwave — the audio player that does not give up' }],
     [
       'meta',

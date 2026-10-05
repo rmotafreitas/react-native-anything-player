@@ -1,7 +1,7 @@
 @startuml ios-stream-proxy
 !include _theme.puml
 participant "AVPlayer" as A
-participant "StreamProxy\n127.0.0.1 (NWListener)" as P #EEF4FC
+participant "StreamProxy\n127.0.0.1 (NWListener)" as P #FFE4D5
 participant "URLSession\n(app-owned)" as U
 participant "Station" as S
 

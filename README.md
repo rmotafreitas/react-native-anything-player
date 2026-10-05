@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/assets/brand/mascot-480.webp" width="200" alt="Airwave's mascot, a fox girl in orange headphones, tapping play on her phone"></p>
+
 # react-native-airwave
 
 A native-first audio player for React Native — files, streams and **internet radio** — that keeps playing correctly in the background, through network loss, interruptions and JavaScript freezes.

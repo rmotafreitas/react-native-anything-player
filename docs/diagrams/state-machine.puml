@@ -29,9 +29,9 @@ error -right-> loading : play()
 paused -down-> stopped : stop()
 stopped -up-> loading : play()
 
-state playing #EEF4FC
-state reconnecting #FFF3EA
-state error #FBECEC
+state playing #FFE4D5
+state reconnecting #FDEFD3
+state error #FBE3E4
 
 note right of idle
   From any state: reset() → idle,

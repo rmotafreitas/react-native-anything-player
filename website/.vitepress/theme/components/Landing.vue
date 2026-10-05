@@ -2,6 +2,7 @@
 import { onBeforeUnmount, onMounted, ref } from 'vue';
 import { withBase } from 'vitepress';
 import capabilities from '../../../../docs/assets/charts/capabilities.svg';
+import mascot from '../../../../docs/assets/brand/mascot-480.webp';
 
 const install = 'npm i react-native-airwave';
 const copied = ref(false);
@@ -92,8 +93,10 @@ const stats = [
         </button>
       </div>
 
-      <div class="hero-demo" aria-label="Example: a radio recovering from a Wi-Fi drop">
-        <div class="window">
+      <div class="hero-art">
+        <div class="halo" aria-hidden="true" />
+        <img class="mascot" :src="mascot" alt="Airwave's mascot, a fox girl in orange headphones, tapping play on her phone" width="480" height="596" />
+        <div class="window" aria-label="Example: a radio recovering from a Wi-Fi drop">
           <div class="dots"><i /><i /><i /></div>
           <pre><code><span class="k">import</span> { Player } <span class="k">from</span> <span class="s">'react-native-airwave'</span>;
 
@@ -185,7 +188,7 @@ const stats = [
 
 <style scoped>
 .aw {
-  --aw-grad: linear-gradient(120deg, #3b9bff 10%, #7c5cff 90%);
+  --aw-grad: linear-gradient(110deg, var(--brand) 25%, var(--accent));
   max-width: 1152px;
   margin: 0 auto;
   padding: 48px 24px 96px;
@@ -198,10 +201,30 @@ const stats = [
 }
 .hero {
   display: grid;
-  grid-template-columns: 1.05fr 1fr;
-  gap: 48px;
+  grid-template-columns: 1fr 1fr;
+  gap: 32px;
   align-items: center;
-  min-height: 520px;
+}
+.hero-art {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  /* Room for the demo card, which overlaps only the faded waist. */
+  padding-bottom: 190px;
+}
+.halo {
+  position: absolute;
+  inset: 6% 8% 22%;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, var(--brand-subtle), transparent);
+}
+.mascot {
+  position: relative;
+  width: min(100%, 400px);
+  height: auto;
+  /* The artwork is cropped at the waist: fade that edge into the page. */
+  -webkit-mask-image: linear-gradient(to bottom, #000 78%, transparent);
+  mask-image: linear-gradient(to bottom, #000 78%, transparent);
 }
 .badge {
   display: inline-block;
@@ -210,8 +233,11 @@ const stats = [
   border-radius: 999px;
   font-size: 13px;
   font-weight: 500;
-  color: var(--vp-c-brand-1);
-  background: var(--vp-c-brand-soft);
+  color: var(--brand-deep);
+  background: var(--brand-subtle);
+}
+.dark .badge {
+  color: var(--brand);
 }
 .name {
   margin: 0;
@@ -299,10 +325,14 @@ const stats = [
 }
 
 .window {
+  position: absolute;
+  left: 0;
+  right: 8%;
+  bottom: 0;
   border-radius: 16px;
-  border: 1px solid var(--vp-c-divider);
-  background: var(--vp-c-bg-alt);
-  box-shadow: 0 24px 64px -24px rgba(42, 120, 214, 0.35);
+  border: 1px solid var(--hairline);
+  background: var(--surface);
+  box-shadow: 0 24px 64px -28px var(--scrim);
   overflow: hidden;
 }
 .dots {
@@ -331,26 +361,27 @@ pre code {
   font-size: inherit;
 }
 .k {
-  color: #a347d6;
+  color: var(--frame);
+  font-weight: 600;
 }
 .s {
-  color: #1c8a4f;
+  color: #a8650b;
 }
 .f {
-  color: #2468bd;
+  color: var(--brand-deep);
 }
 .c {
   color: var(--vp-c-text-3);
   font-style: italic;
 }
 .dark .k {
-  color: #d39cf2;
+  color: #ff9a76;
 }
 .dark .s {
-  color: #7fd6a2;
+  color: var(--accent);
 }
 .dark .f {
-  color: #7fb4f5;
+  color: #ffd2bd;
 }
 .status {
   display: flex;
@@ -358,7 +389,7 @@ pre code {
   gap: 12px;
   min-height: 52px;
   padding: 12px 20px;
-  border-top: 1px solid var(--vp-c-divider);
+  border-top: 1px solid var(--hairline);
 }
 .pill {
   flex: none;
@@ -372,17 +403,21 @@ pre code {
   transition: background-color 0.3s, color 0.3s;
 }
 .pill.playing {
-  color: #fff;
-  background: #0ca30c;
+  color: var(--text-on-brand);
+  background: var(--brand-deep);
+}
+.pill.playing::before {
+  content: '● ';
+  color: #ffd2bd;
 }
 .pill.buffering,
 .pill.loading {
-  color: #0b0b0b;
-  background: #fab219;
+  color: var(--text-on-light);
+  background: var(--accent);
 }
 .pill.reconnecting {
-  color: #0b0b0b;
-  background: #ec835a;
+  color: var(--text-on-brand);
+  background: var(--frame);
 }
 .note {
   font-size: 14px;
@@ -401,7 +436,7 @@ pre code {
   transition: background-color 0.3s;
 }
 .progress i.on {
-  background: var(--vp-c-brand-2);
+  background: var(--visualizer);
 }
 
 .block {
@@ -440,8 +475,8 @@ pre code {
   overflow: hidden;
 }
 .pane.ours {
-  border-color: var(--vp-c-brand-2);
-  background: var(--vp-c-brand-soft);
+  border-color: var(--brand);
+  background: var(--brand-subtle);
 }
 .pane-title {
   padding: 12px 20px 0;
@@ -517,8 +552,8 @@ pre code {
   max-width: 920px;
   border-radius: 12px;
 }
-.dark .chart img {
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
+.chart img {
+  box-shadow: 0 0 0 1px var(--hairline-soft);
 }
 .cta {
   margin-top: 112px;
@@ -532,6 +567,18 @@ pre code {
   .hero,
   .compare {
     grid-template-columns: 1fr;
+  }
+  .hero-art {
+    flex-direction: column;
+    align-items: center;
+    padding-bottom: 0;
+  }
+  .window {
+    position: relative;
+    left: auto;
+    right: auto;
+    width: 100%;
+    margin-top: -64px;
   }
   .grid {
     grid-template-columns: repeat(2, 1fr);

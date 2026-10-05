@@ -7,3 +7,7 @@ declare module '*.vue' {
   const component: DefineComponent;
   export default component;
 }
+declare module '*.webp' {
+  const url: string;
+  export default url;
+}

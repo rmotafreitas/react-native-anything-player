@@ -1,5 +1,5 @@
 ' Shared look for every Airwave diagram: white background (legible on light
-' and dark pages alike), system sans, hairline borders, one accent blue.
+' and dark pages alike), system sans, warm hairlines, the brand's orange tints.
 ' Rendered (PlantUML + Graphviz) by
 '   node scripts/render-diagrams.mjs
 ' Text is measured with Liberation Sans (metric-compatible with Arial); the
@@ -7,60 +7,60 @@
 skinparam backgroundColor #FFFFFF
 skinparam defaultFontName "Liberation Sans"
 skinparam defaultFontSize 13
-skinparam defaultFontColor #0B0B0B
+skinparam defaultFontColor #351512
 skinparam shadowing false
 skinparam roundCorner 10
-skinparam ArrowColor #52514E
-skinparam ArrowFontColor #52514E
+skinparam ArrowColor #6B4A45
+skinparam ArrowFontColor #6B4A45
 skinparam ArrowFontSize 11
 skinparam ArrowThickness 1.2
 
 skinparam rectangle {
   BackgroundColor #FFFFFF
-  BorderColor #C3C2B7
-  StereotypeFontColor #898781
+  BorderColor #E2CBBF
+  StereotypeFontColor #9A7F79
   StereotypeFontSize 11
 }
 skinparam component {
-  BackgroundColor #F7F7F5
-  BorderColor #C3C2B7
-  StereotypeFontColor #898781
+  BackgroundColor #FFF8F2
+  BorderColor #E2CBBF
+  StereotypeFontColor #9A7F79
 }
 skinparam package {
   BackgroundColor #FFFFFF
-  BorderColor #C3C2B7
-  FontColor #52514E
+  BorderColor #E2CBBF
+  FontColor #6B4A45
 }
 skinparam note {
-  BackgroundColor #F7F7F5
-  BorderColor #E1E0D9
-  FontColor #52514E
+  BackgroundColor #FFF8F2
+  BorderColor #F1E3DA
+  FontColor #6B4A45
   FontSize 11
 }
 skinparam state {
   BackgroundColor #FFFFFF
-  BorderColor #C3C2B7
+  BorderColor #E2CBBF
   FontStyle bold
-  AttributeFontColor #52514E
+  AttributeFontColor #6B4A45
   AttributeFontSize 11
-  StartColor #0B0B0B
-  EndColor #0B0B0B
+  StartColor #351512
+  EndColor #351512
 }
 skinparam sequence {
-  LifeLineBorderColor #C3C2B7
-  ParticipantBackgroundColor #F7F7F5
-  ParticipantBorderColor #C3C2B7
+  LifeLineBorderColor #E2CBBF
+  ParticipantBackgroundColor #FFF8F2
+  ParticipantBorderColor #E2CBBF
   ParticipantFontStyle bold
-  GroupBackgroundColor #F7F7F5
-  GroupBorderColor #E1E0D9
-  DividerBackgroundColor #F7F7F5
-  DividerBorderColor #E1E0D9
-  BoxBackgroundColor #FBFBFA
-  BoxBorderColor #E1E0D9
+  GroupBackgroundColor #FFF8F2
+  GroupBorderColor #F1E3DA
+  DividerBackgroundColor #FFF8F2
+  DividerBorderColor #F1E3DA
+  BoxBackgroundColor #FFFAF6
+  BoxBorderColor #F1E3DA
 }
 skinparam activity {
   BackgroundColor #FFFFFF
-  BorderColor #C3C2B7
-  DiamondBackgroundColor #F7F7F5
-  DiamondBorderColor #C3C2B7
+  BorderColor #E2CBBF
+  DiamondBackgroundColor #FFF8F2
+  DiamondBorderColor #E2CBBF
 }

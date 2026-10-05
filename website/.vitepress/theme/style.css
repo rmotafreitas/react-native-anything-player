@@ -1,32 +1,62 @@
-/* Brand: an "air" blue into violet. Everything else is VitePress' defaults. */
-:root {
-  --aw-blue: #2a78d6;
-  --aw-violet: #7c5cff;
-  --vp-c-brand-1: #2468bd;
-  --vp-c-brand-2: #2a78d6;
-  --vp-c-brand-3: #2a78d6;
-  --vp-c-brand-soft: rgba(42, 120, 214, 0.14);
-  --vp-home-hero-name-color: transparent;
-  --vp-home-hero-name-background: linear-gradient(120deg, #3b9bff 10%, #7c5cff 90%);
-  --vp-button-brand-bg: #2a78d6;
-  --vp-button-brand-hover-bg: #2468bd;
-}
+@import './tokens.css';
 
+/* VitePress' theme variables, mapped onto the brand tokens. Both themes
+   follow automatically because the tokens switch under `.dark`. */
+:root,
 .dark {
-  --vp-c-brand-1: #6aa9f0;
-  --vp-c-brand-2: #3987e5;
-  --vp-c-brand-3: #2a78d6;
-  --vp-c-brand-soft: rgba(57, 135, 229, 0.18);
+  --vp-c-bg: var(--app-bg);
+  --vp-c-bg-alt: var(--bg-deep);
+  --vp-c-bg-elv: var(--surface);
+  --vp-c-bg-soft: var(--row-inactive);
+
+  --vp-c-text-1: var(--text);
+  --vp-c-text-2: var(--text-soft);
+  --vp-c-text-3: var(--text-dim);
+
+  --vp-c-divider: var(--hairline);
+  --vp-c-border: var(--hairline);
+  --vp-c-gutter: var(--hairline-soft);
+
+  --vp-c-brand-1: var(--brand-deep);
+  --vp-c-brand-2: var(--brand);
+  --vp-c-brand-3: var(--brand);
+  --vp-c-brand-soft: var(--brand-subtle);
+
+  --vp-c-default-soft: var(--surface-subtle);
+  --vp-c-tip-1: var(--brand-deep);
+  --vp-c-tip-soft: var(--brand-subtle);
+  --vp-c-warning-1: var(--accent);
+  --vp-c-warning-soft: var(--accent-subtle);
+  --vp-c-danger-1: var(--error);
+
+  --vp-button-brand-bg: var(--brand);
+  --vp-button-brand-hover-bg: var(--brand-deep);
+  --vp-button-brand-active-bg: var(--brand-deep);
+  --vp-button-brand-text: var(--text-on-brand);
+
+  --vp-code-bg: var(--surface-subtle);
+  --vp-code-block-bg: var(--bg-deep);
+  --vp-code-color: var(--brand-deep);
+  --vp-local-search-highlight-text: var(--brand-deep);
+  --vp-local-search-highlight-bg: var(--brand-subtle);
+
+  --vp-home-hero-name-color: transparent;
+  --vp-home-hero-name-background: linear-gradient(120deg, var(--brand) 20%, var(--accent));
+  --vp-font-family-base: var(--font-regular);
 }
 
-/* Diagrams and charts are white cards: give them air and a soft edge in dark mode. */
+/* Links and inline code read as brand-deep on cream, brand on dark. */
+.dark {
+  --vp-c-brand-1: var(--brand);
+  --vp-code-color: #ffb08f;
+  --vp-code-block-bg: var(--bg-deep);
+}
+
+/* Diagrams and charts are white cards: give them air and a soft edge. */
 .vp-doc img[src*='/diagrams/'],
 .vp-doc img[src*='/charts/'] {
   display: block;
   margin: 20px auto;
   border-radius: 12px;
-}
-.dark .vp-doc img[src*='/diagrams/'],
-.dark .vp-doc img[src*='/charts/'] {
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
+  box-shadow: 0 0 0 1px var(--hairline-soft);
 }

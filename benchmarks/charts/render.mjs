@@ -4,8 +4,8 @@
 //   node benchmarks/charts/render.mjs
 //
 // Plain SVG, no dependencies: white cards that read the same on a light or a
-// dark page (GitHub, npm, the docs site). Emphasis form: Airwave in the accent
-// blue, every other library in the de-emphasis gray, values at the bar tips.
+// dark page (GitHub, npm, the docs site). Emphasis form: Airwave in the brand
+// orange, every other library in the de-emphasis neutral, values at the bar tips.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -15,16 +15,18 @@ const RESULTS = path.join(ROOT, 'benchmarks/results');
 const OUT = path.join(ROOT, 'docs/assets/charts');
 
 const C = {
+  // Warm neutrals and the brand orange from the docs site's tokens
+  // (website/.vitepress/theme/tokens.css); status colors stay semantic.
   surface: '#ffffff',
-  border: 'rgba(11,11,11,0.10)',
-  ink: '#0b0b0b',
-  ink2: '#52514e',
-  muted: '#898781',
-  grid: '#e1e0d9',
-  axis: '#c3c2b7',
-  accent: '#2a78d6',
-  accentWash: '#eef4fc',
-  other: '#c3c2b7',
+  border: 'rgba(91,34,28,0.16)',
+  ink: '#351512',
+  ink2: '#6b4a45',
+  muted: '#9a7f79',
+  grid: '#f1e3da',
+  axis: '#dcc4b8',
+  accent: '#ff6428',
+  accentWash: '#fff0e6',
+  other: '#e3d0c6',
   good: '#0ca30c',
   serious: '#ec835a',
   warning: '#fab219',

@@ -1,0 +1,104 @@
+/*
+ * Airwave brand tokens.
+ *
+ * Palette derived from the mascot:
+ *   orange hair/headphones → brand
+ *   cream fur/skin          → light surfaces
+ *   dark red-brown outlines → dark surfaces
+ *   golden eyes             → accent
+ *
+ * Font: Inter (OFL), bundled by VitePress.
+ *
+ * Dark values apply under VitePress' `.dark` class, which its appearance
+ * switch sets from the system preference or the visitor's choice, and under
+ * `[data-theme="dark"]` for pages that use the attribute instead.
+ */
+
+:root {
+  color-scheme: light;
+
+  /* Core */
+  --app-bg: #fff8f2;
+  --bg-deep: #f8e9de;
+  --surface: #ffffff;
+  --surface-subtle: rgba(113, 24, 18, 0.055);
+  --brand: #ff6428;
+  --brand-deep: #c93c18;
+  --brand-subtle: rgba(255, 100, 40, 0.14);
+  --frame: #7a1c18;
+  --live: #e52b2b;
+
+  /* Text */
+  --text: #351512;
+  --text-on-light: #351512;
+  --text-on-brand: #ffffff;
+  --text-soft: rgba(53, 21, 18, 0.72);
+  --text-dim: rgba(53, 21, 18, 0.52);
+
+  /* Controls / separators */
+  --switch-off: rgba(73, 34, 29, 0.24);
+  --hairline: rgba(91, 34, 28, 0.16);
+  --hairline-soft: rgba(91, 34, 28, 0.09);
+  --scrim: rgba(45, 10, 7, 0.58);
+  --spinner: rgba(53, 21, 18, 0.65);
+
+  /* Semantic */
+  --error: #d83c43;
+  --danger: #b82431;
+  /* Golden secondary accent from the mascot's eyes. */
+  --accent: #f4a51c;
+  --accent-subtle: rgba(244, 165, 28, 0.16);
+
+  /* Player */
+  --visualizer: #ff713b;
+  --input-bg: #fff0e6;
+  --input-border: #e7b9a5;
+  --row-active: #ffe4d5;
+  --row-inactive: #fffaf6;
+
+  /* Typography */
+  --font-regular: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-bold: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+}
+
+.dark,
+[data-theme='dark'] {
+  color-scheme: dark;
+
+  --app-bg: #1d0d0b;
+  --bg-deep: #110706;
+  --surface: #2b1310;
+  --surface-subtle: rgba(255, 239, 226, 0.07);
+  --brand: #ff6a2f;
+  --brand-deep: #b93618;
+  --brand-subtle: rgba(255, 106, 47, 0.17);
+  --frame: #9d3528;
+  --live: #ff4949;
+
+  --text: #fff7f0;
+  --text-on-light: #32130f;
+  --text-on-brand: #ffffff;
+  --text-soft: rgba(255, 247, 240, 0.72);
+  --text-dim: rgba(255, 247, 240, 0.5);
+
+  --switch-off: rgba(255, 247, 240, 0.22);
+  --hairline: rgba(255, 230, 215, 0.15);
+  --hairline-soft: rgba(255, 230, 215, 0.09);
+  --scrim: rgba(7, 2, 1, 0.72);
+  --spinner: rgba(255, 247, 240, 0.72);
+
+  --error: #ff7378;
+  --danger: #c92f3c;
+  --accent: #ffb52e;
+  --accent-subtle: rgba(255, 181, 46, 0.17);
+
+  --visualizer: #ff8050;
+  --input-bg: #351713;
+  --input-border: #683027;
+  --row-active: #4a1e17;
+  --row-inactive: #27110e;
+}

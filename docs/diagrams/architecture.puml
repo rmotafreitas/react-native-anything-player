@@ -3,7 +3,7 @@
 top to bottom direction
 
 package "JavaScript  (src/)" {
-  rectangle "<b>Player · hooks · PlayerError" as JS #EEF4FC
+  rectangle "<b>Player · hooks · PlayerError" as JS #FFE4D5
 }
 
 package "TurboModule  (Codegen spec: src/native/NativeAirwave.ts)" {
@@ -12,13 +12,13 @@ package "TurboModule  (Codegen spec: src/native/NativeAirwave.ts)" {
 }
 
 package "Host  (one per platform)" {
-  rectangle "<b>PlayerController\n<size:11><color:#52514E>engine delegate · snapshots · events" as Controller
-  rectangle "<b>Runtime\n<size:11><color:#52514E>audio session / focus · network · lifecycle\n<size:11><color:#52514E>media session · keepalive / wake locks" as Runtime
+  rectangle "<b>PlayerController\n<size:11><color:#6B4A45>engine delegate · snapshots · events" as Controller
+  rectangle "<b>Runtime\n<size:11><color:#6B4A45>audio session / focus · network · lifecycle\n<size:11><color:#6B4A45>media session · keepalive / wake locks" as Runtime
 }
 
 package "Engine  (twins, no media framework imports)" {
-  rectangle "<b>PlaybackEngine\n<size:11><color:#52514E>intent · state machine · recovery · timing\n<size:11><color:#52514E>Swift: ios/Core/ · Kotlin: android/…/core/" as Engine #EEF4FC
-  rectangle "<b>conformance/*.json\n<size:11><color:#52514E>59 shared scenarios" as Spec
+  rectangle "<b>PlaybackEngine\n<size:11><color:#6B4A45>intent · state machine · recovery · timing\n<size:11><color:#6B4A45>Swift: ios/Core/ · Kotlin: android/…/core/" as Engine #FFE4D5
+  rectangle "<b>conformance/*.json\n<size:11><color:#6B4A45>59 shared scenarios" as Spec
 }
 
 package "Drivers" {
