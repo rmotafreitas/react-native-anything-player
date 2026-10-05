@@ -52,6 +52,7 @@ The Expo example (`example-expo/`, bundle id `anythingplayer.expo.example`) runs
 | `pause-releases-connection` | a paused live stream closes its connection (~30 s), resume re-opens |
 | `song-progress` | `updateNowPlaying({ duration, elapsed })` on a live stream (inspected: iOS Now Playing log, Android `dumpsys media_session`: advances while playing, frozen while paused, not seekable) |
 | `audio-sampling` | sampling enabled mid-stream: ≥ 20 windows in 3 s at the requested size, carrying audio, none after disabling |
+| `progress-events` | `progressInterval: 250` on a live stream: ≥ 6 readings in 2 s, each fresh, finite `bufferedAhead`, none while paused |
 | `bench-sync-reads` | cost of the synchronous JSI reads (`getProgress()`, `refresh()`) while a stream plays; `getProgress` p50 < 100 µs, p99 < 5 ms |
 | `release-frees-resources` | `release()` closes the connection, rejects later commands, clears listeners |
 | `invalid-sources` | empty / unsupported URIs, `NO_SOURCE`, non-finite arguments |

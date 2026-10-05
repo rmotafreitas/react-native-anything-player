@@ -34,7 +34,7 @@ Read from each library's published source; sizes, methodology and the gaps RNAP 
 - **Visualizer**: decoded-audio windows (`audioSample`) on both platforms — including live HTTP streams on iOS, where AVPlayer's audio tap never runs.
 - **Song progress for radio**: give the current song's duration and the lock screen shows its progress, advanced natively.
 - **Observability**: a native ring buffer of structured engine traces, readable any time with `player.getDiagnostics()`.
-- **Small and fast**: a TurboModule with zero JS dependencies; progress is a synchronous JSI read (~10 µs), so no progress events cross the bridge.
+- **Small and fast**: a TurboModule with zero JS dependencies; progress is a synchronous JSI read (~10 µs), so a progress bar needs no events. Opt into `progress` events from a native timer (`progressInterval`) when JS must follow the audio where its own timers are frozen.
 
 ## Install
 

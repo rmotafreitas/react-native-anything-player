@@ -6,6 +6,23 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- **Renamed to React Native Anything Player (RNAP).** Breaking for existing installs; update these names:
+
+  | Before | After |
+  |---|---|
+  | npm package `react-native-airwave` | `react-native-anything-player` |
+  | Expo plugin `"react-native-airwave"` | `"react-native-anything-player"` |
+  | CocoaPod `Airwave` | `AnythingPlayer` (run `pod install`) |
+  | Android namespace `com.radioanimu.airwave` | `com.anythingplayer` |
+  | Manifest meta-data `com.radioanimu.airwave.FOREGROUND_TIMEOUT_MS` | `com.anythingplayer.FOREGROUND_TIMEOUT_MS` |
+  | Gradle `airwaveHls`, `airwaveMedia3Version` | `rnapHls`, `rnapMedia3Version` |
+  | iOS log subsystem `com.radioanimu.airwave` | `com.anythingplayer` |
+  | logcat tag `Airwave` | `RNAP` |
+
+  The JavaScript API (`Player`, hooks, events, errors) is unchanged.
+
 ### Added
 
 - `player.setAudioSampling()` and the `audioSample` event: decoded-audio windows for visualizers. Android: an ExoPlayer audio-sink tap. iOS: an audio tap for files, and for live streams a parallel AudioToolbox decode of the proxied bytes, released against the item's clock.

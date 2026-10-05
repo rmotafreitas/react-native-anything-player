@@ -28,6 +28,7 @@ const player = new Player({
     stopOnTaskRemoved: false, // stop when the app is swiped away from recents
   },
   diagnostics: false,        // stream engine traces as 'diagnostic' events and to the native log
+  progressInterval: 0,       // ms between 'progress' events from a native timer while playing; 0 = off
 });
 ```
 

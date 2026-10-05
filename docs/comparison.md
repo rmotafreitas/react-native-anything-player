@@ -24,7 +24,7 @@ Where RNAP is behind today: queues, caching and preloading, CarPlay / Android Au
 
 | Package | Version | Licence | Download | Unpacked | JS (min+gz) | Native code | Android artifacts | Required extras |
 |---|---|---|--:|--:|--:|--:|--:|---|
-| **RNAP** | 0.1.0 | PolyForm NC | 124 KB | 442 KB | 2.8 KB | 7,802 lines | 4 | — |
+| **RNAP** | 0.1.0 | PolyForm NC | 126 KB | 449 KB | 2.9 KB | 7,877 lines | 4 | — |
 | RNTP 5 (@rntp/player) | 5.12.1 | commercial | 253 KB | 1,211 KB | 2.4 KB | 13,232 lines | 7 | — |
 | RNTP 4 | 4.1.2 | Apache-2.0 | 83 KB | 378 KB | 3.5 KB | 3,500 lines | 5 | — |
 | expo-audio | 57.0.5 | MIT | 672 KB | 1,299 KB | 2.9 KB | 6,410 lines | 10 | `expo`, `expo-asset` |
@@ -40,10 +40,10 @@ Measured 2026-10-05 against the latest npm releases (`benchmarks/results/size.js
 How to read it:
 
 - **JavaScript is not where the cost is.** Every player adds 2–7 KB of gzipped JS, because they all do their work in native code. The meaningful costs are the native code and the Android libraries your app compiles.
-- **RNAP's native code** is 7.8k lines for the engine twins, the iOS stream proxy, the iOS stream visualizer and the media sessions. RNTP 5 is 13.2k. The minimal players (react-native-sound, audio-pro, RNTP 4) are smaller because they do much less: no recovery, no proxy, no visualizer.
+- **RNAP's native code** is 7.9k lines for the engine twins, the iOS stream proxy, the iOS stream visualizer and the media sessions. RNTP 5 is 13.2k. The minimal players (react-native-sound, audio-pro, RNTP 4) are smaller because they do much less: no recovery, no proxy, no visualizer.
 - **Android libraries**: RNAP pulls in Media3 only (ExoPlayer, session, the OkHttp data source and HLS). HLS can be left out with `rnapHls=false`. expo-audio adds DASH, SmoothStreaming and Media3 UI; react-native-video adds IMA ads and RTSP as well.
 - **No extras.** RNAP needs nothing beyond React Native: no framework (`expo` is optional, for the config plugin only), no Nitro, no worklets, no state library.
-- **Download size** is mostly source and prebuilt JS for every package. RNAP ships its TypeScript source and the compiled output (124 KB).
+- **Download size** is mostly source and prebuilt JS for every package. RNAP ships its TypeScript source and the compiled output (126 KB).
 
 ## Methodology
 

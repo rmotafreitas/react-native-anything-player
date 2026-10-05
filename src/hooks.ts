@@ -54,7 +54,7 @@ const EMPTY_PROGRESS: Progress = {
 
 /**
  * Position/duration/buffer, polled from native every `intervalMs` while the
- * app is in the foreground. No progress events cross the bridge: the reading
+ * app is in the foreground. No progress events are needed: the reading
  * is a synchronous JSI call against a native clock, so it is correct even
  * right after JS was frozen in the background.
  */

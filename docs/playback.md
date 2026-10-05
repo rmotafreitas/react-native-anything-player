@@ -73,9 +73,16 @@ Rapid sequences are safe: `play(); pause(); play(); pause();` ends paused; `load
 const { position, duration, buffered, bufferedAhead, liveOffset } = player.getProgress();
 ```
 
-`getProgress()` is a synchronous JSI call that reads a snapshot native code keeps and extrapolates it to "now", so it is cheap enough to call every frame and correct right after JavaScript was frozen in the background. `useProgress(player, intervalMs)` polls it while the app is in the foreground. No progress events cross the bridge.
+`getProgress()` is a synchronous JSI call that reads a snapshot native code keeps and extrapolates it to "now", so it is cheap enough to call every frame and correct right after JavaScript was frozen in the background. `useProgress(player, intervalMs)` polls it while the app is in the foreground, so a progress bar needs no events.
 
-For live streams `position` is the time played since the stream was (re-)opened, `duration` is `null`, `bufferedAhead` is how much audio is buffered past the playhead, and `liveOffset` is how far behind the live edge playback is when the stream carries wall-clock dates (HLS `EXT-X-PROGRAM-DATE-TIME`).
+To follow the audio where JS timers are frozen (an Android app in the background), set `progressInterval`: the player then emits `progress` events from a native timer while playing ([events](events.md)).
+
+```ts
+const player = new Player({ progressInterval: 1000 });
+player.on('progress', ({ position, liveOffset }) => { /* e.g. switch the lock screen to the next song */ });
+```
+
+For live streams `position` is the time played since the stream was (re-)opened, `duration` is `null`, `bufferedAhead` is how much audio is buffered past the playhead, and `liveOffset` is how far behind the live edge playback is, when it can be measured: HLS program dates (`EXT-X-PROGRAM-DATE-TIME`), ExoPlayer's live window, and on iOS any live HTTP stream, from the audio the stream proxy has handed the player. Otherwise it is `null`; use `bufferedAhead`.
 
 ## Several players
 

@@ -60,7 +60,7 @@ const features = [
   },
   {
     title: 'Synchronous progress',
-    body: 'getProgress() is a JSI read, about 10 µs. No progress events cross the bridge, so a progress bar costs nothing.',
+    body: 'getProgress() is a JSI read, about 10 µs, so a progress bar needs no events. Native-timed progress events are opt-in, for JS that must follow the audio in the background.',
   },
 ];
 
