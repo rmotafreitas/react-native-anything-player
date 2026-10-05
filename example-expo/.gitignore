@@ -42,5 +42,3 @@ yarn-error.*
 
 # packed library (scripts/sync-expo-example.sh)
 react-native-anything-player.tgz
-/ios
-/android
