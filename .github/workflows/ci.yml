@@ -63,7 +63,7 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
       - name: Kotlin engine conformance + ICY tests
-        run: cd example/android && ./gradlew :react-native-airwave:testDebugUnitTest --no-daemon
+        run: cd example/android && ./gradlew :react-native-anything-player:testDebugUnitTest --no-daemon
 
   build-library:
     runs-on: ubuntu-latest

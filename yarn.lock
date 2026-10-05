@@ -9172,9 +9172,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"react-native-airwave-example@workspace:example":
+"react-native-anything-player-example@workspace:example":
   version: 0.0.0-use.local
-  resolution: "react-native-airwave-example@workspace:example"
+  resolution: "react-native-anything-player-example@workspace:example"
   dependencies:
     "@babel/core": "npm:^7.25.2"
     "@babel/preset-env": "npm:^7.25.3"
@@ -9194,18 +9194,18 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"react-native-airwave-website@workspace:website":
+"react-native-anything-player-website@workspace:website":
   version: 0.0.0-use.local
-  resolution: "react-native-airwave-website@workspace:website"
+  resolution: "react-native-anything-player-website@workspace:website"
   dependencies:
     vitepress: "npm:^1.6.4"
     vue: "npm:^3.5.22"
   languageName: unknown
   linkType: soft
 
-"react-native-airwave@workspace:.":
+"react-native-anything-player@workspace:.":
   version: 0.0.0-use.local
-  resolution: "react-native-airwave@workspace:."
+  resolution: "react-native-anything-player@workspace:."
   dependencies:
     "@babel/core": "npm:^7.29.7"
     "@eslint/compat": "npm:^2.1.0"

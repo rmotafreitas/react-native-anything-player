@@ -17,7 +17,7 @@ radio.on('remoteCommand', ({ command }) => { /* next/previous → switch station
 
 ## What happens on the wire
 
-**iOS.** AVPlayer plays the stream through a small in-process HTTP proxy bound to `127.0.0.1`; the connection to the station is made by the app's own `URLSession`. AVPlayer still sees a genuine live HTTP stream (its own buffering, its own ICY metadata parsing), while Airwave owns the sockets:
+**iOS.** AVPlayer plays the stream through a small in-process HTTP proxy bound to `127.0.0.1`; the connection to the station is made by the app's own `URLSession`. AVPlayer still sees a genuine live HTTP stream (its own buffering, its own ICY metadata parsing), while RNAP owns the sockets:
 
 - the connection is closed the moment the player stops, re-opens, or is released, and late requests for a discarded item are answered locally — AVFoundation's internal retries can otherwise keep a discarded stream downloading in the background indefinitely (reproduced);
 - when the station drops the connection after streaming for a while, the proxy reconnects and continues the same response, so playback goes on from the buffer without a gap (ICY metadata is re-framed across the new connection);
@@ -27,7 +27,7 @@ radio.on('remoteCommand', ({ command }) => { /* next/previous → switch station
 
 The ICY response headers (`icy-name`, `icy-genre`, `icy-br`) are read from the proxied response. HLS (`.m3u8`) is played by AVFoundation directly. The proxy only listens on loopback and needs no `Info.plist` entry (verified with `NSAllowsLocalNetworking` removed: AVPlayer's requests to `127.0.0.1` are not blocked by App Transport Security). The connection to the station is subject to ATS as usual: `https`, or an exception for cleartext stations — a blocked cleartext URL fails with `INVALID_SOURCE`.
 
-**Android.** Media3's ICY support de-interleaves the stream; Airwave reads the raw metadata bytes and normalizes them with the same rules as iOS.
+**Android.** Media3's ICY support de-interleaves the stream; RNAP reads the raw metadata bytes and normalizes them with the same rules as iOS.
 
 Either way, **one connection per open** (verified against a test server that counts connections).
 
@@ -59,7 +59,7 @@ The lock screen shows stream metadata on top of the source's `metadata`; see [No
 
 ## Live edge
 
-A live stream that falls behind (pauses, stalls) plays stale audio when it resumes. Airwave tracks how far behind it is (*drift*) and re-opens the stream at the live edge — but only at moments that are silent anyway:
+A live stream that falls behind (pauses, stalls) plays stale audio when it resumes. RNAP tracks how far behind it is (*drift*) and re-opens the stream at the live edge — but only at moments that are silent anyway:
 
 - resuming after a pause or interruption longer than the drift budget (`recovery.liveMaxDriftMs`, default 5 s);
 - during a stall that would push the drift over the budget.
@@ -70,9 +70,9 @@ A paused live stream keeps downloading audio that resuming will never play, so i
 
 ## Recovery
 
-| Situation | What Airwave does |
+| Situation | What RNAP does |
 |---|---|
-| Server closes the connection | iOS: AVPlayer re-requests inside the item through Airwave's loader (seamless). Android: a continuation of the stream is queued in Media3's playlist and plays gaplessly. A circuit breaker (4 connections per 10 s) stops servers that keep closing from causing a storm; past it, the engine reconnects with backoff. |
+| Server closes the connection | iOS: AVPlayer re-requests inside the item through RNAP's loader (seamless). Android: a continuation of the stream is queued in Media3's playlist and plays gaplessly. A circuit breaker (4 connections per 10 s) stops servers that keep closing from causing a storm; past it, the engine reconnects with backoff. |
 | Socket alive but silent | Detected after 3 s with no incoming data (1.5 s right after a network change) and re-opened. |
 | Playhead frozen without a native report | "Silent stall": detected after 4 s (2 s after a network change). |
 | Slow link (data trickles in) | Left alone for up to 20 s; the live-edge rule still applies. |
@@ -88,4 +88,4 @@ Every constant and the production failure behind it: [recovery.md](recovery.md).
 
 ## Testing against a misbehaving server
 
-The repository ships a controllable ICY server (`scripts/stream-server/server.mjs`) that can stall, drop, end, throttle, refuse, return HTTP errors, send Latin-1 or malformed metadata, and reports open connections — the harness behind Airwave's own integration tests. Run it with `node scripts/stream-server/server.mjs` after `scripts/stream-server/generate-media.sh`.
+The repository ships a controllable ICY server (`scripts/stream-server/server.mjs`) that can stall, drop, end, throttle, refuse, return HTTP errors, send Latin-1 or malformed metadata, and reports open connections — the harness behind RNAP's own integration tests. Run it with `node scripts/stream-server/server.mjs` after `scripts/stream-server/generate-media.sh`.

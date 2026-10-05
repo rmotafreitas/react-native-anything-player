@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Airwave test stream server — a controllable ICY/Icecast-style radio plus a
+// RNAP test stream server — a controllable ICY/Icecast-style radio plus a
 // static file host, used by the example app and the network torture tests.
 // No dependencies. Run: `node scripts/stream-server/server.mjs [port]`.
 //
@@ -43,12 +43,12 @@ const STARTED_AT = Date.now();
 const port = Number(process.argv[2] ?? process.env.PORT ?? 8765);
 
 const TITLES = [
-  ['Airwave Test', 'Signal One'],
+  ['RNAP Test', 'Signal One'],
   ['Björk', 'Jóga'],
   ['Guns N\' Roses', 'Sweet Child O\' Mine'],
   ['YOASOBI', 'アイドル'],
   ['Café del Mar', 'Olé; Sí'],
-  ['Airwave Test', 'Signal Six'],
+  ['RNAP Test', 'Signal Six'],
 ];
 
 const state = { down: false, stall: false };
@@ -112,7 +112,7 @@ function liveStream(req, res, url) {
       'Content-Type': 'audio/mpeg',
       'Cache-Control': 'no-cache, no-store',
       Connection: 'close',
-      'icy-name': 'Airwave Test Radio',
+      'icy-name': 'RNAP Test Radio',
       'icy-genre': 'Test Tones',
       'icy-br': '128',
       'icy-url': `http://localhost:${port}`,
@@ -249,5 +249,5 @@ const server = createServer((req, res) => {
 });
 
 server.listen(port, '0.0.0.0', () => {
-  console.log(`airwave test stream server on http://0.0.0.0:${port} (Android emulator: http://10.0.2.2:${port})`);
+  console.log(`anythingplayer test stream server on http://0.0.0.0:${port} (Android emulator: http://10.0.2.2:${port})`);
 });

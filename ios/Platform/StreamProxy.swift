@@ -2,7 +2,7 @@ import Foundation
 import Network
 import os
 
-private let proxyLog = Logger(subsystem: "com.radioanimu.airwave", category: "proxy")
+private let proxyLog = Logger(subsystem: "com.anythingplayer", category: "proxy")
 
 /// An in-process loopback HTTP proxy for HTTP(S) sources.
 ///
@@ -57,8 +57,8 @@ final class StreamProxy {
     var onAudio: ((Data, String?) -> Void)? = nil
   }
 
-  private let queue = DispatchQueue(label: "airwave.proxy")
-  private let listenerQueue = DispatchQueue(label: "airwave.proxy.listener")
+  private let queue = DispatchQueue(label: "anythingplayer.proxy")
+  private let listenerQueue = DispatchQueue(label: "anythingplayer.proxy.listener")
   private var listener: NWListener?
   private var port: UInt16 = 0
   /// The last port bound: a replacement listener tries it first.
@@ -216,8 +216,8 @@ final class StreamProxy {
     }
   }
 
-  private static let healthPath = "airwave-health"
-  private static let probeQueue = DispatchQueue(label: "airwave.proxy.probe")
+  private static let healthPath = "anythingplayer-health"
+  private static let probeQueue = DispatchQueue(label: "anythingplayer.proxy.probe")
 
   /// A full request through the listener (not only a TCP connect): true when
   /// the proxy answers. ~1 ms when healthy. Never call on `queue`, which serves it.

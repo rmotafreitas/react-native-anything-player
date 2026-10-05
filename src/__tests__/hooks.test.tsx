@@ -2,7 +2,7 @@ import { act, render, screen } from '@testing-library/react-native';
 import { AppState, Text } from 'react-native';
 import { fake } from './FakeNative';
 
-jest.mock('../native/NativeAirwave', () => ({
+jest.mock('../native/NativeAnythingPlayer', () => ({
   __esModule: true,
   default: require('./FakeNative').fake,
 }));

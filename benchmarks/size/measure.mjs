@@ -1,10 +1,10 @@
 #!/usr/bin/env node
-// Install-size comparison: react-native-airwave against the other React Native
+// Install-size comparison: react-native-anything-player against the other React Native
 // audio players, measured from what npm actually ships.
 //
 //   node benchmarks/size/measure.mjs            # writes benchmarks/results/size.json
 //
-// Every number is computed from the published tarballs (plus Airwave's own
+// Every number is computed from the published tarballs (plus RNAP's own
 // `npm pack` of this checkout), so the run is reproducible on any machine with
 // npm and network access to the registry. No device or build is involved:
 // app-binary impact is a separate, on-device measurement (see README.md here).
@@ -116,7 +116,7 @@ async function jsCost(esbuild, entryDir, pkgName, nodePaths, fromSource = false)
 }
 
 async function main() {
-  const work = fs.mkdtempSync(path.join(os.tmpdir(), 'airwave-size-'));
+  const work = fs.mkdtempSync(path.join(os.tmpdir(), 'rnap-size-'));
   fs.writeFileSync(path.join(work, 'package.json'), '{"name":"size","private":true}');
   const specs = PACKAGES.map((p) => (p.version ? `${p.name}@${p.version}` : p.name));
   console.log(`installing ${specs.length} packages into ${work} …`);
@@ -125,19 +125,19 @@ async function main() {
   const { default: esbuild } = await import(path.join(work, 'node_modules/esbuild/lib/main.js'));
   const nodePaths = [path.join(work, 'node_modules')];
 
-  // Airwave: pack this checkout exactly as it would be published.
-  console.log('packing react-native-airwave …');
+  // RNAP: pack this checkout exactly as it would be published.
+  console.log('packing react-native-anything-player …');
   if (!fs.existsSync(path.join(ROOT, 'lib/module/index.js'))) sh('yarn', ['prepare'], { cwd: ROOT });
   // `npm pack` may still print the `prepare` build log before its JSON.
   const packOutput = sh('npm', ['pack', '--json', '--ignore-scripts', '--pack-destination', work], { cwd: ROOT });
   const packed = JSON.parse(packOutput.slice(packOutput.search(/^\[/m)))[0];
-  const airwaveDir = path.join(work, 'airwave');
-  fs.mkdirSync(airwaveDir);
-  sh('tar', ['xzf', path.join(work, packed.filename), '-C', airwaveDir]);
-  fs.symlinkSync(path.join(airwaveDir, 'package'), path.join(work, 'node_modules/react-native-airwave'));
+  const rnapDir = path.join(work, 'rnap');
+  fs.mkdirSync(rnapDir);
+  sh('tar', ['xzf', path.join(work, packed.filename), '-C', rnapDir]);
+  fs.symlinkSync(path.join(rnapDir, 'package'), path.join(work, 'node_modules/react-native-anything-player'));
 
   const rows = [];
-  const all = [{ name: 'react-native-airwave', label: 'Airwave', role: 'player (this repo)', local: packed }, ...PACKAGES];
+  const all = [{ name: 'react-native-anything-player', label: 'RNAP', role: 'player (this repo)', local: packed }, ...PACKAGES];
   for (const pkg of all) {
     const dir = path.join(work, 'node_modules', pkg.name);
     const manifest = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8'));

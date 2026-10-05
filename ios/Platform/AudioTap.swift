@@ -2,7 +2,7 @@ import AVFoundation
 import MediaToolbox
 import os
 
-private let tapLog = Logger(subsystem: "com.radioanimu.airwave", category: "audio-tap")
+private let tapLog = Logger(subsystem: "com.anythingplayer", category: "audio-tap")
 
 /// One decoded window, downmixed to mono and resampled to the requested size.
 struct AudioWindow {

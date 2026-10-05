@@ -21,7 +21,7 @@ await player.load({
 | `file:///…` and absolute paths | ✓ | ✓ |
 | `content://…` | – | ✓ |
 | `require('./a.mp3')` | ✓ debug (Metro) and release (bundle) | ✓ debug (Metro) and release (raw resource) |
-| HLS (`.m3u8`) | ✓ | ✓ (disable with `airwaveHls=false` in `gradle.properties` to save ~300 KB) |
+| HLS (`.m3u8`) | ✓ | ✓ (disable with `rnapHls=false` in `gradle.properties` to save ~300 KB) |
 
 Formats are whatever the platform decodes: MP3, AAC/AAC+ (ADTS), M4A/MP4, WAV, FLAC (Android; iOS 11+), Opus/Vorbis (Android).
 

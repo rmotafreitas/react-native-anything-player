@@ -1,6 +1,6 @@
 # Testing
 
-Airwave is tested at five layers. Everything below runs locally; the device layers need the iOS simulator / Android emulator (or devices) and the test stream server.
+RNAP is tested at five layers. Everything below runs locally; the device layers need the iOS simulator / Android emulator (or devices) and the test stream server.
 
 | Layer | What | Command |
 |---|---|---|
@@ -23,17 +23,17 @@ scripts/stream-server/generate-media.sh       # once (ffmpeg)
 node scripts/stream-server/server.mjs          # port 8765
 
 # iOS simulator (launch argument, no URL prompt):
-xcrun simctl launch booted airwave.example -AirwaveTest all
+xcrun simctl launch booted anythingplayer.example -RNAPTest all
 # Android emulator:
-adb shell am start -S -W -f 0x10008000 -a android.intent.action.VIEW -d "airwave-example://test/all" airwave.example
+adb shell am start -S -W -f 0x10008000 -a android.intent.action.VIEW -d "anythingplayer-example://test/all" anythingplayer.example
 # results:
-xcrun simctl spawn booted log stream --predicate 'category == "javascript"' | grep AirwaveTest
-adb logcat ReactNativeJS:V '*:S' | grep AirwaveTest
+xcrun simctl spawn booted log stream --predicate 'category == "javascript"' | grep RNAPTest
+adb logcat ReactNativeJS:V '*:S' | grep RNAPTest
 ```
 
 Run one platform at a time: the connection-count assertions read a server shared by both.
 
-The Expo example (`example-expo/`, bundle id `airwave.expo.example`) runs the same scenarios against the package installed from its npm tarball, exactly as a consumer would. Sync it with `scripts/sync-expo-example.sh`, then `npx expo prebuild` and build. Its local config plugins give it the same cleartext policy as the bare example and adopt the iOS 27 scene life cycle.
+The Expo example (`example-expo/`, bundle id `anythingplayer.expo.example`) runs the same scenarios against the package installed from its npm tarball, exactly as a consumer would. Sync it with `scripts/sync-expo-example.sh`, then `npx expo prebuild` and build. Its local config plugins give it the same cleartext policy as the bare example and adopt the iOS 27 scene life cycle.
 
 | Scenario | Asserts |
 |---|---|
@@ -105,7 +105,7 @@ Verified on the iOS 27 simulator:
 | Memory | RSS 240 → 119 MB (trimmed when backgrounded), 82 MB at 87 min | PSS 79 → 103 MB, see below |
 | Threads | 11–16, no growth | |
 
-Android memory, investigated: the Java heap stayed flat (9–10 MB). The growth was in anonymous memory, where Hermes keeps its heap segments, and native heap. A follow-up 20-minute run logged Hermes' own statistics (`[AirwaveMem]` lines from the example app). Live JS memory after each old-generation collection stayed at 4–6 MB (a sawtooth, no upward trend); the heap reservation plateaued at 25–29 MB and native allocations at ~40 MB. No leak was found. The rise is the JS heap growing to its steady-state size.
+Android memory, investigated: the Java heap stayed flat (9–10 MB). The growth was in anonymous memory, where Hermes keeps its heap segments, and native heap. A follow-up 20-minute run logged Hermes' own statistics (`[RNAPMem]` lines from the example app). Live JS memory after each old-generation collection stayed at 4–6 MB (a sawtooth, no upward trend); the heap reservation plateaued at 25–29 MB and native allocations at ~40 MB. No leak was found. The rise is the JS heap growing to its steady-state size.
 
 After the Android HTTP layer moved to OkHttp (see `stall-recovers`), a further 20-minute Android soak on the same station stayed `PLAYING` with at most one connection; PSS grew at the same rate as before (Hermes heap growth) and the native heap was lower (18.8 MB).
 

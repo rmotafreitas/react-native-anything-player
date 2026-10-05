@@ -14,7 +14,7 @@ const MANAGERS = [
 ] as const;
 type Id = (typeof MANAGERS)[number]['id'];
 
-const KEY = 'airwave-package-manager';
+const KEY = 'rnap-package-manager';
 const selected = useShared();
 const copied = ref(false);
 

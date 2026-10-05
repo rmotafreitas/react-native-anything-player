@@ -19,7 +19,7 @@ import {
   usePlayerStatus,
   useProgress,
   useStreamMetadata,
-} from 'react-native-airwave';
+} from 'react-native-anything-player';
 import { COVER, STATIONS, serverControl } from './config';
 import { runScenarios, SCENARIOS } from './scenarios';
 
@@ -30,7 +30,7 @@ export const player = new Player({
   diagnostics: __DEV__,
 });
 
-const log = (...args: unknown[]) => console.log('[Airwave]', ...args);
+const log = (...args: unknown[]) => console.log('[RNAP]', ...args);
 player.on('stateChange', (state, previous) =>
   log(`state ${previous} → ${state}`)
 );
@@ -112,12 +112,12 @@ export default function App() {
     );
   };
 
-  // airwave-example://test/<name|all>  ·  airwave-example://play/<stationIndex>
+  // anythingplayer-example://test/<name|all>  ·  anythingplayer-example://play/<stationIndex>
   useEffect(() => {
     const handle = (url: string | null | undefined) => {
       if (!url) return;
       const match =
-        /airwave-example:\/\/(test|play)\/([\w,-]+)(?:\?delay=(\d+))?/.exec(
+        /anythingplayer-example:\/\/(test|play)\/([\w,-]+)(?:\?delay=(\d+))?/.exec(
           url
         );
       if (!match) return;
@@ -131,15 +131,15 @@ export default function App() {
       else go();
     };
     Linking.getInitialURL().then(handle);
-    // iOS: `xcrun simctl launch booted airwave.example -AirwaveTest all`
+    // iOS: `xcrun simctl launch booted anythingplayer.example -RNAPTest all`
     // (launch arguments land in NSUserDefaults; no URL confirmation dialog).
     if (Platform.OS === 'ios') {
-      const requested = Settings.get('AirwaveTest');
+      const requested = Settings.get('RNAPTest');
       if (typeof requested === 'string' && requested)
-        handle(`airwave-example://test/${requested}`);
-      const station = Settings.get('AirwavePlay');
+        handle(`anythingplayer-example://test/${requested}`);
+      const station = Settings.get('AnythingPlayerPlay');
       if (station != null && station !== '')
-        handle(`airwave-example://play/${station}`);
+        handle(`anythingplayer-example://play/${station}`);
     }
     const sub = Linking.addEventListener('url', ({ url }) => handle(url));
     return () => sub.remove();
@@ -159,7 +159,7 @@ export default function App() {
     const timer = setInterval(() => {
       const s = hermes.getInstrumentedStats!();
       console.log(
-        `[AirwaveMem] js_heapSize=${s.js_heapSize} js_allocatedBytes=${s.js_allocatedBytes} js_numGCs=${s.js_numGCs}`
+        `[RNAPMem] js_heapSize=${s.js_heapSize} js_allocatedBytes=${s.js_allocatedBytes} js_numGCs=${s.js_numGCs}`
       );
     }, 60_000);
     return () => clearInterval(timer);
@@ -174,7 +174,7 @@ export default function App() {
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.h1}>Airwave</Text>
+        <Text style={styles.h1}>RNAP</Text>
 
         <View style={styles.card}>
           <View style={styles.row}>

@@ -92,7 +92,7 @@ ios/.build/
 scripts/stream-server/media/
 
 # Package archived by the Jenkins job
-/react-native-airwave.tgz
+/react-native-anything-player.tgz
 
 # Docs site build output
 website/.vitepress/dist/

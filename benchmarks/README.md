@@ -1,10 +1,10 @@
 # Benchmarks
 
-Reproducible comparisons between Airwave and the other React Native audio libraries. The results and charts are published in [docs/comparison.md](../docs/comparison.md).
+Reproducible comparisons between RNAP and the other React Native audio libraries. The results and charts are published in [docs/comparison.md](../docs/comparison.md).
 
 | Script | What it measures | Output |
 |---|---|---|
-| `node benchmarks/size/measure.mjs` | npm tarball and unpacked size, native lines compiled into the app, Android Maven artifacts, JS bundle cost (min+gz) — for Airwave (packed from this checkout) and every competitor (latest on npm) | `results/size.json` |
+| `node benchmarks/size/measure.mjs` | npm tarball and unpacked size, native lines compiled into the app, Android Maven artifacts, JS bundle cost (min+gz) — for RNAP (packed from this checkout) and every competitor (latest on npm) | `results/size.json` |
 | `node benchmarks/charts/render.mjs` | renders the charts from `results/` | `docs/assets/charts/*.svg` |
 | — (curated) | capability matrix read from each package's source, with evidence per row | `results/capabilities.json` |
 

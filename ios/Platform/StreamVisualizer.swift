@@ -2,7 +2,7 @@ import AVFoundation
 import AudioToolbox
 import os
 
-private let visualizerLog = Logger(subsystem: "com.radioanimu.airwave", category: "audio-tap")
+private let visualizerLog = Logger(subsystem: "com.anythingplayer", category: "audio-tap")
 
 /// Decodes a stream's compressed audio (MP3, AAC / HE-AAC in ADTS) to mono
 /// float PCM with AudioToolbox. Fed the bytes the proxy relays to AVPlayer.
@@ -185,7 +185,7 @@ final class StreamVisualizer {
   private var size = 1024
   private var handler: ((AudioWindow) -> Void)?
 
-  private let queue = DispatchQueue(label: "airwave.visualizer")
+  private let queue = DispatchQueue(label: "anythingplayer.visualizer")
   private var decoder: StreamDecoder?
   private var pending: [Float] = []
   private var framesDecoded: Int64 = 0

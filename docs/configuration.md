@@ -37,9 +37,9 @@ Options are fixed for the player's lifetime. The audio-session configuration (iO
 
 | Where | Option | Effect |
 |---|---|---|
-| `android/gradle.properties` | `airwaveHls=false` | drop Media3's HLS module (~300 KB) |
-| root `build.gradle` `ext` | `airwaveMedia3Version = "1.x.y"` | pin a Media3 version (default 1.11.1) |
-| `AndroidManifest.xml` `<application>` | `<meta-data android:name="com.radioanimu.airwave.FOREGROUND_TIMEOUT_MS" android:value="…"/>` | how long a paused session stays in the foreground (Media3 default and max: 10 min) |
-| Expo config plugin | `["react-native-airwave", { "backgroundAudio": false }]` | do not add the iOS `audio` background mode |
+| `android/gradle.properties` | `rnapHls=false` | drop Media3's HLS module (~300 KB) |
+| root `build.gradle` `ext` | `rnapMedia3Version = "1.x.y"` | pin a Media3 version (default 1.11.1) |
+| `AndroidManifest.xml` `<application>` | `<meta-data android:name="com.anythingplayer.FOREGROUND_TIMEOUT_MS" android:value="…"/>` | how long a paused session stays in the foreground (Media3 default and max: 10 min) |
+| Expo config plugin | `["react-native-anything-player", { "backgroundAudio": false }]` | do not add the iOS `audio` background mode |
 
 The recovery timings that are *not* configurable are fixed on purpose; [recovery.md](recovery.md) explains each.

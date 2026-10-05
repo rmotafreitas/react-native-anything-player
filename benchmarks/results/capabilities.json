@@ -2,7 +2,7 @@
   "checkedAt": "2026-10-05",
   "method": "Read from each package's published npm tarball (TypeScript API + native sources). \"Your code\" means possible only if the app writes the logic itself (RNTP's retry() exists, but nothing calls it for you). Nothing here was measured on a device.",
   "libraries": [
-    { "id": "airwave", "label": "Airwave", "version": "0.1.0" },
+    { "id": "rnap", "label": "RNAP", "version": "0.1.0" },
     { "id": "rntp5", "label": "RNTP 5", "version": "5.12.1" },
     { "id": "rntp4", "label": "RNTP 4", "version": "4.1.2" },
     { "id": "expoAudio", "label": "expo-audio", "version": "57.0.5" }
@@ -14,32 +14,32 @@
         {
           "label": "Reconnects a dropped stream on its own",
           "evidence": "no reconnect/backoff logic in the native sources of the others; RNTP 5 exposes retry() for the app to call",
-          "values": { "airwave": "yes", "rntp5": "app", "rntp4": "app", "expoAudio": "app" }
+          "values": { "rnap": "yes", "rntp5": "app", "rntp4": "app", "expoAudio": "app" }
         },
         {
           "label": "Reacts to offline / online / Wi-Fi↔cellular",
           "evidence": "no NWPathMonitor / ConnectivityManager callback in the others",
-          "values": { "airwave": "yes", "rntp5": "app", "rntp4": "app", "expoAudio": "app" }
+          "values": { "rnap": "yes", "rntp5": "app", "rntp4": "app", "expoAudio": "app" }
         },
         {
           "label": "Detects silent stalls and dead sockets",
-          "evidence": "Airwave: playhead + buffer watchdog (docs/recovery.md); no watchdog in the others",
-          "values": { "airwave": "yes", "rntp5": "no", "rntp4": "no", "expoAudio": "no" }
+          "evidence": "RNAP: playhead + buffer watchdog (docs/recovery.md); no watchdog in the others",
+          "values": { "rnap": "yes", "rntp5": "no", "rntp4": "no", "expoAudio": "no" }
         },
         {
           "label": "Recovery keeps working while JS is frozen",
           "evidence": "follows from the rows above: elsewhere recovery is app (JS) code",
-          "values": { "airwave": "yes", "rntp5": "no", "rntp4": "no", "expoAudio": "no" }
+          "values": { "rnap": "yes", "rntp5": "no", "rntp4": "no", "expoAudio": "no" }
         },
         {
           "label": "ICY (Shoutcast/Icecast) now-playing titles",
           "evidence": "ICY parsing present in RNTP 4/5 native code; absent in expo-audio",
-          "values": { "airwave": "yes", "rntp5": "yes", "rntp4": "yes", "expoAudio": "no" }
+          "values": { "rnap": "yes", "rntp5": "yes", "rntp4": "yes", "expoAudio": "no" }
         },
         {
           "label": "Visualizer data for iOS live streams",
           "evidence": "expo-audio uses MTAudioProcessingTap, which AVPlayer never runs for HTTP streams (docs/visualizer.md)",
-          "values": { "airwave": "yes", "rntp5": "no", "rntp4": "no", "expoAudio": "no" }
+          "values": { "rnap": "yes", "rntp5": "no", "rntp4": "no", "expoAudio": "no" }
         }
       ]
     },
@@ -49,47 +49,47 @@
         {
           "label": "Queue / playlist",
           "evidence": "RNTP setMediaItems/skipToNext; expo-audio AudioPlaylist",
-          "values": { "airwave": "no", "rntp5": "yes", "rntp4": "yes", "expoAudio": "yes" }
+          "values": { "rnap": "no", "rntp5": "yes", "rntp4": "yes", "expoAudio": "yes" }
         },
         {
           "label": "Several independent players (music + SFX)",
-          "evidence": "RNTP is one global TrackPlayer; Airwave and expo-audio create instances",
-          "values": { "airwave": "yes", "rntp5": "no", "rntp4": "no", "expoAudio": "yes" }
+          "evidence": "RNTP is one global TrackPlayer; RNAP and expo-audio create instances",
+          "values": { "rnap": "yes", "rntp5": "no", "rntp4": "no", "expoAudio": "yes" }
         },
         {
           "label": "Disk cache for offline replay",
           "evidence": "RNTP 5 CacheConfig; RNTP 4 maxCacheSize (Android only)",
-          "values": { "airwave": "no", "rntp5": "yes", "rntp4": "partial", "expoAudio": "no" }
+          "values": { "rnap": "no", "rntp5": "yes", "rntp4": "partial", "expoAudio": "no" }
         },
         {
           "label": "Preload the next item",
           "evidence": "RNTP 5 preload(); expo-audio preload()",
-          "values": { "airwave": "no", "rntp5": "yes", "rntp4": "no", "expoAudio": "yes" }
+          "values": { "rnap": "no", "rntp5": "yes", "rntp4": "no", "expoAudio": "yes" }
         },
         {
           "label": "CarPlay / Android Auto browsing",
           "evidence": "RNTP 5 setBrowseTree + CarPlay framework",
-          "values": { "airwave": "no", "rntp5": "yes", "rntp4": "no", "expoAudio": "no" }
+          "values": { "rnap": "no", "rntp5": "yes", "rntp4": "no", "expoAudio": "no" }
         },
         {
           "label": "Chromecast / AirPlay picker",
           "evidence": "RNTP 5 CastButton / AirPlayButton / media3-cast",
-          "values": { "airwave": "no", "rntp5": "yes", "rntp4": "no", "expoAudio": "no" }
+          "values": { "rnap": "no", "rntp5": "yes", "rntp4": "no", "expoAudio": "no" }
         },
         {
           "label": "Sleep timer",
           "evidence": "RNTP 5 sleepAfterTime / sleepAfterMediaItemAtIndex",
-          "values": { "airwave": "no", "rntp5": "yes", "rntp4": "no", "expoAudio": "no" }
+          "values": { "rnap": "no", "rntp5": "yes", "rntp4": "no", "expoAudio": "no" }
         },
         {
           "label": "Web",
           "evidence": "*.web.ts implementations",
-          "values": { "airwave": "no", "rntp5": "yes", "rntp4": "yes", "expoAudio": "yes" }
+          "values": { "rnap": "no", "rntp5": "yes", "rntp4": "yes", "expoAudio": "yes" }
         },
         {
           "label": "Recording",
           "evidence": "expo-audio AudioRecorder",
-          "values": { "airwave": "no", "rntp5": "no", "rntp4": "no", "expoAudio": "yes" }
+          "values": { "rnap": "no", "rntp5": "no", "rntp4": "no", "expoAudio": "yes" }
         }
       ]
     },
@@ -98,13 +98,13 @@
       "rows": [
         {
           "label": "Free for commercial apps",
-          "evidence": "Airwave PolyForm Noncommercial; RNTP 5 paid licence for commercial use; RNTP 4 Apache-2.0; expo-audio MIT",
-          "values": { "airwave": "no", "rntp5": "no", "rntp4": "yes", "expoAudio": "yes" }
+          "evidence": "RNAP PolyForm Noncommercial; RNTP 5 paid licence for commercial use; RNTP 4 Apache-2.0; expo-audio MIT",
+          "values": { "rnap": "no", "rntp5": "no", "rntp4": "yes", "expoAudio": "yes" }
         },
         {
           "label": "No framework dependency (bare RN)",
           "evidence": "expo-audio requires expo (expo-modules-core) and expo-asset",
-          "values": { "airwave": "yes", "rntp5": "yes", "rntp4": "yes", "expoAudio": "no" }
+          "values": { "rnap": "yes", "rntp5": "yes", "rntp4": "yes", "expoAudio": "no" }
         }
       ]
     }

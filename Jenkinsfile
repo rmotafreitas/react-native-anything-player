@@ -1,10 +1,9 @@
-// CI for react-native-airwave — the native audio player compiled into the
-// Animu mobile app (pinned there as the packages/react-native-airwave
-// submodule).
+// CI for react-native-anything-player on the self-hosted Jenkins (apps that
+// pin the library as a submodule consume the package this job archives).
 //
 // Runs the JS layer's checks with the repo-pinned Yarn (lint, typecheck, unit
 // tests with their coverage thresholds), builds the library and archives the
-// npm package built from this commit as `react-native-airwave.tgz`.
+// npm package built from this commit as `react-native-anything-player.tgz`.
 //
 // The native engines' conformance suites need Xcode (Swift) and the Android SDK
 // (Kotlin); they run in GitHub Actions (.github/workflows/ci.yml).
@@ -25,7 +24,7 @@ pipeline {
     timeout(time: 20, unit: 'MINUTES')
     disableConcurrentBuilds()
     buildDiscarder(logRotator(numToKeepStr: '10', artifactNumToKeepStr: '20'))
-    // Share the lock with the Animu jobs (same physical host).
+    // One build at a time on this host: the lock is shared with the other jobs on it.
     lock('animu-build-host')
   }
 
@@ -58,16 +57,16 @@ pipeline {
           yarn typecheck
           yarn test --coverage
           yarn prepare
-          yarn pack --out react-native-airwave.tgz
+          yarn pack --out react-native-anything-player.tgz
           test -f lib/module/index.js
-          ls -la react-native-airwave.tgz
+          ls -la react-native-anything-player.tgz
         '''
-        archiveArtifacts artifacts: 'react-native-airwave.tgz', fingerprint: true
+        archiveArtifacts artifacts: 'react-native-anything-player.tgz', fingerprint: true
       }
     }
   }
 
   post {
-    failure { echo 'react-native-airwave build failed.' }
+    failure { echo 'react-native-anything-player build failed.' }
   }
 }

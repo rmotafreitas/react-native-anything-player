@@ -5,15 +5,15 @@
 import PackageDescription
 
 let package = Package(
-  name: "AirwaveCore",
+  name: "AnythingPlayerCore",
   platforms: [.macOS(.v13)],
-  products: [.library(name: "AirwaveCore", targets: ["AirwaveCore"])],
+  products: [.library(name: "AnythingPlayerCore", targets: ["AnythingPlayerCore"])],
   targets: [
-    .target(name: "AirwaveCore", path: "Core"),
+    .target(name: "AnythingPlayerCore", path: "Core"),
     .testTarget(
-      name: "AirwaveCoreTests",
-      dependencies: ["AirwaveCore"],
-      path: "Tests/AirwaveCoreTests"
+      name: "AnythingPlayerCoreTests",
+      dependencies: ["AnythingPlayerCore"],
+      path: "Tests/AnythingPlayerCoreTests"
     ),
   ],
   swiftLanguageVersions: [.v5]

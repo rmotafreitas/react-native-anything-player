@@ -11,7 +11,7 @@
 
   <application>
     <service
-      android:name="com.radioanimu.airwave.platform.AirwavePlaybackService"
+      android:name="com.anythingplayer.platform.AnythingPlayerPlaybackService"
       android:exported="true"
       android:foregroundServiceType="mediaPlayback">
       <intent-filter>

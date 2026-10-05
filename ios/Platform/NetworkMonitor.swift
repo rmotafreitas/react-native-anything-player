@@ -7,7 +7,7 @@ import Network
 /// though the device never went offline.
 final class NetworkMonitor {
   private let monitor = NWPathMonitor()
-  private let queue = DispatchQueue(label: "airwave.network")
+  private let queue = DispatchQueue(label: "anythingplayer.network")
   private var lastInterface: NWInterface.InterfaceType?
   private(set) var state: NetworkState = .unknown
   private let onChange: (NetworkState, Bool) -> Void

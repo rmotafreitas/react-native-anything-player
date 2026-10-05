@@ -1,11 +1,11 @@
-<p align="center"><img src="docs/assets/brand/mascot-480.webp" width="200" alt="Airwave's mascot, a fox girl in orange headphones, tapping play on her phone"></p>
+<p align="center"><img src="docs/assets/brand/mascot-480.webp" width="200" alt="RNAP's mascot, a fox girl in orange headphones, tapping play on her phone"></p>
 
-# react-native-airwave
+# React Native Anything Player (RNAP)
 
-A native-first audio player for React Native — files, streams and **internet radio** — that keeps playing correctly in the background, through network loss, interruptions and JavaScript freezes.
+`react-native-anything-player` is a native-first audio player for React Native — files, streams and **internet radio** — that keeps playing correctly in the background, through network loss, interruptions and JavaScript freezes.
 
 ```ts
-import { Player } from 'react-native-airwave';
+import { Player } from 'react-native-anything-player';
 
 const player = new Player();
 await player.load('https://radio.example.com/stream');
@@ -16,13 +16,13 @@ That is the whole integration for a radio that reconnects on its own, survives W
 
 ## Why
 
-Playback logic that lives in JavaScript breaks in exactly the situations a player must handle: React Native suspends JS timers in the background, the JS thread can be frozen or reloaded, and native events race JS commands. Airwave keeps the whole player — state machine, recovery, audio focus, interruptions, media session, clocks — in native code. JavaScript sends commands and mirrors native state; it is never required for playback to work.
+Playback logic that lives in JavaScript breaks in exactly the situations a player must handle: React Native suspends JS timers in the background, the JS thread can be frozen or reloaded, and native events race JS commands. RNAP keeps the whole player — state machine, recovery, audio focus, interruptions, media session, clocks — in native code. JavaScript sends commands and mirrors native state; it is never required for playback to work.
 
-It was designed from years of production failure reports of the [Rádio Animu](https://www.animu.moe) app (see [docs/recovery.md](docs/recovery.md) for the failure each recovery rule exists for).
+RNAP was built by the developer of [animu.moe](https://www.animu.moe), an internet radio app, when React Native Track Player went commercial (v5 needs a paid licence even for a free app from a non-profit) and staying on air through a dropped network, a phone call or a switch to Instagram still took a pile of app code with every available player. [docs/why.md](docs/why.md) has the full story with sources; [docs/recovery.md](docs/recovery.md) lists every recovery rule and the failure behind it.
 
-![What you get out of the box: Airwave, RNTP 5, RNTP 4 and expo-audio compared](docs/assets/charts/capabilities.svg)
+![What you get out of the box: RNAP, RNTP 5, RNTP 4 and expo-audio compared](docs/assets/charts/capabilities.svg)
 
-Read from each library's published source; sizes, methodology and the gaps Airwave still has are in [Comparison & benchmarks](docs/comparison.md) and the [roadmap](docs/roadmap.md).
+Read from each library's published source; sizes, methodology and the gaps RNAP still has are in [Comparison & benchmarks](docs/comparison.md) and the [roadmap](docs/roadmap.md).
 
 ## Features
 
@@ -39,8 +39,8 @@ Read from each library's published source; sizes, methodology and the gaps Airwa
 ## Install
 
 ```sh
-npm install react-native-airwave
-# or: yarn add react-native-airwave / pnpm add react-native-airwave
+npm install react-native-anything-player
+# or: yarn add react-native-anything-player / pnpm add react-native-anything-player
 ```
 
 Requires React Native **≥ 0.80** with the New Architecture (the default), iOS 15.1+, Android 7.0+ (API 24).
@@ -48,7 +48,7 @@ Requires React Native **≥ 0.80** with the New Architecture (the default), iOS 
 **Expo** (development builds / prebuild — not Expo Go):
 
 ```json
-{ "expo": { "plugins": ["react-native-airwave"] } }
+{ "expo": { "plugins": ["react-native-anything-player"] } }
 ```
 
 **Bare React Native (iOS)**: add the `audio` background mode to `Info.plist`, then `pod install`:
@@ -65,7 +65,7 @@ Android needs nothing: the media playback service and permissions are merged fro
 ## Usage
 
 ```tsx
-import { Player, usePlayerStatus, useProgress, useStreamMetadata } from 'react-native-airwave';
+import { Player, usePlayerStatus, useProgress, useStreamMetadata } from 'react-native-anything-player';
 
 // Create players at module scope: playback does not depend on any component.
 export const radio = new Player();
@@ -93,8 +93,9 @@ function NowPlaying() {
 
 | | |
 |---|---|
+| [Why RNAP](docs/why.md) | Why this library exists, with sources |
 | [Getting started](docs/getting-started.md) | Installation (Expo, bare), first player, permissions |
-| [Comparison & benchmarks](docs/comparison.md) | Airwave against RNTP, expo-audio and the rest: capabilities, install size |
+| [Comparison & benchmarks](docs/comparison.md) | RNAP against RNTP, expo-audio and the rest: capabilities, install size |
 | [Playback](docs/playback.md) | Sources, commands, state model, progress, volume, seeking |
 | [Internet radio & ICY](docs/internet-radio.md) | Live streams, ICY metadata, live edge, recovery |
 | [Background & system](docs/background-and-system.md) | Background, lock screen, media sessions, interruptions, audio focus, artwork |
@@ -106,7 +107,7 @@ function NowPlaying() {
 | [Debugging & troubleshooting](docs/debugging.md) | Diagnostics, logs, common problems, FAQ |
 | [Architecture](docs/architecture.md) | Design decisions and research |
 | [Testing](docs/testing.md) | Test layers, conformance suite, device tests, soak results |
-| [Roadmap](docs/roadmap.md) | What Airwave still needs, in priority order |
+| [Roadmap](docs/roadmap.md) | What RNAP still needs, in priority order |
 
 The same pages are published as a site (search included): `yarn docs` runs it locally, `yarn docs:build` builds it. Diagrams are PlantUML sources in `docs/diagrams/` (`node scripts/render-diagrams.mjs`); charts come from `benchmarks/` (`node benchmarks/size/measure.mjs && node benchmarks/charts/render.mjs`).
 

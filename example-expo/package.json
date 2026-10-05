@@ -8,7 +8,7 @@
     "expo-status-bar": "~57.0.1",
     "react": "19.2.3",
     "react-native": "0.86.3",
-    "react-native-airwave": "file:react-native-airwave.tgz"
+    "react-native-anything-player": "file:react-native-anything-player.tgz"
   },
   "devDependencies": {
     "@types/react": "~19.2.2",

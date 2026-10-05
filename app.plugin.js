@@ -1,4 +1,4 @@
-// Expo config plugin: `plugins: ["react-native-airwave"]` in app.json.
+// Expo config plugin: `plugins: ["react-native-anything-player"]` in app.json.
 //
 // iOS: background audio needs the `audio` UIBackgroundMode.
 // Android: nothing to do — the library's manifest (media playback foreground
@@ -7,7 +7,7 @@ const { withInfoPlist, createRunOncePlugin } = require('expo/config-plugins');
 const pkg = require('./package.json');
 
 /** @param {{ backgroundAudio?: boolean }} [options] */
-function withAirwave(config, options = {}) {
+function withAnythingPlayer(config, options = {}) {
   const backgroundAudio = options.backgroundAudio !== false;
   return withInfoPlist(config, (cfg) => {
     const modes = new Set(cfg.modResults.UIBackgroundModes ?? []);
@@ -18,4 +18,4 @@ function withAirwave(config, options = {}) {
   });
 }
 
-module.exports = createRunOncePlugin(withAirwave, pkg.name, pkg.version);
+module.exports = createRunOncePlugin(withAnythingPlayer, pkg.name, pkg.version);

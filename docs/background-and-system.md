@@ -4,15 +4,15 @@
 
 Playback continues with the app in the background, the screen locked, and (Android) in Doze. The engine, its timers and the media session are native, so suspended JavaScript timers or a frozen JS thread change nothing. When JavaScript resumes, `player.status` and `getProgress()` already reflect native truth (players refresh on `AppState` → `active`).
 
-**iOS** requires the `audio` background mode ([getting started](getting-started.md)). iOS suspends an app a few seconds after it stops producing audio, which would also freeze recovery during a network outage. While a backgrounded player wants audio but has none (loading, stalled, reconnecting), Airwave renders a near-silent signal (±1 LSB dither, about −90 dBFS) through `AVAudioEngine` so the app stays alive and recovers when the network returns. It never runs while audio flows, and stops when recovery gives up.
+**iOS** requires the `audio` background mode ([getting started](getting-started.md)). iOS suspends an app a few seconds after it stops producing audio, which would also freeze recovery during a network outage. While a backgrounded player wants audio but has none (loading, stalled, reconnecting), RNAP renders a near-silent signal (±1 LSB dither, about −90 dBFS) through `AVAudioEngine` so the app stays alive and recovers when the network returns. It never runs while audio flows, and stops when recovery gives up.
 
-**Android** runs a `mediaPlayback` foreground service while playback is engaged, managed by Media3. Streaming holds a partial wake lock and a Wi-Fi lock (screen-off power saving otherwise starves the stream), and Airwave holds its own bounded locks between reconnect attempts, when ExoPlayer holds none.
+**Android** runs a `mediaPlayback` foreground service while playback is engaged, managed by Media3. Streaming holds a partial wake lock and a Wi-Fi lock (screen-off power saving otherwise starves the stream), and RNAP holds its own bounded locks between reconnect attempts, when ExoPlayer holds none.
 
 A paused session leaves the foreground after 10 minutes (Media3 default). Apps can shorten it:
 
 ```xml
 <!-- android/app/src/main/AndroidManifest.xml, inside <application> -->
-<meta-data android:name="com.radioanimu.airwave.FOREGROUND_TIMEOUT_MS" android:value="60000" />
+<meta-data android:name="com.anythingplayer.FOREGROUND_TIMEOUT_MS" android:value="60000" />
 ```
 
 Swiping the app away from recents keeps playing music (like most media apps) unless `android.stopOnTaskRemoved: true`.
@@ -96,4 +96,4 @@ The system's decisions are respected; playback is never resumed against the user
 
 ## iOS media services reset
 
-When iOS resets its media services, every `AVPlayer` dies. Airwave rebuilds its players, reconfigures the session and re-opens what was loaded with the same intent.
+When iOS resets its media services, every `AVPlayer` dies. RNAP rebuilds its players, reconfigures the session and re-opens what was loaded with the same intent.

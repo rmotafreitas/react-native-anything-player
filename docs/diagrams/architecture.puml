@@ -6,9 +6,9 @@ package "JavaScript  (src/)" {
   rectangle "<b>Player · hooks · PlayerError" as JS #FFE4D5
 }
 
-package "TurboModule  (Codegen spec: src/native/NativeAirwave.ts)" {
-  rectangle "<b>AirwaveModule.mm → AirwaveBridge.swift" as BridgeIOS
-  rectangle "<b>AirwaveModule.kt" as BridgeAndroid
+package "TurboModule  (Codegen spec: src/native/NativeAnythingPlayer.ts)" {
+  rectangle "<b>AnythingPlayerModule.mm → AnythingPlayerBridge.swift" as BridgeIOS
+  rectangle "<b>AnythingPlayerModule.kt" as BridgeAndroid
 }
 
 package "Host  (one per platform)" {

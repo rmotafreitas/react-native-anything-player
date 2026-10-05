@@ -1,10 +1,10 @@
 buildscript {
-  ext.Airwave = [
+  ext.AnythingPlayer = [
     kotlinVersion: "2.1.20",
     minSdkVersion: 24,
     compileSdkVersion: 36,
     // Media3 is the only runtime dependency. Apps can pin another 1.x via
-    // `airwaveMedia3Version` in their root `ext` (e.g. to share a version with
+    // `rnapMedia3Version` in their root `ext` (e.g. to share a version with
     // another library).
     media3Version: "1.11.1",
   ]
@@ -13,7 +13,7 @@ buildscript {
     if (rootProject.ext.has(prop)) {
       return rootProject.ext.get(prop)
     }
-    return Airwave[prop]
+    return AnythingPlayer[prop]
   }
 
   repositories {
@@ -36,14 +36,14 @@ if (project.extensions.findByName("kotlin") == null) {
 
 apply plugin: "com.facebook.react"
 
-def media3Version = rootProject.ext.has("airwaveMedia3Version") ? rootProject.ext.get("airwaveMedia3Version") : Airwave.media3Version
+def media3Version = rootProject.ext.has("rnapMedia3Version") ? rootProject.ext.get("rnapMedia3Version") : AnythingPlayer.media3Version
 // HLS is on by default (many stations and podcasts are HLS-only). Apps that
-// only play progressive streams can drop ~300 KB with `airwaveHls=false` in
+// only play progressive streams can drop ~300 KB with `rnapHls=false` in
 // gradle.properties.
-def includeHls = !project.hasProperty("airwaveHls") || project.property("airwaveHls") != "false"
+def includeHls = !project.hasProperty("rnapHls") || project.property("rnapHls") != "false"
 
 android {
-  namespace "com.radioanimu.airwave"
+  namespace "com.anythingplayer"
 
   compileSdkVersion getExtOrDefault("compileSdkVersion")
 

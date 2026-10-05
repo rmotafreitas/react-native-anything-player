@@ -75,7 +75,7 @@ struct NowPlayingFields: Equatable {
 }
 
 private let diagnosticsCapacity = 300
-private let log = Logger(subsystem: "com.radioanimu.airwave", category: "player")
+private let log = Logger(subsystem: "com.anythingplayer", category: "player")
 
 /// One player: the engine, its AVPlayer driver and everything that crosses to
 /// JS. Engine and driver run on the main thread; the lock-protected snapshots
@@ -85,7 +85,7 @@ final class PlayerController: EngineDelegate, DriverObserver {
   let options: PlayerOptions
   let driver: AVPlayerDriver
   let engine: PlaybackEngine
-  private unowned let runtime: AirwaveRuntime
+  private unowned let runtime: AnythingPlayerRuntime
   private let emitEvent: ([String: Any]) -> Void
 
   private let lock = NSLock()
@@ -108,7 +108,7 @@ final class PlayerController: EngineDelegate, DriverObserver {
   private var progressTimer: DispatchSourceTimer?
   private var released = false
 
-  init(id: String, options: PlayerOptions, runtime: AirwaveRuntime, emit: @escaping ([String: Any]) -> Void) {
+  init(id: String, options: PlayerOptions, runtime: AnythingPlayerRuntime, emit: @escaping ([String: Any]) -> Void) {
     self.id = id
     self.options = options
     self.runtime = runtime
@@ -426,7 +426,7 @@ enum Serialization {
   }
 
   static func nsError(_ e: PlayerError) -> NSError {
-    NSError(domain: "Airwave", code: e.platformCode ?? 0, userInfo: error(e).merging([NSLocalizedDescriptionKey: e.message]) { a, _ in a })
+    NSError(domain: "AnythingPlayer", code: e.platformCode ?? 0, userInfo: error(e).merging([NSLocalizedDescriptionKey: e.message]) { a, _ in a })
   }
 
   static func metadata(_ m: StreamMetadata, timestamp: Int64) -> [String: Any] {

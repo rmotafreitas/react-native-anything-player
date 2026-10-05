@@ -30,7 +30,7 @@ enum ErrorMapping {
     }
 
     for e in chain {
-      if e.domain == "AirwaveHTTP" {
+      if e.domain == "AnythingPlayerHTTP" {
         var mapped = http(e.code, nil)
         mapped.platformDomain = ns.domain
         mapped.platformCode = ns.code

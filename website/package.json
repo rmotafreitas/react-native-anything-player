@@ -1,8 +1,8 @@
 {
-  "name": "react-native-airwave-website",
+  "name": "react-native-anything-player-website",
   "version": "0.0.0",
   "private": true,
-  "description": "The Airwave documentation site (VitePress). Pages come from ../docs.",
+  "description": "The RNAP documentation site (VitePress). Pages come from ../docs.",
   "type": "module",
   "scripts": {
     "dev": "vitepress dev",

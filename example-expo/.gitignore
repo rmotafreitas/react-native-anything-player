@@ -41,6 +41,6 @@ yarn-error.*
 /android
 
 # packed library (scripts/sync-expo-example.sh)
-react-native-airwave.tgz
+react-native-anything-player.tgz
 /ios
 /android

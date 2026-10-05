@@ -1,13 +1,13 @@
 # Engine conformance suite
 
 The playback engine exists twice — `ios/Core/PlaybackEngine.swift` and
-`android/src/main/java/com/radioanimu/airwave/core/PlaybackEngine.kt` — because
+`android/src/main/java/com/anythingplayer/core/PlaybackEngine.kt` — because
 native code must own playback (see `docs/architecture.md`) and each platform's
 native code is written in its own language. These scenarios are the single
 executable specification both implementations must satisfy:
 
 - iOS: `cd ios && swift test` (`ConformanceTests.swift`)
-- Android: `./gradlew :react-native-airwave:testDebugUnitTest` (`ConformanceTest.kt`)
+- Android: `./gradlew :react-native-anything-player:testDebugUnitTest` (`ConformanceTest.kt`)
 
 Every scenario runs against a fake monotonic clock and a recording driver, so
 timing is exact and nothing sleeps.

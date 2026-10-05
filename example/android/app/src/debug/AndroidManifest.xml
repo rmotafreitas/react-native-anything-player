@@ -3,6 +3,6 @@
     <!-- Test-only: drop the paused session's foreground state after 5 s so the
          "resume from the background without a foreground service" path can be
          exercised quickly (production default: 10 min). -->
-    <meta-data android:name="com.radioanimu.airwave.FOREGROUND_TIMEOUT_MS" android:value="5000" />
+    <meta-data android:name="com.anythingplayer.FOREGROUND_TIMEOUT_MS" android:value="5000" />
   </application>
 </manifest>

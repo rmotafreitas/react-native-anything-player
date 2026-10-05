@@ -1,5 +1,5 @@
 PODS:
-  - Airwave (0.1.0):
+  - AnythingPlayer (0.1.0):
     - hermes-engine
     - RCTRequired
     - RCTTypeSafety
@@ -1848,7 +1848,7 @@ PODS:
   - Yoga (0.0.0)
 
 DEPENDENCIES:
-  - Airwave (from `../..`)
+  - AnythingPlayer (from `../..`)
   - FBLazyVector (from `../node_modules/react-native/Libraries/FBLazyVector`)
   - hermes-engine (from `../node_modules/react-native/sdks/hermes-engine/hermes-engine.podspec`)
   - RCTDeprecation (from `../node_modules/react-native/ReactApple/Libraries/RCTFoundation/RCTDeprecation`)
@@ -1927,7 +1927,7 @@ DEPENDENCIES:
   - Yoga (from `../node_modules/react-native/ReactCommon/yoga`)
 
 EXTERNAL SOURCES:
-  Airwave:
+  AnythingPlayer:
     :path: "../.."
   FBLazyVector:
     :path: "../node_modules/react-native/Libraries/FBLazyVector"
@@ -2082,7 +2082,7 @@ EXTERNAL SOURCES:
     :path: "../node_modules/react-native/ReactCommon/yoga"
 
 SPEC CHECKSUMS:
-  Airwave: 9d17a9c07aa22a932f84edff77b0d2f24e0860d4
+  AnythingPlayer: 9d17a9c07aa22a932f84edff77b0d2f24e0860d4
   FBLazyVector: 3c3be9a019176b5699455f7f66c5444b78a411c6
   hermes-engine: 3a6473f7b32bad918f236702de0dab2d06c1641d
   RCTDeprecation: bccb6545c26db881ecddfd83a3f9ea82aba1605f

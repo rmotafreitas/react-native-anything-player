@@ -1,13 +1,13 @@
 {
   "expo": {
-    "name": "Airwave Expo",
-    "slug": "airwave-expo-example",
+    "name": "RNAP Expo",
+    "slug": "anythingplayer-expo-example",
     "version": "1.0.0",
     "orientation": "portrait",
-    "scheme": "airwave-example",
+    "scheme": "anythingplayer-example",
     "userInterfaceStyle": "dark",
     "ios": {
-      "bundleIdentifier": "airwave.expo.example",
+      "bundleIdentifier": "anythingplayer.expo.example",
       "infoPlist": {
         "NSAppTransportSecurity": {
           "NSAllowsLocalNetworking": true
@@ -15,10 +15,10 @@
       }
     },
     "android": {
-      "package": "airwave.expo.example"
+      "package": "anythingplayer.expo.example"
     },
     "plugins": [
-      "react-native-airwave",
+      "react-native-anything-player",
       "./plugins/withTestServerCleartext",
       "./plugins/withSceneLifecycle"
     ]

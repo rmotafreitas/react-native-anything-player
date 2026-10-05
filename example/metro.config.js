@@ -13,7 +13,7 @@ const root = path.resolve(__dirname, '..');
 const config = withMetroConfig(getDefaultConfig(__dirname), {
   root,
   dirname: __dirname,
-  conditions: ['react-native-airwave-source'],
+  conditions: ['react-native-anything-player-source'],
 });
 
 module.exports = config;

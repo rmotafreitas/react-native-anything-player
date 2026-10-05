@@ -1,5 +1,5 @@
 import { AppState, Image } from 'react-native';
-import NativeAirwave from './native/NativeAirwave';
+import NativeAnythingPlayer from './native/NativeAnythingPlayer';
 import { PlayerError, toPlayerError } from './errors';
 import type {
   AudioSamplingOptions,
@@ -28,7 +28,7 @@ let subscribed = false;
 function ensureSubscription(): void {
   if (subscribed) return;
   subscribed = true;
-  NativeAirwave.onPlayerEvent((event) => {
+  NativeAnythingPlayer.onPlayerEvent((event) => {
     const e = event as { playerId?: string };
     if (typeof e.playerId === 'string')
       players.get(e.playerId)?._handleEvent(event);
@@ -159,10 +159,11 @@ export class Player {
       }
     }
     ensureSubscription();
-    this.id = NativeAirwave.createPlayer(options as object);
+    this.id = NativeAnythingPlayer.createPlayer(options as object);
     players.set(this.id, this);
-    this._status = NativeAirwave.getStatus(this.id) as NativeStatus;
-    if (options.diagnostics) NativeAirwave.setDiagnosticsEnabled(this.id, true);
+    this._status = NativeAnythingPlayer.getStatus(this.id) as NativeStatus;
+    if (options.diagnostics)
+      NativeAnythingPlayer.setDiagnosticsEnabled(this.id, true);
   }
 
   // ── State ──
@@ -189,9 +190,11 @@ export class Player {
   /** Reads the authoritative status from native now and applies it if newer. */
   refresh(): PlayerStatus {
     if (this.released) return this._status;
-    this.apply(NativeAirwave.getStatus(this.id) as NativeStatus);
+    this.apply(NativeAnythingPlayer.getStatus(this.id) as NativeStatus);
     const meta = (
-      NativeAirwave.getMetadata(this.id) as { metadata: MediaMetadata | null }
+      NativeAnythingPlayer.getMetadata(this.id) as {
+        metadata: MediaMetadata | null;
+      }
     ).metadata;
     if (meta && meta.timestamp !== this._metadata?.timestamp)
       this._metadata = meta;
@@ -203,7 +206,7 @@ export class Player {
    * extrapolated to "now". Cheap enough to call every animation frame.
    */
   getProgress(): Progress {
-    return NativeAirwave.getProgress(this.id) as Progress;
+    return NativeAnythingPlayer.getProgress(this.id) as Progress;
   }
 
   // ── Commands ──
@@ -227,17 +230,17 @@ export class Player {
       nativeOptions.startPosition = options.startPosition;
     this._metadata = null;
     await this.run(() =>
-      NativeAirwave.load(this.id, normalized, nativeOptions)
+      NativeAnythingPlayer.load(this.id, normalized, nativeOptions)
     );
   }
 
   /** Starts or resumes playback (re-opens live streams at the live edge when needed). */
   async play(): Promise<void> {
-    await this.run(() => NativeAirwave.play(this.id));
+    await this.run(() => NativeAnythingPlayer.play(this.id));
   }
 
   async pause(): Promise<void> {
-    await this.run(() => NativeAirwave.pause(this.id));
+    await this.run(() => NativeAnythingPlayer.pause(this.id));
   }
 
   /** Pauses when playback is wanted, plays otherwise. */
@@ -247,34 +250,34 @@ export class Player {
 
   /** Stops and releases network/decoder resources; the source stays loaded. */
   async stop(): Promise<void> {
-    await this.run(() => NativeAirwave.stop(this.id));
+    await this.run(() => NativeAnythingPlayer.stop(this.id));
   }
 
   /** Unloads the source (back to `idle`). */
   async reset(): Promise<void> {
     this._metadata = null;
-    await this.run(() => NativeAirwave.reset(this.id));
+    await this.run(() => NativeAnythingPlayer.reset(this.id));
   }
 
   /** Seconds. Rejects with `NOT_SEEKABLE` for live streams. */
   async seekTo(position: number): Promise<void> {
     assertFinite('position', position);
-    await this.run(() => NativeAirwave.seekTo(this.id, position));
+    await this.run(() => NativeAnythingPlayer.seekTo(this.id, position));
   }
 
   /** 0…1 (clamped). Independent of `muted`. */
   async setVolume(volume: number): Promise<void> {
     assertFinite('volume', volume);
-    await this.run(() => NativeAirwave.setVolume(this.id, volume));
+    await this.run(() => NativeAnythingPlayer.setVolume(this.id, volume));
   }
 
   async setMuted(muted: boolean): Promise<void> {
-    await this.run(() => NativeAirwave.setMuted(this.id, !!muted));
+    await this.run(() => NativeAnythingPlayer.setMuted(this.id, !!muted));
   }
 
   async setRate(rate: number): Promise<void> {
     assertFinite('rate', rate);
-    await this.run(() => NativeAirwave.setRate(this.id, rate));
+    await this.run(() => NativeAnythingPlayer.setRate(this.id, rate));
   }
 
   /**
@@ -286,7 +289,7 @@ export class Player {
     this.ensureAlive();
     const normalized = normalizeNowPlaying(metadata);
     try {
-      await NativeAirwave.updateNowPlaying(this.id, normalized);
+      await NativeAnythingPlayer.updateNowPlaying(this.id, normalized);
     } catch (error) {
       throw toPlayerError(error);
     }
@@ -298,7 +301,7 @@ export class Player {
     this.released = true;
     players.delete(this.id);
     try {
-      await NativeAirwave.releasePlayer(this.id);
+      await NativeAnythingPlayer.releasePlayer(this.id);
     } finally {
       this.listeners.clear();
     }
@@ -312,7 +315,8 @@ export class Player {
 
   /** Streams engine traces as `diagnostic` events and to the native log. */
   setDiagnosticsEnabled(enabled: boolean): void {
-    if (!this.released) NativeAirwave.setDiagnosticsEnabled(this.id, enabled);
+    if (!this.released)
+      NativeAnythingPlayer.setDiagnosticsEnabled(this.id, enabled);
   }
 
   // ── Visualizer ──
@@ -326,13 +330,17 @@ export class Player {
     if (this.released) return false;
     const points = options.points ?? 1024;
     assertFinite('points', points);
-    return NativeAirwave.setAudioSampling(this.id, options.enabled, points);
+    return NativeAnythingPlayer.setAudioSampling(
+      this.id,
+      options.enabled,
+      points
+    );
   }
 
   /** The last ~300 engine traces (kept natively even while diagnostics are off). */
   getDiagnostics(): DiagnosticEntry[] {
     if (this.released) return [];
-    return NativeAirwave.getDiagnostics(this.id) as DiagnosticEntry[];
+    return NativeAnythingPlayer.getDiagnostics(this.id) as DiagnosticEntry[];
   }
 
   // ── Events ──

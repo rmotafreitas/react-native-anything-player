@@ -1,3 +1,3 @@
 # The TurboModule is instantiated reflectively by React Native.
--keep class com.radioanimu.airwave.AirwaveModule { *; }
--keep class com.radioanimu.airwave.AirwavePackage { *; }
+-keep class com.anythingplayer.AnythingPlayerModule { *; }
+-keep class com.anythingplayer.AnythingPlayerPackage { *; }

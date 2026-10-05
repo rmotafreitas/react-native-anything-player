@@ -4,7 +4,7 @@
 //   node benchmarks/charts/render.mjs
 //
 // Plain SVG, no dependencies: white cards that read the same on a light or a
-// dark page (GitHub, npm, the docs site). Emphasis form: Airwave in the brand
+// dark page (GitHub, npm, the docs site). Emphasis form: RNAP in the brand
 // orange, every other library in the de-emphasis neutral, values at the bar tips.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -120,7 +120,7 @@ function matrix(data) {
   const x0 = 24 + labelW;
   let y = 100;
   let body = '';
-  // Airwave column wash (the emphasis), drawn under everything.
+  // RNAP column wash (the emphasis), drawn under everything.
   const rowsTotal = data.groups.reduce((n, g) => n + g.rows.length, 0);
   const groupsH = data.groups.length * 34;
   const heightPlot = rowsTotal * rowH + groupsH;
@@ -163,7 +163,7 @@ function main() {
   const pkgs = size.packages;
   const label = (p) => `${p.label}`;
   const sorted = (key) =>
-    [...pkgs].sort((a, b) => key(a) - key(b)).map((p) => ({ label: label(p), value: key(p), highlight: p.name === 'react-native-airwave' }));
+    [...pkgs].sort((a, b) => key(a) - key(b)).map((p) => ({ label: label(p), value: key(p), highlight: p.name === 'react-native-anything-player' }));
   const source = `npm latest as of ${size.measuredAt} · benchmarks/size/measure.mjs`;
 
   const charts = {
@@ -187,7 +187,7 @@ function main() {
       subtitle: 'Maven artifacts declared by the package (React Native and the Kotlin stdlib excluded)',
       unit: 'artifacts',
       rows: sorted((p) => p.androidDependencies.length),
-      note: `${source} · Airwave: Media3 only, HLS optional (airwaveHls=false)`,
+      note: `${source} · RNAP: Media3 only, HLS optional (rnapHls=false)`,
     }),
     'js-cost.svg': hbar({
       title: 'JavaScript added to your bundle',

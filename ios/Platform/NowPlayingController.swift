@@ -3,7 +3,7 @@ import MediaPlayer
 import UIKit
 import os
 
-private let nowPlayingLog = Logger(subsystem: "com.radioanimu.airwave", category: "now-playing")
+private let nowPlayingLog = Logger(subsystem: "com.anythingplayer", category: "now-playing")
 
 /// What the lock screen / Control Center / CarPlay / AirPods show.
 struct NowPlayingInfo: Equatable {

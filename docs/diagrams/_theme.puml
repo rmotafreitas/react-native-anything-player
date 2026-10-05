@@ -1,4 +1,4 @@
-' Shared look for every Airwave diagram: white background (legible on light
+' Shared look for every RNAP diagram: white background (legible on light
 ' and dark pages alike), system sans, warm hairlines, the brand's orange tints.
 ' Rendered (PlantUML + Graphviz) by
 '   node scripts/render-diagrams.mjs

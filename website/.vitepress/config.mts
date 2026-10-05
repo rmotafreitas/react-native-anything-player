@@ -11,7 +11,7 @@ import { defineConfig } from 'vitepress';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
 const pkg = require('../../package.json');
-const BASE = process.env.AIRWAVE_DOCS_BASE ?? '/';
+const BASE = process.env.RNAP_DOCS_BASE ?? '/';
 const REPO = (pkg.repository.url as string).replace(/^git\+/, '').replace(/\.git$/, '');
 
 export default defineConfig({
@@ -45,8 +45,8 @@ export default defineConfig({
   cleanUrls: true,
   lastUpdated: true,
 
-  title: 'Airwave',
-  titleTemplate: ':title · Airwave',
+  title: 'RNAP',
+  titleTemplate: ':title · RNAP',
   description:
     'The React Native audio player that does not give up: files, streams and internet radio that survive dead sockets, network switches, calls and frozen JavaScript.',
   head: [
@@ -56,7 +56,7 @@ export default defineConfig({
     ['link', { rel: 'apple-touch-icon', sizes: '180x180', href: `${BASE}apple-touch-icon.png` }],
     ['meta', { property: 'og:image', content: `${BASE}icon-512.webp` }],
     ['meta', { name: 'theme-color', content: '#ff6428' }],
-    ['meta', { property: 'og:title', content: 'Airwave — the audio player that does not give up' }],
+    ['meta', { property: 'og:title', content: 'React Native Anything Player (RNAP)' }],
     [
       'meta',
       {
@@ -71,7 +71,7 @@ export default defineConfig({
       // A paragraph that is only a chart or diagram image becomes the native
       // component on the site (HTML bars, an HTML table, an inline themable
       // SVG). GitHub keeps rendering the image itself.
-      md.core.ruler.after('inline', 'airwave-native-figures', (state) => {
+      md.core.ruler.after('inline', 'rnap-native-figures', (state) => {
         const t = state.tokens;
         for (let i = 0; i + 2 < t.length; i++) {
           if (t[i].type !== 'paragraph_open' || t[i + 1].type !== 'inline' || t[i + 2].type !== 'paragraph_close') continue;
@@ -97,7 +97,7 @@ export default defineConfig({
       };
 
       // `../conformance/README.md` from docs/x.md → the file on GitHub.
-      md.core.ruler.after('inline', 'airwave-repo-links', (state) => {
+      md.core.ruler.after('inline', 'rnap-repo-links', (state) => {
         const from = path.posix.dirname((state.env as { relativePath?: string }).relativePath ?? '');
         const visit = (tokens: typeof state.tokens) => {
           for (const token of tokens) {
@@ -122,7 +122,7 @@ export default defineConfig({
     const pages = site.pages.filter((p) => p.startsWith('docs/')).sort();
     const sections: string[] = [];
     const index: string[] = [
-      `# Airwave`,
+      `# React Native Anything Player (RNAP)`,
       '',
       `> ${pkg.description}`,
       '',
@@ -142,7 +142,7 @@ export default defineConfig({
   },
 
   themeConfig: {
-    logo: { src: '/logo.webp', alt: 'Airwave' },
+    logo: { src: '/logo.webp', alt: 'RNAP' },
     nav: [
       { text: 'Docs', link: '/docs/getting-started', activeMatch: '^/docs/(?!comparison|roadmap)' },
       { text: 'Compare', link: '/docs/comparison' },
@@ -153,6 +153,7 @@ export default defineConfig({
       {
         text: 'Start here',
         items: [
+          { text: 'Why RNAP', link: '/docs/why' },
           { text: 'Getting started', link: '/docs/getting-started' },
           { text: 'Comparison & benchmarks', link: '/docs/comparison' },
         ],
@@ -194,7 +195,7 @@ export default defineConfig({
     editLink: { pattern: `${REPO}/edit/main/:path`, text: 'Edit this page on GitHub' },
     footer: {
       message: 'Source-available under PolyForm Noncommercial 1.0.0.',
-      copyright: 'Built from years of Rádio Animu production failure reports.',
+      copyright: 'Copyright © 2026 Ricardo Freitas',
     },
   },
 });

@@ -3,20 +3,20 @@
   "method": "benchmarks/size/measure.mjs",
   "packages": [
     {
-      "name": "react-native-airwave",
-      "label": "Airwave",
+      "name": "react-native-anything-player",
+      "label": "RNAP",
       "role": "player (this repo)",
       "version": "0.1.0",
       "license": "PolyForm-Noncommercial-1.0.0",
-      "tarballBytes": 126154,
-      "unpackedBytes": 449742,
-      "jsMinBytes": 7708,
-      "jsGzipBytes": 2865,
+      "tarballBytes": 126841,
+      "unpackedBytes": 452246,
+      "jsMinBytes": 7715,
+      "jsGzipBytes": 2868,
       "runtimeDependencies": [],
       "requiredPeers": [],
       "native": {
         "files": 37,
-        "bytes": 323341,
+        "bytes": 323618,
         "lines": 7802
       },
       "androidDependencies": [

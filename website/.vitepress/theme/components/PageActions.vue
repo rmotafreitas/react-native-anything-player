@@ -18,7 +18,7 @@ function absolute(path: string): string {
   return typeof window === 'undefined' ? path : new URL(path, window.location.origin).toString();
 }
 const prompt = computed(
-  () => `Read ${absolute(markdownPath.value)} (react-native-airwave documentation) so I can ask questions about it.`
+  () => `Read ${absolute(markdownPath.value)} (react-native-anything-player documentation) so I can ask questions about it.`
 );
 const claudeUrl = computed(() => `https://claude.ai/new?q=${encodeURIComponent(prompt.value)}`);
 const chatgptUrl = computed(() => `https://chatgpt.com/?q=${encodeURIComponent(prompt.value)}`);

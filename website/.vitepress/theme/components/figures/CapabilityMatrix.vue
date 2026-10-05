@@ -55,7 +55,7 @@ function value(row: (typeof data.groups)[number]['rows'][number], id: string): V
         <thead>
           <tr>
             <th scope="col" class="feature"><span class="sr">Capability</span></th>
-            <th v-for="lib in data.libraries" :key="lib.id" scope="col" :class="{ ours: lib.id === 'airwave' }">
+            <th v-for="lib in data.libraries" :key="lib.id" scope="col" :class="{ ours: lib.id === 'rnap' }">
               {{ lib.label }}
             </th>
           </tr>
@@ -72,7 +72,7 @@ function value(row: (typeof data.groups)[number]['rows'][number], id: string): V
                   <svg class="chev" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 4l4 4-4 4" /></svg>
                 </button>
               </th>
-              <td v-for="lib in data.libraries" :key="lib.id" :class="[value(row, lib.id), { ours: lib.id === 'airwave' }]">
+              <td v-for="lib in data.libraries" :key="lib.id" :class="[value(row, lib.id), { ours: lib.id === 'rnap' }]">
                 <span class="cell">
                   <svg viewBox="0 0 16 16" aria-hidden="true">
                     <circle cx="8" cy="8" r="7" />

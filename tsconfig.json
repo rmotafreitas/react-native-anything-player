@@ -2,14 +2,14 @@
   "compilerOptions": {
     "rootDir": ".",
     "paths": {
-      "react-native-airwave": [
+      "react-native-anything-player": [
         "./src/index"
       ]
     },
     "allowUnreachableCode": false,
     "allowUnusedLabels": false,
     "customConditions": [
-      "react-native-airwave-source",
+      "react-native-anything-player-source",
       "react-native-strict-api"
     ],
     "esModuleInterop": true,

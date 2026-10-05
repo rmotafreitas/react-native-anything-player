@@ -7,9 +7,9 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"
 yarn prepare >/dev/null
 tarball=$(npm pack --silent | tail -1)
-mv "$tarball" example-expo/react-native-airwave.tgz
+mv "$tarball" example-expo/react-native-anything-player.tgz
 mkdir -p example-expo/src example-expo/assets
 cp example/src/*.ts example/src/*.tsx example-expo/src/
 cp example/assets/tone.mp3 example/assets/cover.png example-expo/assets/
 cd example-expo
-npm install --no-audit --no-fund ./react-native-airwave.tgz
+npm install --no-audit --no-fund ./react-native-anything-player.tgz

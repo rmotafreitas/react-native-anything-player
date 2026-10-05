@@ -3,7 +3,7 @@
 Every rejection and every `error` event is a `PlayerError`:
 
 ```ts
-import { isPlayerError } from 'react-native-airwave';
+import { isPlayerError } from 'react-native-anything-player';
 
 try {
   await player.load(url, { autoplay: true });

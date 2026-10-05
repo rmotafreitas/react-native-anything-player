@@ -38,7 +38,7 @@ const CHARTS: Record<string, ChartSpec> = {
     subtitle: 'Maven artifacts the package declares (React Native and the Kotlin stdlib excluded).',
     unit: 'artifacts',
     value: (p) => p.androidDependencies.length,
-    note: 'Airwave: Media3 only; HLS is optional (airwaveHls=false).',
+    note: 'RNAP: Media3 only; HLS is optional (rnapHls=false).',
   },
   'js-cost': {
     title: 'JavaScript added to your bundle',
@@ -86,7 +86,7 @@ const rows = computed(() => {
         text: v.toLocaleString('en-US', { maximumFractionDigits: s.digits ?? 0, minimumFractionDigits: s.digits ?? 0 }),
         pct: Math.max(1.5, (Math.min(v, max) / max) * 100),
         clipped: v > max,
-        ours: p.name === 'react-native-airwave',
+        ours: p.name === 'react-native-anything-player',
       };
     })
     .sort((a, b) => a.value - b.value);

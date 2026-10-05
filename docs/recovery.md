@@ -1,6 +1,6 @@
 # Recovery policy
 
-All recovery constants live in one file per platform — `ios/Core/RecoveryPolicy.swift` and `android/.../core/RecoveryPolicy.kt` — kept identical and checked by the shared [conformance suite](../conformance/README.md). Most are fixed on purpose: each encodes a failure observed in production (the Rádio Animu app) or during this library's own device testing.
+All recovery constants live in one file per platform — `ios/Core/RecoveryPolicy.swift` and `android/.../core/RecoveryPolicy.kt` — kept identical and checked by the shared [conformance suite](../conformance/README.md). Most are fixed on purpose: each encodes a failure observed in a production radio app or during this library's own device testing.
 
 | Constant | Value | Why |
 |---|---|---|

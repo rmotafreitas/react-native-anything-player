@@ -1,12 +1,12 @@
 {
-  "name": "react-native-airwave",
+  "name": "react-native-anything-player",
   "version": "0.1.0",
   "description": "Native-first, reliable audio player for React Native: files, streams and internet radio (ICY), with background playback, media sessions and automatic recovery.",
   "main": "./lib/module/index.js",
   "types": "./lib/typescript/src/index.d.ts",
   "exports": {
     ".": {
-      "react-native-airwave-source": "./src/index.tsx",
+      "react-native-anything-player-source": "./src/index.tsx",
       "types": "./lib/typescript/src/index.d.ts",
       "default": "./lib/module/index.js"
     },
@@ -38,9 +38,9 @@
     "!android/src/test"
   ],
   "scripts": {
-    "example": "yarn workspace react-native-airwave-example",
-    "docs": "yarn workspace react-native-airwave-website dev",
-    "docs:build": "yarn workspace react-native-airwave-website build",
+    "example": "yarn workspace react-native-anything-player-example",
+    "docs": "yarn workspace react-native-anything-player-website dev",
+    "docs:build": "yarn workspace react-native-anything-player-website build",
     "clean": "del-cli android/build example/android/build example/android/app/build example/ios/build lib",
     "prepare": "bob build",
     "typecheck": "tsc",
@@ -48,7 +48,7 @@
     "test": "jest",
     "test:coverage": "jest --coverage",
     "test:ios": "cd ios && swift test",
-    "test:android": "cd example/android && ./gradlew :react-native-airwave:testDebugUnitTest"
+    "test:android": "cd example/android && ./gradlew :react-native-anything-player:testDebugUnitTest"
   },
   "keywords": [
     "react-native",
@@ -67,14 +67,14 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/rmotafreitas/react-native-airwave.git"
+    "url": "git+https://github.com/rmotafreitas/react-native-anything-player.git"
   },
-  "author": "Radio Animu <rmotafreitas@gmail.com> (https://github.com/RadioAnimu)",
+  "author": "Ricardo Freitas <rmotafreitas@gmail.com> (https://rmotafreitas.dev)",
   "license": "PolyForm-Noncommercial-1.0.0",
   "bugs": {
-    "url": "https://github.com/rmotafreitas/react-native-airwave/issues"
+    "url": "https://github.com/rmotafreitas/react-native-anything-player/issues"
   },
-  "homepage": "https://github.com/rmotafreitas/react-native-airwave#readme",
+  "homepage": "https://github.com/rmotafreitas/react-native-anything-player#readme",
   "publishConfig": {
     "registry": "https://registry.npmjs.org/"
   },
@@ -135,15 +135,15 @@
     ]
   },
   "codegenConfig": {
-    "name": "AirwaveSpec",
+    "name": "AnythingPlayerSpec",
     "type": "modules",
     "jsSrcsDir": "src/native",
     "android": {
-      "javaPackageName": "com.radioanimu.airwave"
+      "javaPackageName": "com.anythingplayer"
     },
     "ios": {
       "modulesProvider": {
-        "Airwave": "AirwaveModule"
+        "AnythingPlayer": "AnythingPlayerModule"
       }
     }
   },

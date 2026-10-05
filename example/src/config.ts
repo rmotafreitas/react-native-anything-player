@@ -1,5 +1,5 @@
 import { Platform } from 'react-native';
-import type { Source } from 'react-native-airwave';
+import type { Source } from 'react-native-anything-player';
 
 /** The test stream server (scripts/stream-server). The Android emulator
  * reaches the host machine as 10.0.2.2. Override with STREAM_HOST below for
@@ -22,7 +22,7 @@ export const STATIONS: Station[] = [
     label: 'Remote file (test server)',
     source: {
       uri: `${STREAM_HOST}/file.mp3`,
-      metadata: { title: 'Remote tone', artist: 'Airwave', artwork: COVER },
+      metadata: { title: 'Remote tone', artist: 'RNAP', artwork: COVER },
     },
   },
   {
@@ -32,7 +32,7 @@ export const STATIONS: Station[] = [
       uri: `${STREAM_HOST}/live.mp3?titleEvery=10`,
       live: true,
       metadata: {
-        title: 'Airwave Test Radio',
+        title: 'RNAP Test Radio',
         artwork: `${STREAM_HOST}/artwork2.png`,
       },
     },

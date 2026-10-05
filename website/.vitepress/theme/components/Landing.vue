@@ -5,7 +5,7 @@ import CapabilityMatrix from './figures/CapabilityMatrix.vue';
 import BarChart from './figures/BarChart.vue';
 import mascot from '../../../../docs/assets/brand/mascot-480.webp';
 
-const install = 'npm i react-native-airwave';
+const install = 'npm i react-native-anything-player';
 const copied = ref(false);
 async function copy() {
   try {
@@ -98,7 +98,7 @@ const outage = [
   },
 ];
 
-const PLAYERS = ['react-native-airwave', '@rntp/player', 'react-native-track-player', 'expo-audio', 'react-native-audio-pro'];
+const PLAYERS = ['react-native-anything-player', '@rntp/player', 'react-native-track-player', 'expo-audio', 'react-native-audio-pro'];
 
 const stats = [
   { value: '59', label: 'engine scenarios, run on Swift and Kotlin' },
@@ -113,7 +113,8 @@ const stats = [
     <section class="hero">
       <div class="hero-copy">
         <p class="badge">Built by a radio app developer, for app developers</p>
-        <h1 class="name">Airwave</h1>
+        <h1 class="name">RNAP</h1>
+        <p class="fullname">React Native Anything Player</p>
         <p class="slogan">The audio player that doesn’t give up.</p>
         <p class="lede">
           Native-first audio for React Native: files, streams and internet radio that keep playing through dead
@@ -121,7 +122,7 @@ const stats = [
         </p>
         <div class="actions">
           <a class="btn brand" :href="withBase('/docs/getting-started')">Get started</a>
-          <a class="btn alt" :href="withBase('/docs/comparison')">Why Airwave</a>
+          <a class="btn alt" :href="withBase('/docs/why')">Why RNAP</a>
         </div>
         <button class="install" type="button" :aria-label="`Copy: ${install}`" @click="copy">
           <span class="prompt">$</span>
@@ -132,10 +133,10 @@ const stats = [
 
       <div class="hero-art">
         <div class="halo" aria-hidden="true" />
-        <img class="mascot" :src="mascot" alt="Airwave's mascot, a fox girl in orange headphones, tapping play on her phone" width="480" height="596" />
+        <img class="mascot" :src="mascot" alt="RNAP's mascot, a fox girl in orange headphones, tapping play on her phone" width="480" height="596" />
         <div class="window" aria-label="Example: a radio recovering from a Wi-Fi drop">
           <div class="dots"><i /><i /><i /></div>
-          <pre><code><span class="k">import</span> { Player } <span class="k">from</span> <span class="s">'react-native-airwave'</span>;
+          <pre><code><span class="k">import</span> { Player } <span class="k">from</span> <span class="s">'react-native-anything-player'</span>;
 
 <span class="k">const</span> radio = <span class="k">new</span> <span class="f">Player</span>();
 <span class="k">await</span> radio.<span class="f">load</span>(<span class="s">'https://radio.example.com/live'</span>);
@@ -150,6 +151,32 @@ const stats = [
           </div>
         </div>
       </div>
+    </section>
+
+    <section class="block origin">
+      <p class="eyebrow">Why it exists</p>
+      <h2>Born at a radio app</h2>
+      <p class="sub">
+        RNAP was built by the developer of <a href="https://www.animu.moe" target="_blank" rel="noopener">animu.moe</a>
+        when two things happened at once.
+      </p>
+      <div class="reasons">
+        <article>
+          <h3>The default player went commercial</h3>
+          <p>
+            React Native Track Player 5 is free only for personal or educational use. A free app from a radio station
+            or a non-profit needs a paid licence: €99 a month per app.
+          </p>
+        </article>
+        <article>
+          <h3>Staying on air took a pile of app code</h3>
+          <p>
+            Wi-Fi drops, a switch to mobile data, opening Instagram, a phone call, the voice assistant: with every
+            available player, the app had to notice, back off, retry and resume by itself.
+          </p>
+        </article>
+      </div>
+      <p class="sub small"><a :href="withBase('/docs/why')">The full story, with sources →</a></p>
     </section>
 
     <section class="block">
@@ -176,7 +203,7 @@ const stats = [
 <span class="c">// …and the phone call, the handoff, the stale event…</span></code></pre>
         </div>
         <div class="pane ours">
-          <div class="pane-title">What you write with Airwave</div>
+          <div class="pane-title">What you write with RNAP</div>
           <pre><code><span class="k">await</span> radio.<span class="f">play</span>();</code></pre>
           <p class="pane-foot">
             Every rule above, and the production failure behind it, lives natively in the engine.
@@ -234,7 +261,7 @@ const stats = [
     <section class="block">
       <h2>How it compares</h2>
       <p class="sub">
-        Read from each library’s published source, not marketing. Where Airwave is behind (queues, caching,
+        Read from each library’s published source, not marketing. Where RNAP is behind (queues, caching,
         CarPlay) is on the <a :href="withBase('/docs/roadmap')">roadmap</a>.
       </p>
       <CapabilityMatrix />
@@ -313,6 +340,38 @@ const stats = [
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+}
+.fullname {
+  margin: 10px 0 0;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-soft);
+}
+.reasons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-top: 24px;
+}
+.reasons article {
+  min-width: 0;
+  padding: 22px 24px;
+  border-radius: 14px;
+  border: 1px solid var(--hairline);
+  background: var(--surface);
+}
+.reasons h3 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+}
+.reasons p {
+  margin: 8px 0 0;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--text-soft);
 }
 .slogan {
   margin: 14px 0 0;
@@ -717,6 +776,9 @@ pre code {
 }
 
 @media (max-width: 960px) {
+  .reasons {
+    grid-template-columns: 1fr;
+  }
   .lean {
     grid-template-columns: 1fr;
     gap: 8px;

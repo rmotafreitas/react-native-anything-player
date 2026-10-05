@@ -2,14 +2,14 @@
  * On-device integration scenarios. They run the real native player against
  * the controllable test server and log one greppable line per result:
  *
- *   [AirwaveTest] PASS race-load (2140 ms)
- *   [AirwaveTest] FAIL reconnect-drop: timed out waiting for playing
+ *   [RNAPTest] PASS race-load (2140 ms)
+ *   [RNAPTest] FAIL reconnect-drop: timed out waiting for playing
  *
  * Trigger from the UI, or by deep link (so a CI script can drive them):
- *   adb shell am start -W -a android.intent.action.VIEW -d "airwave-example://test/all"
- *   xcrun simctl openurl booted "airwave-example://test/all"
+ *   adb shell am start -W -a android.intent.action.VIEW -d "anythingplayer-example://test/all"
+ *   xcrun simctl openurl booted "anythingplayer-example://test/all"
  */
-import { Player, type PlayerStatus, isPlayerError } from 'react-native-airwave';
+import { Player, type PlayerStatus, isPlayerError } from 'react-native-anything-player';
 import { LOCAL_TONE, STREAM_HOST, serverControl, serverStats } from './config';
 
 type Scenario = {
@@ -614,7 +614,7 @@ export async function runScenarios(
   let passed = 0;
   let failed = 0;
   const emit = (line: string) => {
-    console.log(`[AirwaveTest] ${line}`);
+    console.log(`[RNAPTest] ${line}`);
     onLog(line);
   };
   emit(`START ${selected.map((s) => s.name).join(',')}`);

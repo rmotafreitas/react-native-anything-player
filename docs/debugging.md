@@ -24,8 +24,8 @@ for (const e of player.getDiagnostics()) {
 
 `player.setDiagnosticsEnabled(true)` (or `new Player({ diagnostics: true })`) additionally streams entries as `diagnostic` events and to the native log:
 
-- iOS: unified log, subsystem `com.radioanimu.airwave` (Console.app, or `xcrun simctl spawn booted log stream --predicate 'subsystem == "com.radioanimu.airwave"' --level debug`). Now Playing publications and remote commands are logged there at debug level even without diagnostics.
-- Android: logcat tag `Airwave` (`adb logcat Airwave:V '*:S'`).
+- iOS: unified log, subsystem `com.anythingplayer` (Console.app, or `xcrun simctl spawn booted log stream --predicate 'subsystem == "com.anythingplayer"' --level debug`). Now Playing publications and remote commands are logged there at debug level even without diagnostics.
+- Android: logcat tag `RNAP` (`adb logcat RNAP:V '*:S'`).
 
 Nothing is logged at default levels in production.
 
@@ -46,7 +46,7 @@ adb shell svc wifi disable && adb shell svc data disable                   # off
 
 **`INVALID_SOURCE: Cleartext HTTP is blocked…`** Use `https`, or allow the host: iOS `NSAppTransportSecurity` exception; Android `android:networkSecurityConfig` with a `domain-config cleartextTrafficPermitted="true"`. Debug builds are often permissive and release builds are not.
 
-**`AUDIO_FOCUS_DENIED` on `play()`.** A call or another app holds audio focus. On Android 15+, starting playback from the background without a foreground service is also denied; Airwave retries after the media service is promoted, and reports `interruption.reason: 'audio-focus-delayed'` meanwhile.
+**`AUDIO_FOCUS_DENIED` on `play()`.** A call or another app holds audio focus. On Android 15+, starting playback from the background without a foreground service is also denied; RNAP retries after the media service is promoted, and reports `interruption.reason: 'audio-focus-delayed'` meanwhile.
 
 **The lock screen shows nothing (iOS).** `audio.mixWithOthers: true` disables Now Playing on iOS. Also check `mediaSession.enabled`.
 
@@ -56,7 +56,7 @@ adb shell svc wifi disable && adb shell svc data disable                   # off
 
 **A radio resumes from where it was paused instead of live.** That is intentional for pauses shorter than `recovery.liveMaxDriftMs` (5 s). Lower it if you need strict live.
 
-**The app traps at launch on iOS 27 (`NoSceneLifecycleAdoption` in the crash report).** Not Airwave-specific: iOS 27 requires the scene life cycle. The React Native 0.86 template and Expo SDK 57's prebuild template still create the window in the app delegate. Bare apps: move window creation to a `UIWindowSceneDelegate` (see `example/ios/AirwaveExample/AppDelegate.swift`). Expo SDK 57: use SDK 58's template, or a config plugin that subclasses `ExpoAppSceneDelegate` (see `example-expo/plugins/withSceneLifecycle.js`).
+**The app traps at launch on iOS 27 (`NoSceneLifecycleAdoption` in the crash report).** Not RNAP-specific: iOS 27 requires the scene life cycle. The React Native 0.86 template and Expo SDK 57's prebuild template still create the window in the app delegate. Bare apps: move window creation to a `UIWindowSceneDelegate` (see `example/ios/AnythingPlayerExample/AppDelegate.swift`). Expo SDK 57: use SDK 58's template, or a config plugin that subclasses `ExpoAppSceneDelegate` (see `example-expo/plugins/withSceneLifecycle.js`).
 
 **Expo Go says the native module is missing.** Expected — use a development build.
 
