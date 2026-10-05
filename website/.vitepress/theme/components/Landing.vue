@@ -3,7 +3,8 @@ import { onBeforeUnmount, onMounted, ref } from 'vue';
 import { withBase } from 'vitepress';
 import CapabilityMatrix from './figures/CapabilityMatrix.vue';
 import BarChart from './figures/BarChart.vue';
-import mascot from '../../../../docs/assets/brand/mascot-480.webp';
+import mascot400 from '../../../../docs/assets/brand/mascot-400.webp';
+import mascot480 from '../../../../docs/assets/brand/mascot-480.webp';
 
 const install = 'npm i react-native-anything-player';
 const copied = ref(false);
@@ -109,7 +110,7 @@ const stats = [
 </script>
 
 <template>
-  <div class="aw">
+  <main class="aw">
     <section class="hero">
       <div class="hero-copy">
         <p class="badge">Built by a radio app developer, for app developers</p>
@@ -124,16 +125,26 @@ const stats = [
           <a class="btn brand" :href="withBase('/docs/getting-started')">Get started</a>
           <a class="btn alt" :href="withBase('/docs/why')">Why RNAP</a>
         </div>
-        <button class="install" type="button" :aria-label="`Copy: ${install}`" @click="copy">
-          <span class="prompt">$</span>
+        <button class="install" type="button" title="Copy the install command" @click="copy">
+          <span class="prompt" aria-hidden="true">$</span>
           <code>{{ install }}</code>
-          <span class="copy">{{ copied ? 'copied' : 'copy' }}</span>
+          <span class="copy" aria-live="polite">{{ copied ? 'copied' : 'copy' }}</span>
         </button>
       </div>
 
       <div class="hero-art">
         <div class="halo" aria-hidden="true" />
-        <img class="mascot" :src="mascot" alt="RNAP's mascot, a fox girl in orange headphones, tapping play on her phone" width="480" height="596" />
+        <!-- The LCP element: fetched first, 400w for 1x screens. -->
+        <img
+          class="mascot"
+          :src="mascot480"
+          :srcset="`${mascot400} 400w, ${mascot480} 480w`"
+          sizes="(max-width: 432px) calc(100vw - 32px), 400px"
+          fetchpriority="high"
+          alt="RNAP's mascot, a fox girl in orange headphones, tapping play on her phone"
+          width="480"
+          height="596"
+        />
         <div class="window" aria-label="Example: a radio recovering from a Wi-Fi drop">
           <div class="dots"><i /><i /><i /></div>
           <pre><code><span class="k">import</span> { Player } <span class="k">from</span> <span class="s">'react-native-anything-player'</span>;
@@ -275,7 +286,7 @@ const stats = [
         <a class="btn alt" :href="withBase('/docs/architecture')">How it works</a>
       </div>
     </section>
-  </div>
+  </main>
 </template>
 
 <style scoped>
@@ -325,7 +336,7 @@ const stats = [
   border-radius: 999px;
   font-size: 13px;
   font-weight: 500;
-  color: var(--brand-deep);
+  color: var(--brand-ink);
   background: var(--brand-subtle);
 }
 .dark .badge {
@@ -489,10 +500,10 @@ pre code {
   font-weight: 600;
 }
 .s {
-  color: #a8650b;
+  color: #8f5508;
 }
 .f {
-  color: var(--brand-deep);
+  color: var(--brand-ink);
 }
 .c {
   color: var(--vp-c-text-3);
@@ -672,7 +683,7 @@ pre code {
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--brand-deep);
+  color: var(--brand-ink);
 }
 .dark .eyebrow {
   color: var(--brand);

@@ -74,7 +74,7 @@ async function copyMarkdown() {
 }
 .aw-actions button:hover,
 .aw-actions a:hover {
-  color: var(--brand-deep);
+  color: var(--brand-ink);
   border-color: var(--brand);
 }
 .dark .aw-actions button:hover,

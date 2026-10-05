@@ -24,6 +24,8 @@
   --surface-subtle: rgba(113, 24, 18, 0.055);
   --brand: #ff6428;
   --brand-deep: #c93c18;
+  /* Brand-coloured text on cream and tinted surfaces (WCAG AA ≥ 4.5:1). */
+  --brand-ink: #b3330f;
   --brand-subtle: rgba(255, 100, 40, 0.14);
   --frame: #7a1c18;
   --live: #e52b2b;
@@ -33,7 +35,7 @@
   --text-on-light: #351512;
   --text-on-brand: #ffffff;
   --text-soft: rgba(53, 21, 18, 0.72);
-  --text-dim: rgba(53, 21, 18, 0.52);
+  --text-dim: rgba(53, 21, 18, 0.64);
 
   /* Controls / separators */
   --switch-off: rgba(73, 34, 29, 0.24);
@@ -75,6 +77,7 @@
   --surface-subtle: rgba(255, 239, 226, 0.07);
   --brand: #ff6a2f;
   --brand-deep: #b93618;
+  --brand-ink: #ff6a2f;
   --brand-subtle: rgba(255, 106, 47, 0.17);
   --frame: #9d3528;
   --live: #ff4949;

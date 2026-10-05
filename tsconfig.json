@@ -38,6 +38,7 @@
   "exclude": [
     "example-expo",
     "lib",
-    "node_modules"
+    "node_modules",
+    "website"
   ]
 }

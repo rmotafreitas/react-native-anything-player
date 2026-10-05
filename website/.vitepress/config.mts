@@ -2,7 +2,8 @@ import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { defineConfig } from 'vitepress';
+import { defineConfig, type HeadConfig } from 'vitepress';
+import { HOME, PAGES, SECTIONS } from './pages.mts';
 
 // The site renders the repository's own docs/ — one source of truth, readable
 // on GitHub and here. Pages outside docs/ (the conformance spec, the licence,
@@ -13,6 +14,39 @@ const require = createRequire(import.meta.url);
 const pkg = require('../../package.json');
 const BASE = process.env.RNAP_DOCS_BASE ?? '/';
 const REPO = (pkg.repository.url as string).replace(/^git\+/, '').replace(/\.git$/, '');
+
+// Absolute origin for canonical links, the sitemap and link-preview images,
+// which crawlers and chat apps only accept as full URLs. Vercel exposes the
+// production domain to every build; RNAP_SITE_URL overrides it elsewhere.
+const PRODUCTION = process.env.VERCEL_PROJECT_PRODUCTION_URL;
+const SITE = (process.env.RNAP_SITE_URL ?? (PRODUCTION ? `https://${PRODUCTION}` : 'http://localhost:4173')).replace(
+  /\/$/,
+  ''
+);
+const url = (p: string) => `${SITE}${BASE}${p.replace(/^\//, '')}`;
+
+const NAME = 'React Native Anything Player';
+const AUTHOR = {
+  '@type': 'Person',
+  name: 'Ricardo Freitas',
+  url: 'https://rmotafreitas.dev',
+  sameAs: ['https://github.com/rmotafreitas'],
+};
+const SOFTWARE = {
+  '@type': 'SoftwareSourceCode',
+  '@id': `${url('/')}#software`,
+  name: NAME,
+  alternateName: 'RNAP',
+  description: pkg.description,
+  url: url('/'),
+  codeRepository: REPO,
+  programmingLanguage: ['TypeScript', 'Swift', 'Kotlin'],
+  runtimePlatform: ['React Native', 'iOS', 'Android'],
+  license: 'https://polyformproject.org/licenses/noncommercial/1.0.0/',
+  version: pkg.version,
+  keywords: (pkg.keywords as string[]).join(', '),
+  author: AUTHOR,
+};
 
 export default defineConfig({
   srcDir: '..',
@@ -45,26 +79,110 @@ export default defineConfig({
   cleanUrls: true,
   lastUpdated: true,
 
+  lang: 'en-US',
   title: 'RNAP',
-  titleTemplate: ':title · RNAP',
-  description:
-    'The React Native audio player that does not give up: files, streams and internet radio that survive dead sockets, network switches, calls and frozen JavaScript.',
+  titleTemplate: `:title | ${NAME}`,
+  description: HOME.description,
   head: [
-    // Favicons stay PNG: Safari does not accept WebP icons.
+    // Favicons stay PNG (and ICO for /favicon.ico requests): Safari and
+    // several crawlers do not accept WebP icons. The large icons are in the
+    // manifest, so browsers do not download them on every page.
+    ['link', { rel: 'icon', href: `${BASE}favicon.ico`, sizes: '48x48' }],
     ['link', { rel: 'icon', type: 'image/png', sizes: '32x32', href: `${BASE}favicon-32.png` }],
-    ['link', { rel: 'icon', type: 'image/png', sizes: '192x192', href: `${BASE}icon-192.png` }],
     ['link', { rel: 'apple-touch-icon', sizes: '180x180', href: `${BASE}apple-touch-icon.png` }],
-    ['meta', { property: 'og:image', content: `${BASE}icon-512.webp` }],
-    ['meta', { name: 'theme-color', content: '#ff6428' }],
-    ['meta', { property: 'og:title', content: 'React Native Anything Player (RNAP)' }],
-    [
-      'meta',
-      {
-        property: 'og:description',
-        content: 'Native-first audio for React Native. Built by a radio app developer, for app developers.',
-      },
-    ],
+    ['link', { rel: 'manifest', href: `${BASE}site.webmanifest` }],
+    ['meta', { name: 'theme-color', media: '(prefers-color-scheme: light)', content: '#fff8f2' }],
+    ['meta', { name: 'theme-color', media: '(prefers-color-scheme: dark)', content: '#1d0d0b' }],
+    ['meta', { name: 'author', content: AUTHOR.name }],
   ],
+
+  // Docs pages take their description from pages.mts, so the Markdown stays
+  // free of front matter (GitHub renders it as a table).
+  transformPageData(pageData) {
+    const page = PAGES.find((p) => `${p.link.slice(1)}.md` === pageData.relativePath);
+    if (page && !pageData.frontmatter.description) pageData.description = page.description;
+  },
+
+  // Canonical link, Open Graph / Twitter cards and JSON-LD for every page.
+  transformHead({ pageData, title, description }) {
+    if (pageData.isNotFound) return [['meta', { name: 'robots', content: 'noindex' }]];
+    const route = pageData.relativePath.replace(/(^|\/)index\.md$/, '$1').replace(/\.md$/, '');
+    const home = route === '';
+    const href = url(route);
+    const page = PAGES.find((p) => p.link === `/${route}`);
+    // One card per page, drawn by scripts/og-images.mts; new pages fall back
+    // to the site card until it is re-run.
+    const card = home ? 'og/index.jpg' : `og/${route.replace(/\//g, '-')}.jpg`;
+    const image = url(fs.existsSync(path.resolve(HERE, '../public', card)) ? card : 'og/index.jpg');
+    const imageAlt = home ? `${NAME}: the audio player that doesn't give up` : `${page?.text ?? title} — ${NAME} docs`;
+    const modified = pageData.lastUpdated ? new Date(pageData.lastUpdated).toISOString() : undefined;
+
+    const graph: object[] = home
+      ? [
+          {
+            '@type': 'WebSite',
+            '@id': `${url('/')}#website`,
+            name: NAME,
+            alternateName: 'RNAP',
+            url: url('/'),
+            description,
+            inLanguage: 'en',
+            publisher: AUTHOR,
+          },
+          SOFTWARE,
+        ]
+      : [
+          {
+            '@type': 'TechArticle',
+            headline: pageData.title,
+            description,
+            url: href,
+            image,
+            inLanguage: 'en',
+            dateModified: modified,
+            author: AUTHOR,
+            publisher: AUTHOR,
+            isPartOf: { '@id': `${url('/')}#website` },
+            about: { '@id': `${url('/')}#software` },
+          },
+          {
+            '@type': 'BreadcrumbList',
+            itemListElement: [
+              { '@type': 'ListItem', position: 1, name: NAME, item: url('/') },
+              { '@type': 'ListItem', position: 2, name: pageData.title, item: href },
+            ],
+          },
+        ];
+
+    const head: HeadConfig[] = [
+      ['link', { rel: 'canonical', href }],
+      ['meta', { property: 'og:type', content: home ? 'website' : 'article' }],
+      ['meta', { property: 'og:site_name', content: NAME }],
+      ['meta', { property: 'og:locale', content: 'en_US' }],
+      ['meta', { property: 'og:url', content: href }],
+      ['meta', { property: 'og:title', content: title }],
+      ['meta', { property: 'og:description', content: description }],
+      ['meta', { property: 'og:image', content: image }],
+      ['meta', { property: 'og:image:type', content: 'image/jpeg' }],
+      ['meta', { property: 'og:image:width', content: '1200' }],
+      ['meta', { property: 'og:image:height', content: '630' }],
+      ['meta', { property: 'og:image:alt', content: imageAlt }],
+      ['meta', { name: 'twitter:card', content: 'summary_large_image' }],
+      ['meta', { name: 'twitter:title', content: title }],
+      ['meta', { name: 'twitter:description', content: description }],
+      ['meta', { name: 'twitter:image', content: image }],
+      ['meta', { name: 'twitter:image:alt', content: imageAlt }],
+      ['script', { type: 'application/ld+json' }, JSON.stringify({ '@context': 'https://schema.org', '@graph': graph })],
+    ];
+    if (modified) head.push(['meta', { property: 'article:modified_time', content: modified }]);
+    return head;
+  },
+
+  sitemap: {
+    hostname: url('/'),
+    // The 404 page is not content.
+    transformItems: (items) => items.filter((item) => !item.url.startsWith('404')),
+  },
 
   markdown: {
     config(md) {
@@ -134,61 +252,27 @@ export default defineConfig({
       fs.mkdirSync(path.dirname(path.join(site.outDir, page)), { recursive: true });
       fs.writeFileSync(path.join(site.outDir, page), source);
       const title = /^#\s+(.+)$/m.exec(source)?.[1] ?? page;
-      index.push(`- [${title}](${BASE}${page})`);
+      const summary = PAGES.find((p) => `${p.link.slice(1)}.md` === page)?.description;
+      index.push(`- [${title}](${url(page)})${summary ? `: ${summary}` : ''}`);
       sections.push(source.trim());
     }
     fs.writeFileSync(path.join(site.outDir, 'llms.txt'), index.join('\n') + '\n');
     fs.writeFileSync(path.join(site.outDir, 'llms-full.txt'), sections.join('\n\n---\n\n') + '\n');
+    fs.writeFileSync(path.join(site.outDir, 'robots.txt'), `User-agent: *\nAllow: /\n\nSitemap: ${url('sitemap.xml')}\n`);
   },
 
   themeConfig: {
-    logo: { src: '/logo.webp', alt: 'RNAP' },
+    logo: { src: '/logo.webp', alt: '', width: 24, height: 24 },
     nav: [
       { text: 'Docs', link: '/docs/getting-started', activeMatch: '^/docs/(?!comparison|roadmap)' },
       { text: 'Compare', link: '/docs/comparison' },
       { text: 'Roadmap', link: '/docs/roadmap' },
       { text: `v${pkg.version}`, items: [{ text: 'Changelog', link: `${REPO}/blob/main/CHANGELOG.md` }, { text: 'Licence', link: `${REPO}/blob/main/COMMERCIAL.md` }] },
     ],
-    sidebar: [
-      {
-        text: 'Start here',
-        items: [
-          { text: 'Why RNAP', link: '/docs/why' },
-          { text: 'Getting started', link: '/docs/getting-started' },
-          { text: 'Comparison & benchmarks', link: '/docs/comparison' },
-        ],
-      },
-      {
-        text: 'Guides',
-        items: [
-          { text: 'Playback', link: '/docs/playback' },
-          { text: 'Internet radio & ICY', link: '/docs/internet-radio' },
-          { text: 'Background & system', link: '/docs/background-and-system' },
-          { text: 'Visualizer', link: '/docs/visualizer' },
-        ],
-      },
-      {
-        text: 'Reference',
-        items: [
-          { text: 'Status & events', link: '/docs/events' },
-          { text: 'Errors', link: '/docs/errors' },
-          { text: 'Configuration', link: '/docs/configuration' },
-        ],
-      },
-      {
-        text: 'Under the hood',
-        items: [
-          { text: 'Recovery policy', link: '/docs/recovery' },
-          { text: 'Architecture', link: '/docs/architecture' },
-          { text: 'Testing', link: '/docs/testing' },
-          { text: 'Debugging & FAQ', link: '/docs/debugging' },
-        ],
-      },
-      {
-        text: 'Project',
-        items: [{ text: 'Roadmap', link: '/docs/roadmap' }],
-      },
-    ],
+    sidebar: SECTIONS.map((section) => ({
+      text: section.text,
+      items: section.items.map(({ text, link }) => ({ text, link })),
+    })),
     outline: { level: [2, 3] },
     search: { provider: 'local' },
     socialLinks: [{ icon: 'github', link: REPO }],

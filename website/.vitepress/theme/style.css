@@ -17,27 +17,28 @@
   --vp-c-border: var(--hairline);
   --vp-c-gutter: var(--hairline-soft);
 
-  --vp-c-brand-1: var(--brand-deep);
+  --vp-c-brand-1: var(--brand-ink);
   --vp-c-brand-2: var(--brand);
   --vp-c-brand-3: var(--brand);
   --vp-c-brand-soft: var(--brand-subtle);
 
   --vp-c-default-soft: var(--surface-subtle);
-  --vp-c-tip-1: var(--brand-deep);
+  --vp-c-tip-1: var(--brand-ink);
   --vp-c-tip-soft: var(--brand-subtle);
   --vp-c-warning-1: var(--accent);
   --vp-c-warning-soft: var(--accent-subtle);
   --vp-c-danger-1: var(--error);
 
-  --vp-button-brand-bg: var(--brand);
-  --vp-button-brand-hover-bg: var(--brand-deep);
-  --vp-button-brand-active-bg: var(--brand-deep);
+  /* White on --brand is 3:1; --brand-deep keeps the button AA. */
+  --vp-button-brand-bg: var(--brand-deep);
+  --vp-button-brand-hover-bg: #a82f10;
+  --vp-button-brand-active-bg: #a82f10;
   --vp-button-brand-text: var(--text-on-brand);
 
   --vp-code-bg: var(--surface-subtle);
   --vp-code-block-bg: var(--bg-deep);
-  --vp-code-color: var(--brand-deep);
-  --vp-local-search-highlight-text: var(--brand-deep);
+  --vp-code-color: var(--brand-ink);
+  --vp-local-search-highlight-text: var(--brand-ink);
   --vp-local-search-highlight-bg: var(--brand-subtle);
 
   --vp-home-hero-name-color: transparent;
@@ -60,3 +61,12 @@
   border-radius: 12px;
   box-shadow: 0 0 0 1px var(--hairline-soft);
 }
+
+/* github-light was drawn for white: on the cream code background its
+   comment, keyword, string-green and orange tokens fall under 4.5:1.
+   Same hues, darkened just enough. */
+html:not(.dark) .vp-code span[style*='--shiki-light:#6A737D'] { color: #5b6168; }
+html:not(.dark) .vp-code span[style*='--shiki-light:#D73A49'] { color: #b5303e; }
+html:not(.dark) .vp-code span[style*='--shiki-light:#22863A'] { color: #1a7334; }
+html:not(.dark) .vp-code span[style*='--shiki-light:#E36209'] { color: #9a4504; }
+.dark .vp-code span[style*='--shiki-dark:#6A737D'] { color: #8b949e; }

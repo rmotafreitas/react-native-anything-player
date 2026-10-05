@@ -99,7 +99,7 @@ function value(row: (typeof data.groups)[number]['rows'][number], id: string): V
 <style scoped>
 .aw-matrix {
   --ok: #138a13;
-  --own: var(--brand-deep);
+  --own: var(--brand-ink);
   margin: 24px 0;
   padding: 20px;
   border-radius: 14px;
@@ -197,7 +197,7 @@ thead th.ours {
 tr.group th {
   padding-top: 18px;
   text-align: left;
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;

@@ -199,11 +199,11 @@ const rows = computed(() => {
 }
 .name small {
   margin-left: 4px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-dim);
 }
 .ours .name {
-  color: var(--brand-deep);
+  color: var(--brand-ink);
   font-weight: 700;
 }
 .dark .ours .name {
@@ -258,7 +258,7 @@ const rows = computed(() => {
   color: var(--text-dim);
 }
 .foot code {
-  font-size: 11px;
+  font-size: 12px;
 }
 .table {
   margin-top: 6px;
@@ -266,7 +266,7 @@ const rows = computed(() => {
 }
 .table summary {
   cursor: pointer;
-  color: var(--brand-deep);
+  color: var(--brand-ink);
   font-weight: 500;
 }
 .dark .table summary {
