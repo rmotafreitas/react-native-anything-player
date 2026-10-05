@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -67,6 +68,34 @@ export default defineConfig({
 
   markdown: {
     config(md) {
+      // A paragraph that is only a chart or diagram image becomes the native
+      // component on the site (HTML bars, an HTML table, an inline themable
+      // SVG). GitHub keeps rendering the image itself.
+      md.core.ruler.after('inline', 'airwave-native-figures', (state) => {
+        const t = state.tokens;
+        for (let i = 0; i + 2 < t.length; i++) {
+          if (t[i].type !== 'paragraph_open' || t[i + 1].type !== 'inline' || t[i + 2].type !== 'paragraph_close') continue;
+          const kids = (t[i + 1].children ?? []).filter((c) => !(c.type === 'text' && c.content.trim() === ''));
+          if (kids.length !== 1 || kids[0].type !== 'image') continue;
+          const m = /assets\/(charts|diagrams)\/([\w-]+)\.svg$/.exec(kids[0].attrGet('src') ?? '');
+          if (!m) continue;
+          const alt = kids[0].content.replace(/"/g, '&quot;');
+          const tag =
+            m[1] === 'diagrams' ? 'Diagram' : m[2] === 'capabilities' ? 'CapabilityMatrix' : 'BarChart';
+          const block = new state.Token('html_block', '', 0);
+          block.content = `<${tag} name="${m[2]}" alt="${alt}" />\n`;
+          t.splice(i, 3, block);
+        }
+      });
+      // ```sh with a single `npm install <pkg>` → npm / yarn / pnpm / bun tabs.
+      const fence = md.renderer.rules.fence!;
+      md.renderer.rules.fence = (tokens, idx, options, env, self) => {
+        const token = tokens[idx];
+        const m = /^npm install (\S+)\s*$/.exec(token.content);
+        if (token.info.trim() === 'sh' && m) return `<InstallTabs pkg="${m[1]}" />\n`;
+        return fence(tokens, idx, options, env, self);
+      };
+
       // `../conformance/README.md` from docs/x.md → the file on GitHub.
       md.core.ruler.after('inline', 'airwave-repo-links', (state) => {
         const from = path.posix.dirname((state.env as { relativePath?: string }).relativePath ?? '');
@@ -85,6 +114,31 @@ export default defineConfig({
         visit(state.tokens);
       });
     },
+  },
+
+  // Plain Markdown next to every docs page (for "Copy page" and AI tools),
+  // plus llms.txt / llms-full.txt indexes, as the Expo and Elysia docs publish.
+  buildEnd(site) {
+    const pages = site.pages.filter((p) => p.startsWith('docs/')).sort();
+    const sections: string[] = [];
+    const index: string[] = [
+      `# Airwave`,
+      '',
+      `> ${pkg.description}`,
+      '',
+      '## Docs',
+      '',
+    ];
+    for (const page of pages) {
+      const source = fs.readFileSync(path.join(site.srcDir, page), 'utf8');
+      fs.mkdirSync(path.dirname(path.join(site.outDir, page)), { recursive: true });
+      fs.writeFileSync(path.join(site.outDir, page), source);
+      const title = /^#\s+(.+)$/m.exec(source)?.[1] ?? page;
+      index.push(`- [${title}](${BASE}${page})`);
+      sections.push(source.trim());
+    }
+    fs.writeFileSync(path.join(site.outDir, 'llms.txt'), index.join('\n') + '\n');
+    fs.writeFileSync(path.join(site.outDir, 'llms-full.txt'), sections.join('\n\n---\n\n') + '\n');
   },
 
   themeConfig: {

@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue';
 import { withBase } from 'vitepress';
-import capabilities from '../../../../docs/assets/charts/capabilities.svg';
+import CapabilityMatrix from './figures/CapabilityMatrix.vue';
+import BarChart from './figures/BarChart.vue';
 import mascot from '../../../../docs/assets/brand/mascot-480.webp';
 
 const install = 'npm i react-native-airwave';
@@ -63,9 +64,45 @@ const features = [
   },
 ];
 
+/** "Pull the plug": what happens, in order, when a radio loses Wi-Fi. */
+const outage = [
+  {
+    at: '0 s',
+    state: 'playing',
+    title: 'Streaming the station',
+    body: 'Audio flows from a buffer several seconds deep. Nothing is polled from JavaScript.',
+  },
+  {
+    at: 'Wi-Fi lost',
+    state: 'playing',
+    title: 'The buffer plays out',
+    body: 'The network monitor records the edge and stall detection turns eager for 20 s. Listeners hear nothing yet.',
+  },
+  {
+    at: '+3 s, no data',
+    state: 'reconnecting',
+    title: 'Dead socket detected',
+    body: 'No buffered progress for 3 s while the device is offline. Attempts are skipped; every third one runs as a probe.',
+  },
+  {
+    at: 'Network back',
+    state: 'loading',
+    title: 'Re-open at the live edge',
+    body: 'The restore edge re-opens at once with backoff reset. A late error from the dead connection is dropped by its generation.',
+  },
+  {
+    at: '+0.6 s',
+    state: 'playing',
+    title: 'Back on air',
+    body: 'Measured on the Android 16 emulator. Your JavaScript ran zero lines; it could have been frozen the whole time.',
+  },
+];
+
+const PLAYERS = ['react-native-airwave', '@rntp/player', 'react-native-track-player', 'expo-audio', 'react-native-audio-pro'];
+
 const stats = [
   { value: '59', label: 'engine scenarios, run on Swift and Kotlin' },
-  { value: '0', label: 'runtime JS dependencies' },
+  { value: '3 s', label: 'to detect a dead socket and re-open' },
   { value: '~10 µs', label: 'getProgress() over JSI (iOS p50)' },
   { value: '1', label: 'connection per stream, counted server-side' },
 ];
@@ -150,6 +187,35 @@ const stats = [
     </section>
 
     <section class="block">
+      <p class="eyebrow">Pull the plug</p>
+      <h2>What happens when the Wi-Fi drops</h2>
+      <p class="sub">The engine runs this sequence natively. It is the same on iOS and Android, because both engines pass one shared conformance suite.</p>
+      <ol class="timeline">
+        <li v-for="(s, i) in outage" :key="i">
+          <span class="dot" :class="s.state" aria-hidden="true" />
+          <div class="when">{{ s.at }}</div>
+          <div class="what">
+            <span class="pill" :class="s.state">{{ s.state }}</span>
+            <h3>{{ s.title }}</h3>
+            <p>{{ s.body }}</p>
+          </div>
+        </li>
+      </ol>
+      <p class="sub small"><a :href="withBase('/docs/recovery')">Every recovery rule and the production failure behind it →</a></p>
+    </section>
+
+    <section class="block lean">
+      <div class="lean-stats">
+        <p class="eyebrow">Lean by design</p>
+        <div class="big"><span>4</span> Android libraries</div>
+        <p>Media3 and nothing else. HLS is optional.</p>
+        <div class="big"><span>0</span> JS dependencies</div>
+        <p>No framework, no Nitro, no state library. Expo is optional.</p>
+      </div>
+      <BarChart name="android-dependencies" :only="PLAYERS" bare />
+    </section>
+
+    <section class="block">
       <div class="grid">
         <article v-for="f in features" :key="f.title" class="card">
           <h3>{{ f.title }}</h3>
@@ -171,9 +237,7 @@ const stats = [
         Read from each library’s published source, not marketing. Where Airwave is behind (queues, caching,
         CarPlay) is on the <a :href="withBase('/docs/roadmap')">roadmap</a>.
       </p>
-      <a class="chart" :href="withBase('/docs/comparison')">
-        <img :src="capabilities" alt="Capability matrix comparing Airwave, RNTP 5, RNTP 4 and expo-audio" loading="lazy" />
-      </a>
+      <CapabilityMatrix />
     </section>
 
     <section class="cta">
@@ -542,18 +606,107 @@ pre code {
   line-height: 1.5;
   color: var(--vp-c-text-2);
 }
-.chart {
-  display: block;
-  margin-top: 28px;
+.eyebrow {
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--brand-deep);
 }
-.chart img {
-  display: block;
-  width: 100%;
-  max-width: 920px;
-  border-radius: 12px;
+.dark .eyebrow {
+  color: var(--brand);
 }
-.chart img {
-  box-shadow: 0 0 0 1px var(--hairline-soft);
+.sub.small {
+  font-size: 15px;
+}
+.timeline {
+  position: relative;
+  list-style: none;
+  margin: 32px 0 0;
+  padding: 0 0 0 28px;
+  display: grid;
+  gap: 22px;
+}
+.timeline::before {
+  content: '';
+  position: absolute;
+  left: 7px;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  border-radius: 1px;
+  background: linear-gradient(var(--brand), var(--frame) 50%, var(--accent) 75%, var(--brand));
+  opacity: 0.5;
+}
+.timeline li {
+  position: relative;
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  gap: 20px;
+  margin: 0;
+}
+.timeline .dot {
+  position: absolute;
+  left: -28px;
+  top: 4px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 3px solid var(--app-bg);
+  background: var(--brand-deep);
+  box-shadow: 0 0 0 1px var(--hairline);
+}
+.timeline .dot.reconnecting {
+  background: var(--frame);
+}
+.timeline .dot.loading {
+  background: var(--accent);
+}
+.when {
+  padding-top: 1px;
+  font-family: var(--vp-font-family-mono);
+  font-size: 13px;
+  color: var(--text-dim);
+}
+.what h3 {
+  margin: 8px 0 0;
+  font-size: 17px;
+  font-weight: 600;
+}
+.what p {
+  margin: 4px 0 0;
+  max-width: 620px;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--text-soft);
+}
+.lean {
+  display: grid;
+  grid-template-columns: 1fr 1.6fr;
+  gap: 40px;
+  align-items: center;
+}
+.lean-stats p {
+  margin: 4px 0 18px;
+  font-size: 15px;
+  color: var(--text-soft);
+}
+.big {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--text);
+}
+.big span {
+  margin-right: 6px;
+  font-size: 64px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  background: var(--aw-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 .cta {
   margin-top: 112px;
@@ -564,6 +717,10 @@ pre code {
 }
 
 @media (max-width: 960px) {
+  .lean {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
   .hero,
   .compare {
     grid-template-columns: 1fr;
@@ -599,6 +756,10 @@ pre code {
   }
   .grid {
     grid-template-columns: 1fr;
+  }
+  .timeline li {
+    grid-template-columns: 1fr;
+    gap: 2px;
   }
   .install {
     max-width: 100%;

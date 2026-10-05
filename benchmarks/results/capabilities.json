@@ -1,6 +1,6 @@
 {
   "checkedAt": "2026-10-05",
-  "method": "Read from each package's published npm tarball (TypeScript API + native sources). `app` = possible only if the app writes the logic itself (e.g. RNTP's `retry()` exists, but nothing calls it for you). Nothing here was measured on a device.",
+  "method": "Read from each package's published npm tarball (TypeScript API + native sources). \"Your code\" means possible only if the app writes the logic itself (RNTP's retry() exists, but nothing calls it for you). Nothing here was measured on a device.",
   "libraries": [
     { "id": "airwave", "label": "Airwave", "version": "0.1.0" },
     { "id": "rntp5", "label": "RNTP 5", "version": "5.12.1" },
