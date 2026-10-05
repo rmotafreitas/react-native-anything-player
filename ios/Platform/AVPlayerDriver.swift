@@ -63,6 +63,8 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
   private var recentContentType: String?
   /// Parses (never decodes) the relayed audio: the stream time of every byte.
   private var packetClock: StreamDecoder?
+  /// When relayed audio last arrived (monotonic ms; guarded by `feedLock`).
+  private var packetClockFedAt: Int64 = 0
   private static let recentAudioLimit = 512 * 1024
   private var itemIsLive = false
   weak var observer: DriverObserver?
@@ -176,6 +178,7 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
               self.recentAudio.append((self.packetClock?.parsedSeconds ?? 0, data))
               self.recentBytes += data.count
               self.packetClock?.feed(data)
+              self.packetClockFedAt = SystemClock.shared.monotonicMs
               while self.recentBytes > Self.recentAudioLimit, self.recentAudio.count > 1 {
                 self.recentBytes -= self.recentAudio.removeFirst().data.count
               }
@@ -278,6 +281,14 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
     if let date = item?.currentDate() {
       let offset = Date().timeIntervalSince(date)
       reading.liveOffset = offset.isFinite && offset >= 0 && offset < 3600 ? offset : nil
+    } else if itemIsLive, let edge = liveEdge {
+      // A live progressive stream (no program dates): how much audio the proxy
+      // has handed AVPlayer past the playhead. `loadedTimeRanges` alone
+      // under-reads it right after connecting: it covers what AVPlayer has
+      // parsed, not the whole connect burst it already holds (measured on a
+      // 64 kbps AAC+ station: 11.6 s reported, 17 s heard behind the edge).
+      let offset = max(edge - reading.position, reading.buffered - reading.position)
+      reading.liveOffset = offset.isFinite && offset >= 0 && offset < 3600 ? offset : nil
     }
     reading.isPlaying = player.timeControlStatus == .playing
     reading.rate = Double(rate)
@@ -342,6 +353,15 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
     if let pendingSeek { return pendingSeek }
     let t = player.currentTime().seconds
     return t.isFinite && t >= 0 ? t : 0
+  }
+
+  /// Stream time of the newest relayed audio, while it is still arriving
+  /// (a stalled or released connection says nothing about the live edge).
+  private var liveEdge: Double? {
+    feedLock.sync {
+      guard let clock = packetClock, SystemClock.shared.monotonicMs - packetClockFedAt < 3_000 else { return nil }
+      return clock.parsedSeconds
+    }
   }
 
   private var bufferedEnd: Double {

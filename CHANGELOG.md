@@ -15,6 +15,8 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- iOS: `liveOffset` for live HTTP streams, measured from the audio the stream proxy has handed AVPlayer. `bufferedAhead` alone under-read the delay right after connecting (it covers what AVPlayer has parsed, not the whole connect burst): 11.6 s instead of the 17 s actually heard on a 64 kbps AAC+ station, so anything placed on the station's timeline at tune-in ran 5 s ahead.
+
 - iOS: play stuck in loading after a long paused suspension. iOS reclaims a suspended app's sockets, and the stream proxy kept handing AVPlayer its dead listener: every open timed out and reconnected to the same dead port. The listener is now health-checked (a request through it, ~1 ms) before every open and on return to the foreground. A dead one is replaced, on the same port when possible.
 - iOS: the audio session is activated on every play. The system deactivates a suspended app's session (`.appWasSuspended`, or silently), and the cached "active" flag skipped re-activation.
 - Android: local (`file://`) artwork is now published as image bytes. The system media controls load an artwork URI themselves, cross-process, and could not open the app's private file (`ENOENT`), so the cover was missing.

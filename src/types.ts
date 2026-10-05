@@ -123,7 +123,11 @@ export interface Progress {
   buffered: number;
   /** Seconds of audio buffered past the playhead. */
   bufferedAhead: number;
-  /** Seconds behind the live edge, when the stream lets the platform measure it. */
+  /**
+   * Seconds behind the live edge, when it can be measured: HLS program dates,
+   * ExoPlayer's live window, and on iOS any live HTTP stream (from the audio
+   * the stream proxy has handed the player). Else `null`: use `bufferedAhead`.
+   */
   liveOffset: number | null;
   /** Epoch ms of the reading. */
   timestamp: number;
