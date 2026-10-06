@@ -168,6 +168,8 @@
     }
   },
   "resolutions": {
-    "eslint-plugin-ft-flow": "3.0.11"
+    "eslint-plugin-ft-flow": "3.0.11",
+    "vitepress/vite": "6.4.3",
+    "source-map-js": "1.2.2"
   }
 }
