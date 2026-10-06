@@ -127,7 +127,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@algolia/client-search@npm:5.59.0":
+"@algolia/client-search@npm:5.59.0, @algolia/client-search@npm:^5.59.0":
   version: 5.59.0
   resolution: "@algolia/client-search@npm:5.59.0"
   dependencies:
@@ -4003,7 +4003,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"algoliasearch@npm:^5.14.2":
+"algoliasearch@npm:^5.14.2, algoliasearch@npm:^5.59.0":
   version: 5.59.0
   resolution: "algoliasearch@npm:5.59.0"
   dependencies:
@@ -9207,7 +9207,10 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "react-native-anything-player-website@workspace:website"
   dependencies:
+    "@algolia/client-search": "npm:^5.59.0"
+    algoliasearch: "npm:^5.59.0"
     playwright-core: "npm:^1.56.1"
+    search-insights: "npm:^2.17.3"
     vitepress: "npm:^1.6.4"
     vue: "npm:^3.5.22"
   languageName: unknown
@@ -9796,6 +9799,13 @@ __metadata:
   version: 0.27.0
   resolution: "scheduler@npm:0.27.0"
   checksum: 10c0/4f03048cb05a3c8fddc45813052251eca00688f413a3cee236d984a161da28db28ba71bd11e7a3dd02f7af84ab28d39fb311431d3b3772fed557945beb00c452
+  languageName: node
+  linkType: hard
+
+"search-insights@npm:^2.17.3":
+  version: 2.17.3
+  resolution: "search-insights@npm:2.17.3"
+  checksum: 10c0/e33eb2541e2de97665bfefe80d9633396fc0300cdeac475155a439022561244d294d7878f69c6a395bd4b81eaec4c7d03d72621c1128603d101bb8a3201cd36d
   languageName: node
   linkType: hard
 
