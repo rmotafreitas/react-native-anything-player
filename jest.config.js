@@ -1,4 +1,6 @@
 module.exports = {
+  reporters: process.env.CI ? ['default', 'jest-junit'] : ['default'],
+  coverageReporters: ['text', 'lcov'],
   preset: '@react-native/jest-preset',
   roots: ['<rootDir>/src'],
   testMatch: ['**/__tests__/**/*.test.[jt]s?(x)'],

@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   useSyncExternalStore,
@@ -62,6 +63,9 @@ export function useProgress(player: Player, intervalMs = 1000): Progress {
   const [progress, setProgress] = useState<Progress>(() =>
     player.isReleased ? EMPTY_PROGRESS : player.getProgress()
   );
+  // The timer is allocated by start() and cleared by stop() and the effect
+  // cleanup; the analyzer cannot follow this foreground/background ownership.
+  // react-doctor-disable-next-line react-doctor/effect-needs-cleanup
   useEffect(() => {
     if (player.isReleased) return undefined;
     let timer: ReturnType<typeof setInterval> | null = null;
@@ -84,7 +88,7 @@ export function useProgress(player: Player, intervalMs = 1000): Progress {
     );
     const seek = player.on('status', tick);
     return () => {
-      stop();
+      if (timer != null) clearInterval(timer);
       appState.remove();
       seek();
     };
@@ -99,13 +103,14 @@ export function usePlayerEvent<E extends PlayerEvent>(
   handler: PlayerEventMap[E]
 ): void {
   const ref = useRef(handler);
-  ref.current = handler;
-  useEffect(
-    () =>
-      player.on(event, ((...args: unknown[]) =>
-        (ref.current as (...a: unknown[]) => void)(
-          ...args
-        )) as PlayerEventMap[E]),
-    [player, event]
-  );
+  useLayoutEffect(() => {
+    ref.current = handler;
+  }, [handler]);
+  useEffect(() => {
+    const unsubscribe = player.on(event, ((...args: unknown[]) =>
+      (ref.current as (...a: unknown[]) => void)(
+        ...args
+      )) as PlayerEventMap[E]);
+    return () => unsubscribe();
+  }, [player, event]);
 }

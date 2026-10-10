@@ -153,6 +153,7 @@ export interface MediaMetadata {
 }
 
 /** Asset reference from `require('./file.mp3')`. */
+// eslint-disable-next-line sonarjs/redundant-type-aliases -- Public API name documents Metro asset references.
 export type AssetModule = number;
 
 /** What the lock screen / notification shows for a source (app-provided). */
