@@ -89,7 +89,7 @@
     "@babel/core": "^7.29.7",
     "@eslint/compat": "^2.1.0",
     "@eslint/eslintrc": "^3.3.6",
-    "@eslint/js": "^9.39.5",
+    "@eslint/js": "^10.0.1",
     "@react-native/babel-preset": "0.86.2",
     "@react-native/eslint-config": "0.86.2",
     "@react-native/jest-preset": "0.86.2",
