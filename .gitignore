@@ -110,3 +110,6 @@ website/.vitepress/cache/
 coverage/
 junit.xml
 .scannerwork/
+
+# Portable CI outputs
+ci-results.json
