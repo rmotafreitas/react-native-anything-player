@@ -1,21 +1,32 @@
 {
   "$schema": "https://turbo.build/schema.json",
-  "globalDependencies": [".nvmrc", ".yarnrc.yml"],
-  "globalEnv": ["NODE_ENV"],
+  "globalDependencies": [
+    ".nvmrc",
+    ".yarnrc.yml"
+  ],
+  "globalEnv": [
+    "NODE_ENV"
+  ],
   "tasks": {
     "build:android": {
-      "env": ["ANDROID_HOME", "ORG_GRADLE_PROJECT_newArchEnabled"],
+      "env": [
+        "ANDROID_HOME",
+        "ORG_GRADLE_PROJECT_newArchEnabled",
+        "CI_NATIVE_TOOLCHAIN",
+        "ImageVersion"
+      ],
       "inputs": [
-        "package.json",
-        "android",
-        "!android/build",
-        "src/*.ts",
-        "src/*.tsx",
-        "example/package.json",
-        "example/android",
-        "!example/android/.gradle",
-        "!example/android/build",
-        "!example/android/app/build"
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/src/**",
+        "$TURBO_ROOT$/android/**",
+        "$TURBO_ROOT$/*.podspec",
+        "!$TURBO_ROOT$/android/build/**",
+        "!$TURBO_ROOT$/ios/.build/**",
+        "!android/.gradle/**",
+        "!android/build/**",
+        "!android/app/build/**",
+        "!ios/build/**",
+        "!ios/Pods/**"
       ],
       "outputs": []
     },
@@ -24,18 +35,22 @@
         "RCT_NEW_ARCH_ENABLED",
         "RCT_REMOVE_LEGACY_ARCH",
         "RCT_USE_RN_DEP",
-        "RCT_USE_PREBUILT_RNCORE"
+        "RCT_USE_PREBUILT_RNCORE",
+        "CI_NATIVE_TOOLCHAIN",
+        "ImageVersion"
       ],
       "inputs": [
-        "package.json",
-        "*.podspec",
-        "ios",
-        "src/*.ts",
-        "src/*.tsx",
-        "example/package.json",
-        "example/ios",
-        "!example/ios/build",
-        "!example/ios/Pods"
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/src/**",
+        "$TURBO_ROOT$/ios/**",
+        "$TURBO_ROOT$/*.podspec",
+        "!$TURBO_ROOT$/android/build/**",
+        "!$TURBO_ROOT$/ios/.build/**",
+        "!android/.gradle/**",
+        "!android/build/**",
+        "!android/app/build/**",
+        "!ios/build/**",
+        "!ios/Pods/**"
       ],
       "outputs": []
     }

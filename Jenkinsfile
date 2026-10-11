@@ -43,7 +43,7 @@ pipeline {
         docker {
           // Matches .nvmrc.
           image 'node:24-bookworm'
-          args '-u root'
+          args '-u root -v animu-node-cache:/opt/animu-cache -e CI_CACHE_DIR=/opt/animu-cache'
         }
       }
       steps {
@@ -51,6 +51,7 @@ pipeline {
           set -eux
           git config --global --add safe.directory "$WORKSPACE"
           rm -rf coverage junit.xml
+          . scripts/ci-cache.sh
           corepack enable
           echo "node $(node --version) / yarn $(yarn --version)"
           yarn install --immutable
@@ -59,6 +60,8 @@ pipeline {
           test -f lib/module/index.js
           ls -la react-native-anything-player.tgz
         '''
+        sh 'node scripts/ci-results.mjs publish rmotafreitas/react-native-anything-player'
+        archiveArtifacts artifacts: 'ci-results.json', fingerprint: true
         archiveArtifacts artifacts: 'react-native-anything-player.tgz', fingerprint: true
       }
       post {
