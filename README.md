@@ -114,3 +114,8 @@ The same pages are published as a site (search included): `yarn docs` runs it lo
 ## License
 
 **Source-available**, not OSI open source: [PolyForm Noncommercial 1.0.0](LICENSE). Free for personal, hobby, educational, research, nonprofit and noncommercial open-source use. Commercial use needs a license — see [COMMERCIAL.md](COMMERCIAL.md).
+
+## Quality gates
+
+See [CI and quality policy](docs/quality-gates.md) for local checks, GitHub Actions,
+Jenkins, SonarQube, coverage floors, and the native test scope.

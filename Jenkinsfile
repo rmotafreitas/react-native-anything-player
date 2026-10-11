@@ -21,7 +21,7 @@ pipeline {
 
   options {
     timestamps()
-    timeout(time: 20, unit: 'MINUTES')
+    timeout(time: 30, unit: 'MINUTES')
     disableConcurrentBuilds()
     buildDiscarder(logRotator(numToKeepStr: '10', artifactNumToKeepStr: '20'))
     // One build at a time on this host: the lock is shared with the other jobs on it.
@@ -38,7 +38,7 @@ pipeline {
     // One stage, one container: with agent none each stage would otherwise get
     // a fresh container and lose the install between stages. The package is
     // archived here, not in `post`: with agent none, post has no node context.
-    stage('Build') {
+    stage('Quality and build') {
       agent {
         docker {
           // Matches .nvmrc.
@@ -50,18 +50,22 @@ pipeline {
         sh '''
           set -eux
           git config --global --add safe.directory "$WORKSPACE"
+          rm -rf coverage junit.xml
           corepack enable
           echo "node $(node --version) / yarn $(yarn --version)"
           yarn install --immutable
-          yarn lint
-          yarn typecheck
-          yarn test --coverage
-          yarn prepare
+          yarn run check:ci
           yarn pack --out react-native-anything-player.tgz
           test -f lib/module/index.js
           ls -la react-native-anything-player.tgz
         '''
         archiveArtifacts artifacts: 'react-native-anything-player.tgz', fingerprint: true
+      }
+      post {
+        always {
+          junit testResults: 'junit.xml', allowEmptyResults: false
+          archiveArtifacts artifacts: 'coverage/**', allowEmptyArchive: true
+        }
       }
     }
   }

@@ -1,3 +1,4 @@
+import sonar from './eslint-sonar.config.mjs';
 import { fixupConfigRules } from '@eslint/compat';
 import { FlatCompat } from '@eslint/eslintrc';
 import js from '@eslint/js';
@@ -15,6 +16,7 @@ const compat = new FlatCompat({
 });
 
 export default defineConfig([
+  sonar,
   {
     extends: fixupConfigRules(compat.extends('@react-native', 'prettier')),
     plugins: { prettier },

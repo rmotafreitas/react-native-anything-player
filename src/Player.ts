@@ -64,12 +64,10 @@ function resolveAsset(module: number): string {
 
 /** Validates and normalizes what apps pass to `load()`. Exported for tests. */
 export function normalizeSource(input: SourceInput): Record<string, unknown> {
-  const source =
-    typeof input === 'string'
-      ? { uri: input }
-      : typeof input === 'number'
-        ? { uri: resolveAsset(input) }
-        : input;
+  let source;
+  if (typeof input === 'string') source = { uri: input };
+  else if (typeof input === 'number') source = { uri: resolveAsset(input) };
+  else source = input;
   if (!source || typeof source.uri !== 'string' || source.uri.trim() === '') {
     throw new PlayerError({
       code: 'INVALID_SOURCE',
@@ -106,6 +104,9 @@ export function normalizeNowPlaying(
   if (typeof art === 'number') out.artwork = resolveAsset(art);
   else if (typeof art === 'string') out.artwork = art;
   else if (art && typeof art.uri === 'string') out.artwork = art.uri;
+  else {
+    // Omit absent or unsupported artwork.
+  }
   if (metadata.duration != null) {
     assertFinite('duration', metadata.duration);
     out.duration = Math.max(0, metadata.duration);

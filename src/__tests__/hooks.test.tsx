@@ -79,8 +79,33 @@ describe('hooks', () => {
     await unmount();
     expect(player.listenerCount()).toBeLessThan(listenersBefore);
     expect(player.listenerCount()).toBe(0);
+    const stopped = spy.mock.calls.length;
+    await act(async () => jest.advanceTimersByTime(1000));
+    expect(spy.mock.calls.length).toBe(stopped);
     jest.useRealTimers();
     spy.mockRestore();
+    await player.release();
+  });
+
+  it('usePlayerEvent updates the handler without replacing its subscription', async () => {
+    const player = new Player();
+    const first = jest.fn();
+    const second = jest.fn();
+    function EventProbe({ handler }: { handler: () => void }) {
+      usePlayerEvent(player, 'ended', handler);
+      return null;
+    }
+    const { rerender, unmount } = await render(<EventProbe handler={first} />);
+    const count = player.listenerCount();
+    await rerender(<EventProbe handler={second} />);
+    expect(player.listenerCount()).toBe(count);
+    await act(async () =>
+      fake.emit({ playerId: player.id, seq: 1, type: 'ended' })
+    );
+    expect(first).not.toHaveBeenCalled();
+    expect(second).toHaveBeenCalledTimes(1);
+    await unmount();
+    expect(player.listenerCount()).toBe(0);
     await player.release();
   });
 

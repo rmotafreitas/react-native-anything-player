@@ -105,3 +105,8 @@ website/.vitepress/cache/
 
 # Local environment
 .env*.local
+
+# Quality reports
+coverage/
+junit.xml
+.scannerwork/
