@@ -67,6 +67,16 @@ player.on('metadata', async (m) => {
 
 `elapsed` is the position at the moment of the call (default 0). From then on the bar advances natively, and only while audio plays: pauses and stalls freeze it, like the audio. It never needs updates from JS, which matters on Android, where JS timers do not run in the background. The bar is not seekable: seeking follows the stream. The next `load()`, or an `updateNowPlaying` without `duration`, returns to the live display.
 
+### Turning the "live" badge off
+
+Between songs (a jingle, an ident, a gap) a radio may have nothing to time, but it is not a live show either. Pass `live: false` to show plain metadata, with neither a "live" badge nor a progress bar:
+
+```ts
+await player.updateNowPlaying({ title: 'Station ID', artist: 'My Radio', live: false });
+```
+
+`live` defaults to the stream's own liveness; `live: true` forces the badge. A `duration` always wins and shows the song's progress.
+
 ### Artwork
 
 `artwork` may be a remote URL, a `file://` URI or `require('./cover.png')`. Artwork never blocks playback or metadata: the info is published immediately and the image is attached when it arrives (10 s timeout), only if it is still the current artwork.

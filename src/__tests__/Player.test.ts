@@ -451,6 +451,15 @@ describe('source normalization', () => {
     ).toEqual({ uri: 'HTTPS://A.example/x', live: false });
   });
 
+  it('passes the live badge choice through, dropping non-booleans', () => {
+    expect(normalizeNowPlaying({ title: 'Jingle', live: false })).toEqual({
+      title: 'Jingle',
+      live: false,
+    });
+    expect(normalizeNowPlaying({ live: true })).toEqual({ live: true });
+    expect(normalizeNowPlaying({ live: 'no' as never })).toEqual({});
+  });
+
   it('resolves required assets', () => {
     const spy = jest.spyOn(Image, 'resolveAssetSource').mockReturnValue({
       uri: 'http://localhost:8081/assets/a.mp3',

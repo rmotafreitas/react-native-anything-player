@@ -171,6 +171,13 @@ export interface NowPlayingMetadata {
   duration?: number;
   /** Seconds into the song when this call is made (default 0). Needs `duration`. */
   elapsed?: number;
+  /**
+   * Whether the lock screen / notification marks the item as live (the
+   * "live" badge). Defaults to the stream's own liveness. Pass `false` on a
+   * radio between songs (a jingle, a gap) to show plain metadata, without a
+   * badge or a progress bar. A `duration` always wins: the song's progress.
+   */
+  live?: boolean;
 }
 
 export interface Source {

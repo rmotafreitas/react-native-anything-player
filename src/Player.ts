@@ -115,6 +115,7 @@ export function normalizeNowPlaying(
       out.elapsed = Math.max(0, metadata.elapsed);
     }
   }
+  if (typeof metadata.live === 'boolean') out.live = metadata.live;
   return out;
 }
 

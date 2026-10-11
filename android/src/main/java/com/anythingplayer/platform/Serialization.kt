@@ -36,6 +36,8 @@ internal data class NowPlayingFields(
   /** The song's length and position (seconds) — a progress bar for a live stream. */
   val duration: Double? = null,
   val elapsed: Double? = null,
+  /** The "live" badge; null follows the stream. */
+  val live: Boolean? = null,
 )
 
 /** What the media session shows (merged). */
@@ -46,6 +48,8 @@ internal data class NowPlaying(
   val artwork: String?,
   /** Set when the app gave a song duration: overrides the stream's own timeline. */
   val track: TrackProgress? = null,
+  /** The app's "live" badge choice; null follows the stream. */
+  val live: Boolean? = null,
 )
 
 /** The song's progress at [atMonotonic] (seconds); advances only while playing. */
@@ -119,9 +123,10 @@ internal fun parseNowPlaying(map: ReadableMap?): NowPlayingFields {
   if (map == null) return NowPlayingFields()
   val artwork = map.optString("artwork") ?: map.optMap("artwork")?.optString("uri")
   fun number(key: String) = if (map.hasKey(key) && map.getType(key) == ReadableType.Number) map.getDouble(key) else null
+  val live = if (map.hasKey("live") && map.getType("live") == ReadableType.Boolean) map.getBoolean("live") else null
   return NowPlayingFields(
     map.optString("title"), map.optString("artist"), map.optString("album"), artwork,
-    duration = number("duration"), elapsed = number("elapsed"),
+    duration = number("duration"), elapsed = number("elapsed"), live = live,
   )
 }
 

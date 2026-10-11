@@ -63,6 +63,8 @@ struct NowPlayingFields: Equatable {
   /// The song's length and position (seconds) — a progress bar for a live stream.
   var duration: Double?
   var elapsed: Double?
+  /// The "live" badge; nil follows the stream.
+  var live: Bool?
 
   init(_ dict: NSDictionary?) {
     title = dict?["title"] as? String
@@ -71,6 +73,7 @@ struct NowPlayingFields: Equatable {
     artwork = dict?["artwork"] as? String ?? (dict?["artwork"] as? NSDictionary)?["uri"] as? String
     duration = (dict?["duration"] as? NSNumber)?.doubleValue
     elapsed = (dict?["elapsed"] as? NSNumber)?.doubleValue
+    live = (dict?["live"] as? NSNumber)?.boolValue
   }
 }
 
@@ -230,10 +233,15 @@ final class PlayerController: EngineDelegate, DriverObserver {
     info.artist = overrides.artist ?? stream?.artist ?? sourceFields.artist
     info.album = overrides.album ?? stream?.album ?? sourceFields.album ?? stream?.station
     info.artwork = overrides.artwork ?? stream?.artworkUri ?? sourceFields.artwork
-    info.isLive = s.isLive
+    info.isLive = overrides.live ?? sourceFields.live ?? s.isLive
     info.duration = s.duration
     info.position = progress.position
     info.rate = s.state == .playing ? s.rate : 0
+    if s.isLive && !info.isLive {
+      // Badge turned off on a live stream (a radio between songs): plain
+      // metadata, no stream position posing as elapsed time.
+      info.position = 0
+    }
     if let clock = trackClock {
       // The song, not the stream: a progress bar the OS advances at rate 1
       // (still not seekable — that follows the stream).

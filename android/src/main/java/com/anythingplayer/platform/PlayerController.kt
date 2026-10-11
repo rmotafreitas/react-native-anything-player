@@ -177,6 +177,7 @@ internal class PlayerController(
         val now = AndroidClock.monotonicMs
         TrackProgress(it.duration, it.elapsed(now), now)
       },
+      live = overrides.live ?: sourceFields.live,
     )
   }
 

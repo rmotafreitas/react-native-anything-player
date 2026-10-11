@@ -83,6 +83,9 @@ internal class SessionPlayer : SimpleBasePlayer(Looper.getMainLooper()) {
         (reading.reading.position * 1000).toLong() + if (playing) (elapsed * status.rate).toLong() else 0L
       }
     val positionRate = if (track != null) 1f else status.rate.toFloat()
+    // The "live" badge: a live item with no song timeline, unless the app
+    // turned it off (a radio between songs).
+    val live = track == null && (now.live ?: status.isLive)
     val remote = controller.options.remoteCommands
 
     val commands =
@@ -117,11 +120,11 @@ internal class SessionPlayer : SimpleBasePlayer(Looper.getMainLooper()) {
         .setMediaItem(MediaItem.Builder().setMediaId("anythingplayer").setMediaMetadata(metadata).build())
         .setMediaMetadata(metadata)
         .setIsSeekable(status.seekable)
-        .setIsDynamic(status.isLive && track == null)
+        .setIsDynamic(live)
         .setDurationUs(
           (track?.duration ?: status.duration)?.let { (it * 1_000_000).toLong() } ?: C.TIME_UNSET
         )
-    if (status.isLive && track == null) itemBuilder.setLiveConfiguration(MediaItem.LiveConfiguration.Builder().build())
+    if (live) itemBuilder.setLiveConfiguration(MediaItem.LiveConfiguration.Builder().build())
 
     val interruption = status.interruption
     val builder =
