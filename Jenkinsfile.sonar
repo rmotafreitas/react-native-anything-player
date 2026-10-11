@@ -29,7 +29,7 @@ pipeline {
               rm -rf coverage junit.xml
               # Retain dependencies for TypeScript analysis, but skip postinstall
               # builds: coverage and compiled packages come from validated CI.
-              yarn install --immutable --mode=skip-builds
+              yarn install --immutable --mode=skip-build
               if ! node scripts/ci-results.mjs restore rmotafreitas/react-native-anything-player; then
                 CI=true yarn run test:coverage
               fi
@@ -37,6 +37,7 @@ pipeline {
               TOKEN_FILE="$HOME/sonarqube/analysis-token"
               test -f "$TOKEN_FILE"
               mkdir -p "$CI_CACHE_DIR/sonar"
+              set +x
               export SONAR_TOKEN="$(cat "$TOKEN_FILE")"
               docker run --rm --network host \
                 -v "$WORKSPACE:/usr/src" -w /usr/src \
