@@ -310,6 +310,22 @@ export interface PlayerEventMap {
   audioSample: (sample: AudioSample) => void;
   /** A progress reading, every `progressInterval` ms while playing. */
   progress: (progress: Progress) => void;
+  /**
+   * A live stream's audio jumped: playback moved onto a fresh connection of
+   * the same source (a dropped connection replaced without stopping). A new
+   * Icecast/Shoutcast connection starts with the server's burst of recent
+   * audio, so what is heard repeats or skips — no state change accompanies
+   * it. Reported when the jump becomes audible.
+   */
+  discontinuity: (event: Discontinuity) => void;
+}
+
+/** See {@link PlayerEventMap.discontinuity}. */
+export interface Discontinuity {
+  /** Media position (s) where the new connection's audio starts. */
+  position: number;
+  /** Epoch ms when it was reported (as it became audible). */
+  timestamp: number;
 }
 
 /**

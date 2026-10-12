@@ -43,6 +43,12 @@ internal interface DriverObserver {
   fun onFailed(generation: Int, error: PlayerError)
   fun onPausedExternally(generation: Int, reason: InterruptionReason)
   fun onStreamMetadata(generation: Int, metadata: StreamMetadata)
+  /**
+   * A live stream's audio jumped, now audible: playback moved onto a fresh
+   * connection of the same source (see `onPositionDiscontinuity`).
+   * [position] is the media position (s) the new connection starts at.
+   */
+  fun onDiscontinuity(generation: Int, position: Double)
   fun isOffline(): Boolean
 }
 
@@ -149,6 +155,25 @@ internal class ExoPlayerDriver(
 
       override fun onIsLoadingChanged(isLoading: Boolean) {
         if (!isLoading) maybeQueueContinuation()
+      }
+
+      override fun onPositionDiscontinuity(
+        oldPosition: Player.PositionInfo,
+        newPosition: Player.PositionInfo,
+        reason: Int,
+      ) {
+        // Playback moved onto a fresh connection: a queued continuation took
+        // over (auto transition), or the loader restarted an unseekable live
+        // stream from a new connection after an error (internal). A new
+        // Icecast/Shoutcast connection starts with the server's burst of
+        // recent audio, so what is heard jumps — apps keeping a position
+        // against the station's timeline must place it again. Reported here,
+        // when the jump is audible, not when the connection opened.
+        if (reason != Player.DISCONTINUITY_REASON_AUTO_TRANSITION && reason != Player.DISCONTINUITY_REASON_INTERNAL) return
+        val p = player ?: return
+        val gen = currentGeneration(p) ?: return
+        if (playedGeneration != gen) return
+        report { observer.onDiscontinuity(gen, newPosition.positionMs / 1000.0) }
       }
 
       override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {

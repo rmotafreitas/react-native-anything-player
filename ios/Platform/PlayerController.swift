@@ -300,6 +300,7 @@ final class PlayerController: EngineDelegate, DriverObserver {
     timer.schedule(deadline: .now(), repeating: interval, leeway: .milliseconds(50))
     timer.setEventHandler { [weak self] in
       guard let self, !self.released else { return }
+      self.driver.reportHeardSplices()
       let reading = self.driver.progress()
       let clock = SystemClock.shared
       self.lock.sync { self.snapshotProgress = (reading, clock.monotonicMs, clock.wallMs) }
@@ -386,6 +387,11 @@ final class PlayerController: EngineDelegate, DriverObserver {
       diagnostic: DiagnosticEntry(
         wallTime: SystemClock.shared.wallMs, generation: generation, state: engine.state, event: event,
         details: details))
+  }
+
+  func driverDiscontinuity(generation: Int, position: Double) {
+    guard engine.accepts(generation) else { return }
+    emit("discontinuity", ["position": position, "timestamp": SystemClock.shared.wallMs])
   }
 
   var isOffline: Bool { runtime.networkState == .offline }

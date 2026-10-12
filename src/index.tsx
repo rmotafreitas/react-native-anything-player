@@ -13,6 +13,7 @@ export type {
   AudioSample,
   AudioSamplingOptions,
   DiagnosticEntry,
+  Discontinuity,
   Interruption,
   InterruptionReason,
   LoadOptions,

@@ -438,6 +438,12 @@ export class Player {
           timestamp: event.timestamp as number,
         });
         break;
+      case 'discontinuity':
+        this.emit('discontinuity', {
+          position: event.position as number,
+          timestamp: event.timestamp as number,
+        });
+        break;
       case 'audioSample':
         this.emit('audioSample', {
           waveform: event.waveform as number[],

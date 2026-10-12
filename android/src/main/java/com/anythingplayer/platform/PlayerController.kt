@@ -311,5 +311,16 @@ internal class PlayerController(
     runtime.onNowPlayingChanged(this)
   }
 
+  override fun onDiscontinuity(generation: Int, position: Double) {
+    if (!engine.accepts(generation)) return
+    emit(
+      "discontinuity",
+      Arguments.createMap().apply {
+        putDouble("position", position)
+        putDouble("timestamp", AndroidClock.wallMs.toDouble())
+      },
+    )
+  }
+
   override fun isOffline(): Boolean = runtime.networkState == com.anythingplayer.core.NetworkState.OFFLINE
 }

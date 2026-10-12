@@ -285,6 +285,21 @@ describe('events', () => {
     await p.release();
   });
 
+  it('maps discontinuity events (a live connection replaced under playback)', async () => {
+    const p = new Player();
+    const jumps: unknown[] = [];
+    p.on('discontinuity', (d) => jumps.push(d));
+    fake.emit({
+      playerId: p.id,
+      type: 'discontinuity',
+      position: 0,
+      timestamp: 42,
+      seq: 5,
+    });
+    expect(jumps).toEqual([{ position: 0, timestamp: 42 }]);
+    await p.release();
+  });
+
   it('a throwing listener does not break other listeners', async () => {
     jest.useFakeTimers();
     const p = new Player();
