@@ -97,7 +97,7 @@
     "@types/jest": "^29",
     "@types/react": "^19.2.0",
     "@types/react-test-renderer": "^19",
-    "del-cli": "^7.0.0",
+    "del-cli": "^8.0.0",
     "eslint": "^9.39.5",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-ft-flow": "^3.0.11",
