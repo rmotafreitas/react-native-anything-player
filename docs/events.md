@@ -38,8 +38,11 @@ off(); // unsubscribe
 | `diagnostic` | `DiagnosticEntry` | engine trace, only while diagnostics are enabled |
 | `audioSample` | `AudioSample` | decoded-audio window, only while `setAudioSampling` is on ([visualizer](visualizer.md)) |
 | `progress` | `Progress` | every `progressInterval` ms while playing, only when that option is set |
+| `discontinuity` | `{ position, timestamp }` | a live stream's audio jumped: playback moved onto a fresh connection of the same source, with no state change. Reported when it becomes audible |
 
 Progress is a synchronous read ([playback](playback.md#progress)), so a foreground UI needs no events. `progress` events are opt-in (`new Player({ progressInterval: 1000 })`). They come from a native timer while playing, so they also run JS where the app's own timers are frozen: an Android app in the background keeps receiving them. Use them for work that must follow the audio there, such as switching the lock screen to the next song at the moment it is heard. Stalls shorter than 500 ms are not published.
+
+A live HTTP stream's connection can be replaced without stopping: Android plays on into a fresh connection queued when the old one ended, and iOS's stream proxy splices a fresh upstream into the same response. A new Icecast / Shoutcast connection starts with the server's burst of recent audio, so what is heard jumps (it repeats, or skips after a long outage) while the state stays `playing`. `discontinuity` reports it when the jump becomes audible; `position` is the media position the new connection's audio starts at. An app that keeps its own position against the station's timeline (lyrics, a song's progress) should place it again. On iOS it is detected on the `progress` timer, so it needs `progressInterval`.
 
 ## Guarantees
 
