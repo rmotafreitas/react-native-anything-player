@@ -175,6 +175,11 @@ jobs:
             echo "turbo_cache_hit=1" >> $GITHUB_ENV
           fi
 
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@e81a8fa391b11a595c1b7ed84177cc0fe02faf83 # v1
+        with:
+          ruby-version: '3.3'
+
       - name: Cache CocoaPods and Ruby downloads
         if: env.turbo_cache_hit != 1
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -183,7 +188,7 @@ jobs:
             ~/Library/Caches/CocoaPods
             ~/.cocoapods
             ~/.cache/animu-bundle
-          key: ${{ runner.os }}-${{ runner.arch }}-${{ env.ImageVersion }}-pods-${{ hashFiles('example/ios/Podfile.lock', 'example/Gemfile', '*.podspec', 'yarn.lock') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ env.ImageVersion }}-pods-ruby3.3-${{ hashFiles('example/ios/Podfile.lock', 'example/Gemfile', 'example/Gemfile.lock', '*.podspec', 'yarn.lock') }}
 
       - name: Install cocoapods
         if: env.turbo_cache_hit != 1
@@ -212,3 +217,35 @@ jobs:
 
       - name: Build the docs site
         run: yarn docs:build
+
+  audit-expo-example:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup
+      - name: Build the current library package
+        run: yarn prepare && yarn pack --out example-expo/react-native-anything-player.tgz
+      - name: Cache npm downloads
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-expo-npm-${{ hashFiles('example-expo/package-lock.json') }}
+          restore-keys: ${{ runner.os }}-expo-npm-
+      - name: Install and verify example security patches
+        working-directory: example-expo
+        run: npm ci && node ../scripts/check-expo-audit.mjs
+
+  audit-ruby:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ruby/setup-ruby@e81a8fa391b11a595c1b7ed84177cc0fe02faf83 # v1
+        with:
+          ruby-version: '3.3'
+          working-directory: example
+          bundler-cache: true
+      - name: Audit all locked Ruby dependencies
+        working-directory: example
+        run: bundle exec bundler-audit check --update

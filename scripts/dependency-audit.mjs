@@ -6,13 +6,13 @@ const exceptions = {
   "GHSA-86w9-cpqp-85rv": {
     name: "node-forge", version: "1.4.0",
     paths: [".>expo>@expo/cli>node-forge"],
-    reason: "Expo CLI certificate tooling; absent from the mobile bundle; no published fix",
+    reason: "Installed RSA DigestAlgorithm validation backport passes the malformed-signature regression",
   },
   "GHSA-vfj7-8cjw-p6xm": {
     name: "braces", version: "3.0.3",
     paths: [".>expo>@expo/cli>@expo/metro-file-map>micromatch>braces"],
     dependents: ["micromatch@npm:4.0.8"],
-    reason: "Build-tool matching of repository-controlled globs; no published fix",
+    reason: "Installed parser and AST depth guards pass the deep-pattern regression",
   },
 };
 

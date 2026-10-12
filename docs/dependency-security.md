@@ -1,0 +1,31 @@
+# Dependency security maintenance — 2026-10-12
+
+Published fixes are installed through the lockfiles. No quality threshold is reduced.
+Upstream has not published fixes for the advisories below; the installed packages
+carry local patches, with executable regressions before dependency audits.
+GitHub matches upstream versions and cannot detect these package-manager patches.
+Alert reviews therefore link to the patch and its tests rather than claiming an
+upstream fixed version exists. Remove the backports when upstream fixes ship.
+
+| Advisory | Local mitigation | Regression |
+| --- | --- | --- |
+| [GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm) | `braces@3.0.3`: reject structural nesting at 128 levels before recursive walkers execute; validate direct ASTs and reject cycles | Normal nested expansion succeeds; 5,000-level patterns/ASTs and cyclic ASTs fail with a bounded SyntaxError instead of stack exhaustion |
+| [GHSA-86w9-cpqp-85rv](https://github.com/advisories/GHSA-86w9-cpqp-85rv) | `node-forge@1.4.0`: require the nested DigestAlgorithm sequence to contain exactly the OID and optional NULL, following [upstream PR 1152](https://github.com/digitalbazaar/forge/pull/1152) | Valid RSA signatures with/without NULL verify; extra nested NULL/garbage elements are rejected |
+| [GHSA-hp3w-g68c-fv3c](https://github.com/advisories/GHSA-hp3w-g68c-fv3c) | RNAP only: `sprintf-js@1.0.3` clamps numeric precision to the ECMAScript range, 0–100 for exponential/fixed and 1–100 for precision | Ordinary formatting is preserved; oversized precision and zero significant digits no longer throw RangeError |
+
+The app applies pnpm patches. RNAP applies Yarn patches to its tooling and
+patch-package patches to its npm Expo example. The Expo example independently
+installs with `npm ci`, tests both installed backports, and rejects any audit
+advisory not covered by those tests. Download integrity remains pinned; the local
+RNAP tarball is rebuilt from the checked-out source and has no static archive
+integrity in the example lockfile, avoiding hashes from an older library build.
+
+RNAP locks patched ActiveSupport/concurrent-ruby versions, uses Ruby 3.3, and runs
+bundler-audit on its complete locked dependency graph. CocoaPods/Ruby caches include
+the Ruby version and Gemfile.lock. Dependabot monitors both examples and Ruby gems.
+
+React Native 0.86's presets use Babel 7 and support ESLint 8/9. RNAP's Babel 8 and
+ESLint 10 proposals are deferred through scoped major-version rules. React/RN minor
+upgrades require a coordinated native-template migration. Patch/security updates
+continue. The API uses ESLint 10 and TypeScript 6; both ESM and CommonJS entry points
+are loaded after every build before reusable CI artifacts are published.
