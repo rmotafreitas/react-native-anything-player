@@ -9,6 +9,48 @@ updates:
       npm-minor-patch:
         patterns: ["*"]
         update-types: [minor, patch]
+    ignore:
+      # The RN 0.86 preset depends on Babel 7 and supports ESLint 8/9.
+      - dependency-name: '@babel/*'
+        update-types: [version-update:semver-major]
+      - dependency-name: '@eslint/js'
+        update-types: [version-update:semver-major]
+      - dependency-name: eslint
+        update-types: [version-update:semver-major]
+      # React/RN minor releases need a coordinated native-template migration.
+      - dependency-name: 'react-native'
+        update-types: [version-update:semver-major, version-update:semver-minor]
+      - dependency-name: '@react-native/*'
+        update-types: [version-update:semver-major, version-update:semver-minor]
+      - dependency-name: 'react'
+        update-types: [version-update:semver-major, version-update:semver-minor]
+      - dependency-name: 'react-test-renderer'
+        update-types: [version-update:semver-major, version-update:semver-minor]
+  - package-ecosystem: bundler
+    directory: /example
+    schedule:
+      interval: weekly
+    groups:
+      ruby-tooling:
+        patterns: ['*']
+  - package-ecosystem: npm
+    directory: /example-expo
+    schedule:
+      interval: weekly
+    groups:
+      expo-example:
+        patterns: ['*']
+        update-types: [minor, patch]
+    ignore:
+      # Upgrade the Expo SDK and its native dependencies together.
+      - dependency-name: expo
+        update-types: [version-update:semver-major]
+      - dependency-name: 'expo-*'
+        update-types: [version-update:semver-major]
+      - dependency-name: react-native
+        update-types: [version-update:semver-major, version-update:semver-minor]
+      - dependency-name: react
+        update-types: [version-update:semver-major, version-update:semver-minor]
   - package-ecosystem: github-actions
     directory: /
     schedule:
