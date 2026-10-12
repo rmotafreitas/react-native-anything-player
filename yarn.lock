@@ -5312,10 +5312,10 @@ __metadata:
 
 "braces@patch:braces@npm%3A3.0.3#./.yarn/patches/braces-security.patch::locator=react-native-anything-player%40workspace%3A.":
   version: 3.0.3
-  resolution: "braces@patch:braces@npm%3A3.0.3#./.yarn/patches/braces-security.patch::version=3.0.3&hash=39e4db&locator=react-native-anything-player%40workspace%3A."
+  resolution: "braces@patch:braces@npm%3A3.0.3#./.yarn/patches/braces-security.patch::version=3.0.3&hash=71fa87&locator=react-native-anything-player%40workspace%3A."
   dependencies:
     fill-range: "npm:^7.1.1"
-  checksum: 10c0/341c96948a78bbce72edff5090e09a09375a0677abb70b2504579e5b4ba160f7a8d8d64a7d793dd2559bb95ff53f58a570798701f8db75bd0673d13fa72b9439
+  checksum: 10c0/834c1163279218a960a0bb405ef37fdc024e821733393b11e6c7b62753eae850c65f1e2af6b88c6d0a4328209fb4de618c1579ae8338ba5486b00101cd98f51d
   languageName: node
   linkType: hard
 

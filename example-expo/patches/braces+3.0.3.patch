@@ -58,7 +58,7 @@ diff --git a/node_modules/braces/lib/validate-depth.js b/node_modules/braces/lib
 new file mode 100644
 --- /dev/null
 +++ b/node_modules/braces/lib/validate-depth.js
-@@ -0,0 +1,18 @@
+@@ -0,0 +1,25 @@
 +'use strict';
 +
 +// Bound recursion before the legacy AST walkers run, including direct AST input.
@@ -72,6 +72,13 @@ new file mode 100644
 +      throw new SyntaxError('Brace nesting exceeds limit of 128 or contains a cycle');
 +    }
 +    seen.add(node);
++    let parent = node.parent;
++    for (let levels = 0; parent; levels++) {
++      if (levels >= 128 || parent === node) {
++        throw new SyntaxError('Brace parent chain exceeds limit of 128 or contains a cycle');
++      }
++      parent = parent.parent;
++    }
 +    if (Array.isArray(node.nodes)) {
 +      for (const child of node.nodes) pending.push([child, depth + 1]);
 +    }

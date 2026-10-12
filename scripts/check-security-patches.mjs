@@ -21,6 +21,11 @@ export function verifySecurityPatch(name, cwd = process.cwd()) {
     const cycle = { type: "root", nodes: [] };
     cycle.nodes.push(cycle);
     assert.throws(() => library.compile(cycle), { name: "SyntaxError" });
+    const parentCycle = { type: "paren", nodes: [] };
+    parentCycle.parent = parentCycle;
+    for (const method of ["compile", "expand", "stringify"]) {
+      assert.throws(() => library[method](parentCycle), { name: "SyntaxError" });
+    }
   } else if (name === "sprintf-js") {
     assert.equal(library.sprintf("%.2f", 1.25), "1.25");
     for (const specifier of ["e", "f", "g"]) {
