@@ -313,6 +313,9 @@ internal class PlayerController(
 
   override fun onDiscontinuity(generation: Int, position: Double) {
     if (!engine.accepts(generation)) return
+    // Listeners read the progress to place themselves again: the snapshot
+    // from the last tick still describes the item playback just left.
+    progressSnapshot = ProgressSnapshot(driver.progress(), AndroidClock.monotonicMs, AndroidClock.wallMs)
     emit(
       "discontinuity",
       Arguments.createMap().apply {

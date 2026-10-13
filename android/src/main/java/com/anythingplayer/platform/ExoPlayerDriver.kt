@@ -113,6 +113,11 @@ internal class ExoPlayerDriver(
   private val itemCalls = LinkedHashMap<String, CallRegistry>()
   private var continuationCount = 0
   private val continuationTimes = ArrayDeque<Long>()
+  /**
+   * A fresh connection playback moved onto before any of its audio could
+   * play (generation, media position in s): reported once it plays.
+   */
+  private var pendingDiscontinuity: Pair<Int, Double>? = null
 
   private val listener =
     object : Player.Listener {
@@ -134,6 +139,10 @@ internal class ExoPlayerDriver(
           reportReady(p, gen)
           playedGeneration = gen
           report { observer.onPlaying(gen) }
+          pendingDiscontinuity?.let { (pendingGen, position) ->
+            pendingDiscontinuity = null
+            if (pendingGen == gen) report { observer.onDiscontinuity(gen, position) }
+          }
         } else if (p.playWhenReady && p.playbackState == Player.STATE_BUFFERING) {
           report { observer.onBuffering(gen) }
         }
@@ -167,13 +176,21 @@ internal class ExoPlayerDriver(
         // stream from a new connection after an error (internal). A new
         // Icecast/Shoutcast connection starts with the server's burst of
         // recent audio, so what is heard jumps — apps keeping a position
-        // against the station's timeline must place it again. Reported here,
-        // when the jump is audible, not when the connection opened.
+        // against the station's timeline must place it again. Reported when
+        // the jump is audible, not when the connection opened: here if the new
+        // connection's audio plays on, else (an outage outlasted the buffer:
+        // nothing of it has arrived yet) once playback resumes.
         if (reason != Player.DISCONTINUITY_REASON_AUTO_TRANSITION && reason != Player.DISCONTINUITY_REASON_INTERNAL) return
         val p = player ?: return
         val gen = currentGeneration(p) ?: return
         if (playedGeneration != gen) return
-        report { observer.onDiscontinuity(gen, newPosition.positionMs / 1000.0) }
+        val position = newPosition.positionMs / 1000.0
+        if (p.isPlaying) {
+          pendingDiscontinuity = null
+          report { observer.onDiscontinuity(gen, position) }
+        } else {
+          pendingDiscontinuity = gen to position
+        }
       }
 
       override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
@@ -301,6 +318,7 @@ internal class ExoPlayerDriver(
     generation = request.generation
     currentRequest = request
     continuationCount = 0
+    pendingDiscontinuity = null
     continuationTimes.clear()
     readyGeneration = -1
     lastStream = null
