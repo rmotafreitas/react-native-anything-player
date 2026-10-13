@@ -98,6 +98,8 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
   private var station: (name: String?, genre: String?) = (nil, nil)
   /// The real network error behind an item failure (offline vs DNS vs refused).
   private var upstreamError: Error?
+  /// New audio played past a splice before it counts as heard (s).
+  private static let spliceHeardAfter = 0.1
   /// Media times (s) where a spliced upstream's audio starts, not heard yet.
   private var pendingSplices: [Double] = []
 
@@ -436,13 +438,16 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
     ]
   }
 
-  /// Reports the splices the playhead has reached (called on each progress tick).
+  /// Reports the splices whose audio is playing (called on each progress tick).
+  /// An outage longer than the buffer stalls the playhead right at a splice,
+  /// before any of the new upstream's audio has arrived: it is not heard
+  /// until playback runs past it.
   func reportHeardSplices() {
-    guard !pendingSplices.isEmpty else { return }
+    guard !pendingSplices.isEmpty, player.timeControlStatus == .playing else { return }
     let position = currentPosition
-    let heard = pendingSplices.filter { $0 <= position }
+    let heard = pendingSplices.filter { $0 + Self.spliceHeardAfter <= position }
     guard !heard.isEmpty else { return }
-    pendingSplices.removeAll { $0 <= position }
+    pendingSplices.removeAll { $0 + Self.spliceHeardAfter <= position }
     for at in heard { observer?.driverDiscontinuity(generation: generation, position: at) }
   }
 
