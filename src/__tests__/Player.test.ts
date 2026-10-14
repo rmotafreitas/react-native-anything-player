@@ -74,6 +74,25 @@ describe('Player lifecycle', () => {
 });
 
 describe('status mirroring', () => {
+  it('delivers one listener snapshot when callbacks add or remove listeners', async () => {
+    const p = new Player();
+    const removed = jest.fn();
+    const added = jest.fn();
+    let remove = () => {};
+    p.on('status', () => {
+      remove();
+      p.on('status', added);
+    });
+    remove = p.on('status', removed);
+    fake.emitStatus(p.id, { seq: 5, state: 'playing' });
+    expect(removed).toHaveBeenCalledTimes(1);
+    expect(added).not.toHaveBeenCalled();
+    fake.emitStatus(p.id, { seq: 6, state: 'paused' });
+    expect(removed).toHaveBeenCalledTimes(1);
+    expect(added).toHaveBeenCalledTimes(1);
+    await p.release();
+  });
+
   it('applies newer snapshots and drops stale or duplicate ones', async () => {
     const p = new Player();
     const states: string[] = [];

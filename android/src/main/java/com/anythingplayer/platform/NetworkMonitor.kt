@@ -82,6 +82,8 @@ internal class NetworkMonitor(context: Context, private val onChange: (NetworkSt
     try {
       connectivity.unregisterNetworkCallback(callback)
     } catch (_: IllegalArgumentException) {
+      // Registration may have failed (e.g. the host removed ACCESS_NETWORK_STATE).
+      // Android has no registered callback to remove in that case.
     }
   }
 

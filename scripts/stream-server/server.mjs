@@ -41,13 +41,14 @@ const FILES = {
 };
 const BYTES_PER_SECOND = 128_000 / 8;
 const TICK_MS = 100;
+const MAX_DELAY_MS = 60_000;
 const STARTED_AT = Date.now();
 const port = Number(process.argv[2] ?? process.env.PORT ?? 8765);
 
 const TITLES = [
   ['RNAP Test', 'Signal One'],
   ['Björk', 'Jóga'],
-  ['Guns N\' Roses', 'Sweet Child O\' Mine'],
+  ["Guns N' Roses", "Sweet Child O' Mine"],
   ['YOASOBI', 'アイドル'],
   ['Café del Mar', 'Olé; Sí'],
   ['RNAP Test', 'Signal Six'],
@@ -70,7 +71,7 @@ function titleAt(seconds, every) {
 function metadataBlock(text, charset, malformed, host) {
   const payload = Buffer.from(
     `StreamTitle='${text}';StreamUrl='http://${host}/artwork.png';`,
-    charset === 'latin1' ? 'latin1' : 'utf8',
+    charset === 'latin1' ? 'latin1' : 'utf8'
   );
   const blocks = Math.ceil(payload.length / 16);
   const out = Buffer.alloc(1 + blocks * 16);
@@ -86,7 +87,12 @@ function metadataBlock(text, charset, malformed, host) {
 function liveStream(req, res, url) {
   const q = url.searchParams;
   const status = Number(q.get('status') ?? 200);
-  const delay = Number(q.get('delay') ?? 0) || state.delay;
+  const delay = Number(q.get('delay') ?? state.delay);
+  if (!Number.isFinite(delay) || delay < 0 || delay > MAX_DELAY_MS) {
+    res.writeHead(400);
+    res.end('delay must be between 0 and 60000 ms');
+    return;
+  }
   if (state.down) {
     record({ kind: 'refused', path: url.pathname });
     req.socket.destroy();
@@ -102,6 +108,22 @@ function liveStream(req, res, url) {
   const dropAfter = q.has('dropAfter') ? Number(q.get('dropAfter')) : null;
   const endAfter = q.has('endAfter') ? Number(q.get('endAfter')) : null;
   const rate = q.has('slow') ? Number(q.get('slow')) : BYTES_PER_SECOND;
+  if (
+    !Number.isInteger(status) ||
+    status < 100 ||
+    status > 599 ||
+    !Number.isSafeInteger(metaint) ||
+    metaint < 1 ||
+    !Number.isFinite(titleEvery) ||
+    titleEvery <= 0 ||
+    !Number.isFinite(rate) ||
+    rate <= 0 ||
+    rate > BYTES_PER_SECOND
+  ) {
+    res.writeHead(400);
+    res.end('invalid stream controls');
+    return;
+  }
 
   const start = () => {
     if (status !== 200) {
@@ -113,7 +135,7 @@ function liveStream(req, res, url) {
     const headers = {
       'Content-Type': 'audio/mpeg',
       'Cache-Control': 'no-cache, no-store',
-      Connection: 'close',
+      'Connection': 'close',
       'icy-name': 'RNAP Test Radio',
       'icy-genre': 'Test Tones',
       'icy-br': '128',
@@ -127,7 +149,12 @@ function liveStream(req, res, url) {
     const conn = { req, res, id: ++stats.total, path: url.pathname, sent: 0 };
     active.add(conn);
     stats.byPath[url.pathname] = (stats.byPath[url.pathname] ?? 0) + 1;
-    record({ kind: 'open', id: conn.id, meta: wantsMeta, ua: req.headers['user-agent'] ?? '' });
+    record({
+      kind: 'open',
+      id: conn.id,
+      meta: wantsMeta,
+      ua: req.headers['user-agent'] ?? '',
+    });
 
     // Join the shared on-air timeline at the live point.
     const onAirSeconds = (Date.now() - STARTED_AT) / 1000;
@@ -149,7 +176,10 @@ function liveStream(req, res, url) {
         record({ kind: 'end', id: conn.id });
         return finish(false);
       }
-      const stalledByParam = stallAfter != null && elapsed >= stallAfter && elapsed < stallAfter + stallFor;
+      const stalledByParam =
+        stallAfter != null &&
+        elapsed >= stallAfter &&
+        elapsed < stallAfter + stallFor;
       if (state.stall || stalledByParam) return;
       budget += (rate * TICK_MS) / 1000;
       let chunk = Math.floor(budget);
@@ -157,7 +187,11 @@ function liveStream(req, res, url) {
       budget -= chunk;
       const parts = [];
       while (chunk > 0) {
-        const take = Math.min(chunk, wantsMeta ? untilMeta : chunk, PROGRAM.length - offset);
+        const take = Math.min(
+          chunk,
+          wantsMeta ? untilMeta : chunk,
+          PROGRAM.length - offset
+        );
         parts.push(PROGRAM.subarray(offset, offset + take));
         offset = (offset + take) % PROGRAM.length;
         chunk -= take;
@@ -169,7 +203,14 @@ function liveStream(req, res, url) {
             if (title !== lastTitle) {
               lastTitle = title;
               blockIndex += 1;
-              parts.push(metadataBlock(title, charset, malformed && blockIndex % 2 === 0, req.headers.host ?? `localhost:${port}`));
+              parts.push(
+                metadataBlock(
+                  title,
+                  charset,
+                  malformed && blockIndex % 2 === 0,
+                  req.headers.host ?? `localhost:${port}`
+                )
+              );
             } else {
               parts.push(Buffer.from([0]));
             }
@@ -205,11 +246,30 @@ function liveStream(req, res, url) {
 function staticFile(req, res, url) {
   const file = FILES[url.pathname];
   const delay = Number(url.searchParams.get('delay') ?? 0);
+  if (!Number.isFinite(delay) || delay < 0 || delay > MAX_DELAY_MS) {
+    res.writeHead(400);
+    res.end('delay must be between 0 and 60000 ms');
+    return;
+  }
   const send = () => {
-    const range = /bytes=(\d+)-(\d*)/.exec(req.headers.range ?? '');
+    const range = /^bytes=(\d+)-(\d*)$/.exec(req.headers.range ?? '');
+    if (req.headers.range && !range) {
+      res.writeHead(416, { 'Content-Range': `bytes */${file.body.length}` });
+      return res.end();
+    }
     if (range) {
       const startByte = Number(range[1]);
-      const endByte = range[2] ? Number(range[2]) : file.body.length - 1;
+      const requestedEnd = range[2] ? Number(range[2]) : file.body.length - 1;
+      if (
+        !Number.isSafeInteger(startByte) ||
+        !Number.isSafeInteger(requestedEnd) ||
+        startByte >= file.body.length ||
+        requestedEnd < startByte
+      ) {
+        res.writeHead(416, { 'Content-Range': `bytes */${file.body.length}` });
+        return res.end();
+      }
+      const endByte = Math.min(requestedEnd, file.body.length - 1);
       res.writeHead(206, {
         'Content-Type': file.type,
         'Accept-Ranges': 'bytes',
@@ -218,24 +278,41 @@ function staticFile(req, res, url) {
       });
       res.end(file.body.subarray(startByte, endByte + 1));
     } else {
-      res.writeHead(200, { 'Content-Type': file.type, 'Accept-Ranges': 'bytes', 'Content-Length': file.body.length });
+      res.writeHead(200, {
+        'Content-Type': file.type,
+        'Accept-Ranges': 'bytes',
+        'Content-Length': file.body.length,
+      });
       res.end(file.body);
     }
-    record({ kind: 'file', path: url.pathname, range: req.headers.range ?? null });
+    record({
+      kind: 'file',
+      path: url.pathname,
+      range: req.headers.range ?? null,
+    });
   };
-  if (delay > 0) setTimeout(send, delay);
-  else send();
+  if (delay > 0) {
+    const timer = setTimeout(send, delay);
+    req.on('close', () => clearTimeout(timer));
+  } else send();
 }
 
 const server = createServer((req, res) => {
-  const url = new URL(req.url, `http://${req.headers.host}`);
-  if (url.pathname === '/live.mp3' || url.pathname === '/live') return liveStream(req, res, url);
+  // The Host header is unrelated to route selection and can be malformed.
+  const url = new URL(req.url, 'http://localhost');
+  if (url.pathname === '/live.mp3' || url.pathname === '/live')
+    return liveStream(req, res, url);
   if (FILES[url.pathname]) return staticFile(req, res, url);
   if (url.pathname === '/control') {
     const q = url.searchParams;
+    const delay = Number(q.get('delay') ?? state.delay);
+    if (!Number.isFinite(delay) || delay < 0 || delay > MAX_DELAY_MS) {
+      res.writeHead(400);
+      return res.end('delay must be between 0 and 60000 ms');
+    }
     if (q.has('down')) state.down = q.get('down') === '1';
     if (q.has('stall')) state.stall = q.get('stall') === '1';
-    if (q.has('delay')) state.delay = Number(q.get('delay')) || 0;
+    if (q.has('delay')) state.delay = delay;
     if (q.get('drop') === '1') [...active].forEach((c) => c.finish?.(true));
     record({ kind: 'control', ...Object.fromEntries(q) });
     res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -244,7 +321,16 @@ const server = createServer((req, res) => {
   if (url.pathname === '/stats') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     return res.end(
-      JSON.stringify({ ...stats, active: active.size, activeIds: [...active].map((c) => c.id), state }, null, 2),
+      JSON.stringify(
+        {
+          ...stats,
+          active: active.size,
+          activeIds: [...active].map((c) => c.id),
+          state,
+        },
+        null,
+        2
+      )
     );
   }
   res.writeHead(404);
@@ -252,5 +338,8 @@ const server = createServer((req, res) => {
 });
 
 server.listen(port, '0.0.0.0', () => {
-  console.log(`anythingplayer test stream server on http://0.0.0.0:${port} (Android emulator: http://10.0.2.2:${port})`);
+  const boundPort = server.address().port;
+  console.log(
+    `anythingplayer test stream server on http://0.0.0.0:${boundPort} (Android emulator: http://10.0.2.2:${boundPort})`
+  );
 });

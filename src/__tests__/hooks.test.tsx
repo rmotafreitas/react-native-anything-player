@@ -72,7 +72,7 @@ describe('hooks', () => {
     await act(async () => change('background'));
     const paused = spy.mock.calls.length;
     await act(async () => jest.advanceTimersByTime(1000));
-    expect(spy.mock.calls.length).toBe(paused);
+    expect(spy.mock.calls).toHaveLength(paused);
     await act(async () => change('active'));
     expect(spy.mock.calls.length).toBeGreaterThan(paused);
     const listenersBefore = player.listenerCount();
@@ -81,7 +81,7 @@ describe('hooks', () => {
     expect(player.listenerCount()).toBe(0);
     const stopped = spy.mock.calls.length;
     await act(async () => jest.advanceTimersByTime(1000));
-    expect(spy.mock.calls.length).toBe(stopped);
+    expect(spy.mock.calls).toHaveLength(stopped);
     jest.useRealTimers();
     spy.mockRestore();
     await player.release();

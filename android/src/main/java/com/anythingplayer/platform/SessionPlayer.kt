@@ -73,37 +73,14 @@ internal class SessionPlayer : SimpleBasePlayer(Looper.getMainLooper()) {
     val elapsed = (AndroidClock.monotonicMs - reading.takenAtMonotonic).coerceAtLeast(0)
     val track = now.track
     val playing = status.state == PlaybackState.PLAYING
-    // With a song duration from the app, the session shows the song's timeline
-    // (advancing at rate 1 while audio plays) instead of the stream's.
-    val positionMs =
-      if (track != null) {
-        val sinceMs = if (playing) (AndroidClock.monotonicMs - track.atMonotonic).coerceAtLeast(0) else 0L
-        ((track.elapsed * 1000).toLong() + sinceMs).coerceAtMost((track.duration * 1000).toLong())
-      } else {
-        (reading.reading.position * 1000).toLong() + if (playing) (elapsed * status.rate).toLong() else 0L
-      }
+    val positionMs = contentPosition(track, reading, elapsed, playing, status.rate)
     val positionRate = if (track != null) 1f else status.rate.toFloat()
     // The "live" badge: a live item with no song timeline, unless the app
     // turned it off (a radio between songs).
     val live = track == null && (now.live ?: status.isLive)
     val remote = controller.options.remoteCommands
 
-    val commands =
-      Player.Commands.Builder()
-        .addAll(
-          Player.COMMAND_PLAY_PAUSE,
-          Player.COMMAND_STOP,
-          Player.COMMAND_PREPARE,
-          Player.COMMAND_GET_CURRENT_MEDIA_ITEM,
-          Player.COMMAND_GET_METADATA,
-          Player.COMMAND_GET_TIMELINE,
-          Player.COMMAND_RELEASE,
-        )
-    if (status.seekable) commands.add(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)
-    if ("next" in remote) commands.addAll(Player.COMMAND_SEEK_TO_NEXT, Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
-    if ("previous" in remote) commands.addAll(Player.COMMAND_SEEK_TO_PREVIOUS, Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
-    if ("skipForward" in remote) commands.add(Player.COMMAND_SEEK_FORWARD)
-    if ("skipBackward" in remote) commands.add(Player.COMMAND_SEEK_BACK)
+    val commands = availableCommands(status.seekable, remote)
 
     val metadata =
       MediaMetadata.Builder()
@@ -129,7 +106,7 @@ internal class SessionPlayer : SimpleBasePlayer(Looper.getMainLooper()) {
     val interruption = status.interruption
     val builder =
       State.Builder()
-        .setAvailableCommands(commands.build())
+        .setAvailableCommands(commands)
         .setPlaylist(listOf(itemBuilder.build()))
         .setCurrentMediaItemIndex(0)
         .setPlaybackParameters(PlaybackParameters(status.rate.toFloat()))
@@ -165,6 +142,35 @@ internal class SessionPlayer : SimpleBasePlayer(Looper.getMainLooper()) {
     }
     return builder.build()
   }
+
+  private fun availableCommands(seekable: Boolean, remote: Set<String>): Player.Commands {
+    val commands =
+      Player.Commands.Builder()
+        .addAll(
+          Player.COMMAND_PLAY_PAUSE,
+          Player.COMMAND_STOP,
+          Player.COMMAND_PREPARE,
+          Player.COMMAND_GET_CURRENT_MEDIA_ITEM,
+          Player.COMMAND_GET_METADATA,
+          Player.COMMAND_GET_TIMELINE,
+          Player.COMMAND_RELEASE,
+        )
+    if (seekable) commands.add(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)
+    if ("next" in remote) commands.addAll(Player.COMMAND_SEEK_TO_NEXT, Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
+    if ("previous" in remote) commands.addAll(Player.COMMAND_SEEK_TO_PREVIOUS, Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
+    if ("skipForward" in remote) commands.add(Player.COMMAND_SEEK_FORWARD)
+    if ("skipBackward" in remote) commands.add(Player.COMMAND_SEEK_BACK)
+
+    return commands.build()
+  }
+
+  private fun contentPosition(track: TrackProgress?, reading: ProgressSnapshot, elapsed: Long, playing: Boolean, rate: Double): Long =
+      if (track != null) {
+        val sinceMs = if (playing) (AndroidClock.monotonicMs - track.atMonotonic).coerceAtLeast(0) else 0L
+        ((track.elapsed * 1000).toLong() + sinceMs).coerceAtMost((track.duration * 1000).toLong())
+      } else {
+        (reading.reading.position * 1000).toLong() + if (playing) (elapsed * rate).toLong() else 0L
+      }
 
   override fun handleSetPlayWhenReady(playWhenReady: Boolean): ListenableFuture<*> {
     AnythingPlayerRuntime.remote(if (playWhenReady) "play" else "pause")

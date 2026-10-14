@@ -469,21 +469,25 @@ class PlaybackEngine(
     val previous = network
     network = next
     val t = now
-    if (previous == NetworkState.ONLINE && next == NetworkState.OFFLINE) {
-      markNetworkEdge(t)
-      log("network lost", emptyMap())
-    } else if (previous == NetworkState.OFFLINE && next == NetworkState.ONLINE) {
-      // (`unknown` → `online` is the first reading: a baseline, not an edge.)
-      markNetworkEdge(t)
-      backoff.reset()
-      offlineSkips = 0
-      log("network restored", emptyMap())
-      if (playWhenReady && state != PlaybackState.PLAYING) attemptReconnect("network restored")
-    } else if (previous == NetworkState.ONLINE && next == NetworkState.ONLINE && interfaceChanged) {
-      markNetworkEdge(t)
-      log("network handoff", emptyMap())
-      if (playWhenReady && (state == PlaybackState.BUFFERING || state == PlaybackState.RECONNECTING)) {
-        attemptReconnect("network handoff")
+    when {
+      previous == NetworkState.ONLINE && next == NetworkState.OFFLINE -> {
+        markNetworkEdge(t)
+        log("network lost", emptyMap())
+      }
+      previous == NetworkState.OFFLINE && next == NetworkState.ONLINE -> {
+        // (`unknown` → `online` is the first reading: a baseline, not an edge.)
+        markNetworkEdge(t)
+        backoff.reset()
+        offlineSkips = 0
+        log("network restored", emptyMap())
+        if (playWhenReady && state != PlaybackState.PLAYING) attemptReconnect("network restored")
+      }
+      previous == NetworkState.ONLINE && next == NetworkState.ONLINE && interfaceChanged -> {
+        markNetworkEdge(t)
+        log("network handoff", emptyMap())
+        if (playWhenReady && (state == PlaybackState.BUFFERING || state == PlaybackState.RECONNECTING)) {
+          attemptReconnect("network handoff")
+        }
       }
     }
     commit()
@@ -516,28 +520,8 @@ class PlaybackEngine(
   fun onWakeup() {
     if (released) return
     val t = now
-    pauseReleaseAt?.let { due ->
-      if (due <= t) {
-        pauseReleaseAt = null
-        if (state == PlaybackState.PAUSED && !playWhenReady && !connectionReleased) {
-          driver.releaseConnection()
-          connectionReleased = true
-          log("paused stream released", emptyMap())
-        }
-      }
-    }
-    stallPublishAt?.let { due ->
-      if (due <= t) {
-        stallPublishAt = null
-        val started = stallStartedAt
-        if (state == PlaybackState.PLAYING && started != null) {
-          setState(PlaybackState.BUFFERING, "native stall")
-          beginWaiting()
-          stallStartedAt = started
-          lastBufferedAdvanceAt = started
-        }
-      }
-    }
+    releasePausedConnectionIfDue(t)
+    publishStallIfDue(t)
     if (state == PlaybackState.RECONNECTING) {
       val due = nextAttemptAt
       if (due != null && due <= t) {
@@ -550,6 +534,34 @@ class PlaybackEngine(
       heartbeat(t)
     }
     commit()
+  }
+
+  private fun releasePausedConnectionIfDue(t: Long) {
+    pauseReleaseAt?.let { due ->
+      if (due <= t) {
+        pauseReleaseAt = null
+        if (state == PlaybackState.PAUSED && !playWhenReady && !connectionReleased) {
+          driver.releaseConnection()
+          connectionReleased = true
+          log("paused stream released", emptyMap())
+        }
+      }
+    }
+  }
+
+  private fun publishStallIfDue(t: Long) {
+    stallPublishAt?.let { due ->
+      if (due <= t) {
+        stallPublishAt = null
+        val started = stallStartedAt
+        if (state == PlaybackState.PLAYING && started != null) {
+          setState(PlaybackState.BUFFERING, "native stall")
+          beginWaiting()
+          stallStartedAt = started
+          lastBufferedAdvanceAt = started
+        }
+      }
+    }
   }
 
   // ── Internals ──
@@ -788,54 +800,58 @@ class PlaybackEngine(
           handleFailure(PlayerError(ErrorCode.TIMEOUT, "Opening the source timed out.", true))
         }
       }
-      PlaybackState.PLAYING -> {
-        val sample = driver.sample()
-        if (!isLive) resumePosition = sample.position
-        if (sample.position > lastPosition + 0.05 || sample.position < lastPosition - 0.5) {
-          lastPosition = sample.position
-          lastPositionAdvanceAt = t
-        } else {
-          val stallLimit = if (suspect) RecoveryPolicy.SUSPECT_SILENT_STALL_MS else RecoveryPolicy.SILENT_STALL_MS
-          if (t - lastPositionAdvanceAt >= stallLimit && rate > 0) {
-            log("silent stall", mapOf("frozenMs" to "${t - lastPositionAdvanceAt}"))
-            setState(PlaybackState.BUFFERING, "silent stall")
-            beginWaiting()
-            stallStartedAt = lastPositionAdvanceAt
-          }
-        }
-        val playing = playingSince
-        if (playing != null && t - playing >= RecoveryPolicy.STABLE_PLAYBACK_MS) {
-          playingSince = null
-          stable = true
-          backoff.reset()
-          offlineSkips = 0
-          recoveringSince = null
-        }
-      }
-      PlaybackState.BUFFERING -> {
-        val sample = driver.sample()
-        if (sample.bufferedPosition > lastBuffered + 0.01) {
-          lastBuffered = sample.bufferedPosition
-          lastBufferedAdvanceAt = t
-        }
-        val stalled = stallStartedAt ?: return
-        if (network == NetworkState.OFFLINE) {
-          if (t - lastBufferedAdvanceAt >= RecoveryPolicy.STALL_DEAD_MS) {
-            if (recoveringSince == null) recoveringSince = stalled
-            scheduleReconnect("offline")
-          }
-          return
-        }
-        val deadLimit = if (suspect) RecoveryPolicy.SUSPECT_STALL_DEAD_MS else RecoveryPolicy.STALL_DEAD_MS
-        if (t - lastBufferedAdvanceAt >= deadLimit) {
-          attemptReconnect("stalled ${t - stalled}ms with no data")
-        } else if (t - stalled >= RecoveryPolicy.STALL_MAX_MS) {
-          attemptReconnect("stalled ${t - stalled}ms")
-        } else if (isLive && driftMs + (t - stalled) >= options.liveMaxDriftMs) {
-          attemptReconnect("live drift during stall")
-        }
-      }
+      PlaybackState.PLAYING -> heartbeatPlaying(t, suspect)
+      PlaybackState.BUFFERING -> heartbeatBuffering(t, suspect)
       else -> Unit
+    }
+  }
+
+  private fun heartbeatPlaying(t: Long, suspect: Boolean) {
+    val sample = driver.sample()
+    if (!isLive) resumePosition = sample.position
+    if (sample.position > lastPosition + 0.05 || sample.position < lastPosition - 0.5) {
+      lastPosition = sample.position
+      lastPositionAdvanceAt = t
+    } else {
+      val stallLimit = if (suspect) RecoveryPolicy.SUSPECT_SILENT_STALL_MS else RecoveryPolicy.SILENT_STALL_MS
+      if (t - lastPositionAdvanceAt >= stallLimit && rate > 0) {
+        log("silent stall", mapOf("frozenMs" to "${t - lastPositionAdvanceAt}"))
+        setState(PlaybackState.BUFFERING, "silent stall")
+        beginWaiting()
+        stallStartedAt = lastPositionAdvanceAt
+      }
+    }
+    val playing = playingSince
+    if (playing != null && t - playing >= RecoveryPolicy.STABLE_PLAYBACK_MS) {
+      playingSince = null
+      stable = true
+      backoff.reset()
+      offlineSkips = 0
+      recoveringSince = null
+    }
+  }
+
+  private fun heartbeatBuffering(t: Long, suspect: Boolean) {
+    val sample = driver.sample()
+    if (sample.bufferedPosition > lastBuffered + 0.01) {
+      lastBuffered = sample.bufferedPosition
+      lastBufferedAdvanceAt = t
+    }
+    val stalled = stallStartedAt ?: return
+    if (network == NetworkState.OFFLINE) {
+      if (t - lastBufferedAdvanceAt >= RecoveryPolicy.STALL_DEAD_MS) {
+        if (recoveringSince == null) recoveringSince = stalled
+        scheduleReconnect("offline")
+      }
+      return
+    }
+    val deadLimit = if (suspect) RecoveryPolicy.SUSPECT_STALL_DEAD_MS else RecoveryPolicy.STALL_DEAD_MS
+    if (t - lastBufferedAdvanceAt >= deadLimit) {
+      attemptReconnect("stalled ${t - stalled}ms with no data")
+    } else if (t - stalled >= RecoveryPolicy.STALL_MAX_MS) {
+      attemptReconnect("stalled ${t - stalled}ms")
+    } else if (isLive && driftMs + (t - stalled) >= options.liveMaxDriftMs) {
+      attemptReconnect("live drift during stall")
     }
   }
 
