@@ -41,6 +41,7 @@ const FILES = {
 };
 const BYTES_PER_SECOND = 128_000 / 8;
 const TICK_MS = 100;
+const MAX_DELAY_MS = 60_000;
 const STARTED_AT = Date.now();
 const port = Number(process.argv[2] ?? process.env.PORT ?? 8765);
 
@@ -86,7 +87,12 @@ function metadataBlock(text, charset, malformed, host) {
 function liveStream(req, res, url) {
   const q = url.searchParams;
   const status = Number(q.get('status') ?? 200);
-  const delay = Number(q.get('delay') ?? 0) || state.delay;
+  const delay = Number(q.get('delay') ?? state.delay);
+  if (!Number.isFinite(delay) || delay < 0 || delay > MAX_DELAY_MS) {
+    res.writeHead(400);
+    res.end('delay must be between 0 and 60000 ms');
+    return;
+  }
   if (state.down) {
     record({ kind: 'refused', path: url.pathname });
     req.socket.destroy();
@@ -102,6 +108,14 @@ function liveStream(req, res, url) {
   const dropAfter = q.has('dropAfter') ? Number(q.get('dropAfter')) : null;
   const endAfter = q.has('endAfter') ? Number(q.get('endAfter')) : null;
   const rate = q.has('slow') ? Number(q.get('slow')) : BYTES_PER_SECOND;
+  if (!Number.isInteger(status) || status < 100 || status > 599 ||
+      !Number.isSafeInteger(metaint) || metaint < 1 ||
+      !Number.isFinite(titleEvery) || titleEvery <= 0 ||
+      !Number.isFinite(rate) || rate <= 0 || rate > BYTES_PER_SECOND) {
+    res.writeHead(400);
+    res.end('invalid stream controls');
+    return;
+  }
 
   const start = () => {
     if (status !== 200) {
@@ -205,11 +219,26 @@ function liveStream(req, res, url) {
 function staticFile(req, res, url) {
   const file = FILES[url.pathname];
   const delay = Number(url.searchParams.get('delay') ?? 0);
+  if (!Number.isFinite(delay) || delay < 0 || delay > MAX_DELAY_MS) {
+    res.writeHead(400);
+    res.end('delay must be between 0 and 60000 ms');
+    return;
+  }
   const send = () => {
-    const range = /bytes=(\d+)-(\d*)/.exec(req.headers.range ?? '');
+    const range = /^bytes=(\d+)-(\d*)$/.exec(req.headers.range ?? '');
+    if (req.headers.range && !range) {
+      res.writeHead(416, { 'Content-Range': `bytes */${file.body.length}` });
+      return res.end();
+    }
     if (range) {
       const startByte = Number(range[1]);
-      const endByte = range[2] ? Number(range[2]) : file.body.length - 1;
+      const requestedEnd = range[2] ? Number(range[2]) : file.body.length - 1;
+      if (!Number.isSafeInteger(startByte) || !Number.isSafeInteger(requestedEnd) ||
+          startByte >= file.body.length || requestedEnd < startByte) {
+        res.writeHead(416, { 'Content-Range': `bytes */${file.body.length}` });
+        return res.end();
+      }
+      const endByte = Math.min(requestedEnd, file.body.length - 1);
       res.writeHead(206, {
         'Content-Type': file.type,
         'Accept-Ranges': 'bytes',
@@ -223,19 +252,27 @@ function staticFile(req, res, url) {
     }
     record({ kind: 'file', path: url.pathname, range: req.headers.range ?? null });
   };
-  if (delay > 0) setTimeout(send, delay);
-  else send();
+  if (delay > 0) {
+    const timer = setTimeout(send, delay);
+    req.on('close', () => clearTimeout(timer));
+  } else send();
 }
 
 const server = createServer((req, res) => {
-  const url = new URL(req.url, `http://${req.headers.host}`);
+  // The Host header is unrelated to route selection and can be malformed.
+  const url = new URL(req.url, 'http://localhost');
   if (url.pathname === '/live.mp3' || url.pathname === '/live') return liveStream(req, res, url);
   if (FILES[url.pathname]) return staticFile(req, res, url);
   if (url.pathname === '/control') {
     const q = url.searchParams;
+    const delay = Number(q.get('delay') ?? state.delay);
+    if (!Number.isFinite(delay) || delay < 0 || delay > MAX_DELAY_MS) {
+      res.writeHead(400);
+      return res.end('delay must be between 0 and 60000 ms');
+    }
     if (q.has('down')) state.down = q.get('down') === '1';
     if (q.has('stall')) state.stall = q.get('stall') === '1';
-    if (q.has('delay')) state.delay = Number(q.get('delay')) || 0;
+    if (q.has('delay')) state.delay = delay;
     if (q.get('drop') === '1') [...active].forEach((c) => c.finish?.(true));
     record({ kind: 'control', ...Object.fromEntries(q) });
     res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -252,5 +289,6 @@ const server = createServer((req, res) => {
 });
 
 server.listen(port, '0.0.0.0', () => {
-  console.log(`anythingplayer test stream server on http://0.0.0.0:${port} (Android emulator: http://10.0.2.2:${port})`);
+  const boundPort = server.address().port;
+  console.log(`anythingplayer test stream server on http://0.0.0.0:${boundPort} (Android emulator: http://10.0.2.2:${boundPort})`);
 });

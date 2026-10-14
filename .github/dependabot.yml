@@ -22,10 +22,12 @@ updates:
         update-types: [version-update:semver-major, version-update:semver-minor]
       - dependency-name: '@react-native/*'
         update-types: [version-update:semver-major, version-update:semver-minor]
+      # RN bundles an exact React renderer, including patch version equality.
       - dependency-name: 'react'
-        update-types: [version-update:semver-major, version-update:semver-minor]
       - dependency-name: 'react-test-renderer'
-        update-types: [version-update:semver-major, version-update:semver-minor]
+      # These tools must move with the renderer they internally instantiate.
+      - dependency-name: '@testing-library/react-native'
+      - dependency-name: 'test-renderer'
   - package-ecosystem: bundler
     directory: /example
     schedule:
@@ -50,7 +52,9 @@ updates:
       - dependency-name: react-native
         update-types: [version-update:semver-major, version-update:semver-minor]
       - dependency-name: react
-        update-types: [version-update:semver-major, version-update:semver-minor]
+      # SDK 57's validated compiler is TypeScript 6; check before a migration.
+      - dependency-name: typescript
+        update-types: [version-update:semver-major]
   - package-ecosystem: github-actions
     directory: /
     schedule:

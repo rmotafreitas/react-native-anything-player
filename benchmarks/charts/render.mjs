@@ -36,8 +36,6 @@ const FONT = 'system-ui, -apple-system, &quot;Segoe UI&quot;, Roboto, sans-serif
 const esc = (s) =>
   String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const fmt = (n) => Math.round(n).toLocaleString('en-US');
-/** Rough advance width of system-ui text (px) — for layout, not typesetting. */
-const textWidth = (s, size) => [...String(s)].length * size * 0.56;
 
 function niceStep(max, ticks = 5) {
   const raw = max / ticks;
