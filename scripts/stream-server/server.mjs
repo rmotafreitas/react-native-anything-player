@@ -22,6 +22,8 @@
 // Control:      GET /control?down=1|0     refuse every new stream connection
 //               GET /control?stall=1|0    freeze every open stream
 //               GET /control?drop=1       destroy every open stream now
+//               GET /control?delay=MS     answer every new stream connection
+//                                         MS late (a slow reconnect)
 // Stats:        GET /stats → { active, total, byPath, events[] }
 import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
@@ -51,7 +53,7 @@ const TITLES = [
   ['RNAP Test', 'Signal Six'],
 ];
 
-const state = { down: false, stall: false };
+const state = { down: false, stall: false, delay: 0 };
 const active = new Set();
 const stats = { total: 0, byPath: {}, events: [] };
 const record = (event) => {
@@ -84,7 +86,7 @@ function metadataBlock(text, charset, malformed, host) {
 function liveStream(req, res, url) {
   const q = url.searchParams;
   const status = Number(q.get('status') ?? 200);
-  const delay = Number(q.get('delay') ?? 0);
+  const delay = Number(q.get('delay') ?? 0) || state.delay;
   if (state.down) {
     record({ kind: 'refused', path: url.pathname });
     req.socket.destroy();
@@ -233,6 +235,7 @@ const server = createServer((req, res) => {
     const q = url.searchParams;
     if (q.has('down')) state.down = q.get('down') === '1';
     if (q.has('stall')) state.stall = q.get('stall') === '1';
+    if (q.has('delay')) state.delay = Number(q.get('delay')) || 0;
     if (q.get('drop') === '1') [...active].forEach((c) => c.finish?.(true));
     record({ kind: 'control', ...Object.fromEntries(q) });
     res.writeHead(200, { 'Content-Type': 'application/json' });

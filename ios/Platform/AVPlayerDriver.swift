@@ -13,6 +13,10 @@ protocol DriverObserver: AnyObject {
   func driverPositionChanged()
   /// Something the driver handled on its own, for the diagnostics trace.
   func driverNote(generation: Int, event: String, details: [String: String])
+  /// A live stream's audio jumped, now audible: the proxy spliced a fresh
+  /// upstream in, whose connect burst replays recent audio. `position` is
+  /// the media time (s) the new upstream's audio starts at.
+  func driverDiscontinuity(generation: Int, position: Double)
   var isOffline: Bool { get }
 }
 
@@ -94,6 +98,10 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
   private var station: (name: String?, genre: String?) = (nil, nil)
   /// The real network error behind an item failure (offline vs DNS vs refused).
   private var upstreamError: Error?
+  /// New audio played past a splice before it counts as heard (s).
+  private static let spliceHeardAfter = 0.1
+  /// Media times (s) where a spliced upstream's audio starts, not heard yet.
+  private var pendingSplices: [Double] = []
 
   init(titleFormat: StreamTitleFormat) {
     self.titleFormat = titleFormat
@@ -161,8 +169,15 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
             DispatchQueue.main.async { if self?.generation == gen { self?.upstreamError = error } }
           },
           onSplice: { [weak self] details in
-            DispatchQueue.main.async {
-              self?.observer?.driverNote(generation: gen, event: "upstream spliced", details: details)
+            guard let self else { return }
+            // Proxy queue, before any of the new upstream's audio is relayed:
+            // everything parsed so far is the old one's, so this is where the
+            // new audio starts on the item's timeline.
+            let at: Double? = self.feedLock.sync { self.packetClock?.parsedSeconds }
+            DispatchQueue.main.async { [weak self] in
+              guard let self else { return }
+              self.observer?.driverNote(generation: gen, event: "upstream spliced", details: details)
+              if self.generation == gen, let at { self.pendingSplices.append(at) }
             }
           },
           onAudio: { [weak self] data, contentType in
@@ -423,7 +438,21 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
     ]
   }
 
+  /// Reports the splices whose audio is playing (called on each progress tick).
+  /// An outage longer than the buffer stalls the playhead right at a splice,
+  /// before any of the new upstream's audio has arrived: it is not heard
+  /// until playback runs past it.
+  func reportHeardSplices() {
+    guard !pendingSplices.isEmpty, player.timeControlStatus == .playing else { return }
+    let position = currentPosition
+    let heard = pendingSplices.filter { $0 + Self.spliceHeardAfter <= position }
+    guard !heard.isEmpty else { return }
+    pendingSplices.removeAll { $0 + Self.spliceHeardAfter <= position }
+    for at in heard { observer?.driverDiscontinuity(generation: generation, position: at) }
+  }
+
   private func tearDownItem() {
+    pendingSplices = []
     // Closes every HTTP connection of the item, whatever AVFoundation does.
     if let proxied { StreamProxy.shared.retire(proxied) }
     proxied = nil

@@ -9,9 +9,11 @@
  *   adb shell am start -W -a android.intent.action.VIEW -d "anythingplayer-example://test/all"
  *   xcrun simctl openurl booted "anythingplayer-example://test/all"
  */
+import { Platform } from 'react-native';
 import {
   Player,
   type AudioSample,
+  type Discontinuity,
   type PlayerOptions,
   type PlayerStatus,
   type Progress,
@@ -99,6 +101,90 @@ const live = (query = '') => ({
   uri: `${STREAM_HOST}/live.mp3?titleEvery=4${query}`,
   live: true,
 });
+
+/**
+ * Plays a live stream whose connection the server drops (`query`) and checks
+ * a `discontinuity` is reported per replaced connection, once the new
+ * connection's audio is what plays: the playhead is past where it starts and
+ * there is audio ahead of it. `reconnectDelayMs` holds back every new
+ * connection's answer once playing (an outage); `drops` is how many reports
+ * to wait for. iOS checks on the progress timer, so it needs
+ * `progressInterval`.
+ */
+function expectDiscontinuities(
+  query: string,
+  withinMs: number,
+  log: (m: string) => void,
+  { reconnectDelayMs = 0, drops = 2 } = {}
+) {
+  return withPlayer(
+    async (p) => {
+      const jumps: (Discontinuity & {
+        at: number;
+        heard: Progress;
+        state: string;
+      })[] = [];
+      p.on('discontinuity', (d) =>
+        jumps.push({
+          ...d,
+          at: Date.now(),
+          heard: p.getProgress(),
+          state: p.state,
+        })
+      );
+      const states: string[] = [];
+      p.on('stateChange', (s) => states.push(s));
+      await p.load(live(query), { autoplay: true });
+      await waitFor(p, (s) => s.state === 'playing', 10_000, 'playing');
+      if (reconnectDelayMs > 0)
+        await serverControl(`delay=${reconnectDelayMs}`);
+      try {
+        const deadline = Date.now() + withinMs;
+        while (jumps.length < drops && Date.now() < deadline) await sleep(250);
+      } finally {
+        if (reconnectDelayMs > 0) await serverControl('delay=0');
+      }
+      const ahead = (r: Progress) => r.liveOffset ?? r.bufferedAhead;
+      log(
+        jumps
+          .map(
+            (j) =>
+              `at ${j.position.toFixed(2)}s (heard ${j.heard.position.toFixed(2)}s, ${ahead(j.heard).toFixed(2)}s ahead, ${j.at - j.timestamp} ms late, ${j.state})`
+          )
+          .join('; ') || 'no discontinuity'
+      );
+      log(`states: ${states.join(' → ')}`);
+      expect(
+        jumps.length >= drops,
+        `expected a discontinuity per drop, got ${jumps.length}`
+      );
+      for (const j of jumps) {
+        expect(
+          Number.isFinite(j.position) && j.position >= 0,
+          `position ${j.position}`
+        );
+        expect(
+          j.heard.position >= j.position,
+          `reported before it was heard: at ${j.position}, playhead ${j.heard.position}`
+        );
+        expect(
+          ahead(j.heard) > 0.25,
+          `reported with no audio after the jump (${ahead(j.heard)} s ahead)`
+        );
+        expect(
+          Math.abs(j.at - j.timestamp) < 2_000,
+          `timestamp ${j.timestamp} vs ${j.at}`
+        );
+      }
+      // Drops are seconds apart (positions restart per item on Android).
+      expect(
+        jumps.every((j, i) => i === 0 || j.at - jumps[i - 1]!.at > 1_000),
+        'one report per drop'
+      );
+    },
+    { progressInterval: 250 }
+  );
+}
 
 /** Native engine trace of the last failing scenario (printed by the runner). */
 let failureTrace: string[] = [];
@@ -420,6 +506,26 @@ export const SCENARIOS: Scenario[] = [
       }),
   },
   {
+    // A connection replaced under playback (each new one starts with a 2 s
+    // burst) is reported as a `discontinuity` once the playhead reaches it.
+    name: 'discontinuity-on-drop',
+    timeoutMs: 40_000,
+    run: (log) => expectDiscontinuities('&dropAfter=5', 20_000, log),
+  },
+  {
+    // The new connection answers after the buffer ran dry (a real outage):
+    // reported once its audio plays, not while the playhead waits at it.
+    // The outage outlasts the buffer (iOS holds ~5 s ahead, Android ~2 s)
+    // but not the engine's no-data stall limit (Android's is 3 s).
+    name: 'discontinuity-after-outage',
+    timeoutMs: 45_000,
+    run: (log) =>
+      expectDiscontinuities('&dropAfter=6', 20_000, log, {
+        reconnectDelayMs: Platform.OS === 'android' ? 3_500 : 7_000,
+        drops: 1,
+      }),
+  },
+  {
     name: 'flapping-server-no-storm',
     timeoutMs: 40_000,
     run: (log) =>
@@ -728,7 +834,7 @@ export async function runScenarios(
     onLog(line);
   };
   emit(`START ${selected.map((s) => s.name).join(',')}`);
-  await serverControl('down=0&stall=0').catch(() =>
+  await serverControl('down=0&stall=0&delay=0').catch(() =>
     emit('WARN test server unreachable')
   );
   for (const scenario of selected) {

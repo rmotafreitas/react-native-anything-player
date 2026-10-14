@@ -311,5 +311,19 @@ internal class PlayerController(
     runtime.onNowPlayingChanged(this)
   }
 
+  override fun onDiscontinuity(generation: Int, position: Double) {
+    if (!engine.accepts(generation)) return
+    // Listeners read the progress to place themselves again: the snapshot
+    // from the last tick still describes the item playback just left.
+    progressSnapshot = ProgressSnapshot(driver.progress(), AndroidClock.monotonicMs, AndroidClock.wallMs)
+    emit(
+      "discontinuity",
+      Arguments.createMap().apply {
+        putDouble("position", position)
+        putDouble("timestamp", AndroidClock.wallMs.toDouble())
+      },
+    )
+  }
+
   override fun isOffline(): Boolean = runtime.networkState == com.anythingplayer.core.NetworkState.OFFLINE
 }
