@@ -7,6 +7,11 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      update_pods:
+        description: Regenerate the example CocoaPods lockfile for a reviewed native dependency change
+        type: boolean
+        default: false
   merge_group:
     types:
       - checks_requested
@@ -192,11 +197,25 @@ jobs:
 
       - name: Install cocoapods
         if: env.turbo_cache_hit != 1
+        env:
+          UPDATE_PODS: ${{ inputs.update_pods == true }}
         run: |
           cd example
           bundle config set path "$HOME/.cache/animu-bundle"
           bundle install
-          bundle exec pod install --project-directory=ios || bundle exec pod install --project-directory=ios --repo-update
+          if [ "$UPDATE_PODS" = true ]; then
+            bundle exec pod update --project-directory=ios --no-repo-update
+          else
+            bundle exec pod install --project-directory=ios || bundle exec pod install --project-directory=ios --repo-update
+          fi
+
+      - name: Export regenerated CocoaPods lockfile for review
+        if: inputs.update_pods == true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: example-podfile-lock
+          path: example/ios/Podfile.lock
+          if-no-files-found: error
 
       - name: Build example for iOS
         run: |
