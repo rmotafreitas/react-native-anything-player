@@ -48,7 +48,7 @@ const port = Number(process.argv[2] ?? process.env.PORT ?? 8765);
 const TITLES = [
   ['RNAP Test', 'Signal One'],
   ['Björk', 'Jóga'],
-  ['Guns N\' Roses', 'Sweet Child O\' Mine'],
+  ["Guns N' Roses", "Sweet Child O' Mine"],
   ['YOASOBI', 'アイドル'],
   ['Café del Mar', 'Olé; Sí'],
   ['RNAP Test', 'Signal Six'],
@@ -71,7 +71,7 @@ function titleAt(seconds, every) {
 function metadataBlock(text, charset, malformed, host) {
   const payload = Buffer.from(
     `StreamTitle='${text}';StreamUrl='http://${host}/artwork.png';`,
-    charset === 'latin1' ? 'latin1' : 'utf8',
+    charset === 'latin1' ? 'latin1' : 'utf8'
   );
   const blocks = Math.ceil(payload.length / 16);
   const out = Buffer.alloc(1 + blocks * 16);
@@ -108,10 +108,18 @@ function liveStream(req, res, url) {
   const dropAfter = q.has('dropAfter') ? Number(q.get('dropAfter')) : null;
   const endAfter = q.has('endAfter') ? Number(q.get('endAfter')) : null;
   const rate = q.has('slow') ? Number(q.get('slow')) : BYTES_PER_SECOND;
-  if (!Number.isInteger(status) || status < 100 || status > 599 ||
-      !Number.isSafeInteger(metaint) || metaint < 1 ||
-      !Number.isFinite(titleEvery) || titleEvery <= 0 ||
-      !Number.isFinite(rate) || rate <= 0 || rate > BYTES_PER_SECOND) {
+  if (
+    !Number.isInteger(status) ||
+    status < 100 ||
+    status > 599 ||
+    !Number.isSafeInteger(metaint) ||
+    metaint < 1 ||
+    !Number.isFinite(titleEvery) ||
+    titleEvery <= 0 ||
+    !Number.isFinite(rate) ||
+    rate <= 0 ||
+    rate > BYTES_PER_SECOND
+  ) {
     res.writeHead(400);
     res.end('invalid stream controls');
     return;
@@ -127,7 +135,7 @@ function liveStream(req, res, url) {
     const headers = {
       'Content-Type': 'audio/mpeg',
       'Cache-Control': 'no-cache, no-store',
-      Connection: 'close',
+      'Connection': 'close',
       'icy-name': 'RNAP Test Radio',
       'icy-genre': 'Test Tones',
       'icy-br': '128',
@@ -141,7 +149,12 @@ function liveStream(req, res, url) {
     const conn = { req, res, id: ++stats.total, path: url.pathname, sent: 0 };
     active.add(conn);
     stats.byPath[url.pathname] = (stats.byPath[url.pathname] ?? 0) + 1;
-    record({ kind: 'open', id: conn.id, meta: wantsMeta, ua: req.headers['user-agent'] ?? '' });
+    record({
+      kind: 'open',
+      id: conn.id,
+      meta: wantsMeta,
+      ua: req.headers['user-agent'] ?? '',
+    });
 
     // Join the shared on-air timeline at the live point.
     const onAirSeconds = (Date.now() - STARTED_AT) / 1000;
@@ -163,7 +176,10 @@ function liveStream(req, res, url) {
         record({ kind: 'end', id: conn.id });
         return finish(false);
       }
-      const stalledByParam = stallAfter != null && elapsed >= stallAfter && elapsed < stallAfter + stallFor;
+      const stalledByParam =
+        stallAfter != null &&
+        elapsed >= stallAfter &&
+        elapsed < stallAfter + stallFor;
       if (state.stall || stalledByParam) return;
       budget += (rate * TICK_MS) / 1000;
       let chunk = Math.floor(budget);
@@ -171,7 +187,11 @@ function liveStream(req, res, url) {
       budget -= chunk;
       const parts = [];
       while (chunk > 0) {
-        const take = Math.min(chunk, wantsMeta ? untilMeta : chunk, PROGRAM.length - offset);
+        const take = Math.min(
+          chunk,
+          wantsMeta ? untilMeta : chunk,
+          PROGRAM.length - offset
+        );
         parts.push(PROGRAM.subarray(offset, offset + take));
         offset = (offset + take) % PROGRAM.length;
         chunk -= take;
@@ -183,7 +203,14 @@ function liveStream(req, res, url) {
             if (title !== lastTitle) {
               lastTitle = title;
               blockIndex += 1;
-              parts.push(metadataBlock(title, charset, malformed && blockIndex % 2 === 0, req.headers.host ?? `localhost:${port}`));
+              parts.push(
+                metadataBlock(
+                  title,
+                  charset,
+                  malformed && blockIndex % 2 === 0,
+                  req.headers.host ?? `localhost:${port}`
+                )
+              );
             } else {
               parts.push(Buffer.from([0]));
             }
@@ -233,8 +260,12 @@ function staticFile(req, res, url) {
     if (range) {
       const startByte = Number(range[1]);
       const requestedEnd = range[2] ? Number(range[2]) : file.body.length - 1;
-      if (!Number.isSafeInteger(startByte) || !Number.isSafeInteger(requestedEnd) ||
-          startByte >= file.body.length || requestedEnd < startByte) {
+      if (
+        !Number.isSafeInteger(startByte) ||
+        !Number.isSafeInteger(requestedEnd) ||
+        startByte >= file.body.length ||
+        requestedEnd < startByte
+      ) {
         res.writeHead(416, { 'Content-Range': `bytes */${file.body.length}` });
         return res.end();
       }
@@ -247,10 +278,18 @@ function staticFile(req, res, url) {
       });
       res.end(file.body.subarray(startByte, endByte + 1));
     } else {
-      res.writeHead(200, { 'Content-Type': file.type, 'Accept-Ranges': 'bytes', 'Content-Length': file.body.length });
+      res.writeHead(200, {
+        'Content-Type': file.type,
+        'Accept-Ranges': 'bytes',
+        'Content-Length': file.body.length,
+      });
       res.end(file.body);
     }
-    record({ kind: 'file', path: url.pathname, range: req.headers.range ?? null });
+    record({
+      kind: 'file',
+      path: url.pathname,
+      range: req.headers.range ?? null,
+    });
   };
   if (delay > 0) {
     const timer = setTimeout(send, delay);
@@ -261,7 +300,8 @@ function staticFile(req, res, url) {
 const server = createServer((req, res) => {
   // The Host header is unrelated to route selection and can be malformed.
   const url = new URL(req.url, 'http://localhost');
-  if (url.pathname === '/live.mp3' || url.pathname === '/live') return liveStream(req, res, url);
+  if (url.pathname === '/live.mp3' || url.pathname === '/live')
+    return liveStream(req, res, url);
   if (FILES[url.pathname]) return staticFile(req, res, url);
   if (url.pathname === '/control') {
     const q = url.searchParams;
@@ -281,7 +321,16 @@ const server = createServer((req, res) => {
   if (url.pathname === '/stats') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     return res.end(
-      JSON.stringify({ ...stats, active: active.size, activeIds: [...active].map((c) => c.id), state }, null, 2),
+      JSON.stringify(
+        {
+          ...stats,
+          active: active.size,
+          activeIds: [...active].map((c) => c.id),
+          state,
+        },
+        null,
+        2
+      )
     );
   }
   res.writeHead(404);
@@ -290,5 +339,7 @@ const server = createServer((req, res) => {
 
 server.listen(port, '0.0.0.0', () => {
   const boundPort = server.address().port;
-  console.log(`anythingplayer test stream server on http://0.0.0.0:${boundPort} (Android emulator: http://10.0.2.2:${boundPort})`);
+  console.log(
+    `anythingplayer test stream server on http://0.0.0.0:${boundPort} (Android emulator: http://10.0.2.2:${boundPort})`
+  );
 });
