@@ -10,6 +10,10 @@ updates:
         patterns: ["*"]
         update-types: [minor, patch]
     ignore:
+      # The RN preset's typescript-eslint 8.71 supports TypeScript <6.1.
+      # Upgrade the compiler with the supported lint/template toolchain.
+      - dependency-name: typescript
+        update-types: [version-update:semver-major]
       # The RN 0.86 preset depends on Babel 7 and supports ESLint 8/9.
       - dependency-name: '@babel/*'
         update-types: [version-update:semver-major]
