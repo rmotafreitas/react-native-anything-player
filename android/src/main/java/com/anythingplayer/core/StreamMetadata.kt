@@ -89,29 +89,34 @@ object IcyParser {
       val eq = find(chars, "='", i) ?: break
       val key = String(chars, i, eq - i).trim()
       var valueStart = eq + 2
-      var end = chars.size
-      var next = chars.size
-      var search = valueStart
-      while (true) {
-        val candidate = find(chars, "';", search) ?: break
-        val after = candidate + 2
-        if (after >= chars.size || startsKey(chars, after)) {
-          end = candidate
-          next = after
-          break
-        }
-        search = candidate + 1
-      }
-      if (end == chars.size) {
-        var stop = chars.size
-        while (stop > valueStart && (chars[stop - 1] == '\'' || chars[stop - 1] == ';')) stop -= 1
-        end = stop
-      }
+      val (end, next) = fieldEnd(chars, valueStart)
       if (valueStart > end) valueStart = end
       if (key.isNotEmpty() && !result.containsKey(key)) result[key] = String(chars, valueStart, end - valueStart)
       i = next
     }
     return result
+  }
+
+  private fun fieldEnd(chars: CharArray, valueStart: Int): Pair<Int, Int> {
+    var end = chars.size
+    var next = chars.size
+    var search = valueStart
+    while (true) {
+      val candidate = find(chars, "';", search) ?: break
+      val after = candidate + 2
+      if (after >= chars.size || startsKey(chars, after)) {
+        end = candidate
+        next = after
+        break
+      }
+      search = candidate + 1
+    }
+    if (end == chars.size) {
+      var stop = chars.size
+      while (stop > valueStart && (chars[stop - 1] == '\'' || chars[stop - 1] == ';')) stop -= 1
+      end = stop
+    }
+    return end to next
   }
 
   /** Splits a StreamTitle per [format]. Returns (artist, title). */
