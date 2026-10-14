@@ -198,10 +198,12 @@ enum IcyParser {
     return Unicode.Scalar(byte)
   }
 
+  /// The byte a platform decoder turned into `scalar`: Windows-1252 maps
+  /// 0x80–0x9F to typographic characters, ISO-8859-1 to the C1 controls
+  /// U+0080–U+009F — both are taken back (UTF-8 continuation bytes land there
+  /// for most CJK text).
   private static func cp1252Byte(_ scalar: Unicode.Scalar) -> UInt8? {
-    if scalar.value < 0x80 || (scalar.value >= 0xA0 && scalar.value <= 0xFF) {
-      return UInt8(scalar.value)
-    }
+    if scalar.value <= 0xFF { return UInt8(scalar.value) }
     if let index = cp1252High.firstIndex(of: scalar.value) { return UInt8(0x80 + index) }
     return nil
   }

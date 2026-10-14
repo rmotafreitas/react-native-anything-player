@@ -14,6 +14,7 @@
   { "name": "no split", "text": "StreamTitle='One More Time - Daft Punk';", "format": "title", "expect": { "artist": null, "title": "One More Time - Daft Punk" } },
   { "name": "unterminated block", "text": "StreamTitle='Artist - Song", "expect": { "artist": "Artist", "title": "Song" } },
   { "name": "mojibake from a platform decoder is repaired", "fields": { "StreamTitle": "CafÃ© - OlÃ©" }, "expect": { "artist": "Café", "title": "Olé" } },
+  {"name": "utf-8 a decoder read as iso-8859-1 is repaired (C1 bytes)", "fields": {"StreamTitle": "R\u00c3\u00a1dio Animu - Temporada de Outono \u00e3\u0080\u008c\u00e7\u00a7\u008b\u00e3\u0081\u00ae\u00e3\u0082\u00b7\u00e3\u0082\u00a4\u00e3\u0082\u00ba\u00e3\u0083\u00b3\u00e3\u0080\u008d"}, "expect": {"artist": "R\u00e1dio Animu", "title": "Temporada de Outono \u300c\u79cb\u306e\u30b7\u30a4\u30ba\u30f3\u300d"}},
   { "name": "genuine latin-1 text is not mangled", "fields": { "StreamTitle": "Café - Olé" }, "expect": { "artist": "Café", "title": "Olé" } },
   { "name": "en dash separator", "text": "StreamTitle='Artist – Title';", "expect": { "artist": "Artist", "title": "Title" } },
   { "name": "japanese", "text": "StreamTitle='YOASOBI - アイドル';", "expect": { "artist": "YOASOBI", "title": "アイドル" } },

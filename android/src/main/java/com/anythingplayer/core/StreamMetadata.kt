@@ -206,8 +206,14 @@ object IcyParser {
 
   private fun cp1252CodePoint(byte: Int): Int = if (byte in 0x80..0x9F) cp1252High[byte - 0x80] else byte
 
+  /**
+   * The byte a platform decoder turned into [codePoint]: Windows-1252 maps
+   * 0x80–0x9F to typographic characters, ISO-8859-1 to the C1 controls
+   * U+0080–U+009F — both are taken back (UTF-8 continuation bytes land there
+   * for most CJK text).
+   */
   private fun cp1252Byte(codePoint: Int): Int? {
-    if (codePoint < 0x80 || codePoint in 0xA0..0xFF) return codePoint
+    if (codePoint <= 0xFF) return codePoint
     val index = cp1252High.indexOf(codePoint)
     return if (index >= 0) 0x80 + index else null
   }
