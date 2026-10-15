@@ -7,6 +7,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 const root = fileURLToPath(new URL("..", import.meta.url));
 
+const repositories = [root];
+
 const version = "8.30.1";
 const distributions = {
   "darwin-arm64": ["darwin_arm64", "b40ab0ae55c505963e365f271a8d3846efbc170aa17f2607f13df610a9aeb6a5"],
@@ -17,39 +19,30 @@ const distributions = {
 const distribution = distributions[`${process.platform}-${process.arch}`];
 if (!distribution) throw new Error("Unsupported secret-scanner platform");
 const [platform, checksum] = distribution;
-const cache = path.join(process.env.XDG_CACHE_HOME || path.join(os.homedir(), ".cache"), `animu-gitleaks-${version}-${platform}`);
-fs.mkdirSync(cache, { recursive: true, mode: 0o700 });
-const archive = path.join(cache, "tool.tar.gz");
-function cachedArchive() {
-  let fd;
-  try {
-    fd = fs.openSync(archive, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
-    if (fs.fstatSync(fd).size > 64 * 1024 * 1024) throw new Error("Gitleaks cache exceeds size limit");
-    return fs.readFileSync(fd);
-  } catch (error) {
-    if (error.code !== "ENOENT") throw error;
-  } finally { if (fd !== undefined) fs.closeSync(fd); }
-}
-const matches = bytes => bytes && createHash("sha256").update(bytes).digest("hex") === checksum;
-let bytes = cachedArchive();
-if (!matches(bytes)) {
-  const response = await fetch(`https://github.com/gitleaks/gitleaks/releases/download/v${version}/gitleaks_${version}_${platform}.tar.gz`, { signal: AbortSignal.timeout(45000) });
+
+// The download is cached in the user's cache directory (never a shared
+// temporary one) and only reused while its checksum still matches.
+const cacheHome = process.env.XDG_CACHE_HOME || path.join(os.homedir(), ".cache");
+const archive = path.join(cacheHome, `animu-gitleaks-${version}-${platform}.tar.gz`);
+const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
+
+async function verifiedArchive() {
+  if (fs.existsSync(archive)) {
+    const cached = fs.readFileSync(archive);
+    if (sha256(cached) === checksum) return cached;
+  }
+  const url = `https://github.com/gitleaks/gitleaks/releases/download/v${version}/gitleaks_${version}_${platform}.tar.gz`;
+  const response = await fetch(url, { signal: AbortSignal.timeout(45_000) });
   if (!response.ok) throw new Error(`Gitleaks download failed (${response.status})`);
-  bytes = Buffer.from(await response.arrayBuffer());
-  if (!matches(bytes)) throw new Error("Gitleaks archive checksum mismatch");
-  const fd = fs.openSync(archive, fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_NOFOLLOW, 0o600);
-  try { fs.ftruncateSync(fd, 0); fs.writeFileSync(fd, bytes); }
-  finally { fs.closeSync(fd); }
+  const bytes = Buffer.from(await response.arrayBuffer());
+  if (sha256(bytes) !== checksum) throw new Error("Gitleaks archive checksum mismatch");
+  fs.mkdirSync(cacheHome, { recursive: true, mode: 0o700 });
+  fs.writeFileSync(archive, bytes, { mode: 0o600 });
+  return bytes;
 }
-// Extract and execute the same verified bytes in a private directory. Shared
-// cache mutation cannot replace the executable between verification and use.
-const temporary = fs.mkdtempSync(path.join(os.tmpdir(), "animu-gitleaks-run-"));
-try {
-  const verified = path.join(temporary, "tool.tar.gz");
-  fs.writeFileSync(verified, bytes, { flag: "wx", mode: 0o600 });
-  execFileSync("tar", ["-xzf", verified, "-C", temporary, "gitleaks"]);
-  const scanner = path.join(temporary, "gitleaks");
-for (const dir of [root]) {
+
+/** Scans all history, then the working tree's tracked and unignored files. */
+function scan(scanner, dir) {
   const shallow = execFileSync("git", ["rev-parse", "--is-shallow-repository"], { cwd: dir, encoding: "utf8" }).trim();
   if (shallow !== "false") throw new Error(`Full Git history required for secret scanning: ${path.basename(dir)}`);
   console.log(`Secret scan: ${path.basename(dir)} (all history and current tracked files)`);
@@ -67,7 +60,18 @@ for (const dir of [root]) {
       fs.copyFileSync(source, target);
     }
     execFileSync(scanner, ["dir", snapshot, ...flags], { stdio: "inherit" });
-  } finally { fs.rmSync(snapshot, { recursive: true, force: true }); }
+  } finally {
+    fs.rmSync(snapshot, { recursive: true, force: true });
+  }
 }
 
-} finally { fs.rmSync(temporary, { recursive: true, force: true }); }
+// Extract the verified bytes themselves (not the cache file, which could be
+// swapped after the check) into a private directory, and run that binary.
+const work = fs.mkdtempSync(path.join(os.tmpdir(), "animu-gitleaks-"));
+try {
+  fs.writeFileSync(path.join(work, "gitleaks.tar.gz"), await verifiedArchive());
+  execFileSync("tar", ["-xzf", "gitleaks.tar.gz", "gitleaks"], { cwd: work });
+  for (const dir of repositories) scan(path.join(work, "gitleaks"), dir);
+} finally {
+  fs.rmSync(work, { recursive: true, force: true });
+}
