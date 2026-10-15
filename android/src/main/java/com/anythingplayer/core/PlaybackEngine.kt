@@ -846,12 +846,10 @@ class PlaybackEngine(
       return
     }
     val deadLimit = if (suspect) RecoveryPolicy.SUSPECT_STALL_DEAD_MS else RecoveryPolicy.STALL_DEAD_MS
-    if (t - lastBufferedAdvanceAt >= deadLimit) {
-      attemptReconnect("stalled ${t - stalled}ms with no data")
-    } else if (t - stalled >= RecoveryPolicy.STALL_MAX_MS) {
-      attemptReconnect("stalled ${t - stalled}ms")
-    } else if (isLive && driftMs + (t - stalled) >= options.liveMaxDriftMs) {
-      attemptReconnect("live drift during stall")
+    when {
+      t - lastBufferedAdvanceAt >= deadLimit -> attemptReconnect("stalled ${t - stalled}ms with no data")
+      t - stalled >= RecoveryPolicy.STALL_MAX_MS -> attemptReconnect("stalled ${t - stalled}ms")
+      isLive && driftMs + (t - stalled) >= options.liveMaxDriftMs -> attemptReconnect("live drift during stall")
     }
   }
 
