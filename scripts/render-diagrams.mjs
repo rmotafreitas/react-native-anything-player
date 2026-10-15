@@ -23,21 +23,23 @@ const JAR = path.join(
   ROOT,
   `node_modules/.cache/plantuml/plantuml-${VERSION}.jar`
 );
-const verified = (file) =>
-  fs.existsSync(file) &&
-  createHash('sha512').update(fs.readFileSync(file)).digest('hex') ===
-    CHECKSUM;
+const matches = (bytes) =>
+  createHash('sha512').update(bytes).digest('hex') === CHECKSUM;
+let cached = null;
+try {
+  cached = fs.readFileSync(JAR);
+} catch (error) {
+  if (error.code !== 'ENOENT') throw error;
+}
 
-if (!verified(JAR)) {
+if (!cached || !matches(cached)) {
   fs.mkdirSync(path.dirname(JAR), { recursive: true });
   const url = `https://repo.maven.apache.org/maven2/net/sourceforge/plantuml/plantuml/${VERSION}/plantuml-${VERSION}.jar`;
   console.log(`downloading ${url}`);
   const res = await fetch(url, { signal: AbortSignal.timeout(45_000) });
   if (!res.ok) throw new Error(`PlantUML download failed: HTTP ${res.status}`);
   const jar = Buffer.from(await res.arrayBuffer());
-  if (createHash('sha512').update(jar).digest('hex') !== CHECKSUM) {
-    throw new Error('PlantUML download checksum mismatch');
-  }
+  if (!matches(jar)) throw new Error('PlantUML download checksum mismatch');
   fs.writeFileSync(JAR, jar);
 }
 

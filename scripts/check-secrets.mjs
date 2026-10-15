@@ -26,11 +26,18 @@ const cacheHome = process.env.XDG_CACHE_HOME || path.join(os.homedir(), ".cache"
 const archive = path.join(cacheHome, `animu-gitleaks-${version}-${platform}.tar.gz`);
 const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 
-async function verifiedArchive() {
-  if (fs.existsSync(archive)) {
-    const cached = fs.readFileSync(archive);
-    if (sha256(cached) === checksum) return cached;
+function cachedArchive() {
+  try {
+    return fs.readFileSync(archive);
+  } catch (error) {
+    if (error.code === "ENOENT") return null;
+    throw error;
   }
+}
+
+async function verifiedArchive() {
+  const cached = cachedArchive();
+  if (cached && sha256(cached) === checksum) return cached;
   const url = `https://github.com/gitleaks/gitleaks/releases/download/v${version}/gitleaks_${version}_${platform}.tar.gz`;
   const response = await fetch(url, { signal: AbortSignal.timeout(45_000) });
   if (!response.ok) throw new Error(`Gitleaks download failed (${response.status})`);
@@ -69,8 +76,7 @@ function scan(scanner, dir) {
 // swapped after the check) into a private directory, and run that binary.
 const work = fs.mkdtempSync(path.join(os.tmpdir(), "animu-gitleaks-"));
 try {
-  fs.writeFileSync(path.join(work, "gitleaks.tar.gz"), await verifiedArchive());
-  execFileSync("tar", ["-xzf", "gitleaks.tar.gz", "gitleaks"], { cwd: work });
+  execFileSync("tar", ["-xzf", "-", "gitleaks"], { cwd: work, input: await verifiedArchive() });
   for (const dir of repositories) scan(path.join(work, "gitleaks"), dir);
 } finally {
   fs.rmSync(work, { recursive: true, force: true });
