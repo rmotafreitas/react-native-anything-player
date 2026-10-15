@@ -9,7 +9,6 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -26,60 +25,33 @@ const JAR = path.join(
 );
 const matches = (bytes) =>
   createHash('sha512').update(bytes).digest('hex') === CHECKSUM;
-let jar;
+let cached = null;
 try {
-  const fd = fs.openSync(JAR, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
-  try {
-    if (fs.fstatSync(fd).size > 64 * 1024 * 1024)
-      throw new Error('PlantUML cache exceeds its size limit');
-    jar = fs.readFileSync(fd);
-  } finally {
-    fs.closeSync(fd);
-  }
+  cached = fs.readFileSync(JAR);
 } catch (error) {
   if (error.code !== 'ENOENT') throw error;
 }
 
-if (!jar || !matches(jar)) {
+if (!cached || !matches(cached)) {
   fs.mkdirSync(path.dirname(JAR), { recursive: true });
   const url = `https://repo.maven.apache.org/maven2/net/sourceforge/plantuml/plantuml/${VERSION}/plantuml-${VERSION}.jar`;
   console.log(`downloading ${url}`);
   const res = await fetch(url, { signal: AbortSignal.timeout(45_000) });
   if (!res.ok) throw new Error(`PlantUML download failed: HTTP ${res.status}`);
-  jar = Buffer.from(await res.arrayBuffer());
+  const jar = Buffer.from(await res.arrayBuffer());
   if (!matches(jar)) throw new Error('PlantUML download checksum mismatch');
+  fs.writeFileSync(JAR, jar);
 }
 
 const sources = fs
   .readdirSync(SRC)
   .filter((f) => f.endsWith('.puml') && !f.startsWith('_'));
 fs.mkdirSync(OUT, { recursive: true });
-// Execute a private copy of verified bytes. A mutable shared cache cannot
-// replace the archive between the checksum check and Java opening its path.
-const temporary = fs.mkdtempSync(
-  path.join(os.tmpdir(), 'anythingplayer-plantuml-')
+execFileSync(
+  'java',
+  ['-jar', JAR, '-tsvg', '-o', OUT, ...sources.map((f) => path.join(SRC, f))],
+  { stdio: 'inherit' }
 );
-try {
-  const executable = path.join(temporary, 'plantuml.jar');
-  fs.writeFileSync(executable, jar, { flag: 'wx', mode: 0o600 });
-  fs.copyFileSync(executable, JAR);
-  execFileSync(
-    'java',
-    [
-      '-jar',
-      executable,
-      '-tsvg',
-      '-o',
-      OUT,
-      ...sources.map((f) => path.join(SRC, f)),
-    ],
-    {
-      stdio: 'inherit',
-    }
-  );
-} finally {
-  fs.rmSync(temporary, { recursive: true, force: true });
-}
 for (const file of sources.map((f) => f.replace(/\.puml$/, '.svg'))) {
   const p = path.join(OUT, file);
   const svg = fs
