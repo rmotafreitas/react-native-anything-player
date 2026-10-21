@@ -43,7 +43,9 @@ export type InterruptionReason =
   /** The platform paused without saying why. */
   | 'system';
 
+/** The system paused playback, or refused to start it. */
 export interface Interruption {
+  /** What caused it. */
   reason: InterruptionReason;
   /** The system may end it by resuming on its own (if auto-resume is on). */
   resumable: boolean;
@@ -51,28 +53,43 @@ export interface Interruption {
   since: number;
 }
 
+/** Progress of automatic recovery (see the Recovery policy guide). */
 export interface ReconnectInfo {
   /** 1-based attempt number. */
   attempt: number;
   /** Epoch ms of the next attempt, `null` while an attempt is running. */
   nextAttemptAt: number | null;
+  /** The failure being recovered from, for logs (free text, not stable). */
   reason: string;
 }
 
+/**
+ * Connectivity as the engine sees it. `online` means a validated internet
+ * connection: a captive portal is `offline`.
+ */
 export type NetworkState = 'online' | 'offline' | 'unknown';
 
 /** Serializable error shape inside a status snapshot. */
 export interface PlayerErrorInfo {
+  /** What went wrong. */
   code: PlayerErrorCode;
+  /** Human-readable description. */
   message: string;
+  /** Retrying (reconnect, or calling `play()` again) can succeed. */
   recoverable: boolean;
+  /** The platform that reported it; absent for errors raised in JS. */
   platform?: 'ios' | 'android';
+  /** The server's HTTP status, for `HTTP_ERROR` and `SOURCE_NOT_FOUND`. */
   httpStatus?: number;
+  /** Native error domain, e.g. `AVFoundationErrorDomain`. */
   platformDomain?: string;
+  /** Native error code within `platformDomain`. */
   platformCode?: number;
+  /** Native error chain (`PlayerError.nativeCause`). */
   cause?: string;
 }
 
+/** Every error code. The Errors guide lists the cause of each and whether it is recoverable. */
 export type PlayerErrorCode =
   | 'INVALID_SOURCE'
   | 'SOURCE_NOT_FOUND'
@@ -94,28 +111,37 @@ export type PlayerErrorCode =
 
 /** The authoritative snapshot of a player. */
 export interface PlayerStatus {
+  /** The playback state. */
   state: PlaybackState;
   /** Whether playback is wanted (what a play/pause button should show). */
   playWhenReady: boolean;
   /** Increments on every `load()`: which source this status describes. */
   loadId: number;
+  /** A live / indefinite source (radio, live HLS). */
   isLive: boolean;
   /** Seconds; `null` for live or unknown. */
   duration: number | null;
+  /** `seekTo` is allowed. */
   seekable: boolean;
+  /** Set while the system holds playback paused (or refused to start it). */
   interruption: Interruption | null;
   /** Set when `state === 'error'`. */
   error: PlayerErrorInfo | null;
   /** Set while `reconnecting` (and while the reconnect attempt is loading). */
   reconnect: ReconnectInfo | null;
+  /** Connectivity as the engine sees it. */
   network: NetworkState;
+  /** 0…1, as set by `setVolume`. */
   volume: number;
+  /** As set by `setMuted`. */
   muted: boolean;
+  /** Playback rate, as set by `setRate`. */
   rate: number;
 }
 
 /** A progress reading. Positions are seconds. */
 export interface Progress {
+  /** Playhead. */
   position: number;
   /** `null` for live/unknown. */
   duration: number | null;
@@ -133,18 +159,25 @@ export interface Progress {
   timestamp: number;
 }
 
+/** An image by URI. */
 export interface Artwork {
+  /** Remote URL or local file URI. */
   uri: string;
 }
 
 /** Metadata carried by the stream itself (ICY, ID3, HLS timed metadata, file tags). */
 export interface MediaMetadata {
+  /** Song title (for ICY, parsed from `StreamTitle` by `metadata.streamTitleFormat`). */
   title?: string | null;
+  /** Artist (for ICY, parsed from `StreamTitle`). */
   artist?: string | null;
+  /** Album. */
   album?: string | null;
   /** Station name (ICY `icy-name` response header). */
   station?: string | null;
+  /** Genre (ICY `icy-genre` response header). */
   genre?: string | null;
+  /** Cover art. */
   artwork?: Artwork | null;
   /** Every raw field as sent by the stream (e.g. `StreamTitle`, `StreamUrl`, `TIT2`). */
   raw?: Record<string, string>;
@@ -158,8 +191,11 @@ export type AssetModule = number;
 
 /** What the lock screen / notification shows for a source (app-provided). */
 export interface NowPlayingMetadata {
+  /** Title (e.g. a song, or a station name). */
   title?: string;
+  /** Artist. */
   artist?: string;
+  /** Album. */
   album?: string;
   /** Remote URL, local file URI, or `require('./cover.png')`. */
   artwork?: string | Artwork | AssetModule;
@@ -180,6 +216,7 @@ export interface NowPlayingMetadata {
   live?: boolean;
 }
 
+/** What to play, with per-source options. */
 export interface Source {
   /** `https://…`, `http://…`, `file://…`, `content://…` (Android) or an absolute path. */
   uri: string;
@@ -195,8 +232,10 @@ export interface Source {
   metadata?: NowPlayingMetadata;
 }
 
+/** What `load()` accepts: a {@link Source}, a URI, or `require('./file.mp3')`. */
 export type SourceInput = Source | string | AssetModule;
 
+/** Options for `load()`. */
 export interface LoadOptions {
   /**
    * Start playing once loaded. Default: keep the current intent — a playing
@@ -208,6 +247,7 @@ export interface LoadOptions {
   startPosition?: number;
 }
 
+/** A lock-screen / notification / headset / car command. */
 export type RemoteCommand =
   | 'play'
   | 'pause'
@@ -219,7 +259,9 @@ export type RemoteCommand =
   | 'skipForward'
   | 'skipBackward';
 
+/** Options for `new Player()`. All are optional; the defaults suit a radio app. */
 export interface PlayerOptions {
+  /** Automatic recovery (see the Recovery policy guide). */
   recovery?: {
     /** Reconnect after recoverable failures while playback is wanted. Default `true`. */
     reconnect?: boolean;
@@ -231,10 +273,12 @@ export interface PlayerOptions {
      */
     liveMaxDriftMs?: number;
   };
+  /** Calls, Siri, other apps taking audio focus. */
   interruptions?: {
     /** Resume when the system ends a transient interruption (call, Siri, short focus loss). Default `true`. */
     autoResume?: boolean;
   };
+  /** Lock screen, notification and car controls. */
   mediaSession?: {
     /** Show this player on the lock screen / notification / car. Default `true`. */
     enabled?: boolean;
@@ -248,18 +292,21 @@ export interface PlayerOptions {
      */
     commands?: RemoteCommand[];
   };
+  /** Audio session (iOS) / audio focus (Android). */
   audio?: {
     /** `speech` pauses (instead of ducking) for navigation prompts. Default `music`. */
     contentType?: 'music' | 'speech';
     /** Play alongside other apps. Disables interruptions handling and lock-screen controls on iOS. */
     mixWithOthers?: boolean;
   };
+  /** Stream metadata. */
   metadata?: {
     /** How the station formats ICY `StreamTitle`. Default `artist-title`. */
     streamTitleFormat?: 'artist-title' | 'title-artist' | 'title';
     /** Show stream metadata on the lock screen. Default `true`. */
     useStreamMetadataForNowPlaying?: boolean;
   };
+  /** Android-only options. */
   android?: {
     /** Stop playback when the user swipes the app away from recents. Default `false`. */
     stopOnTaskRemoved?: boolean;
@@ -275,22 +322,29 @@ export interface PlayerOptions {
   progressInterval?: number;
 }
 
+/** One engine decision from the diagnostics trace. */
 export interface DiagnosticEntry {
   /** Epoch ms. */
   time: number;
   /** Source generation (increments on every open, including reconnects). */
   generation: number;
+  /** The state when it was recorded. */
   state: PlaybackState;
+  /** What happened, e.g. `load`, `transition`, `failure`, `reopen`, `stale event dropped`. */
   event: string;
+  /** Event-specific fields, e.g. `{ from, to, cause }` for a `transition`. */
   details: Record<string, string>;
 }
 
+/** Payload of the `remoteCommand` event. */
 export interface RemoteCommandEvent {
+  /** The command the user sent. */
   command: RemoteCommand;
   /** Seconds, for `seek`. */
   position?: number;
 }
 
+/** Every event `Player.on()` accepts, with its listener's signature. */
 export interface PlayerEventMap {
   /** Any status field changed. */
   status: (status: PlayerStatus) => void;
@@ -348,10 +402,13 @@ export interface AudioSample {
   timestamp: number;
 }
 
+/** Options for `setAudioSampling()`. */
 export interface AudioSamplingOptions {
+  /** Start (`true`) or stop (`false`) emitting `audioSample` events. */
   enabled: boolean;
   /** Points per waveform (16…4096, default 1024). */
   points?: number;
 }
 
+/** An event name. */
 export type PlayerEvent = keyof PlayerEventMap;

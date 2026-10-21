@@ -175,6 +175,7 @@ export class Player {
     return this._status;
   }
 
+  /** The playback state (`status.state`). */
   get state(): PlaybackState {
     return this._status.state;
   }
@@ -241,6 +242,7 @@ export class Player {
     await this.run(() => NativeAnythingPlayer.play(this.id));
   }
 
+  /** Pauses. A paused live stream releases its network connection after 30 s. */
   async pause(): Promise<void> {
     await this.run(() => NativeAnythingPlayer.pause(this.id));
   }
@@ -273,10 +275,15 @@ export class Player {
     await this.run(() => NativeAnythingPlayer.setVolume(this.id, volume));
   }
 
+  /** Mutes without losing the volume. */
   async setMuted(muted: boolean): Promise<void> {
     await this.run(() => NativeAnythingPlayer.setMuted(this.id, !!muted));
   }
 
+  /**
+   * Playback rate (1 = normal; rejects with `INVALID_ARGUMENT` when ≤ 0).
+   * Meant for files: a live stream runs out of buffer above 1.
+   */
   async setRate(rate: number): Promise<void> {
     assertFinite('rate', rate);
     await this.run(() => NativeAnythingPlayer.setRate(this.id, rate));
@@ -309,6 +316,7 @@ export class Player {
     }
   }
 
+  /** Whether `release()` was called. */
   get isReleased(): boolean {
     return this.released;
   }

@@ -26,12 +26,17 @@ const CODES: ReadonlySet<string> = new Set<PlayerErrorCode>([
  * error chain) — never just "code=-11800".
  */
 export class PlayerError extends Error {
+  /** What went wrong (see the table in the Errors guide). */
   readonly code: PlayerErrorCode;
   /** Retrying (reconnect, or calling `play()` again) can succeed. */
   readonly recoverable: boolean;
+  /** The platform that reported it; absent for errors raised in JS. */
   readonly platform?: 'ios' | 'android';
+  /** The server's HTTP status, for `HTTP_ERROR` and `SOURCE_NOT_FOUND`. */
   readonly httpStatus?: number;
+  /** Native error domain, e.g. `AVFoundationErrorDomain` or `androidx.media3:ERROR_CODE_IO_BAD_HTTP_STATUS`. */
   readonly platformDomain?: string;
+  /** Native error code within {@link platformDomain}. */
   readonly platformCode?: number;
   /** Native error chain, e.g. `NSURLErrorDomain(-1009): The Internet connection appears to be offline.` */
   readonly nativeCause?: string;
@@ -48,6 +53,7 @@ export class PlayerError extends Error {
     this.nativeCause = info.cause;
   }
 
+  /** The serializable form, as it appears in `status.error`. */
   toJSON(): PlayerErrorInfo {
     return {
       code: this.code,
@@ -62,6 +68,7 @@ export class PlayerError extends Error {
   }
 }
 
+/** Narrows a caught value to a {@link PlayerError}. */
 export function isPlayerError(value: unknown): value is PlayerError {
   return value instanceof PlayerError;
 }

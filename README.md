@@ -109,7 +109,7 @@ function NowPlaying() {
 | [Testing](docs/testing.md) | Test layers, conformance suite, device tests, soak results |
 | [Roadmap](docs/roadmap.md) | What RNAP still needs, in priority order |
 
-The same pages are published as a site (search included): `yarn docs` runs it locally, `yarn docs:build` builds it. Diagrams are PlantUML sources in `docs/diagrams/` (`node scripts/render-diagrams.mjs`); charts come from `benchmarks/` (`node benchmarks/size/measure.mjs && node benchmarks/charts/render.mjs`).
+The same pages are published as a site (search included): `yarn docs` runs it locally, `yarn docs:build` builds it. The site also carries an API reference for every export, generated from the TSDoc in `src/` by TypeDoc (`yarn docs:api` writes it to `docs/api/`, which is not committed). Diagrams are PlantUML sources in `docs/diagrams/` (`node scripts/render-diagrams.mjs`); charts come from `benchmarks/` (`node benchmarks/size/measure.mjs && node benchmarks/charts/render.mjs`).
 
 ## License
 

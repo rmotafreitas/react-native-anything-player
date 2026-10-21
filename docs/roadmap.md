@@ -42,4 +42,3 @@ RNAP's goal is to be the audio library React Native developers pick first: **lig
 ## Before 1.0
 
 - Exercise on hardware what [Testing](testing.md) lists as unverified: real calls, Siri, Bluetooth / AirPods, CarPlay / Android Auto, wired-headset unplug, AirPlay, cellular handoff.
-- Generate an API reference from the TypeScript types (TypeDoc) and publish it in the docs site.

@@ -5,8 +5,8 @@
   "description": "The RNAP documentation site (VitePress). Pages come from ../docs.",
   "type": "module",
   "scripts": {
-    "dev": "vitepress dev",
-    "build": "vitepress build",
+    "dev": "yarn docs:api && vitepress dev",
+    "build": "yarn docs:api && vitepress build",
     "preview": "vitepress preview",
     "og": "node scripts/og-images.mts"
   },

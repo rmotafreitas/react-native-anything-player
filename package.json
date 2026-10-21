@@ -41,6 +41,7 @@
     "example": "yarn workspace react-native-anything-player-example",
     "docs": "yarn workspace react-native-anything-player-website dev",
     "docs:build": "yarn workspace react-native-anything-player-website build",
+    "docs:api": "typedoc",
     "clean": "del-cli android/build example/android/build example/android/app/build example/ios/build lib",
     "prepare": "bob build",
     "typecheck": "tsc",
@@ -54,7 +55,7 @@
     "test:tooling": "node --test scripts/__tests__/*.test.mjs",
     "doctor:gate": "node scripts/react-doctor-gate.mjs",
     "check:ci": "yarn run check:secrets && yarn run check:quality",
-    "check:quality": "yarn run test:tooling && yarn run check:audit && yarn run lint && yarn run typecheck && yarn run test:coverage && yarn run doctor:gate && yarn run prepare",
+    "check:quality": "yarn run test:tooling && yarn run check:audit && yarn run lint && yarn run typecheck && yarn run docs:api && yarn run test:coverage && yarn run doctor:gate && yarn run prepare",
     "doctor": "react-doctor"
   },
   "keywords": [
@@ -114,6 +115,9 @@
     "react-test-renderer": "19.2.3",
     "test-renderer": "1.2.0",
     "turbo": "^2.11.8",
+    "typedoc": "^0.28.20",
+    "typedoc-plugin-markdown": "^4.14.1",
+    "typedoc-vitepress-theme": "^1.1.4",
     "typescript": "^6.0.3"
   },
   "peerDependencies": {

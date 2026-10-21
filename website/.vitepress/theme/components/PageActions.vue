@@ -5,13 +5,17 @@
 import { computed, ref } from 'vue';
 import { useData, withBase } from 'vitepress';
 
-const { page, theme } = useData();
+const { page, theme, frontmatter } = useData();
 const state = ref<'idle' | 'copied' | 'failed'>('idle');
 
 /** The plain Markdown copy written next to each page at build time. */
 const markdownPath = computed(() => withBase(`/${page.value.relativePath}`));
+// Generated pages (the API reference) have no file on GitHub; their symbols
+// link to the TypeScript source instead.
 const sourceUrl = computed(() =>
-  (theme.value.editLink?.pattern as string | undefined)?.replace('/edit/', '/blob/').replace(':path', page.value.filePath)
+  frontmatter.value.editLink === false
+    ? undefined
+    : (theme.value.editLink?.pattern as string | undefined)?.replace('/edit/', '/blob/').replace(':path', page.value.filePath)
 );
 
 function absolute(path: string): string {

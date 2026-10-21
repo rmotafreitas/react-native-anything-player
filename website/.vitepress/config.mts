@@ -25,6 +25,23 @@ const SITE = (process.env.RNAP_SITE_URL ?? (PRODUCTION ? `https://${PRODUCTION}`
 );
 const url = (p: string) => `${SITE}${BASE}${p.replace(/^\//, '')}`;
 
+// The API reference is generated from src/ by TypeDoc (`yarn docs:api`, run
+// before every dev and build) into docs/api/, which is not committed. Its
+// sidebar lists each kind alphabetically; members keep their source order.
+interface SidebarItem {
+  text: string;
+  link?: string;
+  collapsed?: boolean;
+  items?: SidebarItem[];
+}
+const API_SIDEBAR = path.resolve(HERE, '../../docs/api/typedoc-sidebar.json');
+const apiGroups: SidebarItem[] = fs.existsSync(API_SIDEBAR)
+  ? (JSON.parse(fs.readFileSync(API_SIDEBAR, 'utf8')) as SidebarItem[]).map((group) => ({
+      ...group,
+      items: [...(group.items ?? [])].sort((a, b) => a.text.localeCompare(b.text)),
+    }))
+  : [];
+
 const NAME = 'React Native Anything Player';
 const AUTHOR = {
   '@type': 'Person',
@@ -101,6 +118,14 @@ export default defineConfig({
   transformPageData(pageData) {
     const page = PAGES.find((p) => `${p.link.slice(1)}.md` === pageData.relativePath);
     if (page && !pageData.frontmatter.description) pageData.description = page.description;
+    // Generated pages: edit the TSDoc in src/ instead, and git has no dates.
+    if (pageData.relativePath.startsWith('docs/api/')) {
+      pageData.frontmatter.editLink = false;
+      pageData.frontmatter.lastUpdated = false;
+      pageData.description = pageData.relativePath === 'docs/api/index.md'
+        ? 'The RNAP API reference: the Player class, hooks, errors, events and every option and type, generated from the TypeScript source.'
+        : `${pageData.title}: RNAP API reference, generated from the TypeScript source.`;
+    }
   },
 
   // Canonical link, Open Graph / Twitter cards and JSON-LD for every page.
@@ -264,15 +289,19 @@ export default defineConfig({
   themeConfig: {
     logo: { src: '/logo.webp', alt: '', width: 24, height: 24 },
     nav: [
-      { text: 'Docs', link: '/docs/getting-started', activeMatch: '^/docs/(?!comparison|roadmap)' },
+      { text: 'Docs', link: '/docs/getting-started', activeMatch: '^/docs/(?!comparison|roadmap|api/)' },
+      { text: 'API', link: '/docs/api/', activeMatch: '^/docs/api/' },
       { text: 'Compare', link: '/docs/comparison' },
       { text: 'Roadmap', link: '/docs/roadmap' },
       { text: `v${pkg.version}`, items: [{ text: 'Changelog', link: `${REPO}/blob/main/CHANGELOG.md` }, { text: 'Licence', link: `${REPO}/blob/main/COMMERCIAL.md` }] },
     ],
-    sidebar: SECTIONS.map((section) => ({
-      text: section.text,
-      items: section.items.map(({ text, link }) => ({ text, link })),
-    })),
+    sidebar: [
+      ...SECTIONS.map((section) => ({
+        text: section.text,
+        items: section.items.map(({ text, link }) => ({ text, link })),
+      })),
+      { text: 'API reference', link: '/docs/api/', items: apiGroups },
+    ],
     outline: { level: [2, 3] },
     search: { provider: 'local' },
     socialLinks: [{ icon: 'github', link: REPO }],

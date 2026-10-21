@@ -15,6 +15,9 @@ and current tracked/unignored files for secrets, then runs `check:quality`:
   closed. Narrow, version/path-specific exceptions match the app and remain visible.
 - ESLint, including SonarJS production-code rules, with zero warnings allowed.
 - TypeScript checks, unit tests and enforced coverage floors.
+- TypeDoc (`yarn docs:api`): every public export, field and method needs a TSDoc
+  comment, and every `{@link}` must resolve. The generated pages are the site's
+  API reference.
 - React Doctor (zero findings in the library), then the Bob package build.
 
 `check:quality` omits only Git-history scanning so the app can call it inside its
