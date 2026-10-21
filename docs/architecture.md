@@ -8,9 +8,9 @@ React Native freezes JS timers in the background, can suspend or reload the JS r
 
 ### The engine
 
-`PlaybackEngine` owns the play intent (`playWhenReady`), the state machine, interruptions, network edges and every recovery timer. It never touches a media framework: it drives an `EngineDriver` (open / play / pause / seek / release / sample) and reads time from an `EngineClock`. It never owns timers either — after every input it asks its host for one wake-up instant. That makes it deterministic and testable with a fake clock: the [conformance suite](../conformance/README.md) runs 59 scenarios (races, stalls, offline, handoffs, interruptions, focus, drift, re-entrancy …) against both implementations.
+`PlaybackEngine` owns the play intent (`playWhenReady`), the state machine, interruptions, network edges and every recovery timer. It never touches a media framework: it drives an `EngineDriver` (open / play / pause / seek / release / sample) and reads time from an `EngineClock`. It never owns timers either — after every input it asks its host for one wake-up instant. That makes it deterministic and testable with a fake clock: the [conformance suite](../conformance/README.md) runs 59 scenarios (races, stalls, offline, handoffs, interruptions, focus, drift, re-entrancy …) against every implementation: Swift, Kotlin, and TypeScript for the web.
 
-**Why two implementations instead of a shared core (Rust, C++, Kotlin Multiplatform)?** The engine is ~700 lines of decision logic, not CPU-bound, and the hard part is platform semantics around it. A shared core would cost: a cross-compilation toolchain for contributors; prebuilt binaries per Android ABI and iOS slice in the npm package (or a toolchain for every consumer); JNA (≈1.5 MB, for UniFFI's Kotlin bindings) or hand-written JNI; Swift ↔ C/C++ glue; and debugging across an FFI boundary. ICY de-framing, the one byte-level piece, is already done by Media3 on Android; the iOS proxy's de-interleaver and re-framer are ~130 lines, fuzz-tested against arbitrary chunking and splicing. Duplication is instead controlled by one executable specification both twins must pass.
+**Why two implementations instead of a shared core (Rust, C++, Kotlin Multiplatform)?** The engine is ~700 lines of decision logic, not CPU-bound, and the hard part is platform semantics around it. A shared core would cost: a cross-compilation toolchain for contributors; prebuilt binaries per Android ABI and iOS slice in the npm package (or a toolchain for every consumer); JNA (≈1.5 MB, for UniFFI's Kotlin bindings) or hand-written JNI; Swift ↔ C/C++ glue; and debugging across an FFI boundary. ICY de-framing, the one byte-level piece, is already done by Media3 on Android; the iOS proxy's de-interleaver and re-framer are ~130 lines, fuzz-tested against arbitrary chunking and splicing. Duplication is instead controlled by one executable specification every twin must pass. The web engine is the third twin, a line-by-line port of the Kotlin one: the browser is its platform, as AVPlayer and ExoPlayer are theirs.
 
 ### Stale-event protection
 
@@ -38,6 +38,16 @@ ExoPlayer can call listeners synchronously from inside a command (`setPlayWhenRe
 - **SessionPlayer + AnythingPlayerPlaybackService**: the Media3 session's player is a `SimpleBasePlayer` facade over the engine, not ExoPlayer. Media3 keeps the service in the foreground only while the session reports play intent and BUFFERING/READY; ExoPlayer is idle between reconnect attempts, so exposing it directly would drop the foreground service mid-recovery and let the OS freeze the process. Every remote command goes through the engine.
 - **AudioFocusCoordinator**: `AUDIOFOCUS_GAIN` (never `GAIN_TRANSIENT`: it makes other apps auto-resume when we abandon focus), delayed focus accepted, never plays without focus, background-start retry for Android 15+.
 - **NetworkMonitor**: default-network callback; online = internet + validated (captive portals are offline); a validated switch of the default network is a handoff.
+
+### Web
+
+The same layering in the browser, behind the same module contract as the TurboModule: React Native Web resolves `nativeModule.web.ts`, and `react-native-anything-player/web` installs it for plain pages (`Player` itself has no React Native import; each entry installs a host).
+
+- **One `<audio>` element per player**, reused for every item: iOS Safari unlocks playback per element after a play() from a tap. Listeners are attached per item and dropped on the next open, so a replaced item cannot reach the engine; the engine's generations still guard what does.
+- **MseStream**: live HTTP streams are read with `fetch()` and fed to Media Source Extensions, the web's stream proxy: ICY de-interleaved in JS (the same parser and charset repair), titles delivered when heard, the connection closed the moment it is released, and a fresh connection spliced into the same buffer when one that stayed up ≥ 3 s drops (as iOS). Without CORS or MSE support the element plays the URL itself.
+- **WebRuntime**: `online`/`offline` events and the Network Information API for connectivity and handoffs, page visibility as the foreground, and the Media Session for the lock screen and media keys, owned by the active player as on Android.
+- **AudioSampler**: Web Audio's AnalyserNode for the visualizer, attached only to MSE-read items (a cross-origin `<audio>` routed through Web Audio without CORS plays as silence).
+- The browser has no audio focus; its autoplay policy is reported as `AUTOPLAY_BLOCKED` and `interruption.reason: 'autoplay-blocked'`.
 
 ## Binding choice: TurboModule
 

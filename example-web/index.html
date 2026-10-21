@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>RNAP on the web</title>
+    <!--
+      The plain-web build: no React, no bundler. In an app, import from the
+      package (`react-native-anything-player/web`) or a CDN such as esm.sh;
+      this import map points the same specifier at the local build.
+    -->
+    <script type="importmap">
+      { "imports": { "react-native-anything-player/web": "/lib/module/web/index.js" } }
+    </script>
+    <style>
+      body { font: 15px/1.5 system-ui, sans-serif; max-width: 42rem; margin: 2rem auto; padding: 0 1rem; color: #2b1712; background: #fff8f2; }
+      h1 { font-size: 1.4rem; }
+      button { font: inherit; margin: 0 .4rem .4rem 0; padding: .35rem .8rem; border: 1px solid #c8613d; border-radius: .5rem; background: #fff; cursor: pointer; }
+      button[aria-pressed='true'] { background: #c8613d; color: #fff; }
+      dl { display: grid; grid-template-columns: max-content 1fr; gap: .2rem 1rem; }
+      dt { font-weight: 600; }
+      canvas { width: 100%; height: 64px; background: #2b1712; border-radius: .5rem; }
+      #log { max-height: 12rem; overflow: auto; font: 12px/1.4 ui-monospace, monospace; background: #fff; padding: .5rem; border-radius: .5rem; }
+    </style>
+  </head>
+  <body>
+    <h1>React Native Anything Player, in a plain web page</h1>
+    <p>Start the test radio (<code>node scripts/stream-server/server.mjs</code>), pick a source, then press Play.</p>
+    <div id="stations"></div>
+    <p>
+      <button id="toggle">Play</button>
+      <button id="stop">Stop</button>
+      <button id="visualizer" aria-pressed="false">Visualizer</button>
+    </p>
+    <dl>
+      <dt>State</dt><dd id="state">idle</dd>
+      <dt>Now playing</dt><dd id="now">–</dd>
+      <dt>Station</dt><dd id="station">–</dd>
+      <dt>Position</dt><dd id="position">–</dd>
+      <dt>Behind live</dt><dd id="live">–</dd>
+      <dt>Last error</dt><dd id="error">–</dd>
+    </dl>
+    <canvas id="scope" width="600" height="64"></canvas>
+    <h2>Events</h2>
+    <pre id="log"></pre>
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>

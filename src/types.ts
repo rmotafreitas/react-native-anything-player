@@ -41,7 +41,9 @@ export type InterruptionReason =
   /** Headphones unplugged / Bluetooth disconnected. */
   | 'output-disconnected'
   /** The platform paused without saying why. */
-  | 'system';
+  | 'system'
+  /** Web: the browser refused to start audio without a user gesture (autoplay policy). Call `play()` from a tap. */
+  | 'autoplay-blocked';
 
 /** The system paused playback, or refused to start it. */
 export interface Interruption {
@@ -78,7 +80,7 @@ export interface PlayerErrorInfo {
   /** Retrying (reconnect, or calling `play()` again) can succeed. */
   recoverable: boolean;
   /** The platform that reported it; absent for errors raised in JS. */
-  platform?: 'ios' | 'android';
+  platform?: 'ios' | 'android' | 'web';
   /** The server's HTTP status, for `HTTP_ERROR` and `SOURCE_NOT_FOUND`. */
   httpStatus?: number;
   /** Native error domain, e.g. `AVFoundationErrorDomain`. */
@@ -107,6 +109,8 @@ export type PlayerErrorCode =
   | 'PLAYER_RELEASED'
   | 'INVALID_ARGUMENT'
   | 'NATIVE_PLAYER_ERROR'
+  | 'AUTOPLAY_BLOCKED'
+  | 'NATIVE_MODULE_MISSING'
   | 'INTERNAL_ERROR';
 
 /** The authoritative snapshot of a player. */

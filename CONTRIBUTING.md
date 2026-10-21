@@ -91,6 +91,7 @@ The `package.json` file contains various scripts for common tasks:
 - `yarn typecheck`: type-check files with TypeScript.
   - `yarn lint`: lint files with [ESLint](https://eslint.org/).
   - `yarn docs:api`: generate the API reference into `docs/api/` and fail on undocumented exports.
+  - `yarn test:web`: build, then run the web end-to-end suite (needs `scripts/stream-server/generate-media.sh` once, and `npx playwright install`).
     - `yarn example start`: start the Metro server for the example app.
 - `yarn example android`: run the example app on Android.
 - `yarn example ios`: run the example app on iOS.

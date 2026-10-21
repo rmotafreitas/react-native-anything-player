@@ -65,6 +65,12 @@ export const SECTIONS: DocSection[] = [
           'Background audio in React Native: lock screen and notification controls, audio focus, phone calls and other interruptions, and iOS media services resets.',
       },
       {
+        link: '/docs/web',
+        text: 'Web',
+        description:
+          'RNAP on the web: Expo web, React Native Web and plain pages, with ICY metadata over MSE, automatic recovery, the Media Session and autoplay handling.',
+      },
+      {
         link: '/docs/visualizer',
         text: 'Visualizer',
         description:

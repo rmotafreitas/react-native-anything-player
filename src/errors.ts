@@ -17,6 +17,8 @@ const CODES: ReadonlySet<string> = new Set<PlayerErrorCode>([
   'PLAYER_RELEASED',
   'INVALID_ARGUMENT',
   'NATIVE_PLAYER_ERROR',
+  'AUTOPLAY_BLOCKED',
+  'NATIVE_MODULE_MISSING',
   'INTERNAL_ERROR',
 ]);
 
@@ -31,7 +33,7 @@ export class PlayerError extends Error {
   /** Retrying (reconnect, or calling `play()` again) can succeed. */
   readonly recoverable: boolean;
   /** The platform that reported it; absent for errors raised in JS. */
-  readonly platform?: 'ios' | 'android';
+  readonly platform?: 'ios' | 'android' | 'web';
   /** The server's HTTP status, for `HTTP_ERROR` and `SOURCE_NOT_FOUND`. */
   readonly httpStatus?: number;
   /** Native error domain, e.g. `AVFoundationErrorDomain` or `androidx.media3:ERROR_CODE_IO_BAD_HTTP_STATUS`. */

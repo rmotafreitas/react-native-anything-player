@@ -9,7 +9,16 @@
  *   adb shell am start -W -a android.intent.action.VIEW -d "anythingplayer-example://test/all"
  *   xcrun simctl openurl booted "anythingplayer-example://test/all"
  */
-import { Player, type PlayerStatus, isPlayerError } from 'react-native-anything-player';
+import { Platform } from 'react-native';
+import {
+  Player,
+  type AudioSample,
+  type Discontinuity,
+  type PlayerOptions,
+  type PlayerStatus,
+  type Progress,
+  isPlayerError,
+} from 'react-native-anything-player';
 import { LOCAL_TONE, STREAM_HOST, serverControl, serverStats } from './config';
 
 type Scenario = {
@@ -93,11 +102,98 @@ const live = (query = '') => ({
   live: true,
 });
 
+/**
+ * Plays a live stream whose connection the server drops (`query`) and checks
+ * a `discontinuity` is reported per replaced connection, once the new
+ * connection's audio is what plays: the playhead is past where it starts and
+ * there is audio ahead of it. `reconnectDelayMs` holds back every new
+ * connection's answer once playing (an outage); `drops` is how many reports
+ * to wait for. iOS checks on the progress timer, so it needs
+ * `progressInterval`.
+ */
+function expectDiscontinuities(
+  query: string,
+  withinMs: number,
+  log: (m: string) => void,
+  { reconnectDelayMs = 0, drops = 2 } = {}
+) {
+  return withPlayer(
+    async (p) => {
+      const jumps: (Discontinuity & {
+        at: number;
+        heard: Progress;
+        state: string;
+      })[] = [];
+      p.on('discontinuity', (d) =>
+        jumps.push({
+          ...d,
+          at: Date.now(),
+          heard: p.getProgress(),
+          state: p.state,
+        })
+      );
+      const states: string[] = [];
+      p.on('stateChange', (s) => states.push(s));
+      await p.load(live(query), { autoplay: true });
+      await waitFor(p, (s) => s.state === 'playing', 10_000, 'playing');
+      if (reconnectDelayMs > 0)
+        await serverControl(`delay=${reconnectDelayMs}`);
+      try {
+        const deadline = Date.now() + withinMs;
+        while (jumps.length < drops && Date.now() < deadline) await sleep(250);
+      } finally {
+        if (reconnectDelayMs > 0) await serverControl('delay=0');
+      }
+      const ahead = (r: Progress) => r.liveOffset ?? r.bufferedAhead;
+      log(
+        jumps
+          .map(
+            (j) =>
+              `at ${j.position.toFixed(2)}s (heard ${j.heard.position.toFixed(2)}s, ${ahead(j.heard).toFixed(2)}s ahead, ${j.at - j.timestamp} ms late, ${j.state})`
+          )
+          .join('; ') || 'no discontinuity'
+      );
+      log(`states: ${states.join(' → ')}`);
+      expect(
+        jumps.length >= drops,
+        `expected a discontinuity per drop, got ${jumps.length}`
+      );
+      for (const j of jumps) {
+        expect(
+          Number.isFinite(j.position) && j.position >= 0,
+          `position ${j.position}`
+        );
+        expect(
+          j.heard.position >= j.position,
+          `reported before it was heard: at ${j.position}, playhead ${j.heard.position}`
+        );
+        expect(
+          ahead(j.heard) > 0.25,
+          `reported with no audio after the jump (${ahead(j.heard)} s ahead)`
+        );
+        expect(
+          Math.abs(j.at - j.timestamp) < 2_000,
+          `timestamp ${j.timestamp} vs ${j.at}`
+        );
+      }
+      // Drops are seconds apart (positions restart per item on Android).
+      expect(
+        jumps.every((j, i) => i === 0 || j.at - jumps[i - 1]!.at > 1_000),
+        'one report per drop'
+      );
+    },
+    { progressInterval: 250 }
+  );
+}
+
 /** Native engine trace of the last failing scenario (printed by the runner). */
 let failureTrace: string[] = [];
 
-async function withPlayer(body: (player: Player) => Promise<void>) {
-  const player = new Player({ diagnostics: false });
+async function withPlayer(
+  body: (player: Player) => Promise<void>,
+  options: PlayerOptions = {}
+) {
+  const player = new Player({ diagnostics: false, ...options });
   try {
     await body(player);
   } catch (error) {
@@ -314,8 +410,13 @@ export const SCENARIOS: Scenario[] = [
     // local networking, Android network-security config).
     name: 'cleartext-blocked',
     timeoutMs: 20_000,
-    run: () =>
+    run: (log) =>
       withPlayer(async (p) => {
+        if (Platform.OS === 'web') {
+          // A web page's own rules apply (mixed content), not the app's.
+          log('skipped: cleartext rules are native');
+          return;
+        }
         const error = await expectRejects(
           p.load(
             { uri: 'http://example.com/stream.mp3', live: true },
@@ -410,6 +511,26 @@ export const SCENARIOS: Scenario[] = [
       }),
   },
   {
+    // A connection replaced under playback (each new one starts with a 2 s
+    // burst) is reported as a `discontinuity` once the playhead reaches it.
+    name: 'discontinuity-on-drop',
+    timeoutMs: 40_000,
+    run: (log) => expectDiscontinuities('&dropAfter=5', 20_000, log),
+  },
+  {
+    // The new connection answers after the buffer ran dry (a real outage):
+    // reported once its audio plays, not while the playhead waits at it.
+    // The outage outlasts the buffer (iOS holds ~5 s ahead, Android and the
+    // web ~2 s) but not the engine's no-data stall limit (3 s).
+    name: 'discontinuity-after-outage',
+    timeoutMs: 45_000,
+    run: (log) =>
+      expectDiscontinuities('&dropAfter=6', 20_000, log, {
+        reconnectDelayMs: Platform.OS === 'ios' ? 7_000 : 3_500,
+        drops: 1,
+      }),
+  },
+  {
     name: 'flapping-server-no-storm',
     timeoutMs: 40_000,
     run: (log) =>
@@ -494,6 +615,106 @@ export const SCENARIOS: Scenario[] = [
           'resume re-opens at the live edge'
         );
       }),
+  },
+  {
+    // Lock-screen song progress on a live stream (inspect with dumpsys / the log).
+    name: 'song-progress',
+    timeoutMs: 20_000,
+    run: (log) =>
+      withPlayer(async (p) => {
+        await p.load(live(), { autoplay: true });
+        await waitFor(p, (s) => s.state === 'playing', 10_000, 'playing');
+        await p.updateNowPlaying({
+          title: 'Song Progress Test',
+          artist: 'RNAP',
+          duration: 200,
+          elapsed: 50,
+        });
+        await sleep(3_000);
+        await p.pause();
+        await sleep(2_000);
+        await p.play();
+        await waitFor(p, (s) => s.state === 'playing', 10_000, 'playing again');
+        await sleep(2_000);
+        log('set 50/200 s; then 3 s playing, 2 s paused, 2 s playing');
+      }),
+  },
+  {
+    // Decoded-PCM windows for visualizers, from a live stream.
+    name: 'audio-sampling',
+    timeoutMs: 25_000,
+    run: (log) =>
+      withPlayer(async (p) => {
+        const windows: AudioSample[] = [];
+        p.on('audioSample', (w) => windows.push(w));
+        await p.load(live(), { autoplay: true });
+        await waitFor(p, (s) => s.state === 'playing', 10_000, 'playing');
+        expect(
+          p.setAudioSampling({ enabled: true, points: 256 }),
+          'sampling must be supported'
+        );
+        await sleep(3_000);
+        const got = windows.length;
+        const loud = windows.filter((w) => w.level > 0.01).length;
+        const w = windows[windows.length - 1];
+        log(
+          `${got} windows in 3 s; level=${w?.level.toFixed(3)} span=${(
+            (w?.duration ?? 0) * 1000
+          ).toFixed(
+            1
+          )}ms outputLatency=${((w?.outputLatency ?? 0) * 1000).toFixed(0)}ms`
+        );
+        expect(got >= 20, `expected a steady stream of windows, got ${got}`);
+        expect(w!.waveform.length === 256, `points: ${w!.waveform.length}`);
+        expect(loud > got / 2, 'the windows must carry the audio');
+        expect(
+          w!.waveform.every((v) => v >= -1 && v <= 1),
+          'samples are normalized'
+        );
+        p.setAudioSampling({ enabled: false });
+        await sleep(300);
+        const after = windows.length;
+        await sleep(1_000);
+        expect(windows.length === after, 'no windows after disabling');
+      }),
+  },
+  {
+    // `progressInterval`: native-timer readings while playing, none paused.
+    name: 'progress-events',
+    timeoutMs: 25_000,
+    run: (log) =>
+      withPlayer(
+        async (p) => {
+          const readings: Progress[] = [];
+          p.on('progress', (r) => readings.push(r));
+          await p.load(live(), { autoplay: true });
+          await waitFor(p, (s) => s.state === 'playing', 10_000, 'playing');
+          const from = readings.length;
+          await sleep(2_000);
+          const got = readings.slice(from);
+          const last = got[got.length - 1];
+          log(
+            `${got.length} readings in 2 s; bufferedAhead=${last?.bufferedAhead.toFixed(2)}s position=${last?.position.toFixed(2)}s`
+          );
+          expect(got.length >= 6, `expected ~8 readings, got ${got.length}`);
+          expect(
+            got.every((r, i) => i === 0 || r.timestamp > got[i - 1]!.timestamp),
+            'readings are fresh'
+          );
+          expect(
+            got.every(
+              (r) => Number.isFinite(r.bufferedAhead) && r.bufferedAhead >= 0
+            ),
+            'bufferedAhead is a finite reading'
+          );
+          await p.pause();
+          await sleep(300);
+          const paused = readings.length;
+          await sleep(1_000);
+          expect(readings.length === paused, 'no readings while paused');
+        },
+        { progressInterval: 250 }
+      ),
   },
   {
     // Synchronous JSI reads while a stream plays: cost per call.
@@ -618,7 +839,7 @@ export async function runScenarios(
     onLog(line);
   };
   emit(`START ${selected.map((s) => s.name).join(',')}`);
-  await serverControl('down=0&stall=0').catch(() =>
+  await serverControl('down=0&stall=0&delay=0').catch(() =>
     emit('WARN test server unreachable')
   );
   for (const scenario of selected) {

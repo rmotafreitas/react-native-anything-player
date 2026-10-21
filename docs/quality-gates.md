@@ -27,6 +27,12 @@ submodules. Neither entry point requires the app checkout or its dependencies.
 Coverage floors are **90% statements, 80% branches, 90% functions, 90% lines**. They must only
 increase. LCOV (`coverage/lcov.info`) feeds SonarQube, and `CI=true` also emits
 `junit.xml`. Jenkins publishes test results; both CI services retain coverage.
+The web engine's browser layer is JavaScript, so it counts toward the floors like
+the rest: it is unit-tested against a scripted fake browser (`src/web/__tests__`).
+
+The `e2e-web` GitHub Actions job runs `yarn test:web`: Playwright in Chromium,
+Firefox and WebKit against the test radio, including the integration scenarios
+on the Expo example's web export (see [Testing](testing.md#web-end-to-end)).
 
 GitHub Actions also runs CodeQL security-and-quality queries on JS/TS and workflow
 code on PRs, main pushes, merge queues and weekly schedules. Dependabot covers npm

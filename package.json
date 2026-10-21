@@ -10,6 +10,11 @@
       "types": "./lib/typescript/src/index.d.ts",
       "default": "./lib/module/index.js"
     },
+    "./web": {
+      "react-native-anything-player-source": "./src/web/index.ts",
+      "types": "./lib/typescript/src/web/index.d.ts",
+      "default": "./lib/module/web/index.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -44,7 +49,7 @@
     "docs:api": "typedoc",
     "clean": "del-cli android/build example/android/build example/android/app/build example/ios/build lib",
     "prepare": "bob build",
-    "typecheck": "tsc",
+    "typecheck": "tsc && tsc -p e2e",
     "lint": "eslint \"**/*.{js,ts,tsx}\" --max-warnings 0",
     "test": "jest",
     "test:coverage": "jest --coverage",
@@ -52,6 +57,7 @@
     "test:android": "cd example/android && ./gradlew :react-native-anything-player:testDebugUnitTest",
     "check:audit": "node scripts/check-dependency-audit.mjs",
     "check:secrets": "node scripts/check-secrets.mjs",
+    "test:web": "bash scripts/build-expo-web.sh && playwright test -c e2e",
     "test:tooling": "node --test scripts/__tests__/*.test.mjs",
     "doctor:gate": "node scripts/react-doctor-gate.mjs",
     "check:ci": "yarn run check:secrets && yarn run check:quality",
@@ -91,11 +97,13 @@
     "@eslint/compat": "^2.1.0",
     "@eslint/eslintrc": "^3.3.6",
     "@eslint/js": "^9.39.5",
+    "@playwright/test": "1.64.1",
     "@react-native/babel-preset": "0.86.3",
     "@react-native/eslint-config": "0.86.3",
     "@react-native/jest-preset": "0.86.3",
     "@testing-library/react-native": "^14.0.1",
     "@types/jest": "^30",
+    "@types/node": "^26.6.4",
     "@types/react": "^19.2.0",
     "@types/react-test-renderer": "^19",
     "del-cli": "^8.0.1",

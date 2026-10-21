@@ -32,13 +32,19 @@ RNAP's goal is to be the audio library React Native developers pick first: **lig
 
 ### P2 — platform reach
 
-| Gap | Proposal |
+In order: web first, then cars and voice (they share a browse tree), then casting.
+
+| Gap | Status / proposal |
 |---|---|
+| **Web** | **Done.** A TypeScript twin of the engine, held to the same conformance suite, for Expo web, React Native Web and plain pages (`react-native-anything-player/web`): ICY over fetch + MSE, splices, Media Session, a Web Audio visualizer, `AUTOPLAY_BLOCKED`. See [Web](web.md). |
+| **Expo Go** | **Done:** it cannot load native code, so `new Player()` throws `NATIVE_MODULE_MISSING` with the development-build steps instead of crashing. |
+| **Watches** | **Documented:** Apple Watch and Wear OS control the phone's media session; to be checked on hardware. A watch app of its own is out of scope. |
 | CarPlay / Android Auto browsing | A browse tree (`setBrowseTree`) on the Media3 `MediaLibraryService` and `CPListTemplate`. Needed by car-first radio apps. |
-| Cast / AirPlay picker | An `AVRoutePickerView` component and Media3 Cast. |
-| Web | An `HTMLAudioElement` engine with the same `Player` API, for Expo web and React Native Web. |
+| Siri / "Hey Google" | Transport commands already go through the media session. "Play station X" needs the browse tree above: Media3 search on Android, a Siri media intent the app answers on iOS. |
+| AirPlay picker | An `AVRoutePickerView` component (`<RoutePicker />`). |
+| Chromecast | Media3 Cast and the Google Cast SDK, as an opt-in add-on so radio apps do not pay for it. |
 | Recording | Out of scope. expo-audio and react-native-audio-api cover it; staying a player keeps RNAP small. |
 
 ## Before 1.0
 
-- Exercise on hardware what [Testing](testing.md) lists as unverified: real calls, Siri, Bluetooth / AirPods, CarPlay / Android Auto, wired-headset unplug, AirPlay, cellular handoff.
+- Exercise on hardware what [Testing](testing.md) lists as unverified: real calls, Siri, Bluetooth / AirPods, CarPlay / Android Auto, wired-headset unplug, AirPlay, cellular handoff, Apple Watch and Wear OS controls.

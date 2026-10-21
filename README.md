@@ -33,6 +33,7 @@ Read from each library's published source; sizes, methodology and the gaps RNAP 
 - **Correctness**: per-open generations reject stale native events; commands are applied in call order; status snapshots are sequence-numbered; events are ordered after the status they imply.
 - **Visualizer**: decoded-audio windows (`audioSample`) on both platforms — including live HTTP streams on iOS, where AVPlayer's audio tap never runs.
 - **Song progress for radio**: give the current song's duration and the lock screen shows its progress, advanced natively.
+- **Web**: the same API in Expo web, React Native Web and plain pages (`react-native-anything-player/web`), on a TypeScript twin of the engine that passes the same conformance suite: ICY metadata over fetch + MSE, splices, recovery, the Media Session, the visualizer.
 - **Observability**: a native ring buffer of structured engine traces, readable any time with `player.getDiagnostics()`.
 - **Small and fast**: a TurboModule with zero JS dependencies; progress is a synchronous JSI read (~10 µs), so a progress bar needs no events. Opt into `progress` events from a native timer (`progressInterval`) when JS must follow the audio where its own timers are frozen.
 
@@ -43,7 +44,7 @@ npm install react-native-anything-player
 # or: yarn add react-native-anything-player / pnpm add react-native-anything-player
 ```
 
-Requires React Native **≥ 0.80** with the New Architecture (the default), iOS 15.1+, Android 7.0+ (API 24).
+Requires React Native **≥ 0.80** with the New Architecture (the default), iOS 15.1+, Android 7.0+ (API 24). On the web: any current browser ([Web](docs/web.md)). Expo Go cannot load native code: use a development build.
 
 **Expo** (development builds / prebuild — not Expo Go):
 
@@ -100,6 +101,7 @@ function NowPlaying() {
 | [Internet radio & ICY](docs/internet-radio.md) | Live streams, ICY metadata, live edge, recovery |
 | [Background & system](docs/background-and-system.md) | Background, lock screen, media sessions, interruptions, audio focus, artwork |
 | [Events](docs/events.md) | Status, events, ordering and threading guarantees |
+| [Web](docs/web.md) | Expo web, React Native Web, plain pages: setup, CORS, autoplay, browser support |
 | [Visualizer](docs/visualizer.md) | Decoded-audio windows for oscilloscopes and meters (iOS streams included) |
 | [Errors](docs/errors.md) | Normalized error codes |
 | [Configuration](docs/configuration.md) | Every `PlayerOptions` field |

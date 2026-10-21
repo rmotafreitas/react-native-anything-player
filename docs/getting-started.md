@@ -7,7 +7,8 @@
 | React Native | 0.80, New Architecture | 0.86.2 |
 | iOS | 15.1 | iOS 27 simulator |
 | Android | 7.0 (API 24) | Android 16 (API 36) emulator |
-| Expo | SDK with RN ≥ 0.80, development build | SDK 57 |
+| Expo | SDK with RN ≥ 0.80, development build (or Expo web) | SDK 57 |
+| Web | a browser with Media Source Extensions for ICY metadata | Chromium, Firefox, WebKit ([Web](web.md)) |
 
 RNAP is a TurboModule. The legacy architecture (bridge) is not supported.
 
@@ -21,7 +22,7 @@ npm install react-native-anything-player
 
 ### Expo
 
-RNAP contains native code, so it **does not run in Expo Go**. Use a [development build](https://docs.expo.dev/develop/development-builds/introduction/) or `npx expo prebuild`.
+RNAP contains native code, so it **does not run in Expo Go** (see [below](#expo-go)). Use a [development build](https://docs.expo.dev/develop/development-builds/introduction/) or `npx expo prebuild`. Expo web needs no native code: see [Web](web.md).
 
 Add the config plugin to `app.json` / `app.config.js`:
 
@@ -34,6 +35,16 @@ Add the config plugin to `app.json` / `app.config.js`:
 ```
 
 The plugin adds the iOS `audio` background mode. Pass `["react-native-anything-player", { "backgroundAudio": false }]` if you only play in the foreground. Then rebuild (`npx expo run:ios`, `npx expo run:android`, or EAS Build).
+
+### Expo Go
+
+Expo Go ships a fixed set of native modules and cannot load RNAP's. There, `new Player()` throws a `PlayerError` with code `NATIVE_MODULE_MISSING` that says what to do instead of crashing on import:
+
+```sh
+npx expo run:ios        # or run:android: builds a development client with RNAP
+```
+
+A bare app that throws it was not rebuilt after installing RNAP (run `pod install` on iOS, then rebuild).
 
 ### Bare React Native
 
@@ -101,3 +112,4 @@ Show the play/pause button from `status.playWhenReady` (the *intent*), and a spi
 - [Playback](playback.md): sources, commands, state model.
 - [Internet radio](internet-radio.md): ICY metadata and live streams.
 - [Background & system](background-and-system.md): lock screen, interruptions, audio focus.
+- [Web](web.md): Expo web, React Native Web and plain web pages.

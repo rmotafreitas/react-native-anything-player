@@ -41,6 +41,8 @@ Native details are never dropped: `AVFoundationErrorDomain -11800` comes with th
 | `PLAYER_RELEASED` | no | any command after `release()` |
 | `INVALID_ARGUMENT` | no | non-finite numbers, rate ≤ 0 |
 | `NATIVE_PLAYER_ERROR` | yes | unclassified native failure (details in `nativeCause`) |
+| `AUTOPLAY_BLOCKED` | yes | web: the browser refused `play()` without a user gesture; call it from a tap ([Web](web.md#autoplay)) |
+| `NATIVE_MODULE_MISSING` | no | thrown by `new Player()` when the binary lacks RNAP's native module: Expo Go, or an app not rebuilt ([Getting started](getting-started.md#expo-go)) |
 | `INTERNAL_ERROR` | no | a bug — please report with `player.getDiagnostics()` |
 
 ## Recoverable vs fatal

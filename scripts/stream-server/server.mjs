@@ -17,6 +17,7 @@
 //   ?slow=BYTES_PER_S   throttle below the bitrate (buffering forever)
 //   ?status=503         answer with this HTTP status instead
 //   ?delay=MS           wait before sending headers
+//   ?noCors=1           omit CORS headers (browsers must fall back to <audio>)
 // Files:        GET /file.mp3, /program.mp3, /artwork.png, /artwork2.png
 //               (Range supported; `?delay=MS` slows the response)
 // Control:      GET /control?down=1|0     refuse every new stream connection
@@ -25,6 +26,8 @@
 //               GET /control?delay=MS     answer every new stream connection
 //                                         MS late (a slow reconnect)
 // Stats:        GET /stats → { active, total, byPath, events[] }
+// CORS:         every response allows any origin and exposes the ICY headers,
+//               as Icecast does, so browsers can read streams with fetch().
 import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -297,9 +300,23 @@ function staticFile(req, res, url) {
   } else send();
 }
 
+const CORS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'Icy-MetaData, Range, User-Agent, Authorization',
+  'Access-Control-Expose-Headers':
+    'icy-metaint, icy-name, icy-genre, icy-br, icy-url, Content-Range, Accept-Ranges',
+};
+
 const server = createServer((req, res) => {
   // The Host header is unrelated to route selection and can be malformed.
   const url = new URL(req.url, 'http://localhost');
+  if (!url.searchParams.has('noCors')) {
+    for (const [name, value] of Object.entries(CORS)) res.setHeader(name, value);
+  }
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204);
+    return res.end();
+  }
   if (url.pathname === '/live.mp3' || url.pathname === '/live')
     return liveStream(req, res, url);
   if (FILES[url.pathname]) return staticFile(req, res, url);

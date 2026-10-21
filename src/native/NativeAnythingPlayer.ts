@@ -59,4 +59,7 @@ export interface Spec extends TurboModule {
   readonly onPlayerEvent: CodegenTypes.EventEmitter<CodegenTypes.UnsafeObject>;
 }
 
-export default TurboModuleRegistry.getEnforcing<Spec>('AnythingPlayer');
+// `get`, not `getEnforcing`: a missing module (Expo Go, a stale binary) must
+// surface as a PlayerError with setup advice when a Player is created, not as
+// a crash on import. See src/Player.ts.
+export default TurboModuleRegistry.get<Spec>('AnythingPlayer');

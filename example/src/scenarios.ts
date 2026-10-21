@@ -410,8 +410,13 @@ export const SCENARIOS: Scenario[] = [
     // local networking, Android network-security config).
     name: 'cleartext-blocked',
     timeoutMs: 20_000,
-    run: () =>
+    run: (log) =>
       withPlayer(async (p) => {
+        if (Platform.OS === 'web') {
+          // A web page's own rules apply (mixed content), not the app's.
+          log('skipped: cleartext rules are native');
+          return;
+        }
         const error = await expectRejects(
           p.load(
             { uri: 'http://example.com/stream.mp3', live: true },
@@ -515,13 +520,13 @@ export const SCENARIOS: Scenario[] = [
   {
     // The new connection answers after the buffer ran dry (a real outage):
     // reported once its audio plays, not while the playhead waits at it.
-    // The outage outlasts the buffer (iOS holds ~5 s ahead, Android ~2 s)
-    // but not the engine's no-data stall limit (Android's is 3 s).
+    // The outage outlasts the buffer (iOS holds ~5 s ahead, Android and the
+    // web ~2 s) but not the engine's no-data stall limit (3 s).
     name: 'discontinuity-after-outage',
     timeoutMs: 45_000,
     run: (log) =>
       expectDiscontinuities('&dropAfter=6', 20_000, log, {
-        reconnectDelayMs: Platform.OS === 'android' ? 3_500 : 7_000,
+        reconnectDelayMs: Platform.OS === 'ios' ? 7_000 : 3_500,
         drops: 1,
       }),
   },

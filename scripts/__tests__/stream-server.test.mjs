@@ -99,4 +99,19 @@ test('test-server delays are bounded, validated before control changes, and rema
   assert.equal(partial.status, 206);
   assert.equal(partial.headers.get('content-range'), 'bytes 60-63/64');
   assert.equal((await partial.arrayBuffer()).byteLength, 4);
+
+  // Browsers read the stream with fetch(): a preflight, then exposed ICY headers.
+  const preflight = await fetch(`http://127.0.0.1:${port}/live.mp3`, {
+    method: 'OPTIONS',
+    signal: AbortSignal.timeout(5000),
+  });
+  assert.equal(preflight.status, 204);
+  assert.match(preflight.headers.get('access-control-allow-headers'), /Icy-MetaData/);
+  const cors = await get('/live.mp3?endAfter=0');
+  assert.equal(cors.headers.get('access-control-allow-origin'), '*');
+  assert.match(cors.headers.get('access-control-expose-headers'), /icy-metaint/);
+  await cors.arrayBuffer();
+  const closed = await get('/live.mp3?endAfter=0&noCors=1');
+  assert.equal(closed.headers.get('access-control-allow-origin'), null);
+  await closed.arrayBuffer();
 });

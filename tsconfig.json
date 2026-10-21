@@ -36,6 +36,7 @@
     ]
   },
   "exclude": [
+    "e2e",
     "example-expo",
     "lib",
     "node_modules",
