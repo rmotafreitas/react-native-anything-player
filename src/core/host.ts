@@ -40,6 +40,9 @@ export interface PlayerModule {
   onPlayerEvent(listener: (event: object) => void): { remove(): void };
 }
 
+/** The URI schemes only the web plays: a picked file's object URL, and inline data. */
+export const WEB_ONLY_SCHEMES: ReadonlySet<string> = new Set(['blob', 'data']);
+
 export interface PlayerHost {
   /** The engine module. Throws when it is not available (e.g. Expo Go). */
   module(): PlayerModule;
@@ -47,6 +50,10 @@ export interface PlayerHost {
   onForeground(listener: () => void): void;
   /** Resolves `require('./file.mp3')` to a URI, or `null` when it cannot. */
   resolveAsset(module: number): string | null;
+  /** Whether sources with this URI scheme (beyond the native ones) play here: `blob:` and `data:` on the web. */
+  acceptsScheme?(scheme: string): boolean;
+  /** Whether `load()` takes a `Blob` or `File` (the web). */
+  readonly acceptsBlobs?: boolean;
 }
 
 let installed: PlayerHost | null = null;

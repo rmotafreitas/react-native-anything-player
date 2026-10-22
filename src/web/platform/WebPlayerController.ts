@@ -116,6 +116,8 @@ export class WebPlayerController implements EngineDelegate, DriverObserver {
   private wakeupTimer: number | null = null;
   private progressTimer: number | null = null;
   private localRoute: AudioRoute = UNKNOWN_ROUTE;
+  /** The object URL of the loaded `Blob`/`File`, revoked when the item goes. */
+  private objectUrl: string | null = null;
 
   constructor(
     readonly id: string,
@@ -145,11 +147,16 @@ export class WebPlayerController implements EngineDelegate, DriverObserver {
 
   // ── Commands ──
 
+  /**
+   * Opens `source`. `objectUrl`: the object URL of a `Blob`/`File` it plays
+   * from; this player owns it from here and revokes it with the item.
+   */
   load(
     source: SourceDescriptor,
     fields: NowPlayingFields,
     autoplay: boolean | null,
-    start: number | null
+    start: number | null,
+    objectUrl: string | null = null
   ): Promise<object> {
     this.sourceFields = fields;
     this.overrides = NO_FIELDS;
@@ -159,6 +166,9 @@ export class WebPlayerController implements EngineDelegate, DriverObserver {
     this.driver.lastPlayAttempt = null;
     this.runtime.beforeLoad(this, source, autoplay);
     this.engine.load(source, autoplay, start);
+    // The replaced item is gone from the element: nothing can ask for it again.
+    this.revoke(this.objectUrl);
+    this.objectUrl = objectUrl;
     const promise = new Promise<object>((resolve, reject) => {
       this.pendingLoads.set(this.engine.loadId, { resolve, reject });
     });
@@ -215,6 +225,17 @@ export class WebPlayerController implements EngineDelegate, DriverObserver {
     return AudioSampler.supported;
   }
 
+  /** Unloads the source (back to `idle`) and frees a picked file's object URL. */
+  reset(): void {
+    this.engine.reset();
+    this.revoke(this.objectUrl);
+    this.objectUrl = null;
+  }
+
+  private revoke(url: string | null): void {
+    if (url != null) browser().URL.revokeObjectURL(url);
+  }
+
   release(): void {
     if (this.released) return;
     this.released = true;
@@ -224,6 +245,8 @@ export class WebPlayerController implements EngineDelegate, DriverObserver {
     this.engine.release();
     this.elementRoute.detach();
     this.routing.destroy();
+    this.revoke(this.objectUrl);
+    this.objectUrl = null;
     this.pendingLoads.clear();
   }
 
@@ -499,7 +522,7 @@ export class WebPlayerController implements EngineDelegate, DriverObserver {
   }
 }
 
+/** A field of a song (an ICY block's `StreamTitle`, an ID3 frame), not of the station's response headers (`icy-name`). */
 function isSongKey(key: string): boolean {
-  const lower = key.toLowerCase();
-  return lower === 'streamtitle' || lower === 'streamurl';
+  return !key.toLowerCase().startsWith('icy-');
 }

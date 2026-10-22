@@ -6,6 +6,7 @@ import {
   addCastStateListener,
   addRoutePickerAvailabilityListener,
   configureCast,
+  configureHls,
   getCastStatus,
   isRoutePickerAvailable,
   playFromSearch,
@@ -18,6 +19,11 @@ import {
 const params = new URLSearchParams(location.search);
 /** The test radio (scripts/stream-server); `?stream=` overrides it. */
 const STREAM = params.get('stream') ?? 'http://localhost:8765';
+
+// HLS needs hls.js outside Safari. In an app: `import Hls from 'hls.js';
+// configureHls(Hls);`. This page loads the copy from node_modules with a
+// <script> (see index.html), which also sets `window.Hls`.
+if (window.Hls) configureHls(window.Hls);
 
 const STATIONS = [
   {
@@ -48,6 +54,28 @@ const STATIONS = [
         title: 'Rádio Animu',
         artwork: 'https://www.animu.moe/favicon.png',
       },
+    },
+  },
+  {
+    label: 'Test radio (AAC, ICY)',
+    source: {
+      uri: `${STREAM}/live.aac?titleEvery=4`,
+      live: true,
+      metadata: { title: 'RNAP Test Radio AAC' },
+    },
+  },
+  {
+    label: 'HLS (on demand)',
+    source: {
+      uri: `${STREAM}/hls/vod.m3u8`,
+      metadata: { title: 'HLS tones' },
+    },
+  },
+  {
+    label: 'HLS (live)',
+    source: {
+      uri: `${STREAM}/hls/live.m3u8`,
+      metadata: { title: 'HLS live tones' },
     },
   },
 ];
@@ -115,6 +143,40 @@ STATIONS.forEach((station, index) => {
   button.addEventListener('click', () => load(index, true));
   $('stations').append(button);
 });
+
+// ── Local files: a picker and a drop zone. A File goes straight to load();
+// RNAP makes the object URL and revokes it when the item is replaced. ──
+function playLocalFile(file) {
+  document
+    .querySelectorAll('#stations button')
+    .forEach((b) => b.setAttribute('aria-pressed', 'false'));
+  $('file-name').textContent = `${file.name} (${file.type || 'unknown type'})`;
+  // A pick or a drop is a gesture: the browser lets it start audio.
+  player
+    .load(file, { autoplay: true })
+    .catch((error) => log(`file failed: ${error.code} ${error.message}`));
+}
+$('file').addEventListener('change', (event) => {
+  const [file] = event.target.files;
+  if (file) playLocalFile(file);
+});
+const dropZone = $('drop');
+dropZone.addEventListener('dragover', (event) => {
+  event.preventDefault();
+  dropZone.setAttribute('data-over', 'true');
+});
+dropZone.addEventListener('dragleave', () =>
+  dropZone.removeAttribute('data-over')
+);
+dropZone.addEventListener('drop', (event) => {
+  event.preventDefault();
+  dropZone.removeAttribute('data-over');
+  const [file] = event.dataTransfer.files;
+  if (file) playLocalFile(file);
+});
+// A file dropped beside the zone would otherwise navigate away from the page.
+for (const type of ['dragover', 'drop'])
+  window.addEventListener(type, (event) => event.preventDefault());
 
 $('toggle').addEventListener('click', () => {
   if (player.state === 'idle') return load(selected, true);

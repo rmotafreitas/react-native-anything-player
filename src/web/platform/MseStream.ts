@@ -8,8 +8,10 @@
 // - splice a fresh connection into the same buffer when one that stayed up
 //   (3 s) drops, so playback continues without a reload (reported as a splice).
 //
-// It needs CORS on the stream and an MSE-playable codec (MP3, AAC). Anything
-// else falls back to the plain element (`onFallback`), which plays what the
+// It needs CORS on the stream and an MSE-playable codec (MP3, AAC). A browser
+// that takes them only inside MP4 (Firefox) is fed a remux: the frames are
+// wrapped in fragmented MP4 (`Fmp4Muxer`), the rest unchanged. Anything else
+// falls back to the plain element (`onFallback`), which plays what the
 // browser can without metadata.
 
 import type { PlayerError } from '../../errors';
@@ -32,6 +34,8 @@ import {
   type SourceBufferLike,
   type SourceElementLike,
 } from './dom';
+import { Fmp4Muxer, MP4_TYPES, type AudioCodec } from './Fmp4Muxer';
+import { isHlsType } from './HlsStream';
 
 export interface MseStreamListener {
   /** Station info from the response headers (`icy-name`, `icy-genre`). */
@@ -40,8 +44,11 @@ export interface MseStreamListener {
   onTimedMetadata(metadata: StreamMetadata, mediaTime: number): void;
   /** A fresh connection was spliced in; its audio starts at `mediaTime`. */
   onSplice(mediaTime: number): void;
-  /** MSE cannot play this stream: play it with the plain element instead. */
-  onFallback(reason: string): void;
+  /**
+   * MSE cannot play this stream: play it with the plain element instead.
+   * `contentType` is the response's, when that is why (an HLS playlist).
+   */
+  onFallback(reason: string, contentType?: string | null): void;
   /** The first connection failed before any audio arrived. */
   onFailure(error: PlayerError): void;
   /** A diagnostics note. */
@@ -67,26 +74,46 @@ const MAX_AHEAD_S = 30;
 /** Audio behind the playhead is evicted past this. */
 const KEEP_BEHIND_S = 30;
 
-/** Content-Type → the MSE type that plays it. */
-const MSE_TYPES: Record<string, string> = {
-  'audio/mpeg': 'audio/mpeg',
-  'audio/mp3': 'audio/mpeg',
-  'audio/mpeg3': 'audio/mpeg',
-  'audio/aac': 'audio/aac',
-  'audio/aacp': 'audio/aac',
-  'audio/x-aac': 'audio/aac',
+/** No MP3 or AAC frame in this many bytes of a remuxed stream: it is something else. */
+const UNPARSEABLE_BYTES = 64 * 1024;
+
+/** Content-Type → the codec, and the MSE type that plays its raw bytes. */
+const MSE_CODECS: Record<string, { codec: AudioCodec; type: string }> = {
+  'audio/mpeg': { codec: 'mp3', type: 'audio/mpeg' },
+  'audio/mp3': { codec: 'mp3', type: 'audio/mpeg' },
+  'audio/mpeg3': { codec: 'mp3', type: 'audio/mpeg' },
+  'audio/aac': { codec: 'aac', type: 'audio/aac' },
+  'audio/aacp': { codec: 'aac', type: 'audio/aac' },
+  'audio/x-aac': { codec: 'aac', type: 'audio/aac' },
 };
 
 const ignore = () => undefined;
 
-/** The MSE type for a stream's Content-Type, or `null` when MSE cannot play it. */
-export function mseType(
+/** How a stream goes into the source buffer. */
+export interface MseFormat {
+  /** The source buffer's MSE type. */
+  type: string;
+  /** Set when the browser takes the codec only in MP4: the frames are remuxed. */
+  remux: AudioCodec | null;
+}
+
+/**
+ * The MSE format for a stream's Content-Type, or `null` when MSE cannot play
+ * it. The raw type wins; the MP4 form is for browsers that only take that.
+ */
+export function mseFormat(
   contentType: string | null,
   ctor: MediaSourceConstructor
-): string | null {
+): MseFormat | null {
   const base = (contentType ?? '').split(';')[0]!.trim().toLowerCase();
-  const type = MSE_TYPES[base];
-  return type != null && ctor.isTypeSupported(type) ? type : null;
+  const known = MSE_CODECS[base];
+  if (!known) return null;
+  if (ctor.isTypeSupported(known.type))
+    return { type: known.type, remux: null };
+  const wrapped = MP4_TYPES[known.codec];
+  return ctor.isTypeSupported(wrapped)
+    ? { type: wrapped, remux: known.codec }
+    : null;
 }
 
 /** The MediaSource implementation, preferring the standard one (iOS only has the managed one). */
@@ -150,6 +177,10 @@ export class MseStream {
   private objectUrl: string | null = null;
   private abort: (() => void) | null = null;
   private closed = false;
+  /** The stream was ended (or handed to the plain element): nothing more is read. */
+  private halted = false;
+  /** Wraps the frames in MP4 for a browser that takes them only that way. */
+  private mux: Fmp4Muxer | null = null;
   /** Ask for ICY metadata (dropped when a cross-origin server hides `icy-metaint`). */
   private wantIcy = true;
   /** Audio bytes appended over all connections. */
@@ -257,7 +288,7 @@ export class MseStream {
       new IcyDeinterleaver(Number.isFinite(metaint) ? metaint : 0),
       base
     );
-    if (!this.closed) {
+    if (!this.closed && !this.halted) {
       this.connectionEnded(first, {
         bytes: this.totalBytes - base,
         ms: monotonicNow() - openedAt,
@@ -295,13 +326,7 @@ export class MseStream {
       else this.endStream(`splice got HTTP ${response.status}`);
       return null;
     }
-    if (
-      this.wantIcy &&
-      response.headers.get('icy-metaint') == null &&
-      // A Content-Length is a file (streams never send one): no second request.
-      response.headers.get('content-length') == null &&
-      this.crossOrigin()
-    ) {
+    if (this.mayHideIcy(response)) {
       // The server may be interleaving metadata behind a header CORS hides:
       // the body would be corrupt. Ask again without metadata.
       discard(response);
@@ -312,6 +337,17 @@ export class MseStream {
       return this.request(first);
     }
     return response;
+  }
+
+  /** Whether a cross-origin response may interleave ICY metadata behind a header CORS hides. */
+  private mayHideIcy(response: ResponseLike): boolean {
+    const { headers } = response;
+    if (!this.wantIcy || headers.get('icy-metaint') != null) return false;
+    // A Content-Length is a file (streams never send one), a playlist has no
+    // ICY either way: no second request.
+    if (headers.get('content-length') != null) return false;
+    if (isHlsType(headers.get('content-type'))) return false;
+    return this.crossOrigin();
   }
 
   private fetchFailed(first: boolean, error: unknown): void {
@@ -351,25 +387,34 @@ export class MseStream {
   ): Promise<boolean> {
     if (!first) return this.splice();
     const contentType = response.headers.get('content-type');
-    const type = mseType(contentType, this.media.ctor);
+    const format = mseFormat(contentType, this.media.ctor);
     const finite =
       response.headers.get('content-length') != null &&
       response.headers.get('icy-metaint') == null;
     let reason: string | null = null;
-    if (type == null) reason = `content type ${contentType}`;
+    if (format == null) reason = `content type ${contentType}`;
     else if (finite) reason = 'a finite file';
     else if (!response.body) reason = 'no response body';
     else {
       try {
-        this.buffer = this.mediaSource!.addSourceBuffer(type);
+        this.buffer = this.mediaSource!.addSourceBuffer(format.type);
         this.buffer.mode = 'sequence';
       } catch (error) {
         reason = `addSourceBuffer: ${String(error)}`;
       }
     }
-    if (reason == null) return true;
+    if (reason == null) {
+      if (format!.remux) {
+        this.mux = new Fmp4Muxer(format!.remux);
+        this.listener.onNote('remux', {
+          from: contentType ?? '',
+          to: format!.type,
+        });
+      }
+      return true;
+    }
     discard(response);
-    this.listener.onFallback(reason);
+    this.listener.onFallback(reason, format == null ? contentType : null);
     return false;
   }
 
@@ -378,6 +423,8 @@ export class MseStream {
     await this.idle();
     if (this.closed) return false;
     this.buffer!.abort();
+    // The new connection continues mid-frame, on the same timeline.
+    this.mux?.restart();
     this.listener.onSplice(this.bufferedEnd());
     return true;
   }
@@ -407,7 +454,7 @@ export class MseStream {
       } catch (error) {
         return String(error);
       }
-      if (this.closed || chunk.done || !chunk.value) return null;
+      if (this.closed || this.halted || chunk.done || !chunk.value) return null;
       if (!(await this.deliver(chunk.value, deinterleaver, base))) return null;
     }
   }
@@ -419,7 +466,7 @@ export class MseStream {
     base: number
   ): Promise<boolean> {
     const { audio, blocks } = deinterleaver.consume(chunk);
-    if (audio.length > 0 && !(await this.append(audio))) return false;
+    if (audio.length > 0 && !(await this.feed(audio))) return false;
     for (const block of blocks) {
       const metadata = IcyParser.metadataFromBlock(block.bytes, this.format);
       if (Object.keys(metadata.raw).length > 0) {
@@ -493,22 +540,58 @@ export class MseStream {
     return from.time + fraction * (to.time - from.time);
   }
 
-  /** Appends audio once there is room; `false` when the stream was closed meanwhile. */
-  private async append(audio: Uint8Array): Promise<boolean> {
+  /**
+   * Gives the source buffer a chunk of the stream's audio, remuxed first when
+   * the browser needs MP4; `false` once the stream is over.
+   */
+  private async feed(audio: Uint8Array): Promise<boolean> {
+    const mux = this.mux;
+    if (!mux) return this.append(audio, audio.length);
+    const { init, fragment, changed } = mux.push(audio);
+    if (fragment) {
+      if (!(await this.append(joinBytes(init, fragment), audio.length)))
+        return false;
+    } else {
+      this.totalBytes += audio.length;
+    }
+    if (changed) return this.stop('the audio format changed');
+    if (mux.frames === 0 && this.totalBytes >= UNPARSEABLE_BYTES) {
+      this.halted = true;
+      this.listener.onFallback(
+        `no ${mux.codec === 'mp3' ? 'MP3' : 'AAC'} frames in the first ${UNPARSEABLE_BYTES} bytes`
+      );
+      return false;
+    }
+    return !this.closed;
+  }
+
+  /** The stream ends here (the buffer plays out, the engine reconnects); always `false`. */
+  private stop(reason: string): false {
+    this.endStream(reason);
+    return false;
+  }
+
+  /**
+   * Appends `data` once there is room; `false` when the stream was closed
+   * meanwhile. `fed` is how much of the stream's audio it holds.
+   */
+  private async append(data: Uint8Array, fed: number): Promise<boolean> {
     while (!this.closed && this.bufferedAhead > MAX_AHEAD_S)
       await this.sleep(500);
     for (let attempt = 0; attempt < 3 && !this.closed; attempt++) {
-      if (await this.tryAppend(audio)) {
+      if (await this.tryAppend(data)) {
         this.previousAnchor = this.anchor;
-        this.totalBytes += audio.length;
-        this.anchor = { byte: this.totalBytes, time: this.bufferedEnd() };
+        this.totalBytes += fed;
+        // A partial frame waiting in the muxer is not in the buffer yet.
+        const byte = this.totalBytes - (this.mux?.pending ?? 0);
+        this.anchor = { byte, time: this.bufferedEnd() };
         return !this.closed;
       }
       await this.sleep(1000);
     }
     if (!this.closed) {
       this.listener.onNote('append dropped', {
-        bytes: `${audio.length}`,
+        bytes: `${data.length}`,
         reason: 'buffer full',
       });
     }
@@ -559,6 +642,8 @@ export class MseStream {
 
   /** No more audio: the element plays what it has, then reports `ended`. */
   private endStream(reason: string): void {
+    this.halted = true;
+    this.abort?.();
     this.listener.onNote('stream ended', { reason });
     this.idle()
       .then(() => {
@@ -568,4 +653,13 @@ export class MseStream {
       })
       .catch(ignore);
   }
+}
+
+/** `init` followed by `fragment` as one append (an init segment may precede its first media segment). */
+function joinBytes(init: Uint8Array | null, fragment: Uint8Array): Uint8Array {
+  if (!init) return fragment;
+  const joined = new Uint8Array(init.length + fragment.length);
+  joined.set(init);
+  joined.set(fragment, init.length);
+  return joined;
 }

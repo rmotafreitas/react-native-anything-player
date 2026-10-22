@@ -1,4 +1,4 @@
-import { AppState, Image } from 'react-native';
+import { AppState, Image, Platform } from 'react-native';
 import { fake } from './FakeNative';
 
 jest.mock('../native/NativeAnythingPlayer', () => ({
@@ -510,6 +510,64 @@ describe('source normalization', () => {
     spy.mockReturnValue(null as never);
     expect(() => normalizeSource(43)).toThrow(PlayerError);
     spy.mockRestore();
+  });
+
+  it('rejects blob: and data: sources and Blobs on a device, saying they are for the web', async () => {
+    for (const uri of [
+      'blob:https://a.example/1',
+      'data:audio/mpeg;base64,AA',
+    ]) {
+      expect(() => normalizeSource(uri)).toThrow(
+        expect.objectContaining({
+          code: 'INVALID_SOURCE',
+          message: expect.stringContaining('web only'),
+        })
+      );
+    }
+    const p = new Player();
+    const calls = fake.calls.length;
+    await expect(p.load(new Blob(['abcd']))).rejects.toMatchObject({
+      code: 'INVALID_SOURCE',
+      message: expect.stringContaining('web only'),
+    });
+    await expect(
+      p.load(new File([new Uint8Array(4)], 'a.mp3'))
+    ).rejects.toMatchObject({ code: 'INVALID_SOURCE' });
+    // Nothing reached the native module.
+    expect(fake.calls.slice(calls)).toEqual([]);
+    await p.release();
+  });
+
+  it('takes blob: and data: sources and Blobs on React Native Web', async () => {
+    const spy = jest.replaceProperty(Platform, 'OS', 'web');
+    try {
+      expect(normalizeSource('blob:https://a.example/1')).toEqual({
+        uri: 'blob:https://a.example/1',
+      });
+      expect(normalizeSource('data:audio/mpeg;base64,AA')).toEqual({
+        uri: 'data:audio/mpeg;base64,AA',
+      });
+      // Other schemes stay refused, with the plain message.
+      expect(() => normalizeSource('ftp://a.example/x.mp3')).toThrow(
+        expect.objectContaining({ message: 'Unsupported URI scheme "ftp:".' })
+      );
+      const p = new Player();
+      const blob = new File([new Uint8Array(4)], 'Take 1.wav');
+      await p.load(blob);
+      const [, , source] = fake.calls.find((c) => c[0] === 'load')!;
+      expect(source).toEqual({
+        uri: '',
+        blob,
+        metadata: { title: 'Take 1' },
+      });
+      // A catalog needs URLs.
+      expect(() => normalizeSource(blob as never)).toThrow(
+        expect.objectContaining({ code: 'INVALID_SOURCE' })
+      );
+      await p.release();
+    } finally {
+      spy.restore();
+    }
   });
 
   it('rejects empty and unsupported sources', () => {

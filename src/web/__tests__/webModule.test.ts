@@ -811,12 +811,16 @@ describe('live streams through MSE', () => {
 
   it.each([
     ['without MSE', 'none' as const, 'https://radio.example/live'],
-    ['for HLS', 'standard' as const, 'https://radio.example/live.m3u8'],
+    [
+      'for HLS, where the browser plays it',
+      'standard' as const,
+      'https://radio.example/live.m3u8',
+    ],
   ])(
     'plays live streams on the element %s',
     async (_name, mediaSource, uri) => {
       uninstall();
-      setup({ mediaSource });
+      setup({ mediaSource, nativeHls: true });
       const id = module.createPlayer({});
       module.load(id, { uri }, {}).catch(() => undefined);
       expect(world.element().src).toBe(uri);

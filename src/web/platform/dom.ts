@@ -70,6 +70,8 @@ export interface AudioElementLike extends EventTargetLike {
   play(): Promise<void>;
   pause(): void;
   load(): void;
+  /** `''` when the browser cannot play the MIME type (`'maybe'` / `'probably'` otherwise). */
+  canPlayType(type: string): string;
   removeAttribute(name: string): void;
   appendChild(child: SourceElementLike): void;
   removeChild(child: SourceElementLike): void;
@@ -326,6 +328,8 @@ export interface BrowserGlobals {
       mode: string;
     }
   ): Promise<ResponseLike>;
+  /** The Fetch API's `Request` (hls.js's `fetchSetup` returns one). */
+  Request?: new (url: string, init: unknown) => unknown;
   AbortController: new () => AbortControllerLike;
   performance?: { now(): number };
   setTimeout(handler: () => void, ms: number): number;

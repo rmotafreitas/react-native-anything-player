@@ -30,8 +30,12 @@ const TYPES = {
   '.mp3': 'audio/mpeg',
 };
 
+/** hls.js, from node_modules: the example's HLS player outside Safari (an app would bundle it). */
+const HLS_JS = join(root, 'node_modules', 'hls.js', 'dist', 'hls.min.js');
+
 /** `/lib/…` is the built library; everything else is this folder (or `site`). */
 function resolve(pathname) {
+  if (!site && pathname === '/vendor/hls.min.js') return HLS_JS;
   if (site) {
     const file = normalize(join(site, decodeURIComponent(pathname.slice(1)) || 'index.html'));
     return file.startsWith(site + sep) ? file : null;

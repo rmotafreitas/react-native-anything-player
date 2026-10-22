@@ -1,9 +1,10 @@
 import { PlayerError, toPlayerError } from '../errors';
-import { host } from './host';
+import { WEB_ONLY_SCHEMES, host } from './host';
 import { dispatchModuleEvent } from './moduleEvents';
 import type {
   AudioRoute,
   AudioSamplingOptions,
+  BlobInput,
   DiagnosticEntry,
   LoadOptions,
   MediaMetadata,
@@ -67,8 +68,50 @@ function resolveAsset(module: number): string {
   return uri;
 }
 
+function invalidSource(message: string): PlayerError {
+  return new PlayerError({
+    code: 'INVALID_SOURCE',
+    message,
+    recoverable: false,
+  });
+}
+
+/** Whether `value` is a `Blob` or `File` (React Native, the browser and Node all have a global one). */
+function isBlob(value: unknown): value is BlobInput {
+  const Blob = (globalThis as { Blob?: abstract new () => object }).Blob;
+  return typeof Blob === 'function' && value instanceof Blob;
+}
+
+/** A picked file's name without its extension: what the lock screen shows for it. */
+function titleOfFile(name: string): string {
+  const dot = name.lastIndexOf('.');
+  return dot > 0 ? name.slice(0, dot) : name;
+}
+
+/**
+ * A `Blob` or `File` for `load()`, on the web: the web module makes an object
+ * URL for it and revokes that when the item goes. Exported for tests.
+ */
+export function normalizeBlob(blob: BlobInput): Record<string, unknown> {
+  if (!host().acceptsBlobs) {
+    throw invalidSource(
+      'A Blob or File can be played on the web only. Pass a file: URI on iOS and Android.'
+    );
+  }
+  const name = (blob as { name?: unknown }).name;
+  const out: Record<string, unknown> = { uri: '', blob };
+  if (typeof name === 'string' && name !== '')
+    out.metadata = { title: titleOfFile(name) };
+  return out;
+}
+
 /** Validates and normalizes what apps pass to `load()`. Exported for tests. */
 export function normalizeSource(input: SourceInput): Record<string, unknown> {
+  if (isBlob(input)) {
+    throw invalidSource(
+      'A Blob or File can only be passed to Player.load(), on the web. A catalog item needs a URL.'
+    );
+  }
   let source;
   if (typeof input === 'string') source = { uri: input };
   else if (typeof input === 'number') source = { uri: resolveAsset(input) };
@@ -83,12 +126,16 @@ export function normalizeSource(input: SourceInput): Record<string, unknown> {
   const uri = source.uri.trim();
   const scheme = URI_SCHEME.exec(uri)?.[0]?.slice(0, -1).toLowerCase();
   // No scheme: an absolute path, or (Android release builds) a bundled asset's resource name.
-  if (scheme && !ALLOWED_SCHEMES.has(scheme)) {
-    throw new PlayerError({
-      code: 'INVALID_SOURCE',
-      message: `Unsupported URI scheme "${scheme}:".`,
-      recoverable: false,
-    });
+  if (
+    scheme &&
+    !ALLOWED_SCHEMES.has(scheme) &&
+    !host().acceptsScheme?.(scheme)
+  ) {
+    throw invalidSource(
+      WEB_ONLY_SCHEMES.has(scheme)
+        ? `"${scheme}:" sources can be played on the web only. Pass a file: URI on iOS and Android.`
+        : `Unsupported URI scheme "${scheme}:".`
+    );
   }
   const out: Record<string, unknown> = { uri };
   if (source.headers) out.headers = { ...source.headers };
@@ -242,10 +289,19 @@ export class Player {
    * replaced it); rejects if it cannot be opened. Keeps the current play
    * intent unless `autoplay` is given — a playing player switches sources
    * seamlessly.
+   *
+   * On the web the source may also be a `Blob` or `File` (a picked or dropped
+   * file): RNAP plays it from an object URL it revokes when the item is
+   * replaced, reset or released. Native rejects it with `INVALID_SOURCE`.
    */
-  async load(source: SourceInput, options: LoadOptions = {}): Promise<void> {
+  async load(
+    source: SourceInput | BlobInput,
+    options: LoadOptions = {}
+  ): Promise<void> {
     this.ensureAlive();
-    const normalized = normalizeSource(source);
+    const normalized = isBlob(source)
+      ? normalizeBlob(source)
+      : normalizeSource(source);
     if (options.startPosition != null)
       assertFinite('startPosition', options.startPosition);
     const nativeOptions: Record<string, unknown> = {};

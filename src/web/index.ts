@@ -5,7 +5,7 @@
 //   const player = new Player();
 //   button.onclick = () => player.load('https://radio.example/stream', { autoplay: true });
 
-import { installHost } from '../core/host';
+import { WEB_ONLY_SCHEMES, installHost } from '../core/host';
 import { browser } from './platform/dom';
 import { webModule } from './platform/WebModule';
 
@@ -19,10 +19,14 @@ installHost({
   },
   // A web page has no bundled-asset registry: sources are URLs.
   resolveAsset: () => null,
+  acceptsScheme: (scheme) => WEB_ONLY_SCHEMES.has(scheme),
+  acceptsBlobs: true,
 });
 
 export { Player } from '../core/Player';
 export { PlayerError, isPlayerError } from '../errors';
+export { configureHls } from '../core/hls';
+export type { HlsConstructor, HlsLike } from '../core/hls';
 export {
   addCastStateListener,
   addRoutePickerAvailabilityListener,
@@ -49,6 +53,7 @@ export type {
   AudioRouteKind,
   AudioSample,
   AudioSamplingOptions,
+  BlobInput,
   CastState,
   CatalogItem,
   CatalogOptions,

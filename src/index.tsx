@@ -1,5 +1,7 @@
 export { Player } from './Player';
 export { PlayerError, isPlayerError } from './errors';
+export { configureHls } from './core/hls';
+export type { HlsConstructor, HlsLike } from './core/hls';
 export {
   addCastStateListener,
   addRoutePickerAvailabilityListener,
@@ -40,6 +42,7 @@ export type {
   AudioRouteKind,
   AudioSample,
   AudioSamplingOptions,
+  BlobInput,
   CastState,
   CatalogItem,
   CatalogOptions,
