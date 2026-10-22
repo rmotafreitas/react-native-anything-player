@@ -70,9 +70,12 @@ What an app's users download: each library built into a React Native 0.86 app, i
 | react-native-nitro-sound | 1,568 KB | 1,584 KB | 28 KB | 1,539 KB | 0 |
 | react-native-audio-api | 9,571 KB | 9,636 KB | 48 KB | 9,481 KB | 13 KB |
 | react-native-sound | 16 KB | 16 KB | 4 KB | 26 KB | 0 |
+| Expo modules runtime (`expo` 57.0.31) | 3,912 KB | 6,353 KB | 1,060 KB | 2,138 KB | 554 KB |
+| expo-audio (over the runtime) | 1,076 KB | 3,245 KB | 778 KB | 0 | 277 KB |
+| expo-av (over the runtime) | 747 KB | 2,479 KB | 526 KB | 94 KB | 117 KB |
 | RNTP 4 | — | — | | | |
 
-Built 2026-10-22 (`benchmarks/results/apk.json`); the code, native and resource columns are with R8, as stored in the APK. RNTP 4.1.2 does not compile against React Native 0.86. expo-audio and expo-av need the Expo modules runtime and are not in this run.
+Built 2026-10-22 (`benchmarks/results/apk.json`); the code, native and resource columns are with R8, as stored in the APK. RNTP 4.1.2 does not compile against React Native 0.86. The Expo rows are measured in a second app, one bare app plus the Expo modules runtime: expo-audio and expo-av add on top of the runtime row, and any cost an Expo app can avoid is already part of it. expo-av's prebuilt binary links against older Expo APIs, so a store build also needs three `-dontwarn` rules its own package does not ship.
 
 How to read it:
 
@@ -80,6 +83,7 @@ How to read it:
 - **RNAP is shaped for R8.** It builds ExoPlayer with only the audio and metadata renderers, so the video, subtitle and image code is removed, and Android compiles only its module's C++, not the iOS-only AirPlay button's. Release 1.1.0 added 1,400 KB with R8; 1.1.1 adds 1,176 KB.
 - **Same work, same size.** react-native-audio-pro is smaller with less to do (no HLS, no output picker, no recovery). With Cast in, RNAP and RNTP 5 land within 61 KB of each other: the Cast framework is most of it.
 - **Native code that R8 cannot touch:** react-native-audio-api ships FFmpeg and its audio engine as native libraries, and react-native-nitro-sound its C++ through Nitro.
+- **An Expo SDK module bills the runtime first.** The Expo rows are measured over an app that already has it: that floor is 3,912 KB with R8 (every Expo core module the runtime links, its own C++ included) before any module counts, and expo-audio then adds 1,076 KB, expo-av 747 KB.
 
 ### Install size
 

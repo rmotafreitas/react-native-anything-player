@@ -217,6 +217,71 @@
         "resourceBytes": 0,
         "otherBytes": 1
       }
+    },
+    {
+      "id": "expoRuntime",
+      "label": "Expo modules runtime",
+      "name": "expo",
+      "version": "57.0.31",
+      "gradle": {},
+      "r8": {
+        "apkBytes": 4005638,
+        "dexBytes": 1085906,
+        "nativeBytes": 2189096,
+        "resourceBytes": 566800,
+        "otherBytes": 101203
+      },
+      "noR8": {
+        "apkBytes": 6505324,
+        "dexBytes": 3112976,
+        "nativeBytes": 2189096,
+        "resourceBytes": 998468,
+        "otherBytes": 101063
+      }
+    },
+    {
+      "id": "expoAudio",
+      "label": "expo-audio",
+      "name": "expo-audio",
+      "version": "57.0.5",
+      "gradle": {},
+      "over": "expo",
+      "r8": {
+        "apkBytes": 1101920,
+        "dexBytes": 796588,
+        "nativeBytes": 0,
+        "resourceBytes": 284073,
+        "otherBytes": 4668
+      },
+      "noR8": {
+        "apkBytes": 3322945,
+        "dexBytes": 2724622,
+        "nativeBytes": 0,
+        "resourceBytes": 567256,
+        "otherBytes": 4980
+      }
+    },
+    {
+      "id": "expoAv",
+      "label": "expo-av",
+      "name": "expo-av",
+      "version": "16.0.8",
+      "gradle": {},
+      "over": "expo",
+      "r8": {
+        "apkBytes": 764611,
+        "dexBytes": 538162,
+        "nativeBytes": 96416,
+        "resourceBytes": 120244,
+        "otherBytes": 307
+      },
+      "noR8": {
+        "apkBytes": 2538301,
+        "dexBytes": 2013532,
+        "nativeBytes": 96416,
+        "resourceBytes": 398327,
+        "otherBytes": 301
+      }
     }
   ]
 }
