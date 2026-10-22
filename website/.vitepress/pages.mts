@@ -65,6 +65,18 @@ export const SECTIONS: DocSection[] = [
           'Background audio in React Native: lock screen and notification controls, audio focus, phone calls and other interruptions, and iOS media services resets.',
       },
       {
+        link: '/docs/routes-and-casting',
+        text: 'Casting & AirPlay',
+        description:
+          'Google Cast, AirPlay and the system output picker in React Native and on the web: where the audio goes, the Cast button, and what casting keeps working.',
+      },
+      {
+        link: '/docs/voice',
+        text: 'Voice assistants',
+        description:
+          'Let Siri, Google Assistant and Gemini play your stations and episodes, even with the app closed, and the same catalog search on the web.',
+      },
+      {
         link: '/docs/web',
         text: 'Web',
         description:
