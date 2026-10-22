@@ -4,6 +4,10 @@
   "description": "Native-first, reliable audio player for React Native: files, streams and internet radio (ICY), with background playback, media sessions and automatic recovery.",
   "main": "./lib/module/index.js",
   "types": "./lib/typescript/src/index.d.ts",
+  "bin": {
+    "rnap": "bin/rnap.mjs",
+    "react-native-anything-player": "bin/rnap.mjs"
+  },
   "exports": {
     ".": {
       "react-native-anything-player-source": "./src/index.tsx",
@@ -20,6 +24,7 @@
   "files": [
     "src",
     "lib",
+    "bin",
     "android",
     "ios",
     "*.podspec",
