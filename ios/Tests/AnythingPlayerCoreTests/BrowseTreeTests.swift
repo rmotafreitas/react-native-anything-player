@@ -93,6 +93,13 @@ final class BrowseTreeTests: XCTestCase {
     XCTAssertNil(tree.node("nothing"))
   }
 
+  func testTheMoreTitleIsTheAppsOwn() {
+    XCTAssertEqual(BrowseTree([]).moreTitle, "More")
+    var options = BrowseOptions()
+    options.titles.more = "Mehr"
+    XCTAssertEqual(BrowseTree([], options: options).moreTitle, "Mehr")
+  }
+
   private static func build(_ testCase: [String: Any]) -> BrowseTree {
     let items = (testCase["items"] as? [[String: Any]] ?? []).map {
       BrowseItem(

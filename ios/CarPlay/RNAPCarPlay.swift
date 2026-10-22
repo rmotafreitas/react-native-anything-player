@@ -3,7 +3,8 @@ import CarPlay
 import UIKit
 
 /// The CarPlay audio app: a tab bar of lists from the catalog's browse tree
-/// (`BrowseTree`: the top-level groups, "Recently played", "Favorites"), the
+/// (`BrowseTree`: the top-level groups, "Recently played", "Favorites"; a list
+/// longer than CarPlay allows continues in a "More…" row), the
 /// system Now Playing screen, and playback through the same path as
 /// `playFromSearch` (`VoiceSearch.handleBrowse`, reported to JS as `searchPlay`
 /// with `origin: 'browse'`). Built in with `RNAP_CAR=1` (the Expo plugin's `car`
@@ -103,15 +104,45 @@ final class RNAPCarPlay {
     }
   }
 
-  private func listTemplate(_ folder: BrowseNode, in tree: BrowseTree) -> CPListTemplate {
-    let template = CPListTemplate(title: folder.title, sections: sections(for: folder.id, in: tree))
+  private func listTemplate(_ folder: BrowseNode, in tree: BrowseTree, from offset: Int = 0) -> CPListTemplate {
+    let template = CPListTemplate(title: folder.title, sections: sections(for: folder.id, in: tree, from: offset))
     template.emptyViewTitleVariants = ["Nothing here yet"]
     return template
   }
 
-  private func sections(for folderId: String, in tree: BrowseTree) -> [CPListSection] {
-    let items = (tree.children(folderId) ?? []).map { listItem($0) }
-    return [CPListSection(items: items)]
+  /// How many rows one list can hold. CarPlay decides at run time (and drops the rows past it), so it is read, never assumed.
+  private static var itemLimit: Int { max(CPListTemplate.maximumItemCount, 2) }
+
+  /// One page of a folder, starting at child `offset`: as many rows as the list holds. A folder with more
+  /// ends in a "More…" row that opens the next page as a list of its own (and so on). A single section:
+  /// the row limit is a total, and sections only add a limit of their own (`maximumSectionCount`).
+  private func sections(for folderId: String, in tree: BrowseTree, from offset: Int = 0) -> [CPListSection] {
+    let nodes = tree.children(folderId) ?? []
+    let start = min(max(offset, 0), nodes.count)
+    let room = Self.itemLimit
+    var rows: [CPListItem]
+    if nodes.count - start <= room {
+      rows = nodes[start...].map { listItem($0) }
+    } else {
+      let next = start + room - 1
+      rows = nodes[start..<next].map { listItem($0) }
+      let folder = tree.node(folderId) ?? BrowseNode(id: folderId, title: tree.moreTitle, isFolder: true)
+      rows.append(moreItem(folder, title: "\(tree.moreTitle)…", next: next))
+    }
+    return [CPListSection(items: rows)]
+  }
+
+  private func moreItem(_ folder: BrowseNode, title: String, next: Int) -> CPListItem {
+    let item = CPListItem(
+      text: title, detailText: nil, image: nil, accessoryImage: nil, accessoryType: .disclosureIndicator)
+    item.handler = { [weak self] _, completion in
+      if let self, let interfaceController = self.interfaceController {
+        interfaceController.pushTemplate(
+          self.listTemplate(folder, in: self.tree, from: next), animated: true, completion: nil)
+      }
+      completion()
+    }
+    return item
   }
 
   private func listItem(_ node: BrowseNode) -> CPListItem {

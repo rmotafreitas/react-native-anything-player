@@ -172,6 +172,9 @@ struct BrowseTree {
     }
   }
 
+  /// The name of the "More" folder, as the app set it.
+  var moreTitle: String { options.titles.more }
+
   /// `"Podcasts/Daily"` → `["Podcasts", "Daily"]`; blank segments are dropped.
   static func groupSegments(_ group: String?) -> [String] {
     guard let group else { return [] }
