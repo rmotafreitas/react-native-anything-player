@@ -142,10 +142,18 @@ jobs:
   build-ios:
     timeout-minutes: 60
     runs-on: macos-latest
+    name: build-ios (cast ${{ matrix.cast }})
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # Google Cast is opt-in at `pod install` (RNAP_CAST=1): build both.
+        cast: ['off', 'on']
 
     env:
       XCODE_VERSION: 26
-      TURBO_CACHE_DIR: .turbo/ios
+      TURBO_CACHE_DIR: .turbo/ios-cast-${{ matrix.cast }}
+      RNAP_CAST: ${{ matrix.cast == 'on' && '1' || '0' }}
       RCT_USE_RN_DEP: 1
       RCT_USE_PREBUILT_RNCORE: 1
 
@@ -168,9 +176,9 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ env.TURBO_CACHE_DIR }}
-          key: v2-${{ runner.os }}-${{ runner.arch }}-${{ env.ImageVersion }}-turborepo-ios-${{ hashFiles('yarn.lock', '.nvmrc') }}-${{ github.sha }}
+          key: v2-${{ runner.os }}-${{ runner.arch }}-${{ env.ImageVersion }}-turborepo-ios-cast-${{ matrix.cast }}-${{ hashFiles('yarn.lock', '.nvmrc') }}-${{ github.sha }}
           restore-keys: |
-            v2-${{ runner.os }}-${{ runner.arch }}-${{ env.ImageVersion }}-turborepo-ios-${{ hashFiles('yarn.lock', '.nvmrc') }}-
+            v2-${{ runner.os }}-${{ runner.arch }}-${{ env.ImageVersion }}-turborepo-ios-cast-${{ matrix.cast }}-${{ hashFiles('yarn.lock', '.nvmrc') }}-
 
       - name: Check turborepo cache for iOS
         run: |
@@ -193,7 +201,7 @@ jobs:
             ~/Library/Caches/CocoaPods
             ~/.cocoapods
             ~/.cache/animu-bundle
-          key: ${{ runner.os }}-${{ runner.arch }}-${{ env.ImageVersion }}-pods-ruby3.3-${{ hashFiles('example/ios/Podfile.lock', 'example/Gemfile', 'example/Gemfile.lock', '*.podspec', 'yarn.lock') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ env.ImageVersion }}-pods-ruby3.3-cast-${{ matrix.cast }}-${{ hashFiles('example/ios/Podfile.lock', 'example/Gemfile', 'example/Gemfile.lock', '*.podspec', 'yarn.lock') }}
 
       - name: Install cocoapods
         if: env.turbo_cache_hit != 1
@@ -208,9 +216,12 @@ jobs:
           else
             bundle exec pod install --project-directory=ios || bundle exec pod install --project-directory=ios --repo-update
           fi
+          if [ "$RNAP_CAST" = 1 ]; then
+            grep -A1 -- "- google-cast-sdk" ios/Podfile.lock || { echo "google-cast-sdk was not installed"; exit 1; }
+          fi
 
       - name: Export regenerated CocoaPods lockfile for review
-        if: inputs.update_pods == true
+        if: inputs.update_pods == true && matrix.cast == 'off'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: example-podfile-lock
