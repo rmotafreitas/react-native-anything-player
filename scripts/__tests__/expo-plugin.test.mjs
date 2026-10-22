@@ -294,3 +294,40 @@ test('App Intents: a folder group, a name to quote, a missing group', () => {
     /by hand/
   );
 });
+
+test('App Intents: a listed but uncompiled template joins Sources', () => {
+  const project = xcodeProject({ name: 'MyApp' });
+  const objects = project.hash.project.objects;
+  objects.PBXFileReference.F9 = {
+    isa: 'PBXFileReference',
+    path: 'MyApp/RNAPAppIntents.swift',
+  };
+  objects.PBXGroup.G1.children.push({ value: 'F9', comment: 'x' });
+  appIntents.addAppIntentsSource(project, { projectName: 'MyApp' });
+  appIntents.addAppIntentsSource(project, { projectName: 'MyApp' });
+  const files = objects.PBXSourcesBuildPhase.P2.files;
+  assert.equal(files.length, 2);
+  assert.equal(objects.PBXBuildFile[files[1].value].fileRef, 'F9');
+  assert.equal(objects.PBXGroup.G1.children.length, 2);
+});
+
+test('App Intents: the app target named after the project, or none when ambiguous', () => {
+  const project = xcodeProject({ name: 'MyApp' });
+  const objects = project.hash.project.objects;
+  objects.PBXNativeTarget.T3 = {
+    isa: 'PBXNativeTarget',
+    buildPhases: [{ value: 'P3', comment: 'Sources' }],
+    name: 'MyAppClip',
+    productType: '"com.apple.product-type.application"',
+  };
+  objects.PBXSourcesBuildPhase.P3 = { isa: 'PBXSourcesBuildPhase', files: [] };
+  appIntents.addAppIntentsSource(project, { projectName: 'MyApp' });
+  assert.equal(objects.PBXSourcesBuildPhase.P2.files.length, 2);
+  assert.equal(objects.PBXSourcesBuildPhase.P3.files.length, 0);
+
+  objects.PBXNativeTarget.T2.name = 'Main';
+  assert.throws(
+    () => appIntents.addAppIntentsSource(project, { projectName: 'MyApp' }),
+    /several app targets/
+  );
+});

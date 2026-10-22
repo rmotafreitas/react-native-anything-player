@@ -26,16 +26,19 @@ function entries(section = {}) {
   );
 }
 
-/** The app target: the first application target. */
-function appTarget(objects) {
-  const found = entries(objects.PBXNativeTarget).find(
-    ([, target]) => unquote(target.productType) === APPLICATION
+/** The app target: the application target named after the project, else the only one. */
+function appTarget(objects, projectName) {
+  const apps = entries(objects.PBXNativeTarget)
+    .map(([, target]) => target)
+    .filter((target) => unquote(target.productType) === APPLICATION);
+  const named = apps.find((target) => unquote(target.name) === projectName);
+  if (named) return named;
+  if (apps.length === 1) return apps[0];
+  throw new Error(
+    apps.length === 0
+      ? 'react-native-anything-player: the Xcode project has no app target.'
+      : `react-native-anything-player: several app targets and none named "${projectName}"; add ${FILE} to the right one by hand (docs/voice.md).`
   );
-  if (!found)
-    throw new Error(
-      'react-native-anything-player: the Xcode project has no app target.'
-    );
-  return found[1];
 }
 
 /** The app's source folder group (`name` or `path` is the project's name). */
@@ -60,14 +63,13 @@ function appGroup(objects, projectName) {
  */
 function addAppIntentsSource(project, { projectName }) {
   const objects = project.hash.project.objects;
-  const target = appTarget(objects);
+  const target = appTarget(objects, projectName);
   const [, group] = appGroup(objects, projectName);
   const refs = objects.PBXFileReference ?? {};
-  const present = (group.children ?? []).some((child) => {
+  const existing = (group.children ?? []).find((child) => {
     const ref = refs[child.value];
     return ref && unquote(ref.path).split('/').pop() === FILE;
-  });
-  if (present) return project;
+  })?.value;
 
   const phaseId = (target.buildPhases ?? [])
     .map((phase) => phase.value)
@@ -77,8 +79,18 @@ function addAppIntentsSource(project, { projectName }) {
       'react-native-anything-player: the app target has no Sources build phase.'
     );
 
+  const phase = objects.PBXSourcesBuildPhase[phaseId];
+  // Listed in the group is not enough: the file must be in the target's Sources.
+  if (existing) {
+    const compiled = (phase.files ?? []).some(
+      (file) => objects.PBXBuildFile?.[file.value]?.fileRef === existing
+    );
+    if (!compiled)
+      addToSources(objects, project.generateUuid(), existing, phase);
+    return project;
+  }
+
   const fileRef = project.generateUuid();
-  const buildFile = project.generateUuid();
   // A group with a `path` is a folder; one with only a `name` lives at its
   // parent's path (Expo's template), so the file's path names the folder.
   const filePath = group.path === undefined ? `${projectName}/${FILE}` : FILE;
@@ -91,6 +103,12 @@ function addAppIntentsSource(project, { projectName }) {
     sourceTree: '"<group>"',
   };
   objects.PBXFileReference[`${fileRef}_comment`] = FILE;
+  (group.children ??= []).push({ value: fileRef, comment: FILE });
+  addToSources(objects, project.generateUuid(), fileRef, phase);
+  return project;
+}
+
+function addToSources(objects, buildFile, fileRef, phase) {
   objects.PBXBuildFile ??= {};
   objects.PBXBuildFile[buildFile] = {
     isa: 'PBXBuildFile',
@@ -98,13 +116,10 @@ function addAppIntentsSource(project, { projectName }) {
     fileRef_comment: FILE,
   };
   objects.PBXBuildFile[`${buildFile}_comment`] = `${FILE} in Sources`;
-  (group.children ??= []).push({ value: fileRef, comment: FILE });
-  const phase = objects.PBXSourcesBuildPhase[phaseId];
   (phase.files ??= []).push({
     value: buildFile,
     comment: `${FILE} in Sources`,
   });
-  return project;
 }
 
 module.exports = { FILE, addAppIntentsSource };
