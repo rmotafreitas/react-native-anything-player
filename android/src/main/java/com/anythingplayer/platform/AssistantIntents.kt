@@ -37,9 +37,16 @@ internal object AssistantIntents {
       origin = "assistant",
     )
 
-  /** Whether [intent] is a play-from-search request that was not acted on yet. */
+  /**
+   * Whether [intent] is a play-from-search request that was not acted on yet.
+   * An activity the user reopens from the recents list is relaunched with the
+   * intent that first started it: that is history, not a new request.
+   */
   fun isPending(intent: Intent?): Boolean =
-    intent != null && intent.action == MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH && !intent.getBooleanExtra(EXTRA_HANDLED, false)
+    intent != null &&
+      intent.action == MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH &&
+      intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY == 0 &&
+      !intent.getBooleanExtra(EXTRA_HANDLED, false)
 
   fun fromIntent(intent: Intent): SearchRequest =
     request(

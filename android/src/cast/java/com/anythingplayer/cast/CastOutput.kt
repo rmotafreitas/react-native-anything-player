@@ -10,14 +10,17 @@ import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import com.anythingplayer.core.ErrorCode
-import com.anythingplayer.core.InterruptionReason
 import com.anythingplayer.core.OpenRequest
 import com.anythingplayer.core.PlaybackSample
 import com.anythingplayer.core.PlayerError
-import com.anythingplayer.core.ReadyInfo
 import com.anythingplayer.platform.DriverObserver
 import com.anythingplayer.platform.NowPlaying
 import com.anythingplayer.platform.ProgressReading
+import com.anythingplayer.platform.IdleReason
+import com.anythingplayer.platform.ReceiverActions
+import com.anythingplayer.platform.ReceiverMapper
+import com.anythingplayer.platform.ReceiverState
+import com.anythingplayer.platform.ReceiverStatus
 import com.anythingplayer.platform.RemoteOutput
 import com.anythingplayer.platform.receiverMimeType
 import com.google.android.gms.cast.MediaError
@@ -26,68 +29,40 @@ import com.google.android.gms.cast.MediaStatus
 
 private const val TAG = "RNAP"
 private const val CONTENT_PREFIX = "anythingplayer:"
-/** The receiver loads before it plays: a pause seen this soon after a play request is ours, not someone else's. */
-private const val PLAY_GRACE_MS = 3_000L
-/** How many times a play that the receiver dropped (a play sent before its load finished) is repeated. */
-private const val MAX_PLAY_RETRIES = 3
-
-/** What the output last told the engine about its generation (each is reported once). */
-private enum class Report { NONE, READY, BUFFERING, PLAYING, PAUSED, TERMINAL }
 
 /**
  * One player's [RemoteOutput] over the app's Cast session. The engine decides
- * everything (intent, recovery, handoff); this maps what the receiver reports
- * to the engine's callbacks for the generation it was opened with:
- *
- * - loading / buffering → buffering (once ready),
- * - playing → ready + playing,
- * - paused → ready; a pause the engine did not ask for (the TV remote, Google
- *   Home) → paused externally,
- * - idle: finished → ended, error → failed (recoverable: the engine reconnects
- *   with its backoff, against the receiver), cancelled / interrupted (another
- *   sender took over) → paused externally.
+ * everything (intent, recovery, handoff); [ReceiverMapper] maps what the
+ * receiver reports to the engine's callbacks for the generation this output
+ * was opened with.
  *
  * Commands go to Media3's remote player; the receiver's `MediaStatus` is the
- * truth for state. The output only reads while it owns the receiver's media,
- * and only for the content it loaded (`anythingplayer:<generation>`).
+ * truth for state. The output only reads while it owns the receiver's media.
  */
 internal class CastOutput(
   private val hub: RealCastBackend,
   private val observer: DriverObserver,
   private val nowPlaying: () -> NowPlaying,
-) : RemoteOutput {
+) : RemoteOutput, ReceiverActions {
   private val main = Handler(Looper.getMainLooper())
+  private val mapper = ReceiverMapper(observer, this, SystemClock::elapsedRealtime)
   private var owns = false
   private var generation = 0
   private var contentId = ""
-  private var request: OpenRequest? = null
-  private var wantsPlay = false
   private var volume = 1.0
   private var rate = 1.0
-  private var last = Report.NONE
-  private var playedThisGeneration = false
-  private var graceUntil = 0L
-  private var playRetries = 0
   private var evaluating = false
   private var lastPositionMs = 0L
-  private var lastError: MediaError? = null
-  private var ready: ReadyInfo? = null
 
   // ── EngineDriver ──
 
   override fun open(request: OpenRequest) {
     hub.claim(this)
     owns = true
-    this.request = request
     generation = request.generation
     contentId = "$CONTENT_PREFIX$generation"
-    last = Report.NONE
-    ready = null
-    playedThisGeneration = false
-    lastError = null
     lastPositionMs = (request.startPosition ?: 0.0).times(1000).toLong()
-    wantsPlay = request.playWhenReady
-    expectPlay()
+    mapper.open(generation, contentId, request.source.liveHint, request.playWhenReady)
     val player = hub.player
     when {
       !request.source.isNetwork ->
@@ -105,13 +80,12 @@ internal class CastOutput(
   }
 
   override fun play() {
-    wantsPlay = true
-    expectPlay()
+    mapper.playRequested()
     if (owns) hub.player?.playWhenReady = true
   }
 
   override fun pause() {
-    wantsPlay = false
+    mapper.pauseRequested()
     if (owns) hub.player?.playWhenReady = false
   }
 
@@ -121,14 +95,12 @@ internal class CastOutput(
 
   /** Drops the receiver's media: a later `play()` makes the engine open it again. */
   override fun releaseConnection() {
-    wantsPlay = false
-    last = Report.TERMINAL
+    mapper.stopped()
     if (owns) hub.player?.stop()
   }
 
   override fun unload() {
-    wantsPlay = false
-    last = Report.TERMINAL
+    mapper.stopped()
     if (owns) hub.player?.stop()
     owns = false
     hub.release(this)
@@ -157,8 +129,7 @@ internal class CastOutput(
 
   override fun progress(): ProgressReading {
     if (owns) readPosition()
-    val info = ready
-    return ProgressReading(lastPositionMs / 1000.0, lastPositionMs / 1000.0, info?.duration, null, last == Report.PLAYING, rate)
+    return ProgressReading(lastPositionMs / 1000.0, lastPositionMs / 1000.0, mapper.ready?.duration, null, mapper.playing, rate)
   }
 
   override fun destroy() {
@@ -167,6 +138,14 @@ internal class CastOutput(
   }
 
   // ── The receiver's side ──
+
+  override fun playAgain() {
+    hub.client?.play()
+  }
+
+  override fun receiverReady() {
+    hub.player?.volume = volume.toFloat()
+  }
 
   /** From the SDK's callbacks: evaluated once, after every listener of this update ran. */
   fun requestEvaluation() {
@@ -179,12 +158,7 @@ internal class CastOutput(
   }
 
   fun mediaError(error: MediaError) {
-    lastError = error
-  }
-
-  private fun expectPlay() {
-    graceUntil = SystemClock.elapsedRealtime() + PLAY_GRACE_MS
-    playRetries = 0
+    mapper.mediaError(error.reason ?: error.detailedErrorCode?.let { "code $it" }, error.detailedErrorCode)
   }
 
   private fun readPosition() {
@@ -194,85 +168,35 @@ internal class CastOutput(
 
   private fun evaluate() {
     if (!owns) return
-    val client = hub.client ?: return
-    val status = client.mediaStatus ?: return
-    // Only the content this output loaded: the receiver may still report the previous item.
-    if (status.mediaInfo?.contentId != contentId) return
+    val status = hub.client?.mediaStatus ?: return
     readPosition()
-    when (status.playerState) {
-      MediaStatus.PLAYER_STATE_LOADING, MediaStatus.PLAYER_STATE_BUFFERING ->
-        if (last != Report.NONE) report(Report.BUFFERING) { observer.onBuffering(generation) }
-      MediaStatus.PLAYER_STATE_PLAYING -> {
-        becomeReady(status)
-        playedThisGeneration = true
-        report(Report.PLAYING) { observer.onPlaying(generation) }
-      }
-      MediaStatus.PLAYER_STATE_PAUSED -> {
-        becomeReady(status)
-        onReceiverPaused()
-      }
-      MediaStatus.PLAYER_STATE_IDLE -> onReceiverIdle(status.idleReason)
-    }
-  }
-
-  private fun becomeReady(status: MediaStatus) {
-    if (ready != null) return
     val info = status.mediaInfo
-    val request = request ?: return
     val duration = info?.streamDuration?.takeIf { it > 0 && it != MediaInfo.UNKNOWN_DURATION }?.let { it / 1000.0 }
-    val live = request.source.liveHint ?: (info?.streamType == MediaInfo.STREAM_TYPE_LIVE || duration == null)
-    val seekable = !live && status.isMediaCommandSupported(MediaStatus.COMMAND_SEEK)
-    val readyInfo = ReadyInfo(if (live) null else duration, live, seekable)
-    ready = readyInfo
-    hub.player?.volume = volume.toFloat()
-    if (last == Report.NONE) last = Report.READY
-    observer.onReady(generation, readyInfo)
-  }
-
-  private fun onReceiverPaused() {
-    if (!wantsPlay) {
-      last = Report.PAUSED
-      return
-    }
-    // A play sent before the receiver finished loading is lost; the load ran
-    // paused. Ask again a few times before calling the pause someone else's.
-    val inGrace = SystemClock.elapsedRealtime() < graceUntil || !playedThisGeneration
-    if (inGrace && playRetries < MAX_PLAY_RETRIES) {
-      playRetries += 1
-      hub.client?.play()
-      return
-    }
-    report(Report.PAUSED) { observer.onPausedExternally(generation, InterruptionReason.INTERRUPTION) }
-  }
-
-  private fun onReceiverIdle(reason: Int) {
-    when (reason) {
-      MediaStatus.IDLE_REASON_FINISHED -> report(Report.TERMINAL) { observer.onEnded(generation) }
-      MediaStatus.IDLE_REASON_ERROR -> report(Report.TERMINAL) { observer.onFailed(generation, receiverError()) }
-      MediaStatus.IDLE_REASON_CANCELED, MediaStatus.IDLE_REASON_INTERRUPTED ->
-        report(Report.TERMINAL) { if (wantsPlay) observer.onPausedExternally(generation, InterruptionReason.INTERRUPTION) }
-      // IDLE_REASON_NONE: the receiver has not started the load yet.
-      else -> Unit
-    }
-  }
-
-  private fun receiverError(): PlayerError {
-    val error = lastError
-    val detail = error?.reason ?: error?.detailedErrorCode?.let { "code $it" }
-    return PlayerError(
-      ErrorCode.NETWORK_ERROR,
-      "The Cast receiver could not play the stream" + (detail?.let { " ($it)" } ?: "."),
-      true,
-      platformDomain = "cast",
-      platformCode = error?.detailedErrorCode,
+    mapper.evaluate(
+      ReceiverStatus(
+        contentId = info?.contentId,
+        state =
+          when (status.playerState) {
+            MediaStatus.PLAYER_STATE_IDLE -> ReceiverState.IDLE
+            MediaStatus.PLAYER_STATE_LOADING -> ReceiverState.LOADING
+            MediaStatus.PLAYER_STATE_BUFFERING -> ReceiverState.BUFFERING
+            MediaStatus.PLAYER_STATE_PLAYING -> ReceiverState.PLAYING
+            MediaStatus.PLAYER_STATE_PAUSED -> ReceiverState.PAUSED
+            else -> ReceiverState.UNKNOWN
+          },
+        idle =
+          when (status.idleReason) {
+            MediaStatus.IDLE_REASON_FINISHED -> IdleReason.FINISHED
+            MediaStatus.IDLE_REASON_CANCELED -> IdleReason.CANCELED
+            MediaStatus.IDLE_REASON_INTERRUPTED -> IdleReason.INTERRUPTED
+            MediaStatus.IDLE_REASON_ERROR -> IdleReason.ERROR
+            else -> IdleReason.NONE
+          },
+        duration = duration,
+        live = info?.streamType == MediaInfo.STREAM_TYPE_LIVE,
+        seekable = status.isMediaCommandSupported(MediaStatus.COMMAND_SEEK),
+      )
     )
-  }
-
-  /** Tells the engine once per kind of change. Always called from the main loop, never from inside an engine command. */
-  private fun report(kind: Report, block: () -> Unit) {
-    if (last == kind) return
-    last = kind
-    block()
   }
 
   private fun fail(error: PlayerError) {
@@ -284,8 +208,7 @@ internal class CastOutput(
 
   private fun mediaItem(request: OpenRequest): MediaItem {
     val shown = nowPlaying()
-    val metadata =
-      MediaMetadata.Builder().setTitle(shown.title).setArtist(shown.artist).setAlbumTitle(shown.album)
+    val metadata = MediaMetadata.Builder().setTitle(shown.title).setArtist(shown.artist).setAlbumTitle(shown.album)
     shown.artwork?.takeIf { it.startsWith("http://") || it.startsWith("https://") }?.let { metadata.setArtworkUri(Uri.parse(it)) }
     val builder =
       MediaItem.Builder()

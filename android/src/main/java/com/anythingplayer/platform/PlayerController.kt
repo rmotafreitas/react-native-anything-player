@@ -66,6 +66,7 @@ internal class PlayerController(
   val appId: Boolean = false,
 ) : EngineDelegate, DriverObserver, CastTarget {
   private val handler = Handler(Looper.getMainLooper())
+  private val appContext = context.applicationContext
   private val localDriver = ExoPlayerDriver(context, options.speech, options.titleFormat, this)
   private val driver = RoutingDriver(localDriver) { runtime.newRemoteOutput(this) }
   val engine = PlaybackEngine(driver, AndroidClock, options.engine)
@@ -326,17 +327,22 @@ internal class PlayerController(
     }
     if (titleReader != null && titleReaderLoad == status.loadId) return
     stopTitleReader()
-    val reader =
+    var reader: IcyMetadataReader? = null
+    reader =
       IcyMetadataReader(source!!, titleReaderUserAgent(source), options.titleFormat) { metadata ->
-        handler.post { if (titleReader != null && !released) onStreamMetadata(engine.generation, metadata) }
+        // A title read for a load that has since changed is dropped.
+        handler.post { if (titleReader === reader && !released) onStreamMetadata(engine.generation, metadata) }
       }
     titleReader = reader
     titleReaderLoad = status.loadId
     reader.start()
   }
 
+  /** The same user agent the player itself sends. */
+  @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
   private fun titleReaderUserAgent(source: SourceDescriptor): String =
-    source.headers.entries.firstOrNull { it.key.equals("User-Agent", ignoreCase = true) }?.value ?: "RNAP"
+    source.headers.entries.firstOrNull { it.key.equals("User-Agent", ignoreCase = true) }?.value
+      ?: androidx.media3.common.util.Util.getUserAgent(appContext, "RNAP")
 
   private fun stopTitleReader() {
     titleReader?.stop()
