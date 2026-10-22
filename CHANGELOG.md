@@ -7,6 +7,21 @@ and versions follow [Semantic Versioning](https://semver.org/): see
 change and how releases are made. Changes not released yet are listed in the
 open release pull request.
 
+## [1.1.1](https://github.com/rmotafreitas/react-native-anything-player/compare/v1.1.0...v1.1.1) (2026-10-22)
+
+
+### Fixed
+
+* **android:** no crash when the network is reported as the runtime starts ([f23a5bb](https://github.com/rmotafreitas/react-native-anything-player/commit/f23a5bb981a9dc1816ea5d0f84b8339baab725be))
+* **package:** ship only what apps use ([bcefa0f](https://github.com/rmotafreitas/react-native-anything-player/commit/bcefa0f8967fce8760d3bbd35e3272d4679a8d62))
+* **package:** ship the Codegen specs and the autolinking config ([877047c](https://github.com/rmotafreitas/react-native-anything-player/commit/877047c86a4fe05ace640225d81915cbc8d4da74))
+
+
+### Changed
+
+* **android:** leave out of R8-shrunk apps what RNAP does not use ([5f98caf](https://github.com/rmotafreitas/react-native-anything-player/commit/5f98caf130e5e5cf05c9241a1cdf8b9d94e1ecac))
+* **web:** load Google Cast and the MP4 repackaging only when used ([808f335](https://github.com/rmotafreitas/react-native-anything-player/commit/808f3350d43b805be613d9136ab75551aa3af959))
+
 ## [1.1.0] — 2026-10-22
 
 The player leaves the phone: the same `Player` on the web (Expo web, React Native Web, React DOM, plain pages), on AirPlay and Google Cast receivers, and behind Siri, Google Assistant and Gemini. Every addition is backwards compatible.
