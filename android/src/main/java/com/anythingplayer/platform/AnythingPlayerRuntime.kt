@@ -14,6 +14,7 @@ import androidx.annotation.OptIn
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
+import com.facebook.react.bridge.WritableMap
 import com.google.common.util.concurrent.ListenableFuture
 import com.anythingplayer.core.ErrorCode
 import com.anythingplayer.core.FocusResult
@@ -22,6 +23,7 @@ import com.anythingplayer.core.NetworkState
 import com.anythingplayer.core.PlaybackState
 import com.anythingplayer.core.PlayerError
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
 
 private const val TAG = "RNAP"
 private const val RECOVERY_WAKE_LOCK_MS = 10 * 60 * 1000L
@@ -41,6 +43,13 @@ internal object AnythingPlayerRuntime : FocusListener {
   private var initialized = false
 
   val players = ConcurrentHashMap<String, PlayerController>()
+  private val counter = AtomicInteger(0)
+
+  /**
+   * Where events go while a JS instance is attached; dropped otherwise (JS
+   * reads `getStatus` when it attaches and drops what its snapshot covers).
+   */
+  @Volatile private var eventSink: EventSink? = null
 
   private lateinit var focus: AudioFocusCoordinator
   private lateinit var network: NetworkMonitor
@@ -58,6 +67,53 @@ internal object AnythingPlayerRuntime : FocusListener {
 
   val networkState: NetworkState
     get() = if (initialized) network.state else NetworkState.UNKNOWN
+
+  // ── JS attachment ──
+
+  /** The TurboModule initialized: its emitter receives every event from now on. */
+  fun attachModule(sink: EventSink) {
+    eventSink = sink
+  }
+
+  /** The module is going away (JS reload / teardown): only that module's sink is cleared. */
+  fun detachModule(sink: EventSink) {
+    if (eventSink === sink) eventSink = null
+  }
+
+  /** Whether a JS instance is attached (the search handler can be asked). */
+  val hasJs: Boolean
+    get() = eventSink != null
+
+  /** Any thread. */
+  fun emit(event: WritableMap) {
+    eventSink?.emit(event)
+  }
+
+  // ── Players ──
+
+  /** A player and whether it already existed (an `id` that was attached to). */
+  data class Obtained(val controller: PlayerController, val attached: Boolean)
+
+  /**
+   * Creates a player, or — for an app-chosen [id] that is already running —
+   * returns that one (first creator wins; [options] are ignored). Any thread:
+   * the engine is built here, registered on the main thread.
+   */
+  fun obtain(context: Context, id: String?, options: PlayerOptions): Obtained {
+    val controller: PlayerController
+    synchronized(players) {
+      val existing = id?.let { players[it] }
+      if (existing != null && !existing.isReleased) return Obtained(existing, true)
+      val playerId = id ?: "android-${counter.incrementAndGet()}-${System.nanoTime().toString(36)}"
+      controller = PlayerController(playerId, context.applicationContext, options, this, appId = id != null)
+      players[playerId] = controller
+    }
+    post {
+      initialize(context)
+      register(controller)
+    }
+    return Obtained(controller, false)
+  }
 
   /** Main thread. Idempotent. */
   fun initialize(context: Context) {

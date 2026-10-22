@@ -10,6 +10,7 @@ import com.facebook.react.bridge.ReadableMap
 import com.facebook.react.bridge.WritableArray
 import com.facebook.react.bridge.WritableMap
 import com.anythingplayer.core.ErrorCode
+import com.anythingplayer.core.LoadOutcome
 import com.anythingplayer.core.PlayerError
 import com.anythingplayer.platform.AnythingPlayerRuntime
 import com.anythingplayer.platform.EventSink
@@ -17,11 +18,11 @@ import com.anythingplayer.platform.PlayerController
 import com.anythingplayer.platform.errorToMap
 import com.anythingplayer.platform.optBoolean
 import com.anythingplayer.platform.optDouble
+import com.anythingplayer.platform.optString
 import com.anythingplayer.platform.parseNowPlaying
 import com.anythingplayer.platform.parseOptions
 import com.anythingplayer.platform.parseSource
 import com.anythingplayer.platform.statusToMap
-import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * The TurboModule. Thin: every command is posted, in call order, to the main
@@ -30,7 +31,10 @@ import java.util.concurrent.atomic.AtomicInteger
  */
 class AnythingPlayerModule(reactContext: ReactApplicationContext) : NativeAnythingPlayerSpec(reactContext) {
   private val main = Handler(Looper.getMainLooper())
-  /** Players created by this module instance (released on reload/teardown). */
+  /**
+   * Players this module instance created or attached to. On reload/teardown
+   * the ones without an app id are released; the others keep playing.
+   */
   private val owned = mutableSetOf<String>()
   private val sinkLock = Any()
   private var invalidated = false
@@ -42,20 +46,18 @@ class AnythingPlayerModule(reactContext: ReactApplicationContext) : NativeAnythi
 
   companion object {
     const val NAME = NativeAnythingPlayerSpec.NAME
-    private val counter = AtomicInteger(0)
+  }
+
+  override fun initialize() {
+    super.initialize()
+    AnythingPlayerRuntime.attachModule(sink)
   }
 
   override fun createPlayer(options: ReadableMap): String {
-    val id = "android-${counter.incrementAndGet()}-${System.nanoTime().toString(36)}"
-    val parsed = parseOptions(options)
-    val controller = PlayerController(id, reactApplicationContext, parsed, AnythingPlayerRuntime, sink)
-    synchronized(owned) { owned.add(id) }
-    AnythingPlayerRuntime.players[id] = controller
-    main.post {
-      AnythingPlayerRuntime.initialize(reactApplicationContext)
-      AnythingPlayerRuntime.register(controller)
-    }
-    return id
+    val obtained = AnythingPlayerRuntime.obtain(reactApplicationContext, options.optString("id"), parseOptions(options))
+    synchronized(owned) { owned.add(obtained.controller.id) }
+    if (obtained.attached) main.post { obtained.controller.noteAttach() }
+    return obtained.controller.id
   }
 
   override fun releasePlayer(playerId: String, promise: Promise) {
@@ -103,7 +105,12 @@ class AnythingPlayerModule(reactContext: ReactApplicationContext) : NativeAnythi
         return@post
       }
       try {
-        controller.load(descriptor, fields, autoplay, start, promise)
+        controller.load(descriptor, fields, autoplay, start) { outcome ->
+          when (outcome) {
+            is LoadOutcome.Failed -> reject(promise, outcome.error)
+            else -> promise.resolve(controller.statusMap())
+          }
+        }
       } catch (error: PlayerError) {
         reject(promise, error)
       }
@@ -206,10 +213,12 @@ class AnythingPlayerModule(reactContext: ReactApplicationContext) : NativeAnythi
   /** JS reload / React host teardown: no JS can control these players any more. */
   override fun invalidate() {
     synchronized(sinkLock) { invalidated = true }
+    AnythingPlayerRuntime.detachModule(sink)
     val ids = synchronized(owned) { owned.toList().also { owned.clear() } }
     main.post {
       ids.forEach { id ->
-        AnythingPlayerRuntime.players[id]?.let {
+        // A player with an app id keeps playing: the next JS instance attaches to it.
+        AnythingPlayerRuntime.players[id]?.takeIf { !it.appId }?.let {
           it.release()
           AnythingPlayerRuntime.unregister(it)
         }

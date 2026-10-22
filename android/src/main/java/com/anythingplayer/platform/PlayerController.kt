@@ -6,7 +6,6 @@ import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
 import com.facebook.react.bridge.Arguments
-import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.WritableMap
 import com.anythingplayer.core.DiagnosticEntry
 import com.anythingplayer.core.EngineClock
@@ -23,9 +22,18 @@ import com.anythingplayer.core.StreamMetadata
 import com.anythingplayer.core.TrackClock
 import com.anythingplayer.core.PlaybackState
 
-/** Where a player's events go (the TurboModule's `onPlayerEvent` emitter). */
+/**
+ * Where events go: the TurboModule's `onPlayerEvent` emitter. The runtime holds
+ * the current one (see [AnythingPlayerRuntime.attachModule]), so a player
+ * outlives the JS that created it.
+ */
 internal fun interface EventSink {
   fun emit(event: WritableMap)
+}
+
+/** Settles a `load()`; called on the main thread once the engine decided. */
+internal fun interface LoadCompletion {
+  fun settled(outcome: LoadOutcome)
 }
 
 internal object AndroidClock : EngineClock {
@@ -48,7 +56,11 @@ internal class PlayerController(
   context: Context,
   val options: PlayerOptions,
   private val runtime: AnythingPlayerRuntime,
-  private val sink: EventSink,
+  /**
+   * The app chose this id (`PlayerOptions.id`): the player outlives a JS
+   * reload and a new `Player({ id })` attaches to it.
+   */
+  val appId: Boolean = false,
 ) : EngineDelegate, DriverObserver {
   private val handler = Handler(Looper.getMainLooper())
   private val driver = ExoPlayerDriver(context, options.speech, options.titleFormat, this)
@@ -68,8 +80,10 @@ internal class PlayerController(
   private var overrides = NowPlayingFields()
   /** Song progress set by the app (`updateNowPlaying` with a duration). */
   private var trackClock: TrackClock? = null
-  private val pendingLoads = HashMap<Int, Promise>()
+  private val pendingLoads = HashMap<Int, LoadCompletion>()
   private var released = false
+  val isReleased: Boolean
+    get() = released
 
   private val wakeup = Runnable { engine.onWakeup() }
 
@@ -105,14 +119,14 @@ internal class PlayerController(
 
   // ── Commands (main thread) ──
 
-  fun load(source: SourceDescriptor, fields: NowPlayingFields, autoplay: Boolean?, start: Double?, promise: Promise) {
+  fun load(source: SourceDescriptor, fields: NowPlayingFields, autoplay: Boolean?, start: Double?, completion: LoadCompletion? = null) {
     sourceFields = fields
     overrides = NowPlayingFields()
     trackClock = null
     streamMetadata = null
     engine.load(source, autoplay, start)
     // `load` settles synchronously only when it supersedes; this load is pending.
-    pendingLoads[engine.loadId] = promise
+    if (completion != null) pendingLoads[engine.loadId] = completion
     runtime.onNowPlayingChanged(this)
   }
 
@@ -181,6 +195,13 @@ internal class PlayerController(
     )
   }
 
+  /** A player event with a payload of its own (`searchPlay`), ordered like every other. */
+  fun emitEvent(type: String, payload: WritableMap) = emit(type, payload)
+
+  /** A second `Player({ id })` found this player running and attached to it. */
+  fun noteAttach() =
+    engineDiagnostic(DiagnosticEntry(AndroidClock.wallMs, engine.generation, engine.state, "attach (options ignored)", emptyMap()))
+
   /** Forwards a remote command (lock screen, headset, car) the app opted into. */
   fun emitRemoteCommand(command: String, position: Double? = null) {
     emit(
@@ -206,7 +227,7 @@ internal class PlayerController(
         if (!released) {
           val waveform = Arguments.createArray()
           window.waveform.forEach { waveform.pushDouble(it.toDouble()) }
-          sink.emit(
+          runtime.emit(
             Arguments.createMap().apply {
               putString("playerId", id)
               putString("type", "audioSample")
@@ -228,7 +249,7 @@ internal class PlayerController(
     payload.putString("playerId", id)
     payload.putString("type", type)
     payload.putDouble("seq", eventSeq.toDouble())
-    sink.emit(payload)
+    runtime.emit(payload)
   }
 
   // ── EngineDelegate (main thread) ──
@@ -241,7 +262,7 @@ internal class PlayerController(
     val event = statusToMap(status, eventSeq)
     event.putString("playerId", id)
     event.putString("type", "status")
-    sink.emit(event)
+    runtime.emit(event)
     // The song advances with the audio, not the wall clock.
     trackClock?.setRunning(status.state == PlaybackState.PLAYING, AndroidClock.monotonicMs)
     updateProgressTicks(status.state)
@@ -249,14 +270,9 @@ internal class PlayerController(
   }
 
   override fun engineLoadSettled(loadId: Int, outcome: LoadOutcome) {
-    val promise = pendingLoads.remove(loadId) ?: return
-    when (outcome) {
-      is LoadOutcome.Ready, is LoadOutcome.Superseded -> {
-        // Resolve after the current status event was emitted (same thread, in order).
-        handler.post { promise.resolve(statusMap()) }
-      }
-      is LoadOutcome.Failed -> handler.post { promise.reject(outcome.error.code.wire, outcome.error.message, errorToMap(outcome.error)) }
-    }
+    val completion = pendingLoads.remove(loadId) ?: return
+    // Settle after the current status event was emitted (same thread, in order).
+    handler.post { completion.settled(outcome) }
   }
 
   override fun engineError(error: PlayerError, fatal: Boolean) {
