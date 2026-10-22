@@ -375,6 +375,33 @@ describe('where it does not', () => {
   });
 });
 
+describe('loading the hls.js glue', () => {
+  it('plays once the stream starts when asked while it loaded', async () => {
+    const id = module.createPlayer({});
+    const loading = module.load(id, { uri: URI }, { autoplay: true });
+    loading.catch(() => undefined);
+    // hls.js has no source to attach yet: the element is not asked to play.
+    expect(world.element().plays).toBe(0);
+    await flush();
+    expect(FakeHls.instances).toHaveLength(1);
+    expect(FakeHls.last().media).toBe(world.element());
+    // Asked once, when the stream was there.
+    expect(world.element().plays).toBe(1);
+  });
+
+  it('starts no stream for an item replaced while the module was loading', async () => {
+    const id = module.createPlayer({});
+    // Both loads happen before the dynamic import resolves: the second wins.
+    module.load(id, { uri: URI }, {}).catch(() => undefined);
+    module
+      .load(id, { uri: 'https://cdn.example/other.mp3', live: false }, {})
+      .catch(() => undefined);
+    await flush();
+    expect(FakeHls.instances).toHaveLength(0);
+    expect(world.element().src).toBe('https://cdn.example/other.mp3');
+  });
+});
+
 describe('errors', () => {
   async function startPlaying() {
     const opened = await open();

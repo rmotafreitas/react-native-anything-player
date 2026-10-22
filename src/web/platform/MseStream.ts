@@ -36,7 +36,7 @@ import {
 } from './dom';
 import type { AudioCodec } from './AudioFrames';
 import type { Fmp4Muxer } from './Fmp4Muxer';
-import { isHlsType } from './HlsStream';
+import { isHlsType } from './hlsFormats';
 
 export interface MseStreamListener {
   /** Station info from the response headers (`icy-name`, `icy-genre`). */

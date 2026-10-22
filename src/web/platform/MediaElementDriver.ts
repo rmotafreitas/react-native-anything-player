@@ -13,7 +13,7 @@
 // MSE cannot take, plays as the element's own `src`.
 
 import type { PlayerError } from '../../errors';
-import { hlsConstructor } from '../../core/hls';
+import { hlsConstructor, type HlsConstructor } from '../../core/hls';
 import type { EngineDriver } from '../engine/PlaybackEngine';
 import type {
   StreamMetadata,
@@ -33,13 +33,8 @@ import {
   type AbortControllerLike,
   type AudioElementLike,
 } from './dom';
-import {
-  HLS_HINT,
-  HLS_MISSING,
-  HlsStream,
-  isHlsType,
-  isHlsUri,
-} from './HlsStream';
+import { HLS_HINT, HLS_MISSING, isHlsType, isHlsUri } from './hlsFormats';
+import type { HlsStream } from './HlsStream';
 import { MseStream, mediaSourceConstructor } from './MseStream';
 
 export interface DriverObserver {
@@ -93,6 +88,10 @@ export class MediaElementDriver implements EngineDriver {
   private listeners: AbortControllerLike | null = null;
   private stream: MseStream | null = null;
   private hls: HlsStream | null = null;
+  /** The HLS part is loading (the module, then hls.js): `play()` waits for it. */
+  private hlsPending = false;
+  /** Items torn down so far: a loading HLS part knows whether its item is gone. */
+  private itemSerial = 0;
   /** The element is playing an HLS playlist itself: hls.js is the way out if it cannot. */
   private nativeHls = false;
   /** The element's own HLS could not open the current source: hls.js plays it from now on. */
@@ -135,6 +134,7 @@ export class MediaElementDriver implements EngineDriver {
     return (
       this.stream != null ||
       this.hls != null ||
+      this.hlsPending ||
       LOCAL_URI.test(this.source?.uri ?? '')
     );
   }
@@ -184,6 +184,10 @@ export class MediaElementDriver implements EngineDriver {
   play(): void {
     this.playRequested = true;
     this.expectingPause = false;
+    // hls.js is still loading: the element has no source to play yet. The
+    // request is kept and runs when the stream starts (see loadHls), so the
+    // play() is not lost and the element is not asked twice.
+    if (this.hlsPending) return;
     const generation = this.generation;
     let attempt: Promise<void>;
     try {
@@ -356,6 +360,12 @@ export class MediaElementDriver implements EngineDriver {
     }
     this.attach();
     if (hls) {
+      // The hls.js glue is fetched first: stop what the element had while it
+      // loads (hls.js replaces the source once it is there).
+      if (this._element.src !== '') {
+        this._element.removeAttribute('src');
+        this._element.load();
+      }
       this.startHls(source);
       return;
     }
@@ -395,18 +405,63 @@ export class MediaElementDriver implements EngineDriver {
       const message = ctor
         ? 'hls.js is not supported in this browser (it needs Media Source Extensions).'
         : HLS_MISSING;
-      // Not from inside open(): the engine is still handling the command.
-      browser().queueMicrotask(() => {
-        if (generation !== this.generation) return;
-        this.observer.onFailed(
-          generation,
-          engineError('UNSUPPORTED_FORMAT', message, false)
-        );
-      });
+      this.failHls(generation, message, false);
       return;
     }
+    this.hlsPending = true;
+    this.loadHls(source, generation, ctor, this.itemSerial);
+  }
+
+  /**
+   * Loads the hls.js glue (its module first, then hls.js itself) and starts
+   * it. A newer open, a stop or a release may have happened meanwhile: then
+   * the item it was for is gone and no stream is made for it.
+   */
+  private async loadHls(
+    source: SourceDescriptor,
+    generation: number,
+    ctor: HlsConstructor,
+    item: number
+  ): Promise<void> {
+    const parts = await import('./HlsStream').catch(() => null);
+    if (
+      generation !== this.generation ||
+      item !== this.itemSerial ||
+      source !== this.source
+    )
+      return;
+    this.hlsPending = false;
+    if (!parts) {
+      this.failHls(
+        generation,
+        'The hls.js glue code did not load. Check the connection and try again.',
+        true
+      );
+      return;
+    }
+    try {
+      this.startHlsStream(source, generation, ctor, parts);
+    } catch (error) {
+      // A constructor or attach that throws (an extension of hls.js, say):
+      // reported like a glue that did not load, so the engine's recovery runs.
+      this.hls?.close();
+      this.hls = null;
+      this.failHls(
+        generation,
+        `hls.js could not start the stream (${String(error)}).`,
+        true
+      );
+    }
+  }
+
+  private startHlsStream(
+    source: SourceDescriptor,
+    generation: number,
+    ctor: HlsConstructor,
+    parts: typeof import('./HlsStream')
+  ): void {
     const live = () => generation === this.generation && this.hls === hls;
-    const hls: HlsStream = new HlsStream(this._element, source, ctor, {
+    const hls: HlsStream = new parts.HlsStream(this._element, source, ctor, {
       onMetadata: (metadata, time) => {
         if (live())
           this.schedule(time, () =>
@@ -423,6 +478,23 @@ export class MediaElementDriver implements EngineDriver {
     this.hls = hls;
     this.observer.onNote(generation, 'hls.js', { reason: 'no native HLS' });
     hls.start();
+    // Asked to play while it loaded, before hls.js could attach the element.
+    if (this.playRequested) this.play();
+  }
+
+  /** Reports an HLS failure from a microtask: not from inside open(). */
+  private failHls(
+    generation: number,
+    message: string,
+    recoverable: boolean
+  ): void {
+    browser().queueMicrotask(() => {
+      if (generation !== this.generation) return;
+      this.observer.onFailed(
+        generation,
+        engineError('UNSUPPORTED_FORMAT', message, recoverable)
+      );
+    });
   }
 
   private startStream(
@@ -578,6 +650,8 @@ export class MediaElementDriver implements EngineDriver {
     this.stream = null;
     this.hls?.close();
     this.hls = null;
+    this.hlsPending = false;
+    this.itemSerial += 1;
     this.nativeHls = false;
     this.timed = [];
     this.clearTimedTimer();
