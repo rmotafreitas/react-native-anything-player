@@ -62,7 +62,7 @@ describe('<RoutePicker />', () => {
     const button = screen.getByRole('button', { name: 'Choose audio output' });
     const tint = () =>
       (
-        screen.getByRole('button').children[0] as {
+        screen.getByRole('button').children[0] as unknown as {
           props: { style: { tintColor: string } };
         }
       ).props.style.tintColor;
