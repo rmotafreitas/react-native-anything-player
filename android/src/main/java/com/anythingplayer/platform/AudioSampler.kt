@@ -5,12 +5,15 @@ import android.media.AudioManager
 import androidx.annotation.OptIn
 import androidx.media3.common.C
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.exoplayer.DefaultRenderersFactory
-import androidx.media3.exoplayer.RenderersFactory
 import androidx.media3.common.audio.AudioProcessor
+import androidx.media3.exoplayer.RenderersFactory
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
+import androidx.media3.exoplayer.audio.MediaCodecAudioRenderer
 import androidx.media3.exoplayer.audio.TeeAudioProcessor
+import androidx.media3.exoplayer.mediacodec.DefaultMediaCodecAdapterFactory
+import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
+import androidx.media3.exoplayer.metadata.MetadataRenderer
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.sqrt
@@ -58,21 +61,34 @@ internal class AudioSampler(context: Context) : TeeAudioProcessor.AudioBufferSin
   private var smoothedLatency = -1.0
   private var mono = FloatArray(4096)
 
-  /** A renderers factory whose audio sink carries this tap (always installed, silent until enabled). */
+  /**
+   * The player's renderers, whose audio sink carries this tap (always
+   * installed, silent until enabled): the audio renderer and the metadata one
+   * (ICY, ID3), as `DefaultRenderersFactory` builds them, and nothing else. No
+   * video, text, image or camera-motion renderer is referenced, so R8 drops
+   * their code (and the subtitle decoders) from the app.
+   */
   fun renderersFactory(context: Context): RenderersFactory {
     val tee = TeeAudioProcessor(this)
-    return object : DefaultRenderersFactory(context) {
-      override fun buildAudioSink(
-        context: Context,
-        enableFloatOutput: Boolean,
-        enableAudioTrackPlaybackParams: Boolean,
-      ): AudioSink =
+    val codecs = DefaultMediaCodecAdapterFactory(context)
+    return RenderersFactory { handler, _, audioListener, _, metadataOutput ->
+      val sink =
         DefaultAudioSink.Builder(context)
-          .setEnableFloatOutput(enableFloatOutput)
-          .setEnableAudioOutputPlaybackParameters(enableAudioTrackPlaybackParams)
           .setAudioProcessors(arrayOf<AudioProcessor>(tee))
           .build()
           .also { audioSink = it }
+      arrayOf(
+        MediaCodecAudioRenderer(
+          context,
+          codecs,
+          MediaCodecSelector.DEFAULT,
+          /* enableDecoderFallback= */ false,
+          handler,
+          audioListener,
+          sink,
+        ),
+        MetadataRenderer(metadataOutput, handler.looper),
+      )
     }
   }
 
