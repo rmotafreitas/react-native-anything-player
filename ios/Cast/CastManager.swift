@@ -45,7 +45,7 @@ class CastManager: NSObject {
     let context = GCKCastContext.sharedInstance()
     CastObjC.send(context.sessionManager, "addListener:", self)
     NotificationCenter.default.addObserver(
-      self, selector: #selector(castStateDidChange), name: kGCKCastStateDidChangeNotification,
+      self, selector: #selector(castStateDidChange), name: .gckCastStateDidChange,
       object: nil)
     publishState()
     // A session the SDK resumes at launch reports through the listener.
