@@ -185,7 +185,11 @@ export async function runInit({
       applied,
       failed,
       skipped: fixes
-        .filter((fix) => !applied.some((item) => item.id === fix.id))
+        .filter(
+          (fix) =>
+            !applied.some((item) => item.id === fix.id) &&
+            !failed.some((item) => item.id === fix.id)
+        )
         .map((fix) => ({ id: fix.id, file: fix.file, change: fix.change })),
       findings: after.findings,
       summary: after.summary,
@@ -208,7 +212,9 @@ export async function runInit({
         );
         stdout.write(`${paint(fix.change, 'gray')}\n\n${fix.diff}\n`);
         if (fix.requires && !done.has(fix.requires)) {
-          stdout.write('Skipped: it builds on the previous change to this file.\n');
+          stdout.write(
+            'Skipped: it builds on the previous change to this file.\n'
+          );
           continue;
         }
         let accept = Boolean(yes);

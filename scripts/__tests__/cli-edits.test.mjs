@@ -59,6 +59,40 @@ test('an unchanged file is replaced atomically and keeps its mode', (t) => {
   assert.deepEqual(fs.readdirSync(root), ['run.sh']);
 });
 
+test('a symlink planted where a temporary file could go is not written through', (t) => {
+  const root = makeDir(t);
+  const outside = makeDir(t);
+  const victim = write(outside, 'victim.txt', 'KEEP\n');
+  write(root, 'a.txt', 'one\n');
+  // The names a predictable temporary file would have had.
+  for (const name of [
+    `.a.txt.rnap-${process.pid}.tmp`,
+    '.a.txt.rnap.tmp',
+    '.a.txt.tmp',
+  ])
+    fs.symlinkSync(victim, path.join(root, name));
+  applyChange(prepare(root, 'a.txt', 'two\n'));
+
+  assert.equal(read(root, 'a.txt'), 'two\n');
+  assert.equal(fs.readFileSync(victim, 'utf8'), 'KEEP\n');
+  assert.equal(
+    fs.readdirSync(root).filter((n) => n.endsWith('.tmp')).length,
+    3
+  );
+});
+
+test('a read-only file is not replaced', (t) => {
+  const root = makeDir(t);
+  const file = write(root, 'locked.json', '{}\n');
+  fs.chmodSync(file, 0o444);
+  assert.throws(
+    () => applyChange(prepare(root, 'locked.json', '{ "a": 1 }\n')),
+    /read-only/
+  );
+  assert.equal(read(root, 'locked.json'), '{}\n');
+  assert.deepEqual(fs.readdirSync(root), ['locked.json']);
+});
+
 test('a new file is created, and refused when one appeared meanwhile', (t) => {
   const root = makeDir(t);
   const change = buildChange({
@@ -82,7 +116,10 @@ test('reviewChanges reports a stale file, leaves it, and goes on', async (t) => 
   const root = makeDir(t);
   write(root, 'a.txt', 'a\n');
   write(root, 'b.txt', 'b\n');
-  const changes = [prepare(root, 'a.txt', 'A\n'), prepare(root, 'b.txt', 'B\n')];
+  const changes = [
+    prepare(root, 'a.txt', 'A\n'),
+    prepare(root, 'b.txt', 'B\n'),
+  ];
   write(root, 'a.txt', 'a, edited\n');
 
   const out = sink();
@@ -95,9 +132,15 @@ test('reviewChanges reports a stale file, leaves it, and goes on', async (t) => 
     stdin: null,
   });
   assert.equal(result.failed.length, 1);
-  assert.match(result.failed[0].error, /a\.txt changed since the diff was shown/);
+  assert.match(
+    result.failed[0].error,
+    /a\.txt changed since the diff was shown/
+  );
   assert.match(out.text(), /run the command again/);
-  assert.deepEqual(result.applied.map((change) => change.file), ['b.txt']);
+  assert.deepEqual(
+    result.applied.map((change) => change.file),
+    ['b.txt']
+  );
   assert.equal(read(root, 'a.txt'), 'a, edited\n');
   assert.equal(read(root, 'b.txt'), 'B\n');
 });
@@ -145,13 +188,10 @@ test('a plugin listed as a bare string becomes an entry with options', () => {
       '["react-native-anything-player", { "cast": true }]\n'
     )
   );
-  assert.equal(
-    JSON.parse(after).expo.plugins[1][1].cast,
-    true
-  );
+  assert.equal(JSON.parse(after).expo.plugins[1][1].cast, true);
 });
 
-test('a new top-level key is appended with the file\'s own indent and EOL', () => {
+test("a new top-level key is appended with the file's own indent and EOL", () => {
   const text = '{\r\n\t"newArchEnabled": "true"\r\n}\r\n';
   const after = editJson(text, (properties) => {
     properties['rnap.cast'] = 'true';
@@ -175,5 +215,8 @@ test('a JSON edit with no way to patch falls back and says so', () => {
   });
   assert.equal(result.text, '{\n    "b": 2\n}\n');
   assert.match(result.note, /rewritten in full/);
-  assert.equal(editJsonDetailed(text, () => false), null);
+  assert.equal(
+    editJsonDetailed(text, () => false),
+    null
+  );
 });

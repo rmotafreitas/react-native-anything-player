@@ -197,7 +197,7 @@ It works in any directory and always exits 0. Without a package.json, the report
 
 `rnap migrate` rewrites the mechanical part of a migration from Track Player, expo-audio or expo-av. It parses each file and replaces exact source ranges, so the rest of the formatting survives (including the file's line endings: a CRLF file stays CRLF, notes included).
 
-The parser is `@babel/parser`, which the CLI does not ship: it loads the copy in your project's `node_modules` (React Native's Metro and Babel already depend on it). Without one, `migrate` exits 1 and says how to install it: `npm install --save-dev @babel/parser`.
+The parser is `@babel/parser`, which the CLI does not ship: it loads it the way Node resolves it from your project, from its `node_modules` and then those of the folders above (in a monorepo, the workspace root's). React Native's Metro and Babel already depend on it. The CLI runs that code, so trust what those `node_modules` folders hold, as you do when you build the app. Without one, `migrate` exits 1 and says how to install it: `npm install --save-dev @babel/parser`.
 
 ```sh
 npx rnap migrate --dry-run
@@ -314,13 +314,14 @@ Every `--json` report starts with `schemaVersion: 1` and the `command` that prin
   "dryRun": false,
   "ok": true,
   "applied": [{ "id": "expo-plugin", "file": "app.json", "change": "…" }],
+  "failed": [],
   "skipped": [],
   "findings": [],
   "summary": { "errors": 0, "warnings": 0, "infos": 0 }
 }
 ```
 
-Without `--yes`, `init --json` is a dry run: `applied` is empty and no file changes. `findings` and `summary` describe the project after the run (or before, for a dry run).
+Without `--yes`, `init --json` is a dry run: `applied` is empty and no file changes. `failed` lists the fixes that could not be written (`{ id, file, error }`: the file changed after the diff, is read-only, or left the project); they are not in `skipped`. `findings` and `summary` describe the project after the run (or before, for a dry run).
 
 `modules --json`:
 
@@ -373,13 +374,14 @@ Without `--yes`, `init --json` is a dry run: `applied` is empty and no file chan
       "diff": "--- a/android/gradle.properties…"
     }
   ],
+  "failed": [],
   "skipped": [],
   "manual": [],
   "nextSteps": ["rebuild the app (npx expo run:ios / run:android, or your own build)"]
 }
 ```
 
-`was` and `now` are the module state before and after; `changed` says whether a file changed; `already` says the project was already in the requested state. `manual` is `[{ module, step }]` for steps the CLI cannot make safely. `dryRun` is `true` for `--dry-run`, and for `--json` without `--yes`.
+`was` and `now` are the module state before and after; `changed` says whether a file changed; `already` says the project was already in the requested state. `manual` is `[{ module, step }]` for steps the CLI cannot make safely. `failed` lists the files that could not be written (`{ file, error }`: changed after the diff, read-only, or outside the project). `dryRun` is `true` for `--dry-run`, and for `--json` without `--yes`.
 
 `size --json`:
 
@@ -476,9 +478,10 @@ Without `--yes`, `init --json` is a dry run: `applied` is empty and no file chan
     { "file": "src/audio.ts", "source": "expo-audio", "notes": ["…"] }
   ],
   "applied": ["src/audio.ts"],
+  "failed": [],
   "skipped": [],
   "unparsed": [{ "file": "src/broken.ts", "reason": "could not parse: Unexpected token (2:10)" }]
 }
 ```
 
-`from` is `auto` when it was detected, else the `--from` value. `notes` are the guide lines that go into the `// rnap-migrate:` header. `skipped` carries `{ file, reason: "not applied" }` for a dry run or a declined change; `unparsed` is why a file could not be read.
+`from` is `auto` when it was detected, else the `--from` value. `notes` are the guide lines that go into the `// rnap-migrate:` header. `skipped` carries `{ file, reason: "not applied" }` for a dry run or a declined change; `unparsed` is why a file could not be read; `failed` carries `{ file, error }` for a file that could not be written (changed after the diff, read-only, or outside the project).

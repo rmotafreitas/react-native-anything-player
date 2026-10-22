@@ -2,6 +2,7 @@
 // keeps the file's layout, and one diff-and-confirm loop shared by `init`,
 // `add`, `remove` and `migrate`.
 
+import { randomBytes } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createInterface } from 'node:readline/promises';
@@ -77,7 +78,8 @@ export function editJson(text, mutate) {
  * rewriting the whole file says so).
  */
 export function editResult(result) {
-  if (result === null || result === undefined) return { after: null, note: null };
+  if (result === null || result === undefined)
+    return { after: null, note: null };
   if (typeof result === 'string') return { after: result, note: null };
   return { after: result.text, note: result.note ?? null };
 }
@@ -132,23 +134,50 @@ export function applyChange(change) {
       `${change.file} changed since the diff was shown, so nothing was written to it: run the command again`
     );
 
+  // A file made read-only on purpose is not replaced (a rename would ignore
+  // its write bits).
+  if (current !== null && !isWritable(change.absolute))
+    throw new Error(
+      `${change.file} is read-only, so nothing was written to it: make it writable and run the command again`
+    );
+
   // Written beside the target and renamed over it: a crash leaves the old file
-  // or the new one, never half of either. The file's mode is kept.
+  // or the new one, never half of either. The file's mode is kept. The
+  // temporary file has an unguessable name and is created exclusively ('wx':
+  // it fails if anything, a symlink included, is already there), so the write
+  // cannot be redirected outside the project.
   const directory = path.dirname(change.absolute);
   const temporary = path.join(
     directory,
-    `.${path.basename(change.absolute)}.rnap-${process.pid}.tmp`
+    `.${path.basename(change.absolute)}.rnap-${randomBytes(8).toString('hex')}.tmp`
   );
   const mode =
     current === null ? 0o644 : fs.statSync(change.absolute).mode & 0o7777;
+  let created = false;
   try {
-    fs.writeFileSync(temporary, change.after, { encoding: 'utf8', mode });
-    fs.chmodSync(temporary, mode);
+    const fd = fs.openSync(temporary, 'wx', mode);
+    created = true;
+    try {
+      fs.writeFileSync(fd, change.after, 'utf8');
+      fs.fchmodSync(fd, mode);
+    } finally {
+      fs.closeSync(fd);
+    }
     fs.renameSync(temporary, change.absolute);
-  } catch (error) {
-    fs.rmSync(temporary, { force: true });
-    throw error;
+    created = false;
+  } finally {
+    if (created) fs.rmSync(temporary, { force: true });
   }
+}
+
+function isWritable(file) {
+  try {
+    fs.accessSync(file, fs.constants.W_OK);
+  } catch {
+    return false;
+  }
+  // As root, access() says yes to anything: the mode is the user's intent.
+  return (fs.statSync(file).mode & 0o222) !== 0;
 }
 
 /**
@@ -243,7 +272,8 @@ export async function reviewChanges({
       } catch (error) {
         if (!(error instanceof Error)) throw error;
         failed.push({ change, error: error.message });
-        if (!quiet) stdout.write(`${paint(`Not applied: ${error.message}`, 'red')}\n`);
+        if (!quiet)
+          stdout.write(`${paint(`Not applied: ${error.message}`, 'red')}\n`);
         continue;
       }
       applied.push(change);
