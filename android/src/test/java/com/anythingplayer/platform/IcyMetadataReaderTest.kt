@@ -77,13 +77,12 @@ class IcyMetadataReaderTest {
   @Test
   fun `titles come out of the stream, with the station from the headers`() {
     serve(body(16, listOf("Miles Davis - So What", "Coltrane - Naima")))
-    val got = read(expected = 3)
+    val got = read(expected = 2)
+    assertEquals("So What", got[0].title)
+    assertEquals("Miles Davis", got[0].artist)
     assertEquals("Test FM", got[0].station)
     assertEquals("Jazz", got[0].genre)
-    assertEquals("So What", got[1].title)
-    assertEquals("Miles Davis", got[1].artist)
-    assertEquals("Test FM", got[1].station)
-    assertEquals("Naima", got[2].title)
+    assertEquals("Naima", got[1].title)
     val request = connections.first()
     assertEquals("1", request["icy-metadata"])
     assertEquals("RNAP-test", request["user-agent"])
@@ -93,15 +92,15 @@ class IcyMetadataReaderTest {
   @Test
   fun `the same title twice is delivered once`() {
     serve(body(16, listOf("A - B", "A - B", "C - D")))
-    val got = read(expected = 3)
-    assertEquals(listOf("B", "D"), got.drop(1).map { it.title })
+    val got = read(expected = 2)
+    assertEquals(listOf("B", "D"), got.map { it.title })
   }
 
   @Test
   fun `a dropped connection is reopened`() {
     serve(body(16, listOf("A - One")), body(16, listOf("A - Two")))
-    val got = read(expected = 3)
-    assertEquals(listOf("One", "Two"), got.drop(1).map { it.title })
+    val got = read(expected = 2)
+    assertEquals(listOf("One", "Two"), got.map { it.title })
     assertEquals(2, connections.size)
   }
 

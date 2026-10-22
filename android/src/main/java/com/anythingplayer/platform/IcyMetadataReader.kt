@@ -87,8 +87,7 @@ internal class IcyMetadataReader(
           station = response.header("icy-name")?.trim()?.ifEmpty { null },
           genre = response.header("icy-genre")?.trim()?.ifEmpty { null },
         )
-      // After a reconnect the title already shown stays until the next one arrives.
-      if (!base.isEmpty && last == null) emit(base)
+      // The station and genre ride along with each title: sent alone they would blank the title on screen.
       val framing = IcyDeinterleaver(metaint)
       val buffer = ByteArray(CHUNK_BYTES)
       var titles = false
