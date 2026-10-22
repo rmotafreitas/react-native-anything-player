@@ -2,51 +2,19 @@
 // diff and applied one by one (or all with --yes). Everything else stays a
 // printed instruction.
 
-import fs from 'node:fs';
-import path from 'node:path';
-import { createInterface } from 'node:readline/promises';
 import { addPlistArrayItem } from './plist.mjs';
 import { setProperty } from './project.mjs';
-import { unifiedDiff } from './diff.mjs';
+import {
+  applyChange,
+  buildChange,
+  createAsker,
+  editJson,
+  writableTarget,
+} from './edits.mjs';
 import { relative, readText } from './util.mjs';
 import { formatInitHeader } from './report.mjs';
 import { LIBRARY } from './project.mjs';
 import { runDoctor } from './doctor.mjs';
-
-function within(root, target) {
-  return target === root || target.startsWith(`${root}${path.sep}`);
-}
-
-/**
- * The file `init` may write, or null: inside the project both as written and
- * once every symlink is resolved, and not itself a symlink (writing through
- * one could change a file outside the project).
- */
-export function writableTarget(cwd, file) {
-  const absolute = path.resolve(cwd, file);
-  try {
-    const root = fs.realpathSync(path.resolve(cwd));
-    if (!within(path.resolve(cwd), absolute)) return null;
-    const stat = fs.lstatSync(absolute);
-    if (stat.isSymbolicLink() || !stat.isFile()) return null;
-    return within(root, fs.realpathSync(absolute)) ? absolute : null;
-  } catch {
-    return null;
-  }
-}
-
-function withEol(text, template) {
-  return template.includes('\r\n') ? text.replace(/\n/g, '\r\n') : text;
-}
-
-/** Minimal, format-preserving JSON edit (indent and newlines kept). */
-function editJson(text, mutate) {
-  const value = JSON.parse(text);
-  if (mutate(value) === false) return null;
-  const indent = /^[{[][^\n]*\r?\n([ \t]+)/.exec(text)?.[1] ?? '  ';
-  const body = JSON.stringify(value, null, indent);
-  return withEol(body, text) + (text.endsWith('\n') ? '\n' : '');
-}
 
 const FIXERS = {
   'ios-background-audio': (ctx, before) =>
@@ -125,67 +93,22 @@ export function computeFixes(ctx, findings) {
     const display = relative(ctx.cwd, file);
     working.set(file, after);
     fixes.push({
-      id: finding.autofix,
+      ...buildChange({
+        cwd: ctx.cwd,
+        file: display,
+        before,
+        after,
+        change: finding.fix.change,
+        id: finding.autofix,
+      }),
       finding: finding.id,
-      file: display,
-      absolute: file,
-      cwd: ctx.cwd,
-      change: finding.fix.change,
-      before,
-      after,
-      diff: unifiedDiff(display, before, after),
     });
   }
   return fixes;
 }
 
 export function applyFix(fix) {
-  // Checked again: the tree may have changed while the user read the diff.
-  if (writableTarget(fix.cwd, fix.absolute) !== fix.absolute)
-    throw new Error(`${fix.file} is no longer a file inside the project`);
-  fs.writeFileSync(fix.absolute, fix.after, 'utf8');
-}
-
-/**
- * Line-based asker that also answers '' on end of input, so a piped `init`
- * (or CI without --yes) skips the change instead of hanging on a question that
- * can never be answered.
- */
-function createAsker(input, output) {
-  const rl = createInterface({ input, output, terminal: false });
-  const queued = [];
-  let waiting = null;
-  let closed = false;
-  rl.on('line', (line) => {
-    if (waiting) {
-      const resolve = waiting;
-      waiting = null;
-      resolve(line);
-    } else {
-      queued.push(line);
-    }
-  });
-  rl.on('close', () => {
-    closed = true;
-    if (waiting) {
-      const resolve = waiting;
-      waiting = null;
-      resolve('');
-    }
-  });
-  return {
-    ask(question) {
-      output.write(question);
-      if (queued.length > 0) return Promise.resolve(queued.shift());
-      if (closed) return Promise.resolve('');
-      return new Promise((resolve) => {
-        waiting = resolve;
-      });
-    },
-    close() {
-      rl.close();
-    },
-  };
+  applyChange(fix);
 }
 
 function printFinding(finding, paint) {
