@@ -232,6 +232,15 @@ jobs:
         run: |
           yarn turbo run build:ios --cache-dir="${{ env.TURBO_CACHE_DIR }}"
 
+      # `react-native build-ios` re-runs `pod install` itself: make sure it kept the flag.
+      - name: Verify the Google Cast flag reached the build
+        if: env.turbo_cache_hit != 1
+        run: |
+          if grep -q "CastDriver.swift" example/ios/Pods/Pods.xcodeproj/project.pbxproj; then compiled=1; else compiled=0; fi
+          if [ "$RNAP_CAST" = 1 ] && [ "$compiled" != 1 ]; then echo "Cast sources missing from the Pods project"; exit 1; fi
+          if [ "$RNAP_CAST" != 1 ] && [ "$compiled" = 1 ]; then echo "Cast sources present with RNAP_CAST off"; exit 1; fi
+          echo "Cast compiled: $compiled"
+
 
   build-docs:
     timeout-minutes: 20
