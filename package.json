@@ -24,6 +24,16 @@
       "types": "./lib/typescript/src/react/index.d.ts",
       "default": "./lib/module/react/index.js"
     },
+    "./sound": {
+      "react-native": {
+        "react-native-anything-player-source": "./src/sound/index.ts",
+        "types": "./lib/typescript/src/sound/index.d.ts",
+        "default": "./lib/module/sound/index.js"
+      },
+      "react-native-anything-player-source": "./src/sound/web.ts",
+      "types": "./lib/typescript/src/sound/web.d.ts",
+      "default": "./lib/module/sound/web.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -184,7 +194,8 @@
     },
     "ios": {
       "modulesProvider": {
-        "AnythingPlayer": "AnythingPlayerModule"
+        "AnythingPlayer": "AnythingPlayerModule",
+        "AnythingPlayerSound": "AnythingPlayerSoundModule"
       },
       "componentProvider": {
         "RNAPRoutePickerView": "RNAPRoutePickerView"

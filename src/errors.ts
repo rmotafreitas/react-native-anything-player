@@ -22,6 +22,7 @@ const CODES: ReadonlySet<string> = new Set<PlayerErrorCode>([
   'ROUTE_PICKER_UNAVAILABLE',
   'CAST_UNAVAILABLE',
   'CAST_UNSUPPORTED_SOURCE',
+  'SOUND_UNAVAILABLE',
   'INTERNAL_ERROR',
 ]);
 
