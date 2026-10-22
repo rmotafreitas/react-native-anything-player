@@ -8,6 +8,7 @@ import {
   moduleCostText,
   projectSize,
 } from '../../bin/cli/size.mjs';
+import fs from 'node:fs';
 import { deriveSizeData, loadSizeData } from '../../bin/cli/size-data.mjs';
 import { moduleStates } from '../../bin/cli/modules.mjs';
 import { loadProject } from '../../bin/cli/project.mjs';
@@ -22,14 +23,24 @@ test('bytes are rounded the way the CLI prints them', () => {
   assert.equal(formatBytes(1536), '2 KB');
 });
 
+// The measured builds, as benchmarks/android/measure-apk.mjs wrote them.
+const apk = JSON.parse(
+  fs.readFileSync(new URL('../../benchmarks/results/apk.json', import.meta.url))
+);
+const built = (id) => {
+  const entry = apk.libraries.find((l) => l.id === id);
+  return { r8: entry.r8.apkBytes, noR8: entry.noR8.apkBytes };
+};
+const minus = (a, b) => ({ r8: a.r8 - b.r8, noR8: a.noR8 - b.noR8 });
+
 test('the registry data has a base build and the measured modules', () => {
   assert.ok(data, 'the repository carries the measured size data');
-  assert.deepEqual(data.android.base, { r8: 1204382, noR8: 3847757 });
-  assert.deepEqual(data.android.modules.hls, { r8: 65536, noR8: 98304 });
-  assert.deepEqual(data.android.modules.cast, {
-    r8: 1467731,
-    noR8: 7391451,
-  });
+  const base = built('rnap');
+  assert.deepEqual(data.android.base, base);
+  assert.deepEqual(data.android.modules.hls, minus(base, built('rnapNoHls')));
+  assert.deepEqual(data.android.modules.cast, minus(built('rnapCast'), base));
+  assert.deepEqual(data.android.modules.sound, minus(built('rnapSound'), base));
+  assert.deepEqual(data.android.modules.car, minus(built('rnapCar'), base));
   assert.equal(data.web.length, 3);
   assert.equal(data.web[0].id, 'rnWeb');
   assert.equal(data.web[0].later[0].name, 'hls.js');
@@ -41,10 +52,23 @@ test('a module cost line says whether it is part of the default build', () => {
   const siri = { id: 'siri', platforms: ['ios'], defaultOn: false };
   const sound = { id: 'sound', platforms: ['android'], defaultOn: false };
 
-  assert.equal(moduleCostText(hls, data), '64 KB of the default build');
-  assert.equal(moduleCostText(cast, data), 'adds 1.4 MB with R8');
-  assert.equal(moduleCostText(siri, data), 'iOS only: nothing in the Android APK');
-  assert.equal(moduleCostText(sound, data), 'not measured in the APK');
+  const measured = (modules) => ({
+    ...data,
+    android: { ...data.android, modules },
+  });
+  const sample = measured({
+    hls: { r8: 65536, noR8: 98304 },
+    cast: { r8: 1467731, noR8: 7391451 },
+    sound: { r8: 300, noR8: 400 },
+  });
+  assert.equal(moduleCostText(hls, sample), '64 KB of the default build');
+  assert.equal(moduleCostText(cast, sample), 'adds 1.4 MB with R8');
+  assert.equal(
+    moduleCostText(siri, sample),
+    'iOS only: nothing in the Android APK'
+  );
+  assert.equal(moduleCostText(sound, sample), 'adds less than 1 KB with R8');
+  assert.equal(moduleCostText(sound, measured({})), 'not measured in the APK');
   assert.equal(moduleCostText(hls, null), 'not measured in the APK');
 });
 
@@ -70,7 +94,10 @@ test('the project total is the default build plus what this app changed', () => 
     noR8: data.android.base.noR8 + 7391451,
   });
 
-  assert.equal(withCast.modules.find((item) => item.id === 'cast').enabled, true);
+  assert.equal(
+    withCast.modules.find((item) => item.id === 'cast').enabled,
+    true
+  );
 });
 
 test('deriveSizeData keeps only what the CLI prints', () => {
@@ -80,7 +107,12 @@ test('deriveSizeData keeps only what the CLI prints', () => {
     reactNative: '0.80.0',
     abi: 'arm64-v8a',
     libraries: [
-      { id: 'rnap', version: '1.0.0', r8: { apkBytes: 100 }, noR8: { apkBytes: 300 } },
+      {
+        id: 'rnap',
+        version: '1.0.0',
+        r8: { apkBytes: 100 },
+        noR8: { apkBytes: 300 },
+      },
       { id: 'rnapNoHls', r8: { apkBytes: 90 }, noR8: { apkBytes: 280 } },
       { id: 'rnapCast', r8: { apkBytes: 150 }, noR8: { apkBytes: 400 } },
       { id: 'rnapSound', r8: { apkBytes: 105 }, noR8: { apkBytes: 310 } },
@@ -137,7 +169,10 @@ test('size --json reports this project against the default build', (t) => {
   assert.deepEqual(result.json.android.base, data.android.base);
   assert.deepEqual(result.json.android.total, data.android.base);
   assert.equal(result.json.android.modules.length, 7);
-  assert.equal(result.json.android.modules.find((item) => item.id === 'cast').cost.r8, 1467731);
+  assert.equal(
+    result.json.android.modules.find((item) => item.id === 'cast').cost.r8,
+    1467731
+  );
   assert.equal(result.json.web.length, 3);
   assert.match(result.json.note, /An estimate for your app/);
 });
@@ -174,18 +209,21 @@ test('buildSizeReport reads the project state', (t) => {
   const report = buildSizeReport(root, data);
   const states = moduleStates(loadProject(root));
   assert.equal(report.android.modules.length, states.length);
-  assert.equal(
-    report.android.total.r8,
-    projectSize(states, data).total.r8
-  );
+  assert.equal(report.android.total.r8, projectSize(states, data).total.r8);
 });
 
 test('the text report can be rendered without a terminal', () => {
   const report = buildSizeReport(process.cwd(), data);
   const text = formatSizeReport(report, {
     paint: (value) => value,
-    version: '1.1.1',
+    version: '9.9.9',
   });
-  assert.match(text, /^RNAP size 1\.1\.1$/m);
-  assert.match(text, /RNAP 1\.1\.1 · measured 2026-10-22\./);
+  const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  assert.match(text, /^RNAP size 9\.9\.9$/m);
+  assert.match(
+    text,
+    new RegExp(
+      `RNAP ${escape(data.version)} · measured ${escape(data.measuredAt)}\\.`
+    )
+  );
 });

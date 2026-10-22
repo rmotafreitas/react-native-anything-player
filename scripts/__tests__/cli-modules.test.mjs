@@ -14,11 +14,7 @@ import {
   write,
 } from './cli-fixtures.mjs';
 import { parsePlist } from '../../bin/cli/plist.mjs';
-import {
-  MODULE_IDS,
-  findModule,
-  expoOptions,
-} from '../../bin/cli/modules.mjs';
+import { MODULE_IDS, findModule, expoOptions } from '../../bin/cli/modules.mjs';
 
 const byId = (report, id) => report.modules.find((item) => item.id === id);
 
@@ -158,7 +154,10 @@ test('add --dry-run shows the diff and writes nothing', (t) => {
 
   assert.equal(result.status, 0);
   assert.match(result.stdout, /^\+\+\+ b\/android\/gradle\.properties$/m);
-  assert.match(result.stdout, /Dry run: \d+ files would change, nothing written\./);
+  assert.match(
+    result.stdout,
+    /Dry run: \d+ files would change, nothing written\./
+  );
   assert.equal(read(root, 'android/gradle.properties'), gradleBefore);
   assert.equal(read(root, 'ios/App/Info.plist'), plistBefore);
 });
@@ -234,7 +233,10 @@ test('an Expo module is one plugin option in app.json', (t) => {
   assert.deepEqual(config.expo.plugins, [
     ['react-native-anything-player', { cast: true }],
   ]);
-  assert.equal(byId(runCli(['modules', '--json'], { cwd: root }).json, 'cast').source, 'app.json');
+  assert.equal(
+    byId(runCli(['modules', '--json'], { cwd: root }).json, 'cast').source,
+    'app.json'
+  );
 
   const removed = runCli(['remove', 'cast', '--yes'], { cwd: root });
   assert.equal(removed.status, 0);
@@ -256,8 +258,8 @@ test('sound is a build switch on both platforms, like cast', (t) => {
   const sound = byId(modules.json, 'sound');
   assert.equal(sound.effective, true);
   assert.equal(sound.source, 'android/gradle.properties');
-  assert.equal(sound.size, null);
-  assert.match(sound.sizeNote, /not measured/);
+  // Measured by the APK benchmark (benchmarks/results/apk.json: rnapSound).
+  assert.notEqual(sound.size, null);
   assert.equal(runCli(['doctor', '--json'], { cwd: root }).json.ok, true);
 
   const removed = runCli(['remove', 'sound', '--yes'], { cwd: root });
@@ -341,19 +343,23 @@ test('the doctor warns when sound or car disagree with the plugin', (t) => {
     'ios/Podfile.properties.json',
     JSON.stringify({ 'rnap.sound': 'true', 'rnap.car': 'true' })
   );
-  const conflicts = runCli(['doctor', '--json'], { cwd: root }).json.findings
-    .filter((finding) => finding.id === 'module-conflict')
+  const conflicts = runCli(['doctor', '--json'], { cwd: root })
+    .json.findings.filter((finding) => finding.id === 'module-conflict')
     .map((finding) => finding.message);
   for (const id of ['sound', 'car']) {
     assert.ok(
       conflicts.some((message) =>
-        message.startsWith(`\`${id}\` is off in the Expo plugin but on in android/gradle.properties`)
+        message.startsWith(
+          `\`${id}\` is off in the Expo plugin but on in android/gradle.properties`
+        )
       ),
       `${id} should conflict in gradle.properties`
     );
     assert.ok(
       conflicts.some((message) =>
-        message.startsWith(`\`${id}\` is off in the Expo plugin but on in ios/Podfile.properties.json`)
+        message.startsWith(
+          `\`${id}\` is off in the Expo plugin but on in ios/Podfile.properties.json`
+        )
       ),
       `${id} should conflict in Podfile.properties.json`
     );
@@ -365,7 +371,9 @@ test('remove background-audio leaves a marker the doctor reads as a choice', (t)
   const before = runCli(['doctor', '--json'], { cwd: root }).json;
   assert.ok(!findingsOf(before).includes('ios-background-audio'));
 
-  const removed = runCli(['remove', 'background-audio', '--yes'], { cwd: root });
+  const removed = runCli(['remove', 'background-audio', '--yes'], {
+    cwd: root,
+  });
   assert.equal(removed.status, 0);
   assert.deepEqual(JSON.parse(read(root, 'ios/Podfile.properties.json')), {
     'rnap.backgroundAudio': 'false',
@@ -388,7 +396,10 @@ test('remove background-audio leaves a marker the doctor reads as a choice', (t)
     runCli(['remove', 'background-audio', '--yes'], { cwd: root }).stdout,
     /background-audio is already off/
   );
-  assert.equal(runCli(['add', 'background-audio', '--yes'], { cwd: root }).status, 0);
+  assert.equal(
+    runCli(['add', 'background-audio', '--yes'], { cwd: root }).status,
+    0
+  );
   assert.deepEqual(JSON.parse(read(root, 'ios/Podfile.properties.json')), {
     'rnap.backgroundAudio': 'true',
   });

@@ -14,8 +14,7 @@ const DISCLAIMER =
 export function formatBytes(bytes) {
   const sign = bytes < 0 ? '-' : '';
   const abs = Math.abs(bytes);
-  if (abs >= 1024 * 1024)
-    return `${sign}${(abs / 1024 / 1024).toFixed(1)} MB`;
+  if (abs >= 1024 * 1024) return `${sign}${(abs / 1024 / 1024).toFixed(1)} MB`;
   return `${sign}${Math.round(abs / 1024).toLocaleString('en-US')} KB`;
 }
 
@@ -26,10 +25,9 @@ export function moduleCostText(state, data) {
     return state.platforms.includes('android')
       ? 'not measured in the APK'
       : 'iOS only: nothing in the Android APK';
-  const r8 = formatBytes(cost.r8);
-  return state.defaultOn
-    ? `${r8} of the default build`
-    : `adds ${r8} with R8`;
+  // Under half a KB rounds to 0 KB, which reads like a missing measurement.
+  const r8 = Math.abs(cost.r8) < 512 ? 'less than 1 KB' : formatBytes(cost.r8);
+  return state.defaultOn ? `${r8} of the default build` : `adds ${r8} with R8`;
 }
 
 /**
@@ -100,7 +98,13 @@ export function buildSizeReport(cwd, data) {
   };
 }
 
-export function runSize({ cwd, json, version, paint, stdout = process.stdout }) {
+export function runSize({
+  cwd,
+  json,
+  version,
+  paint,
+  stdout = process.stdout,
+}) {
   const data = loadSizeData();
   if (!data) {
     stdout.write(
@@ -139,9 +143,7 @@ export function formatSizeReport(report, { paint, version }) {
       'gray'
     )
   );
-  lines.push(
-    `  ${pad('', 34)}${padLeft('R8 on', 10)}${padLeft('R8 off', 10)}`
-  );
+  lines.push(`  ${pad('', 34)}${padLeft('R8 on', 10)}${padLeft('R8 off', 10)}`);
   if (report.android.base)
     lines.push(
       `  ${pad('RNAP, default build', 34)}${padLeft(formatBytes(report.android.base.r8), 10)}${padLeft(formatBytes(report.android.base.noR8), 10)}`
