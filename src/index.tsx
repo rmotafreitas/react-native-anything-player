@@ -26,7 +26,13 @@ export {
   useProgress,
   useStreamMetadata,
   usePlayerEvent,
+  useCastStatus,
+  useRoutePickerAvailable,
 } from './hooks';
+export { RoutePicker } from './components/RoutePicker';
+export type { RoutePickerProps } from './components/RoutePicker';
+export { CastButton } from './components/CastButton';
+export type { CastButtonProps } from './components/CastButton';
 export type {
   Artwork,
   AssetModule,

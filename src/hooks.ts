@@ -7,6 +7,13 @@ import {
   useSyncExternalStore,
 } from 'react';
 import { AppState } from 'react-native';
+import {
+  addCastStateListener,
+  addRoutePickerAvailabilityListener,
+  getCastStatus,
+  isRoutePickerAvailable,
+  type CastStatus,
+} from './core/system';
 import type { Player } from './Player';
 import type {
   MediaMetadata,
@@ -113,4 +120,30 @@ export function usePlayerEvent<E extends PlayerEvent>(
       )) as PlayerEventMap[E]);
     return () => unsubscribe();
   }, [player, event]);
+}
+
+/** The latest Cast snapshot (stable identity while nothing changes). */
+let castSnapshot: CastStatus | null = null;
+
+function currentCastStatus(): CastStatus {
+  const next = getCastStatus();
+  if (castSnapshot?.state !== next.state || castSnapshot.device !== next.device)
+    castSnapshot = next;
+  return castSnapshot;
+}
+
+const subscribeCast = (onChange: () => void) =>
+  addCastStateListener(() => onChange());
+
+/** The Google Cast state and receiver; re-renders on every change. */
+export function useCastStatus(): CastStatus {
+  return useSyncExternalStore(subscribeCast, currentCastStatus);
+}
+
+const subscribeRoutePicker = (onChange: () => void) =>
+  addRoutePickerAvailabilityListener(() => onChange());
+
+/** Whether the system output picker can be opened here (see `showRoutePicker`). */
+export function useRoutePickerAvailable(): boolean {
+  return useSyncExternalStore(subscribeRoutePicker, isRoutePickerAvailable);
 }

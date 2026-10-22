@@ -158,7 +158,7 @@
   },
   "codegenConfig": {
     "name": "AnythingPlayerSpec",
-    "type": "modules",
+    "type": "all",
     "jsSrcsDir": "src/native",
     "android": {
       "javaPackageName": "com.anythingplayer"
@@ -166,6 +166,9 @@
     "ios": {
       "modulesProvider": {
         "AnythingPlayer": "AnythingPlayerModule"
+      },
+      "componentProvider": {
+        "RNAPRoutePickerView": "RNAPRoutePickerView"
       }
     }
   },

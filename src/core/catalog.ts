@@ -160,7 +160,8 @@ function fieldScore(q: readonly string[], field: readonly string[]): number {
   if (q.length === 0 || field.length === 0) return 0;
   if (q.length === field.length && startsWithTokens(field, q)) return 100;
   if (startsWithTokens(field, q)) return 80;
-  if (q.every((token) => field.includes(token))) return 60;
+  const present = new Set(field);
+  if (q.every((token) => present.has(token))) return 60;
   if (q.every((token) => looselyMatches(token, field))) return 40;
   return 0;
 }
