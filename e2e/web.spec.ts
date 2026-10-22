@@ -265,3 +265,63 @@ test('remuxes to fragmented MP4 where the browser takes only that form', async (
     .poll(() => page.evaluate(() => window.rnap.player.getProgress().position))
     .toBeGreaterThan(before + 1);
 });
+
+test('the sleep timer fades out and pauses; fades never change the volume', async ({
+  page,
+}) => {
+  // Record every volume the engine gives the <audio> element.
+  await page.addInitScript(() => {
+    const volume = Object.getOwnPropertyDescriptor(
+      HTMLMediaElement.prototype,
+      'volume'
+    )!;
+    const seen: number[] = [];
+    (window as unknown as { volumes: number[] }).volumes = seen;
+    Object.defineProperty(HTMLMediaElement.prototype, 'volume', {
+      ...volume,
+      set(this: HTMLMediaElement, value: number) {
+        seen.push(value);
+        volume.set!.call(this, value);
+      },
+    });
+  });
+  await page.reload();
+  const volumes = () =>
+    page.evaluate(() => (window as unknown as { volumes: number[] }).volumes);
+  await page.getByRole('button', { name: 'Remote file' }).click();
+  await expect.poll(() => state(page), { timeout: 15_000 }).toBe('playing');
+  await page.evaluate(() => {
+    window.rnap.player.on('sleep', (event) =>
+      window.rnap.events.push({ type: 'sleep', ...event })
+    );
+  });
+
+  await page.evaluate(() => window.rnap.player.sleep({ after: 2, fadeOut: 1 }));
+  expect(
+    await page.evaluate(() => window.rnap.player.status.sleepAt)
+  ).not.toBeNull();
+  await expect.poll(() => state(page), { timeout: 10_000 }).toBe('paused');
+  expect(await events(page, 'sleep')).toHaveLength(1);
+  expect(await page.evaluate(() => window.rnap.player.status)).toMatchObject({
+    sleepAt: null,
+    volume: 1,
+  });
+  const faded = await volumes();
+  expect(faded.some((v) => v > 0.05 && v < 0.95)).toBe(true);
+  expect(faded.at(-1)).toBeLessThan(0.1);
+
+  // A fade-out on pause: the intent is off at once, the audio stops after it.
+  await page.evaluate(() => window.rnap.player.setFade({ in: 0.3, out: 1 }));
+  await page.evaluate(() => window.rnap.player.play());
+  await expect.poll(() => state(page), { timeout: 15_000 }).toBe('playing');
+  await expect.poll(async () => (await volumes()).at(-1)).toBe(1);
+  await page.evaluate(() => window.rnap.player.pause());
+  expect(
+    await page.evaluate(() => [
+      window.rnap.player.playWhenReady,
+      window.rnap.player.state,
+    ])
+  ).toEqual([false, 'playing']);
+  await expect.poll(() => state(page), { timeout: 5_000 }).toBe('paused');
+  expect(await diagnostics(page)).toContain('fade-out');
+});

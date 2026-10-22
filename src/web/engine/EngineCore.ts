@@ -1,5 +1,6 @@
 // The engine's core: state, commands, driver observations, recovery and the
-// clock. `PlaybackEngine` (PlaybackEngine.ts) adds the system inputs —
+// clock. `EngineFades` (EngineFades.ts) adds the fades and the sleep timer;
+// `PlaybackEngine` (PlaybackEngine.ts) adds the system inputs —
 // interruptions, connectivity, the foreground, outputs. The split only keeps
 // each file readable; the twins (`ios/Core/PlaybackEngine.swift`,
 // `android/.../core/PlaybackEngine.kt`) are one type each.
