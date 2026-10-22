@@ -32,6 +32,7 @@ test('defaults: background audio and the assistant, no Cast, no Siri', () => {
     backgroundAudio: true,
     cast: null,
     siri: null,
+    sound: false,
     assistant: true,
   });
   assert.equal(
@@ -130,6 +131,24 @@ test('entitlements, Podfile and Gradle properties follow the options', () => {
     ),
     gradle
   );
+});
+
+test('the sound option sets and clears its Podfile and Gradle properties', () => {
+  const on = helpers.resolveOptions({ sound: true });
+  const off = helpers.resolveOptions({});
+  assert.equal(off.sound, false);
+  assert.deepEqual(helpers.applyPodfileProperties({}, on), {
+    'rnap.sound': 'true',
+  });
+  assert.deepEqual(
+    helpers.applyPodfileProperties({ 'rnap.sound': 'true' }, off),
+    {}
+  );
+  const entries = helpers.applyGradleProperties([], on);
+  assert.deepEqual(entries, [
+    { type: 'property', key: 'rnapSound', value: 'true' },
+  ]);
+  assert.deepEqual(helpers.applyGradleProperties(entries, off), []);
 });
 
 test('the play-from-search intent filter is added once', () => {

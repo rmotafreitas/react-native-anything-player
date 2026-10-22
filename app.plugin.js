@@ -7,6 +7,8 @@
 // - `cast` (true or `{ receiverApplicationId, localNetworkUsageDescription }`):
 //   builds Google Cast in (Gradle property `rnapCast`, Podfile property
 //   `rnap.cast`) and adds iOS's local network keys. See docs/routes-and-casting.md.
+// - `sound` (default false): builds the Sound API in (Gradle property
+//   `rnapSound`, Podfile property `rnap.sound`). See docs/sound.md.
 // - `siri` (true or `{ usageDescription, appIntents }`): the Siri capability,
 //   the Intents extension that hands requests to the app, and (unless
 //   `appIntents` is false) the App Intents of Siri shortcuts, Spotlight and the

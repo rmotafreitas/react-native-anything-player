@@ -34,6 +34,7 @@ function resolveOptions(options = {}) {
           appIntents: siriOptions.appIntents !== false,
         }
       : null,
+    sound: options.sound === true,
     assistant: options.assistant !== false,
   };
 }
@@ -86,16 +87,24 @@ function applyPodfileProperties(properties, resolved) {
   const out = { ...properties };
   if (resolved.cast) out['rnap.cast'] = 'true';
   else delete out['rnap.cast'];
+  if (resolved.sound) out['rnap.sound'] = 'true';
+  else delete out['rnap.sound'];
   return out;
 }
 
 /** `android/gradle.properties` entries: read by android/build.gradle. */
 function applyGradleProperties(entries, resolved) {
   const out = entries.filter(
-    (e) => !(e.type === 'property' && e.key === 'rnapCast')
+    (e) =>
+      !(
+        e.type === 'property' &&
+        (e.key === 'rnapCast' || e.key === 'rnapSound')
+      )
   );
   if (resolved.cast)
     out.push({ type: 'property', key: 'rnapCast', value: 'true' });
+  if (resolved.sound)
+    out.push({ type: 'property', key: 'rnapSound', value: 'true' });
   return out;
 }
 
