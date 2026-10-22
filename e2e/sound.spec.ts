@@ -8,7 +8,6 @@ declare global {
   interface Window {
     soundTest: {
       Sound: typeof SoundApi;
-      sameAsWeb: boolean;
       errors: string[];
       load: (
         seconds: number,
@@ -62,11 +61,8 @@ const unlock = async (page: Page) => {
   await page.evaluate(() => window.soundTest.Sound.unlock());
 };
 
-test('the same Sound from /sound and /web, decoding a Blob into memory', async ({
-  page,
-}) => {
+test('decodes a Blob into memory', async ({ page }) => {
   await page.goto('/sound.html');
-  expect(await page.evaluate(() => window.soundTest.sameAsWeb)).toBe(true);
   expect(await page.evaluate(() => window.soundTest.Sound.isAvailable())).toBe(
     true
   );

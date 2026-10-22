@@ -3,7 +3,6 @@
 // memory, `play()` starts a copy of it. `window.soundTest` is for the
 // end-to-end tests (e2e/sound.spec.ts).
 import { Sound } from 'react-native-anything-player/sound';
-import { Sound as SoundFromWeb } from 'react-native-anything-player/web';
 
 const params = new URLSearchParams(location.search);
 const log = document.getElementById('log');
@@ -41,7 +40,6 @@ function tone(seconds, hz = 660, rate = 22050) {
 let clip = null;
 const test = {
   Sound,
-  sameAsWeb: Sound === SoundFromWeb,
   tone,
   errors: [],
   async load(seconds, options) {

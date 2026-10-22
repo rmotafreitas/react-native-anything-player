@@ -16,7 +16,7 @@ await shot.unload(); // free its memory
 Sound.stopAll();
 ```
 
-It works on iOS, Android, Expo web, React Native Web, React DOM and plain pages, with the same code. The same import works in the browser (`react-native-anything-player/web` and `/react` export `Sound` too).
+It works on iOS, Android, Expo web, React Native Web, React DOM and plain pages, with the same code and the same import, `react-native-anything-player/sound`. It is a separate entry so that a page that only plays streams does not load it.
 
 | | `Player` | `Sound` |
 |---|---|---|

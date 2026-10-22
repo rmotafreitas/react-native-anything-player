@@ -33,7 +33,6 @@ installHost({
 });
 
 export { Player } from '../core/Player';
-export * from '../sound/web';
 export { PlayerError, isPlayerError } from '../errors';
 export { configureHls } from '../core/hls';
 export type { HlsConstructor, HlsLike } from '../core/hls';
