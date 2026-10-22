@@ -146,7 +146,8 @@ export class FakeDriver implements EngineDriver {
 
   switchOutput(outputId: string): void {
     this.commands.push(`switchOutput(${outputId})`);
-    this.motion = 'frozen';
+    // The playhead stops where it is; the engine re-opens at a position.
+    this.setMotion('frozen');
   }
 }
 

@@ -82,7 +82,7 @@ Command formats: `open(gen=N,start=-|S.S,play=B)`, `play`, `pause`,
 ## Outputs (`route.json`)
 
 `handoff(route, outputId, resume)` moves the audio to another output (a Cast
-receiver, or back to the device): the item is unloaded from the old output,
+receiver, or back to the device): a loaded item is unloaded from the old output,
 the driver switches (`switchOutput`), the volume is re-applied and, when the
 item was active, it re-opens on the new output at the same position with
 `play = resume && playWhenReady`. An inactive item (stopped, ended, failed, or

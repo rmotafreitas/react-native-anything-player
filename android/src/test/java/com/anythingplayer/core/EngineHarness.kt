@@ -83,7 +83,8 @@ class FakeDriver(private val clock: FakeClock) : EngineDriver {
   override fun setRate(rate: Double) { commands.add("rate(${f2(rate)})") }
   override fun switchOutput(outputId: String) {
     commands.add("switchOutput($outputId)")
-    motion = Motion.FROZEN
+    // The playhead stops where it is; the engine re-opens at a position.
+    setMotion(Motion.FROZEN)
   }
 }
 
