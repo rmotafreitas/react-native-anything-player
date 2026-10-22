@@ -16,34 +16,46 @@ import java.io.FileNotFoundException
 import java.io.IOException
 import java.util.UUID
 import java.util.concurrent.CompletableFuture
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
+import java.util.concurrent.atomic.AtomicBoolean
 import okhttp3.Request
 
 /**
- * Sounds on Android: one [SoundPool] per sound (its `maxStreams` is the sound's
- * voices, so the pools together hold the total), decoded into memory at load.
- * No audio focus and no media session: the sounds mix with whatever plays.
+ * Sounds on Android: one [SoundPool] shared by every sound, with at most
+ * [MAX_STREAMS] streams at once, each sound decoded into memory at load. (A
+ * pool per sound would give every sound its own decoding threads.) No audio
+ * focus and no media session: the sounds mix with whatever plays.
  *
  * Playing, stopping and the bookkeeping run on one handler thread, so the JS
  * thread never waits for audio. Reading and downloading run on a pool, because
- * they can take a while. A new voice that finds the sound's voices busy stops
- * the oldest itself ([VoiceAllocator]), so SoundPool never has to pick.
+ * they can take a while. A sound's voice limit, and the cap on the pool, are
+ * enforced by [VoiceAllocator], which stops the oldest voice itself, so
+ * SoundPool never has to pick. A load settles through [PendingLoads], so it
+ * settles even when the module is invalidated while it is decoding.
  */
 internal class SoundPoolBackend(private val context: Context) : SoundBackend {
-  private class Entry(val pool: SoundPool, val poolSoundId: Int, val durationMs: Long?, voices: Int) {
-    val allocator = VoiceAllocator(voices)
-  }
+  private class Entry(val sampleId: Int, val durationMs: Long?, val voices: Int)
 
   private val thread = HandlerThread("rnap-sound").apply { start() }
   private val handler = Handler(thread.looper)
   private val io = Executors.newCachedThreadPool { runnable -> Thread(runnable, "rnap-sound-io").apply { isDaemon = true } }
+  private val loads = PendingLoads()
+  private val closed = AtomicBoolean(false)
 
   // Handler thread only.
   private val sounds = HashMap<String, Entry>()
-  private val voiceOwner = HashMap<Long, Entry>()
+  private val allocator = VoiceAllocator(MAX_STREAMS)
   private var released = false
+
+  // Created at the first load, under the lock, so a release never misses it.
+  private var pool: SoundPool? = null
+
+  // Decoding SoundPool samples, by sample id; either side may arrive first.
+  private val decoding = ConcurrentHashMap<Int, CompletableFuture<Int>>()
 
   private val attributes =
     AudioAttributes.Builder()
@@ -51,65 +63,96 @@ internal class SoundPoolBackend(private val context: Context) : SoundBackend {
       .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
       .build()
 
-  override fun load(uri: String, voices: Int, done: (Result<LoadedSound>) -> Unit) {
-    io.execute {
-      var temp: File? = null
-      try {
-        val source = SoundUri.parse(uri)
-        if (source is SoundUri.Remote) temp = download(source.url)
-        val downloaded = temp
-        val open = { if (downloaded != null) openFile(downloaded) else open(source) }
-        // SoundPool and the retriever each read their own copy of the descriptor.
-        val durationMs = open().use(::durationOf)
-        val pool = SoundPool.Builder().setMaxStreams(voices).setAudioAttributes(attributes).build()
-        val poolSoundId =
-          try {
-            open().use { decode(pool, it) }
-          } catch (error: Exception) {
-            pool.release()
-            throw error
-          }
-        register(pool, poolSoundId, durationMs, voices, done)
-      } catch (error: SoundException) {
-        done(Result.failure(error))
-      } catch (error: Exception) {
-        done(Result.failure(SoundException("INTERNAL_ERROR", error.message ?: error.javaClass.simpleName, causeDescription = error.toString())))
-      } finally {
-        // SoundPool has decoded (or failed) by now; the downloaded copy is not needed.
-        temp?.delete()
+  @Synchronized
+  private fun pool(): SoundPool {
+    if (closed.get()) throw releasedError()
+    return pool
+      ?: SoundPool.Builder().setMaxStreams(MAX_STREAMS).setAudioAttributes(attributes).build().also { created ->
+        created.setOnLoadCompleteListener { _, sampleId, status -> decoding.computeIfAbsent(sampleId) { CompletableFuture() }.complete(status) }
+        pool = created
       }
+  }
+
+  @Synchronized private fun existingPool(): SoundPool? = pool
+
+  @Synchronized
+  private fun releasePool() {
+    pool?.release()
+    pool = null
+  }
+
+  private fun releasedError() = SoundException("PLAYER_RELEASED", "The app is shutting down.")
+
+  override fun load(uri: String, voices: Int, done: (Result<LoadedSound>) -> Unit) {
+    val ticket = loads.begin(done) ?: return
+    try {
+      io.execute { decodeAndRegister(ticket, uri, voices) }
+    } catch (_: RejectedExecutionException) {
+      loads.finish(ticket, Result.failure(releasedError()))
+    }
+  }
+
+  private fun decodeAndRegister(ticket: Long, uri: String, voices: Int) {
+    var temp: File? = null
+    try {
+      val source = SoundUri.parse(uri)
+      if (source is SoundUri.Remote) temp = download(source.url)
+      val downloaded = temp
+      val open = { if (downloaded != null) openFile(downloaded) else open(source) }
+      // SoundPool and the retriever each read their own copy of the descriptor.
+      val durationMs = open().use(::durationOf)
+      val sampleId = open().use { decode(it) }
+      register(ticket, sampleId, durationMs, voices)
+    } catch (error: SoundException) {
+      loads.finish(ticket, Result.failure(error))
+    } catch (error: Exception) {
+      loads.finish(ticket, Result.failure(SoundException("INTERNAL_ERROR", error.message ?: error.javaClass.simpleName, causeDescription = error.toString())))
+    } finally {
+      // SoundPool has decoded (or failed) by now; the downloaded copy is not needed.
+      temp?.delete()
     }
   }
 
   /** Hands the bytes to SoundPool and waits for it to decode them. */
-  private fun decode(pool: SoundPool, afd: AssetFileDescriptor): Int {
-    val finished = CompletableFuture<Int>()
-    // Set before `load`: it can finish before `load` returns. This pool loads one sound, so any completion is ours.
-    pool.setOnLoadCompleteListener { _, _, status -> finished.complete(status) }
-    val poolSoundId = pool.load(afd, 1)
+  private fun decode(afd: AssetFileDescriptor): Int {
+    val pool = pool()
+    val sampleId = pool.load(afd, 1)
+    if (sampleId == 0) throw unsupported()
     val status =
       try {
-        finished.get(LOAD_TIMEOUT_S, TimeUnit.SECONDS)
+        decoding.computeIfAbsent(sampleId) { CompletableFuture() }.get(LOAD_TIMEOUT_S, TimeUnit.SECONDS)
       } catch (_: TimeoutException) {
         -1
+      } finally {
+        decoding.remove(sampleId)
       }
-    if (poolSoundId == 0 || status != 0) {
-      throw SoundException("UNSUPPORTED_FORMAT", "Android could not decode this sound. Use a WAV, MP3, OGG or AAC file of a few seconds.")
+    if (status != 0) {
+      pool.unload(sampleId)
+      throw unsupported()
     }
-    return poolSoundId
+    return sampleId
   }
 
-  private fun register(pool: SoundPool, poolSoundId: Int, durationMs: Long?, voices: Int, done: (Result<LoadedSound>) -> Unit) {
+  private fun unsupported() =
+    SoundException("UNSUPPORTED_FORMAT", "Android could not decode this sound. Use a WAV, MP3, OGG or AAC file of a few seconds.")
+
+  private fun register(ticket: Long, sampleId: Int, durationMs: Long?, voices: Int) {
     val id = UUID.randomUUID().toString()
-    handler.post {
-      if (released) {
-        pool.release()
-        done(Result.failure(SoundException("PLAYER_RELEASED", "The app is shutting down.")))
-      } else {
-        sounds[id] = Entry(pool, poolSoundId, durationMs, voices)
-        done(Result.success(LoadedSound(id, durationMs?.let { it / 1000.0 })))
+    val accepted =
+      handler.post {
+        if (released) {
+          loads.finish(ticket, Result.failure(releasedError()))
+        } else {
+          sounds[id] = Entry(sampleId, durationMs, voices)
+          if (!loads.finish(ticket, Result.success(LoadedSound(id, durationMs?.let { it / 1000.0 })))) {
+            // Rejected while it decoded: nobody will ever use this sound.
+            sounds.remove(id)
+            existingPool()?.unload(sampleId)
+          }
+        }
       }
-    }
+    // The handler thread already quit (the module was invalidated): the pool is released with it.
+    if (!accepted) loads.finish(ticket, Result.failure(releasedError()))
   }
 
   private fun open(source: SoundUri): AssetFileDescriptor =
@@ -185,82 +228,78 @@ internal class SoundPoolBackend(private val context: Context) : SoundBackend {
   }
 
   override fun unload(soundId: String, done: () -> Unit) {
-    handler.post {
-      sounds.remove(soundId)?.let { entry ->
-        stopAll(entry)
-        entry.pool.unload(entry.poolSoundId)
-        entry.pool.release()
+    val accepted =
+      handler.post {
+        sounds.remove(soundId)?.let { entry ->
+          stop(allocator.clear(soundId))
+          existingPool()?.unload(entry.sampleId)
+        }
+        done()
       }
-      done()
-    }
+    // The module was invalidated: everything is gone already.
+    if (!accepted) done()
   }
 
   override fun play(soundId: String, voiceId: Long, volume: Double, rate: Double, pan: Double, loop: Boolean) {
     handler.post {
       val entry = sounds[soundId] ?: return@post
+      val pool = existingPool() ?: return@post
       val now = SystemClock.elapsedRealtime()
       val endsAt = SoundMath.endsAt(now, entry.durationMs, rate, loop)
-      entry.allocator.begin(voiceId, now, endsAt)?.let { stolen ->
-        entry.pool.stop(stolen.streamId)
-        voiceOwner.remove(stolen.voiceId)
-      }
+      allocator.begin(soundId, entry.voices, voiceId, now, endsAt).stolen?.let { pool.stop(it.streamId) }
       val (left, right) = SoundMath.gains(volume, pan)
-      val stream = entry.pool.play(entry.poolSoundId, left, right, 1, if (loop) -1 else 0, SoundMath.rate(rate).toFloat())
-      if (stream == 0) {
-        entry.allocator.remove(voiceId)
-      } else {
-        entry.allocator.slot(voiceId)?.streamId = stream
-        voiceOwner[voiceId] = entry
-      }
+      val stream = pool.play(entry.sampleId, left, right, 1, if (loop) -1 else 0, SoundMath.rate(rate).toFloat())
+      if (stream == 0) allocator.remove(voiceId) else allocator.slot(voiceId)?.streamId = stream
     }
   }
 
   override fun setVoice(voiceId: Long, volume: Double, rate: Double, pan: Double) {
     handler.post {
-      val entry = voiceOwner[voiceId] ?: return@post
-      val stream = entry.allocator.slot(voiceId)?.streamId ?: return@post
+      val pool = existingPool() ?: return@post
+      val stream = allocator.slot(voiceId)?.streamId?.takeIf { it != 0 } ?: return@post
       val (left, right) = SoundMath.gains(volume, pan)
-      entry.pool.setVolume(stream, left, right)
-      entry.pool.setRate(stream, SoundMath.rate(rate).toFloat())
+      pool.setVolume(stream, left, right)
+      pool.setRate(stream, SoundMath.rate(rate).toFloat())
     }
   }
 
   override fun stopVoice(voiceId: Long) {
-    handler.post {
-      val entry = voiceOwner.remove(voiceId) ?: return@post
-      entry.allocator.remove(voiceId)?.let { entry.pool.stop(it.streamId) }
-    }
+    handler.post { allocator.remove(voiceId)?.let { existingPool()?.stop(it.streamId) } }
   }
 
   override fun stopSound(soundId: String) {
-    handler.post { sounds[soundId]?.let(::stopAll) }
+    handler.post { stop(allocator.clear(soundId)) }
   }
 
   override fun stopAll() {
-    handler.post { sounds.values.forEach(::stopAll) }
+    handler.post { stop(allocator.clear()) }
   }
 
-  private fun stopAll(entry: Entry) {
-    entry.allocator.clear().forEach {
-      entry.pool.stop(it.streamId)
-      voiceOwner.remove(it.voiceId)
-    }
+  private fun stop(slots: List<VoiceAllocator.Slot>) {
+    val pool = existingPool() ?: return
+    slots.forEach { pool.stop(it.streamId) }
   }
 
   override fun release() {
-    handler.post {
-      released = true
-      sounds.values.forEach {
-        stopAll(it)
-        it.pool.release()
-      }
-      sounds.clear()
-      thread.quitSafely()
-    }
-    io.shutdown()
+    if (!closed.compareAndSet(false, true)) return
+    // Loads still decoding fail now, whatever the worker threads do next.
+    loads.close(releasedError())
+    io.shutdownNow()
+    if (!handler.post(::shutdown)) shutdown()
+  }
+
+  private fun shutdown() {
+    released = true
+    sounds.clear()
+    allocator.clear()
+    releasePool()
+    thread.quitSafely()
   }
 
   private companion object {
     const val LOAD_TIMEOUT_S = 15L
+
+    /** Streams playing at once, over every sound (a sound's `voices` go up to the same 32). */
+    const val MAX_STREAMS = 32
   }
 }
