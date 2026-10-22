@@ -13,6 +13,8 @@ internal object AssistantIntents {
   const val EXTRA_HANDLED = "com.anythingplayer.HANDLED"
 
   /** What the assistant understood the request to be about (`EXTRA_MEDIA_FOCUS`) → the public `focus`. */
+  // `Audio.Playlists` is deprecated, but its content type is still what assistants send.
+  @Suppress("DEPRECATION")
   fun focus(mediaFocus: String?): String? =
     when (mediaFocus) {
       null, "" -> null
