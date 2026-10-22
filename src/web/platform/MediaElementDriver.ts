@@ -13,7 +13,11 @@
 // MSE cannot take, plays as the element's own `src`.
 
 import type { PlayerError } from '../../errors';
-import { hlsConstructor, type HlsConstructor } from '../../core/hls';
+import {
+  hlsConstructor,
+  onHlsConfigured,
+  type HlsConstructor,
+} from '../../core/hls';
 import type { EngineDriver } from '../engine/PlaybackEngine';
 import type {
   StreamMetadata,
@@ -54,6 +58,32 @@ export interface DriverObserver {
   /** The element changed (a new one replaced a tapped one); the sampler re-attaches. */
   onElementReplaced(element: AudioElementLike): void;
 }
+
+type HlsParts = typeof import('./HlsStream');
+
+/** The hls.js glue, once loaded (it is only needed with hls.js). */
+let hlsParts: HlsParts | null = null;
+let hlsLoading: Promise<HlsParts | null> | null = null;
+
+/** Loads the hls.js glue once; a failed load is tried again next time. */
+function loadHlsParts(): Promise<HlsParts | null> {
+  hlsLoading ??= import('./HlsStream').then(
+    (parts) => (hlsParts = parts),
+    () => {
+      hlsLoading = null;
+      return null;
+    }
+  );
+  return hlsLoading;
+}
+
+// Registering hls.js (configureHls) loads the glue ahead of playback, so an
+// HLS source normally starts synchronously, inside the play() that asked for
+// it: within the tap's user activation, and with AUTOPLAY_BLOCKED reported to
+// that command.
+onHlsConfigured(() => {
+  loadHlsParts().catch(() => undefined);
+});
 
 /** What a play() attempt came to: the module rejects `play` on `blocked`. */
 export type PlayAttempt = 'started' | 'blocked' | 'failed';
@@ -119,6 +149,8 @@ export class MediaElementDriver implements EngineDriver {
     private readonly titleFormat: StreamTitleFormat
   ) {
     this._element = this.createElement();
+    // hls.js from a <script> tag (globalThis.Hls) was never registered.
+    if (hlsConstructor()) loadHlsParts().catch(() => undefined);
   }
 
   get element(): AudioElementLike {
@@ -408,6 +440,12 @@ export class MediaElementDriver implements EngineDriver {
       this.failHls(generation, message, false);
       return;
     }
+    if (hlsParts) {
+      this.startHlsSafely(source, generation, ctor, hlsParts);
+      return;
+    }
+    // Opened right after hls.js was registered (or hls.js came from a
+    // <script> tag): the glue is still loading.
     this.hlsPending = true;
     this.loadHls(source, generation, ctor, this.itemSerial);
   }
@@ -423,7 +461,7 @@ export class MediaElementDriver implements EngineDriver {
     ctor: HlsConstructor,
     item: number
   ): Promise<void> {
-    const parts = await import('./HlsStream').catch(() => null);
+    const parts = await loadHlsParts();
     if (
       generation !== this.generation ||
       item !== this.itemSerial ||
@@ -439,6 +477,17 @@ export class MediaElementDriver implements EngineDriver {
       );
       return;
     }
+    this.startHlsSafely(source, generation, ctor, parts);
+    // Asked to play while it loaded, before hls.js could attach the element.
+    if (this.hls && this.playRequested) this.play();
+  }
+
+  private startHlsSafely(
+    source: SourceDescriptor,
+    generation: number,
+    ctor: HlsConstructor,
+    parts: HlsParts
+  ): void {
     try {
       this.startHlsStream(source, generation, ctor, parts);
     } catch (error) {
@@ -458,7 +507,7 @@ export class MediaElementDriver implements EngineDriver {
     source: SourceDescriptor,
     generation: number,
     ctor: HlsConstructor,
-    parts: typeof import('./HlsStream')
+    parts: HlsParts
   ): void {
     const live = () => generation === this.generation && this.hls === hls;
     const hls: HlsStream = new parts.HlsStream(this._element, source, ctor, {
@@ -478,8 +527,6 @@ export class MediaElementDriver implements EngineDriver {
     this.hls = hls;
     this.observer.onNote(generation, 'hls.js', { reason: 'no native HLS' });
     hls.start();
-    // Asked to play while it loaded, before hls.js could attach the element.
-    if (this.playRequested) this.play();
   }
 
   /** Reports an HLS failure from a microtask: not from inside open(). */

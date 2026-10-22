@@ -70,6 +70,7 @@ export interface HlsConstructor {
 }
 
 let registered: HlsConstructor | null = null;
+const configuredListeners = new Set<() => void>();
 
 /**
  * Web: registers hls.js, which plays HLS (`.m3u8`) in browsers that cannot
@@ -86,6 +87,18 @@ let registered: HlsConstructor | null = null;
  */
 export function configureHls(hls: HlsConstructor | null): void {
   registered = hls;
+  if (hls) configuredListeners.forEach((listener) => listener());
+}
+
+/**
+ * Calls `listener` whenever an hls.js constructor is registered (now, if one
+ * already is). The web engine loads its hls.js glue then, ahead of any
+ * playback, so an HLS source starts within the play() that asked for it.
+ * @internal
+ */
+export function onHlsConfigured(listener: () => void): void {
+  configuredListeners.add(listener);
+  if (registered) listener();
 }
 
 /** The registered hls.js, else a global one, else `null`. */

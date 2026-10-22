@@ -376,29 +376,82 @@ describe('where it does not', () => {
 });
 
 describe('loading the hls.js glue', () => {
-  it('plays once the stream starts when asked while it loaded', async () => {
+  it('starts within the play() that asked, once hls.js is registered', async () => {
+    // configureHls (beforeEach) loaded the glue ahead of any playback.
+    await flush();
     const id = module.createPlayer({});
     const loading = module.load(id, { uri: URI }, { autoplay: true });
     loading.catch(() => undefined);
-    // hls.js has no source to attach yet: the element is not asked to play.
-    expect(world.element().plays).toBe(0);
-    await flush();
+    // Synchronously: inside the command, so within a tap's user activation.
     expect(FakeHls.instances).toHaveLength(1);
-    expect(FakeHls.last().media).toBe(world.element());
-    // Asked once, when the stream was there.
     expect(world.element().plays).toBe(1);
   });
 
-  it('starts no stream for an item replaced while the module was loading', async () => {
-    const id = module.createPlayer({});
-    // Both loads happen before the dynamic import resolves: the second wins.
-    module.load(id, { uri: URI }, {}).catch(() => undefined);
-    module
-      .load(id, { uri: 'https://cdn.example/other.mp3', live: false }, {})
-      .catch(() => undefined);
+  it('rejects play with AUTOPLAY_BLOCKED for an HLS source', async () => {
     await flush();
-    expect(FakeHls.instances).toHaveLength(0);
-    expect(world.element().src).toBe('https://cdn.example/other.mp3');
+    const { id, element } = await open();
+    element.playBehavior = 'block';
+    await expect(module.play(id)).rejects.toMatchObject({
+      code: 'AUTOPLAY_BLOCKED',
+    });
+  });
+
+  // A source opened before the glue has loaded (hls.js registered in the same
+  // tick, or found on window.Hls): a fresh module registry, so nothing is
+  // loaded yet.
+  async function freshModules<T>(
+    run: (fresh: { module: WebModule }) => Promise<T>
+  ): Promise<T> {
+    let result: T | undefined;
+    await jest.isolateModulesAsync(async () => {
+      const { WebModule: Fresh } = require('../platform/WebModule');
+      const hls = require('../../core/hls');
+      hls.configureHls(FakeHls as unknown as HlsConstructor);
+      try {
+        result = await run({ module: new Fresh() });
+      } finally {
+        hls.configureHls(null);
+      }
+    });
+    return result as T;
+  }
+
+  it('plays once the stream starts when asked while the glue loaded', async () => {
+    await freshModules(async ({ module: fresh }) => {
+      const id = fresh.createPlayer({});
+      fresh.load(id, { uri: URI }, { autoplay: true }).catch(() => undefined);
+      // hls.js has no source to attach yet: the element is not asked to play.
+      expect(world.element().plays).toBe(0);
+      await flush();
+      expect(FakeHls.instances).toHaveLength(1);
+      expect(FakeHls.last().media).toBe(world.element());
+      // Asked once, when the stream was there.
+      expect(world.element().plays).toBe(1);
+    });
+  });
+
+  it('starts no stream for an item replaced while the glue loaded', async () => {
+    await freshModules(async ({ module: fresh }) => {
+      const id = fresh.createPlayer({});
+      // Both loads happen before the import resolves: the second wins.
+      fresh.load(id, { uri: URI }, {}).catch(() => undefined);
+      fresh
+        .load(id, { uri: 'https://cdn.example/other.mp3', live: false }, {})
+        .catch(() => undefined);
+      await flush();
+      expect(FakeHls.instances).toHaveLength(0);
+      expect(world.element().src).toBe('https://cdn.example/other.mp3');
+    });
+  });
+
+  it('starts no stream for a player released while the glue loaded', async () => {
+    await freshModules(async ({ module: fresh }) => {
+      const id = fresh.createPlayer({});
+      fresh.load(id, { uri: URI }, {}).catch(() => undefined);
+      fresh.releasePlayer(id);
+      await flush();
+      expect(FakeHls.instances).toHaveLength(0);
+    });
   });
 });
 
