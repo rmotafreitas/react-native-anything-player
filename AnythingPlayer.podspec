@@ -2,6 +2,27 @@ require "json"
 
 package = JSON.parse(File.read(File.join(__dir__, "package.json")))
 
+# Google Cast is opt-in (the SDK adds several megabytes): `RNAP_CAST=1 pod install`,
+# or `"rnap.cast": "true"` in ios/Podfile.properties.json (the Expo plugin's
+# `cast` option). An explicit RNAP_CAST wins over the file.
+def rnap_cast_enabled?
+  if ENV.key?("RNAP_CAST")
+    return %w[1 true yes].include?(ENV["RNAP_CAST"].to_s.strip.downcase)
+  end
+  roots = []
+  roots << Pod::Config.instance.installation_root.to_s if defined?(Pod::Config)
+  roots << Dir.pwd
+  roots.uniq.any? do |root|
+    path = File.join(root, "Podfile.properties.json")
+    next false unless File.exist?(path)
+    begin
+      JSON.parse(File.read(path))["rnap.cast"].to_s == "true"
+    rescue JSON::ParserError
+      false
+    end
+  end
+end
+
 Pod::Spec.new do |s|
   s.name         = "AnythingPlayer"
   s.version      = package["version"]
@@ -14,11 +35,24 @@ Pod::Spec.new do |s|
   s.source       = { :git => "https://github.com/rmotafreitas/react-native-anything-player.git", :tag => "#{s.version}" }
 
   # Core/ is platform-free (also unit-tested with `swift test`), Platform/ is
-  # the AVFoundation/MediaPlayer layer, AnythingPlayerModule.mm the TurboModule shim.
-  s.source_files = "ios/Core/**/*.swift", "ios/Platform/**/*.swift", "ios/AnythingPlayerModule.{h,mm}"
+  # the AVFoundation/MediaPlayer layer, AnythingPlayerModule.mm the TurboModule
+  # shim, RNAPRoutePickerView.mm the Fabric AirPlay button, Cast/ the optional
+  # Google Cast layer. IntentsExtension/ is a template for the app's Siri
+  # extension target, never part of the pod.
+  sources = ["ios/Core/**/*.swift", "ios/Platform/**/*.swift", "ios/AnythingPlayerModule.{h,mm}", "ios/RNAPRoutePickerView.mm"]
+  s.exclude_files = "ios/IntentsExtension/**"
   s.private_header_files = "ios/AnythingPlayerModule.h"
-  s.frameworks = "AVFoundation", "AudioToolbox", "MediaPlayer", "MediaToolbox", "Network"
+  s.frameworks = "AVFoundation", "AVKit", "AudioToolbox", "Intents", "MediaPlayer", "MediaToolbox", "Network", "UIKit"
   s.swift_version = "5.9"
+
+  if rnap_cast_enabled?
+    Pod::UI.puts "[AnythingPlayer] Google Cast enabled".green
+    sources << "ios/Cast/**/*.swift"
+    # 4.8.4 is the newest that supports iOS 15; CocoaPods picks the newest the app's platform allows.
+    s.dependency "google-cast-sdk", ">= 4.8.4"
+    s.pod_target_xcconfig = { "SWIFT_ACTIVE_COMPILATION_CONDITIONS" => "$(inherited) RNAP_CAST" }
+  end
+  s.source_files = sources
 
   install_modules_dependencies(s)
 end

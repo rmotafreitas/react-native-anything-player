@@ -5,6 +5,8 @@ protocol AudioSessionListener: AnyObject {
   func sessionInterruptionBegan()
   func sessionInterruptionEnded(shouldResume: Bool)
   func sessionOutputDisconnected()
+  /// The output changed (any reason): `AudioRoute.current()` tells where to.
+  func sessionRouteChanged()
   func sessionMediaServicesReset()
 }
 
@@ -141,6 +143,7 @@ final class AudioSessionCoordinator {
     if reason == .oldDeviceUnavailable {
       listener?.sessionOutputDisconnected()
     }
+    listener?.sessionRouteChanged()
   }
 
   /// Short description of the current output route (diagnostics).

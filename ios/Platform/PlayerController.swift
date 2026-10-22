@@ -10,6 +10,8 @@ final class SystemClock: EngineClock {
 
 typealias Resolve = (Any?) -> Void
 typealias Reject = (String, String, NSError?) -> Void
+/// How a `load()` settles: the status after it, or why it failed.
+typealias LoadCompletion = (Result<[String: Any], PlayerError>) -> Void
 
 /// Parsed `PlayerOptions` (src/types.ts).
 struct PlayerOptions {
@@ -54,6 +56,27 @@ struct PlayerOptions {
   }
 }
 
+extension SourceDescriptor {
+  /// A serialized `Source` (src/core/Player.ts `normalizeSource`) and its lock-screen fields.
+  static func parse(_ source: NSDictionary) -> (SourceDescriptor, NowPlayingFields) {
+    var headers: [String: String] = [:]
+    (source["headers"] as? NSDictionary)?.forEach { key, value in
+      if let k = key as? String, let v = value as? String { headers[k] = v }
+    }
+    let descriptor = SourceDescriptor(
+      uri: source["uri"] as? String ?? "", headers: headers, liveHint: source["live"] as? Bool)
+    return (descriptor, NowPlayingFields(source["metadata"] as? NSDictionary))
+  }
+
+  /// Whether a Cast receiver can fetch it itself.
+  var isCastable: Bool { isNetwork }
+
+  /// A progressive HTTP(S) stream that may interleave ICY metadata (not HLS).
+  var mayCarryIcy: Bool {
+    isNetwork && URL(string: uri)?.pathExtension.lowercased() != "m3u8"
+  }
+}
+
 /// Lock-screen fields given by the app (source metadata or overrides).
 struct NowPlayingFields: Equatable {
   var title: String?
@@ -80,16 +103,24 @@ struct NowPlayingFields: Equatable {
 private let diagnosticsCapacity = 300
 private let log = Logger(subsystem: "com.anythingplayer", category: "player")
 
-/// One player: the engine, its AVPlayer driver and everything that crosses to
-/// JS. Engine and driver run on the main thread; the lock-protected snapshots
+/// One player: the engine, its drivers and everything that crosses to JS.
+/// Engine and drivers run on the main thread; the lock-protected snapshots
 /// are what the synchronous JS getters read from the JS thread.
+///
+/// The engine drives a `RoutingDriver`: the local AVPlayer, or a Cast
+/// receiver after a handoff. Events go to the runtime's event sink, so a
+/// player outlives the JS that created it (see `detachable`).
 final class PlayerController: EngineDelegate, DriverObserver {
   let id: String
   let options: PlayerOptions
+  /// The app chose the id: the player survives a JS reload and JS re-attaches
+  /// to it (`createPlayer` with the same id). Otherwise a reload releases it.
+  let detachable: Bool
+  /// The local AVPlayer driver (visualizer taps, media-services rebuilds).
   let driver: AVPlayerDriver
+  let routing: RoutingDriver
   let engine: PlaybackEngine
   private unowned let runtime: AnythingPlayerRuntime
-  private let emitEvent: ([String: Any]) -> Void
 
   private let lock = NSLock()
   private var snapshotStatus = Status()
@@ -104,34 +135,46 @@ final class PlayerController: EngineDelegate, DriverObserver {
   private var overrides = NowPlayingFields(nil)
   /// Song progress set by the app (`updateNowPlaying` with a duration).
   private var trackClock: TrackClock?
-  private var pendingLoads: [Int: (Resolve, Reject)] = [:]
+  private var pendingLoads: [Int: LoadCompletion] = [:]
   private var wakeup: DispatchWorkItem?
   /// `progress` events while playing (`progressInterval`): a native timer, so
   /// JS hears about the audio's progress even while its own timers are frozen.
   private var progressTimer: DispatchSourceTimer?
+  /// Titles of a live stream playing on a Cast receiver (see `updateIcyReader`).
+  private var icyReader: IcyMetadataReader?
+  private var icyReaderLoadId = -1
+  /// The load whose source a Cast receiver cannot reach (reported once).
+  private var uncastableLoadId = -1
   private var released = false
 
-  init(id: String, options: PlayerOptions, runtime: AnythingPlayerRuntime, emit: @escaping ([String: Any]) -> Void) {
+  init(id: String, options: PlayerOptions, detachable: Bool, runtime: AnythingPlayerRuntime) {
     self.id = id
     self.options = options
+    self.detachable = detachable
     self.runtime = runtime
-    self.emitEvent = emit
     driver = AVPlayerDriver(titleFormat: options.titleFormat)
-    engine = PlaybackEngine(driver: driver, clock: SystemClock.shared, options: options.engine)
+    routing = RoutingDriver(local: driver)
+    engine = PlaybackEngine(driver: routing, clock: SystemClock.shared, options: options.engine)
     driver.observer = self
+    routing.observer = self
+    routing.describe = { [weak self] in self?.nowPlaying() ?? NowPlayingInfo() }
     engine.delegate = self
   }
 
+  /// Whether the audio plays on another device (Cast). Main thread.
+  var isRemote: Bool { routing.isRemote }
+
   // MARK: - Commands (main)
 
+  /// `completion` runs once the load settles (ready, superseded or failed).
   func load(_ source: SourceDescriptor, fields: NowPlayingFields, autoplay: Bool?, start: Double?,
-            resolve: @escaping Resolve, reject: @escaping Reject) throws {
+            completion: @escaping LoadCompletion) throws {
     sourceFields = fields
     overrides = NowPlayingFields(nil)
     trackClock = nil
     lock.sync { snapshotMetadata = nil }
     try engine.load(source, autoplay: autoplay, startPosition: start)
-    pendingLoads[engine.loadId] = (resolve, reject)
+    pendingLoads[engine.loadId] = completion
     runtime.nowPlayingChanged(self)
   }
 
@@ -152,7 +195,7 @@ final class PlayerController: EngineDelegate, DriverObserver {
       enabled
       ? { [weak self] window in
         guard let self, !self.released else { return }
-        self.emitEvent([
+        self.runtime.emit([
           "playerId": self.id, "type": "audioSample",
           "waveform": window.waveform.map { Double($0) },
           "level": window.level, "duration": window.duration,
@@ -174,9 +217,17 @@ final class PlayerController: EngineDelegate, DriverObserver {
     wakeup?.cancel()
     progressTimer?.cancel()
     progressTimer = nil
+    icyReader?.stop()
+    icyReader = nil
     engine.release()
-    driver.destroy()
+    routing.destroy()
     pendingLoads.removeAll()
+  }
+
+  /// The app returned to the foreground.
+  func appForegrounded() {
+    engine.appForegrounded()
+    icyReader?.reconnectNow()
   }
 
   /// Media services were reset: rebuild the AVPlayer and re-open.
@@ -259,13 +310,43 @@ final class PlayerController: EngineDelegate, DriverObserver {
     emit("remoteCommand", payload)
   }
 
+  /// A voice or app search started `item` on this player.
+  func emitSearchPlay(request: [String: Any], item: [String: Any]) {
+    emit("searchPlay", ["request": request, "item": item])
+  }
+
+  /// The current source cannot reach a Cast receiver: it keeps playing here.
+  /// A non-fatal error, once per load.
+  func reportUncastable() {
+    guard uncastableLoadId != engine.loadId else { return }
+    uncastableLoadId = engine.loadId
+    emit(
+      "error",
+      [
+        "error": Serialization.error(
+          .code(
+            .castUnsupportedSource,
+            "A Cast receiver cannot fetch this source (it is not an http(s) URL); it keeps playing on the device.",
+            recoverable: false)),
+        "fatal": false,
+      ])
+  }
+
+  /// A diagnostics line from the platform layer.
+  func note(_ event: String, _ details: [String: String] = [:]) {
+    engine(
+      diagnostic: DiagnosticEntry(
+        wallTime: SystemClock.shared.wallMs, generation: engine.generation, state: engine.state, event: event,
+        details: details))
+  }
+
   private func emit(_ type: String, _ payload: [String: Any]) {
     eventSeq += 1
     var event = payload
     event["playerId"] = id
     event["type"] = type
     event["seq"] = eventSeq
-    emitEvent(event)
+    runtime.emit(event)
   }
 
   // MARK: - EngineDelegate (main)
@@ -282,11 +363,36 @@ final class PlayerController: EngineDelegate, DriverObserver {
     var event = Serialization.status(status, seq: seq)
     event["playerId"] = id
     event["type"] = "status"
-    emitEvent(event)
+    runtime.emit(event)
     // The song advances with the audio, not the wall clock.
     trackClock?.setRunning(status.state == .playing, now: SystemClock.shared.monotonicMs)
     updateProgressTicks(status.state)
+    updateIcyReader(status)
     runtime.statusChanged(self)
+  }
+
+  /// While a Cast receiver plays a live HTTP stream, the phone reads the
+  /// stream's ICY titles on a connection of its own (the audio is
+  /// discarded), so `metadata` and the lock screen keep updating.
+  private func updateIcyReader(_ status: Status) {
+    let source = engine.source
+    let wanted =
+      !released && routing.isRemote && (source?.mayCarryIcy ?? false)
+      && (status.isLive || source?.liveHint == true)
+      && [.loading, .buffering, .playing, .reconnecting].contains(status.state)
+    if wanted && icyReader != nil && icyReaderLoadId == status.loadId { return }
+    icyReader?.stop()
+    icyReader = nil
+    guard wanted, let source, let url = URL(string: source.uri) else { return }
+    icyReaderLoadId = status.loadId
+    let reader = IcyMetadataReader(url: url, headers: source.headers, format: options.titleFormat) {
+      [weak self] metadata in
+      guard let self, !self.released else { return }
+      // Titles go out at once, through the normal metadata path.
+      self.driverMetadata(generation: self.engine.generation, metadata: metadata)
+    }
+    icyReader = reader
+    reader.start()
   }
 
   private func updateProgressTicks(_ state: PlaybackState) {
@@ -301,7 +407,7 @@ final class PlayerController: EngineDelegate, DriverObserver {
     timer.setEventHandler { [weak self] in
       guard let self, !self.released else { return }
       self.driver.reportHeardSplices()
-      let reading = self.driver.progress()
+      let reading = self.routing.progress()
       let clock = SystemClock.shared
       self.lock.sync { self.snapshotProgress = (reading, clock.monotonicMs, clock.wallMs) }
       self.emit("progress", self.progressDictionary())
@@ -311,13 +417,13 @@ final class PlayerController: EngineDelegate, DriverObserver {
   }
 
   func engine(loadSettled loadId: Int, outcome: LoadOutcome) {
-    guard let (resolve, reject) = pendingLoads.removeValue(forKey: loadId) else { return }
+    guard let completion = pendingLoads.removeValue(forKey: loadId) else { return }
     DispatchQueue.main.async { [weak self] in
       switch outcome {
       case .ready, .superseded:
-        resolve(self?.statusDictionary() ?? [:])
+        completion(.success(self?.statusDictionary() ?? [:]))
       case .failed(let error):
-        reject(error.code.rawValue, error.message, Serialization.nsError(error))
+        completion(.failure(error))
       }
     }
   }
@@ -352,7 +458,7 @@ final class PlayerController: EngineDelegate, DriverObserver {
       DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: item)
     }
     // Every engine entry ends here: refresh the progress snapshot JS reads.
-    let reading = driver.progress()
+    let reading = routing.progress()
     let clock = SystemClock.shared
     lock.sync { snapshotProgress = (reading, clock.monotonicMs, clock.wallMs) }
     runtime.keepaliveCheck()
@@ -360,11 +466,15 @@ final class PlayerController: EngineDelegate, DriverObserver {
 
   // MARK: - DriverObserver (main)
 
-  func driverReady(generation: Int, info: ReadyInfo) { engine.onReady(generation: generation, info: info) }
+  func driverReady(generation: Int, info: ReadyInfo) {
+    if engine.accepts(generation) { routing.noteReady(uri: engine.source?.uri, live: info.isLive) }
+    engine.onReady(generation: generation, info: info)
+  }
   func driverPlaying(generation: Int) { engine.onPlaying(generation: generation) }
   func driverBuffering(generation: Int) { engine.onBuffering(generation: generation) }
   func driverEnded(generation: Int) { engine.onEnded(generation: generation) }
   func driverFailed(generation: Int, error: PlayerError) { engine.onFailed(generation: generation, error: error) }
+  func driverPausedExternally(generation: Int) { engine.onPausedExternally(generation: generation, reason: .system) }
 
   func driverMetadata(generation: Int, metadata: StreamMetadata) {
     guard engine.accepts(generation) else { return }
@@ -375,7 +485,7 @@ final class PlayerController: EngineDelegate, DriverObserver {
   }
 
   func driverPositionChanged() {
-    let reading = driver.progress()
+    let reading = routing.progress()
     let clock = SystemClock.shared
     lock.sync { snapshotProgress = (reading, clock.monotonicMs, clock.wallMs) }
     runtime.nowPlayingChanged(self)
@@ -383,10 +493,7 @@ final class PlayerController: EngineDelegate, DriverObserver {
 
   func driverNote(generation: Int, event: String, details: [String: String]) {
     guard engine.accepts(generation) else { return }
-    engine(
-      diagnostic: DiagnosticEntry(
-        wallTime: SystemClock.shared.wallMs, generation: generation, state: engine.state, event: event,
-        details: details))
+    note(event, details)
   }
 
   func driverDiscontinuity(generation: Int, position: Double) {
