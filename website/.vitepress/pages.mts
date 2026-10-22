@@ -163,6 +163,12 @@ export const SECTIONS: DocSection[] = [
         description:
           'Debug RNAP playback: read the native decision log, inspect the Android media session, fix common problems, and answers to frequent questions.',
       },
+      {
+        link: '/docs/cli',
+        text: 'CLI: doctor & init',
+        description:
+          'npx react-native-anything-player doctor checks an app\'s setup, native build and stream URLs; init applies the safe fixes, each shown as a diff.',
+      },
     ],
   },
   {
