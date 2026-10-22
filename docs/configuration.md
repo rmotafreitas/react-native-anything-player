@@ -28,12 +28,16 @@ const player = new Player({
   android: {
     stopOnTaskRemoved: false, // stop when the app is swiped away from recents
   },
+  fade: {
+    in: 0,                   // s: play() fades in from silence; 0 = off
+    out: 0,                  // s: pause() and stop() fade out first; also the sleep timer's default fade-out
+  },
   diagnostics: false,        // stream engine traces as 'diagnostic' events and to the native log
   progressInterval: 0,       // ms between 'progress' events from a native timer while playing; 0 = off
 });
 ```
 
-Options are fixed for the player's lifetime. The audio-session configuration (iOS category/mode) follows the player that last requested playback.
+Options are fixed for the player's lifetime, except `fade`, which `setFade()` replaces ([Sleep timer and fades](playback.md#sleep-timer-and-fades)). The audio-session configuration (iOS category/mode) follows the player that last requested playback.
 
 With an `id`, a player outlives the JavaScript that created it, and `new Player({ id })` attaches to the native player with that id (one Siri or Google Assistant started, or one that kept playing across a reload), keeping its options. See [Voice assistants](voice.md#playing-a-request).
 

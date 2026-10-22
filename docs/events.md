@@ -42,6 +42,7 @@ off(); // unsubscribe
 | `routeChange` | `(route, previous)` | `status.route` changed: AirPlay or Bluetooth chosen, headphones unplugged, casting started or ended |
 | `searchPlay` | `{ request, item }` | a voice assistant or `playFromSearch()` started a catalog item on this player ([Voice assistants](voice.md)) |
 | `discontinuity` | `{ position, timestamp }` | a live stream's audio jumped: playback moved onto a fresh connection of the same source, with no state change. Reported when it becomes audible |
+| `sleep` | `{ reason: 'fired', timestamp }` | the sleep timer ran out: the player paused (if it was playing) and `status.sleepAt` is back to `null` ([Sleep timer](playback.md#sleep-timer)) |
 
 Progress is a synchronous read ([playback](playback.md#progress)), so a foreground UI needs no events. `progress` events are opt-in (`new Player({ progressInterval: 1000 })`). They come from a native timer while playing, so they also run JS where the app's own timers are frozen: an Android app in the background keeps receiving them. Use them for work that must follow the audio there, such as switching the lock screen to the next song at the moment it is heard. Stalls shorter than 500 ms are not published.
 
@@ -49,7 +50,7 @@ A live HTTP stream's connection can be replaced without stopping: Android plays 
 
 ## Guarantees
 
-**Ordering.** All events of a player are delivered in the order native code produced them. A discrete event (`ended`, `error`) is always delivered *after* the status it implies, so inside an `ended` listener `player.state` is already `'ended'`, and inside a fatal `error` listener it is `'error'`.
+**Ordering.** All events of a player are delivered in the order native code produced them. A discrete event (`ended`, `error`, `sleep`) is always delivered *after* the status it implies, so inside an `ended` listener `player.state` is already `'ended'`, and inside a fatal `error` listener it is `'error'`.
 
 **Command results.** A command's promise resolves after its status change was emitted, so after `await player.pause()` the status already reflects the pause. Commands are applied in call order; a later command can make an earlier one moot (e.g. `play()` then `pause()`), never reorder it.
 

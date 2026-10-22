@@ -53,6 +53,8 @@ Supported: the current and previous version of each browser. Radio titles on iPh
 | Volume, mute, rate | ✓ | ✓ | ✓ | ✓ | ✓ | ◐ ⁶ |
 | Several players at once | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Progress events, `getProgress()` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Sleep timer (`sleep`, `status.sleepAt`) | ✓ | ✓ | ◐ ⁷ | ◐ ⁷ | ◐ ⁷ | ◐ ⁷ |
+| Fades on play, pause and stop, `fadeTo` | ✓ | ✓ | ◐ ⁷ | ◐ ⁷ | ◐ ⁷ | – ⁶ |
 | Queue (next / previous, gapless) | – | – | – | – | – | – |
 
 1. Leave it out with `rnapHls=false`.
@@ -60,7 +62,8 @@ Supported: the current and previous version of each browser. Radio titles on iPh
 3. `file://` URLs and paths; Android also takes `content://`.
 4. `File` / `Blob`, `blob:` and `data:` URLs.
 5. When RNAP reads the stream itself (MSE, hls.js), not on the plain `<audio>` element. On iPhone and iPad, from iOS 17.1.
-6. The system fixes the volume: `setVolume` has no effect, `setMuted` works.
+6. The system fixes the volume: `setVolume` has no effect, `setMuted` works. Fades have no effect either; the sleep timer pauses without one.
+7. In a hidden tab the browser runs timers less often: fades move in larger steps and the sleep timer can fire late.
 
 A queue is planned: see the [roadmap](roadmap.md).
 
