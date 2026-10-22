@@ -5,6 +5,7 @@
 // same chart as the SVG that benchmarks/charts/render.mjs draws from that file.
 import { computed } from 'vue';
 import size from '../../../../../benchmarks/results/size.json';
+import apk from '../../../../../benchmarks/results/apk.json';
 
 type Pkg = (typeof size.packages)[number];
 type WebPkg = (typeof size.web)[number]['packages'][number];
@@ -32,6 +33,8 @@ const WEB: Record<string, { id: string; title: string; subtitle: string; note?: 
 interface ChartSpec {
   title: string;
   subtitle: string;
+  /** Where the numbers come from (default: the npm size benchmark). */
+  source?: { date: string; script: string; text: string };
   unit: string;
   value: (p: Pkg) => number;
   digits?: number;
@@ -80,14 +83,26 @@ const props = defineProps<{
   bare?: boolean;
 }>();
 
+/** A release APK: what each library adds with R8, and the rest without it (benchmarks/results/apk.json). */
+const APK: ChartSpec = {
+  title: 'Added to a release APK',
+  subtitle: `React Native ${apk.reactNative}, ${apk.abi}, against an empty app. KB with R8 (solid) / without R8 (whole bar).`,
+  unit: 'KB',
+  value: () => 0,
+  note: 'RNAP without HLS, with Cast, and the libraries that did not build are listed on the page.',
+  source: { date: apk.measuredAt, script: 'benchmarks/android/measure-apk.mjs', text: 'Built' },
+};
+
 const web = computed(() => WEB[props.name]);
-const spec = computed<ChartSpec | undefined>(() =>
-  web.value
+const spec = computed<ChartSpec | undefined>(() => {
+  if (props.name === 'apk-size') return APK;
+  return web.value
     ? { ...web.value, unit: 'KB gzip', value: () => 0, digits: 1, cap: 60 }
-    : CHARTS[props.name]
-);
+    : CHARTS[props.name];
+});
 
 function licence(p: { license: string | null }): string {
+  if (p.license == null) return '';
   const l = p.license ?? '';
   if (l.startsWith('SEE LICENSE')) return 'commercial';
   if (l.startsWith('PolyForm')) return 'PolyForm NC';
@@ -103,9 +118,32 @@ interface Item {
   value: number;
   /** What it must fetch before it plays anything (drawn lighter, after the bar). */
   later: number;
+  /** The value label, when it says more than the number. */
+  text?: string;
+  /** What orders the bars, when not their length. */
+  sortBy?: number;
 }
 
 function items(s: ChartSpec): Item[] {
+  if (props.name === 'apk-size') {
+    const kb = (bytes: number) => Math.round(bytes / 1024);
+    return apk.libraries
+      .filter((l) => !('failed' in l && l.failed) && l.id !== 'rnapNoHls' && l.id !== 'rnapCast')
+      .map((l) => {
+        const lib = l as Extract<(typeof apk.libraries)[number], { r8: unknown }>;
+        return {
+          name: lib.name,
+          label: lib.label,
+          license: null,
+          version: lib.version,
+          detail: `${lib.name}@${lib.version} · dex ${kb(lib.r8.dexBytes)} KB, native ${kb(lib.r8.nativeBytes)} KB, resources ${kb(lib.r8.resourceBytes)} KB with R8`,
+          value: lib.r8.apkBytes / 1024,
+          later: Math.max(0, lib.noR8.apkBytes - lib.r8.apkBytes) / 1024,
+          text: `${kb(lib.r8.apkBytes).toLocaleString('en-US')} / ${kb(lib.noR8.apkBytes).toLocaleString('en-US')}`,
+          sortBy: lib.r8.apkBytes,
+        };
+      });
+  }
   if (web.value) {
     const category = size.web.find((c) => c.id === web.value!.id);
     return (category?.packages ?? []).map((p: WebPkg) => ({
@@ -142,19 +180,20 @@ const rows = computed(() => {
       const total = p.value + p.later;
       return {
         key: p.name,
+        sortBy: p.sortBy ?? total,
         label: p.label,
         tag: licence(p),
         version: p.version,
         detail: p.detail,
         value: total,
-        text: num(p.value) + (p.later ? ` + ${num(p.later)} to play` : ''),
+        text: p.text ?? num(p.value) + (p.later ? ` + ${num(p.later)} to play` : ''),
         pct: pct(total),
         solid: p.later ? (pct(p.value) / pct(total)) * 100 : 100,
         clipped: total > max,
         ours: p.name === 'react-native-anything-player',
       };
     })
-    .sort((a, b) => a.value - b.value);
+    .sort((a, b) => a.sortBy - b.sortBy);
 });
 </script>
 
@@ -185,14 +224,15 @@ const rows = computed(() => {
           />
           <!-- A clipped bar carries its label inside, at the break. -->
           <span class="value" :class="{ inside: r.clipped }" :style="r.clipped ? {} : { left: `${r.pct}%` }">
-            {{ r.text + (r.ours ? ` ${spec.unit}` : '') + (r.clipped && !r.text.includes('+') ? ' · off scale' : '') }}
+            {{ r.text + (r.ours && !r.text.includes('/') ? ` ${spec.unit}` : '') + (r.clipped && !r.text.includes('+') ? ' · off scale' : '') }}
           </span>
         </span>
       </li>
     </ol>
     <p class="foot">
       <span v-if="spec.note">{{ spec.note }} </span>
-      Latest npm releases as of {{ size.measuredAt }} · <code>benchmarks/size/measure.mjs</code>
+      {{ spec.source?.text ?? 'Latest npm releases as of' }} {{ spec.source?.date ?? size.measuredAt }} ·
+      <code>{{ spec.source?.script ?? 'benchmarks/size/measure.mjs' }}</code>
     </p>
     <details class="table">
       <summary>Show the numbers</summary>

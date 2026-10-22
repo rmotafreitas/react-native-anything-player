@@ -55,9 +55,10 @@ react {
 }
 
 /**
- * Set this to true to Run Proguard on Release builds to minify the Java bytecode.
+ * R8 (minify + shrink resources) on release builds: off by default, on with
+ * `-Pr8=true` to run the scenarios on the code an R8-shrunk app ships.
  */
-def enableProguardInReleaseBuilds = false
+def enableProguardInReleaseBuilds = (findProperty("r8") ?: "false").toBoolean()
 
 /**
  * The preferred build flavor of JavaScriptCore (JSC)
@@ -103,7 +104,8 @@ android {
             // see https://reactnative.dev/docs/signed-apk-android.
             signingConfig signingConfigs.debug
             minifyEnabled enableProguardInReleaseBuilds
-            proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
+            shrinkResources enableProguardInReleaseBuilds
+            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
         }
     }
 }

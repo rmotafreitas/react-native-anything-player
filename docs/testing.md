@@ -71,6 +71,8 @@ Release builds, iOS 27 simulator and Android 16 emulator:
 | `getProgress()` p50 / p99 | 5–10 µs / 22–28 µs | 11–20 µs / 270–600 µs |
 | `refresh()` (status + metadata) p50 | 20–23 µs | 92–100 µs |
 
+Shrunk with R8, as a store build ships (`./gradlew assembleRelease -Pr8=true`: minify, resource shrinking, the optimizing rules), the bare example passes all 23 scenarios on the Android 16 emulator. That run checks RNAP's keep rules, the audio-only renderers and the autolinking setup that leaves out the iOS-only component's C++.
+
 On the web, the Expo example's export (React Native Web, Chromium) passes all 23 scenarios of this release, `cleartext-blocked` skipped as native-only; `yarn test:web` runs them on every change.
 
 Debug builds of the bare example passed the 16 scenarios that existed before the iOS stream proxy (`cleartext-blocked` and `bench-sync-reads` were added with it).

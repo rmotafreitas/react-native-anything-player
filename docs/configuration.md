@@ -43,10 +43,10 @@ App-wide settings live outside `Player`: the voice catalog (`setCatalog`, [Voice
 
 | Where | Option | Effect |
 |---|---|---|
-| `android/gradle.properties` | `rnapHls=false` | drop Media3's HLS module (~300 KB) |
+| `android/gradle.properties` | `rnapHls=false` | drop Media3's HLS module (64 KB of a release APK with R8, 96 KB without) |
 | root `build.gradle` `ext` | `rnapMedia3Version = "1.x.y"` | pin a Media3 version (default 1.11.1) |
 | `AndroidManifest.xml` `<application>` | `<meta-data android:name="com.anythingplayer.FOREGROUND_TIMEOUT_MS" android:value="…"/>` | how long a paused session stays in the foreground (Media3 default and max: 10 min) |
-| `android/gradle.properties` | `rnapCast=true` | build Google Cast in (Media3 Cast and the Cast framework) |
+| `android/gradle.properties` | `rnapCast=true` | build Google Cast in (Media3 Cast and the Cast framework: 1.4 MB more in a release APK with R8) |
 | `AndroidManifest.xml` `<application>` | `<meta-data android:name="com.anythingplayer.CAST_RECEIVER_ID" android:value="…"/>` | your own Cast receiver (default: the Default Media Receiver) |
 | `pod install` | `RNAP_CAST=1` (or `"rnap.cast": "true"` in `ios/Podfile.properties.json`) | build Google Cast in on iOS |
 | `Info.plist` | `RNAPCastReceiverId` | your own Cast receiver on iOS |
@@ -54,3 +54,9 @@ App-wide settings live outside `Player`: the voice catalog (`setCatalog`, [Voice
 | Expo config plugin | `cast`, `siri`, `assistant` | Google Cast, Siri (extension and shortcuts), Google Assistant / Gemini: see [Getting started](getting-started.md#expo) |
 
 The recovery timings that are *not* configurable are fixed on purpose; [recovery.md](recovery.md) explains each.
+
+### Release builds and R8
+
+Nothing to add to your R8 (ProGuard) rules: RNAP's own are applied to the app automatically. Turn R8 on for release builds (`minifyEnabled true` and `shrinkResources true` in `android/app/build.gradle`) and it removes most of what RNAP's libraries ship and RNAP does not use. RNAP builds ExoPlayer with only the audio and metadata renderers, so the video, subtitle and image code goes, and Android compiles only the C++ of RNAP's module, not that of the iOS-only AirPlay button.
+
+Measured in a React Native 0.86 release APK (arm64-v8a), RNAP adds 1,176 KB with R8 and 3,758 KB without it. [Comparison & benchmarks](comparison.md#added-to-a-release-apk) has the other libraries.

@@ -14,7 +14,7 @@ Every number here comes from a script in [`benchmarks/`](../benchmarks/README.md
 
 | Where | Compared with | Where RNAP leads | Where RNAP is behind |
 |---|---|---|---|
-| iOS, Android | RNTP 4 and 5, expo-audio, expo-av, react-native-video, and four more | Recovers a stream with no app code; follows the network; radio titles; a visualizer for iOS live streams; several players; fewer Android libraries and less native code than RNTP 5; no extras to install | Queues, caching, CarPlay / Android Auto browsing, a sleep timer; JS size (5.5 KB, the others 2–7 KB); the licence |
+| iOS, Android | RNTP 4 and 5, expo-audio, expo-av, react-native-video, and four more | Recovers a stream with no app code; follows the network; radio titles; a visualizer for iOS live streams; several players; adds 1.2 MB to a release APK with R8, against 2.7 MB for RNTP 5 (which always includes Cast; RNAP with Cast: 2.6 MB); no extras to install | Queues, caching, CarPlay / Android Auto browsing, a sleep timer; JS size (5.5 KB, the others 2–7 KB); the licence |
 | Expo web, React Native Web | the same packages, on the web | The only one that recovers a stream or reads radio titles in the browser; Cast and AirPlay; nothing to fetch before it plays (RNTP 4 fetches 367 KB of shaka-player) | Page weight (29.5 KB against 4–15 KB): it carries a streaming engine, the others wrap `<audio>` |
 | React, plain web pages | howler.js, Plyr, Vidstack, react-player, icecast-metadata-player and others | Recovery, radio titles, Media Session, Cast and AirPlay together, in one library; the same player as on the phone | No player UI, video or sound-effect features; heavier than howler.js (10 KB) |
 
@@ -29,6 +29,34 @@ RNAP is the only one of the four that recovers a stream without app code. The ot
 Where RNAP is behind today: queues, caching and preloading, CarPlay / Android Auto browsing, a sleep timer, and a licence that is free for commercial apps. See the [roadmap](roadmap.md).
 
 Moving from one of them? See the migration guides for [react-native-track-player](migrating-from-track-player.md), [expo-audio](migrating-from-expo-audio.md) and [expo-av](migrating-from-expo-av.md).
+
+### Added to a release APK
+
+What an app's users download: each library built into a React Native 0.86 app, in release mode for arm64-v8a, against the same app without it. "With R8" is how a store build ships (`minifyEnabled` and `shrinkResources`); without R8, every class of every dependency stays.
+
+![What each library adds to a release APK, with R8 and without](assets/charts/apk-size.svg)
+
+| Library | With R8 | Without R8 | Code (dex) | Native libraries | Resources |
+|---|--:|--:|--:|--:|--:|
+| **RNAP** | 1,176 KB | 3,758 KB | 835 KB | 80 KB | 242 KB |
+| RNAP without HLS (`rnapHls=false`) | 1,112 KB | 3,662 KB | 777 KB | 80 KB | 242 KB |
+| RNAP with Cast (`rnapCast=true`) | 2,609 KB | 10,976 KB | 1,195 KB | 90 KB | 1,213 KB |
+| RNTP 5 (Cast always in) | 2,670 KB | 10,956 KB | 1,306 KB | 55 KB | 1,213 KB |
+| react-native-video | 1,272 KB | 3,384 KB | 762 KB | 0 | 487 KB |
+| react-native-audio-pro | 849 KB | 2,587 KB | 659 KB | 0 | 184 KB |
+| react-native-nitro-sound | 1,568 KB | 1,584 KB | 28 KB | 1,539 KB | 0 |
+| react-native-audio-api | 9,571 KB | 9,636 KB | 48 KB | 9,481 KB | 13 KB |
+| react-native-sound | 16 KB | 16 KB | 4 KB | 26 KB | 0 |
+| RNTP 4 | — | — | | | |
+
+Built 2026-10-22 (`benchmarks/results/apk.json`); the code, native and resource columns are with R8, as stored in the APK. RNTP 4.1.2 does not compile against React Native 0.86. expo-audio and expo-av need the Expo modules runtime and are not in this run.
+
+How to read it:
+
+- **R8 is where the size goes.** Media3 is large on disk and mostly unused by any one app: R8 removes two thirds of what the Media3-based players add. Turn it on for release builds; RNAP needs no rules of its own (see [Configuration](configuration.md#release-builds-and-r8)).
+- **RNAP is shaped for R8.** It builds ExoPlayer with only the audio and metadata renderers, so the video, subtitle and image code is removed, and Android compiles only its module's C++, not the iOS-only AirPlay button's. Release 1.1.0 added 1,400 KB with R8; this one adds 1,176 KB.
+- **Same work, same size.** react-native-audio-pro is smaller with less to do (no HLS, no output picker, no recovery). With Cast in, RNAP and RNTP 5 land within 61 KB of each other: the Cast framework is most of it.
+- **Native code that R8 cannot touch:** react-native-audio-api ships FFmpeg and its audio engine as native libraries, and react-native-nitro-sound its C++ through Nitro.
 
 ### Install size
 
@@ -58,7 +86,7 @@ Measured 2026-10-22 against the latest npm releases (`benchmarks/results/size.js
 How to read it:
 
 - **JavaScript is not where the cost is.** Every player adds 2–7 KB of gzipped JS, because they all do their work in native code. RNAP's 5.5 KB is everything its main entry exports: the player, hooks, the voice catalog, the Cast and output functions, and the two buttons (their icons are image assets, not JS). The browser engine is not in it: bundlers load it only on the web. The meaningful costs are the native code and the Android libraries your app compiles.
-- **RNAP's native code** is 12.1k lines for the engine twins, the iOS stream proxy, the iOS stream visualizer, the media sessions, outputs and the output picker, and the voice catalog with Siri and the assistants. Google Cast adds 1.1k lines when it is turned on. RNTP 5 is 13.2k. The minimal players (react-native-sound, audio-pro, RNTP 4) are smaller because they do much less: no recovery, no proxy, no visualizer.
+- **RNAP's native code** (source lines: [what reaches the APK](#added-to-a-release-apk) is the better measure) is 12.1k lines for the engine twins, the iOS stream proxy, the iOS stream visualizer, the media sessions, outputs and the output picker, and the voice catalog with Siri and the assistants. Google Cast adds 1.1k lines when it is turned on. RNTP 5 is 13.2k. The minimal players (react-native-sound, audio-pro, RNTP 4) are smaller because they do much less: no recovery, no proxy, no visualizer.
 - **Android libraries**: RNAP pulls in Media3 (ExoPlayer, session, the OkHttp data source and HLS) and AndroidX MediaRouter (the system output picker). HLS can be left out with `rnapHls=false`; Google Cast adds Media3 Cast and the Cast framework only with `rnapCast`. expo-audio adds DASH, SmoothStreaming and Media3 UI; react-native-video adds IMA ads and RTSP as well.
 - **No extras.** RNAP needs nothing beyond React Native: no framework (`expo` is optional, for the config plugin only), no Nitro, no worklets, no state library.
 - **Download size** is mostly the compiled JS and the native sources. RNAP ships only what an app uses: the compiled output for every entry (React Native, the web engine, React DOM) with its type declarations, no source maps and no second copy of the sources; the native sources for iOS and Android (Cast and the Siri templates included, compiled only when turned on); the Expo plugin; and the CLI as one minified file. Most of the difference with RNTP 5 is the web: RNAP carries a complete engine there, the same one as on the phone, which never reaches a native app's bundle.
@@ -124,5 +152,6 @@ How to read it:
 
 - `node benchmarks/size/measure.mjs` installs every package from npm, packs this repository as it would be published, and records the tarball and unpacked sizes. It also counts the non-blank native source lines that compile into an app (tests, examples and builds excluded), parses the Maven artifacts from `android/build.gradle`, and bundles each package's JS with esbuild (minified, gzip -9, with React Native, React, Expo and other peer frameworks excluded).
 - For the web it bundles each package as an app's production build would: for the browser, code-split, with React (and React Native Web and Expo for the React Native packages) excluded. It records the JS a page loads up front, everything including the chunks loaded with `import()`, and what a package fetches on its own at run time (shaka-player for RNTP).
+- `node benchmarks/android/measure-apk.mjs` builds one React Native app in release mode for arm64-v8a, once alone and once per library, with R8 on and off, and records the difference in APK size by part (dex, native libraries, resources). The app's JS does not import the library, so this is the native cost only.
 - `node benchmarks/charts/render.mjs` draws the charts on this page from the results.
 - The capability matrices (`benchmarks/results/capabilities.json` and `capabilities-web.json`) were read from each package's TypeScript API and sources. Each row records its evidence; hover a row in the chart to see it.

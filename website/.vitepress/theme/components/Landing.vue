@@ -99,7 +99,8 @@ const outage = [
   },
 ];
 
-const PLAYERS = ['react-native-anything-player', '@rntp/player', 'react-native-track-player', 'expo-audio', 'react-native-audio-pro'];
+/** The players in the release-APK benchmark (benchmarks/results/apk.json). */
+const APK_PLAYERS = ['react-native-anything-player', '@rntp/player', 'react-native-video', 'react-native-audio-pro'];
 
 const stats = [
   { value: '80', label: 'engine scenarios, run on Swift, Kotlin and TypeScript' },
@@ -246,12 +247,12 @@ const stats = [
     <section class="block lean">
       <div class="lean-stats">
         <p class="eyebrow">Lean by design</p>
-        <div class="big"><span>5</span> Android libraries</div>
-        <p>Media3 and the system output picker. HLS is optional, Cast opt-in.</p>
+        <div class="big"><span>1.2</span> MB in a release APK</div>
+        <p>With R8: Media3 and the system output picker, audio only. HLS is optional, Cast opt-in.</p>
         <div class="big"><span>0</span> JS dependencies</div>
         <p>No framework, no Nitro, no state library. Expo is optional.</p>
       </div>
-      <BarChart name="android-dependencies" :only="PLAYERS" bare />
+      <BarChart name="apk-size" :only="APK_PLAYERS" bare />
     </section>
 
     <section class="block">

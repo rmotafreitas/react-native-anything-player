@@ -5,6 +5,7 @@ Reproducible comparisons between RNAP and the other audio libraries, each agains
 | Script | What it measures | Output |
 |---|---|---|
 | `node benchmarks/size/measure.mjs` | npm tarball and unpacked size, native lines compiled into the app, Android Maven artifacts, JS bundle cost (min+gz) — for RNAP (packed from this checkout) and every competitor (latest on npm); for the web, the JS a page loads up front and with every lazily loaded part, per kind of page | `results/size.json` |
+| `node benchmarks/android/measure-apk.mjs` | what each library adds to a React Native release APK (arm64-v8a), with R8 and without, by part (dex, native libraries, resources), against the same empty app; needs the Android SDK | `results/apk.json` |
 | `node benchmarks/charts/render.mjs` | renders the charts from `results/` | `docs/assets/charts/*.svg` |
 | — (curated) | capability matrices read from each package's source, with evidence per row | `results/capabilities.json` (React Native), `results/capabilities-web.json` (the web) |
 

@@ -97,8 +97,8 @@ function hbar({ title, subtitle, note, rows, unit, cap }) {
     body += `<text x="${x0 - 12}" y="${y + bar / 2 + 4.5}" font-size="13" fill="${r.highlight ? C.ink : C.ink2}" font-weight="${r.highlight ? 600 : 400}" text-anchor="end">${esc(r.label)}</text>`;
     if (r.later) {
       // What loads only when used: the same bar, washed, after the solid part.
-      body += `<path d="${barPath(x0 + 0.5, y, w, bar)}" fill="${r.highlight ? C.accentLater : C.otherLater}"><title>${esc(r.label)}: ${num(r.later)} ${esc(unit)} more, fetched on first play</title></path>`;
-      body += `<rect x="${x0 + 0.5}" y="${y}" width="${Math.max(2, Math.min(sx(r.value), w - 4))}" height="${bar}" fill="${r.highlight ? C.accent : C.other}"><title>${esc(r.label)}: ${num(r.value)} ${esc(unit)} on page load</title></rect>`;
+      body += `<path d="${barPath(x0 + 0.5, y, w, bar)}" fill="${r.highlight ? C.accentLater : C.otherLater}"><title>${esc(r.label)}: ${num(r.later)} ${esc(unit)} more, ${esc(r.laterTitle ?? 'fetched on first play')}</title></path>`;
+      body += `<rect x="${x0 + 0.5}" y="${y}" width="${Math.max(2, Math.min(sx(r.value), w - 4))}" height="${bar}" fill="${r.highlight ? C.accent : C.other}"><title>${esc(r.label)}: ${num(r.value)} ${esc(unit)} ${esc(r.valueTitle ?? 'on page load')}</title></rect>`;
     } else
       body += `<path d="${barPath(x0 + 0.5, y, w, bar)}" fill="${r.highlight ? C.accent : C.other}"><title>${esc(r.label)}: ${num(r.value)} ${esc(unit)}</title></path>`;
     if (off) {
@@ -106,7 +106,7 @@ function hbar({ title, subtitle, note, rows, unit, cap }) {
       const bx = x0 + w - 22;
       body += `<path d="M${bx},${y + bar + 2}l6,-${bar + 4}M${bx + 6},${y + bar + 2}l6,-${bar + 4}" stroke="${C.surface}" stroke-width="3"/>`;
     }
-    const label = r.later ? `${num(r.value)} + ${num(r.later)} to play` : `${num(r.value)}${off ? ' (off scale)' : ''}`;
+    const label = r.text ?? (r.later ? `${num(r.value)} + ${num(r.later)} to play` : `${num(r.value)}${off ? ' (off scale)' : ''}`);
     body += `<text x="${x0 + w + 8}" y="${y + bar / 2 + 4.5}" font-size="12" fill="${r.highlight ? C.ink : C.ink2}" font-weight="${r.highlight ? 600 : 400}" style="font-variant-numeric:tabular-nums">${label}</text>`;
   });
   return card(width, height, body, { title, subtitle, note });
@@ -240,6 +240,43 @@ function main() {
       cap: 60,
       rows,
       note: [source, ...(extras.length ? [`Not counted, for HLS outside Safari: ${extras.join(', ')}`] : [])],
+    });
+  }
+
+  // A release APK: what each library adds, built with R8 and without.
+  const apkFile = path.join(RESULTS, 'apk.json');
+  if (fs.existsSync(apkFile)) {
+    const apk = JSON.parse(fs.readFileSync(apkFile, 'utf8'));
+    const variants = new Set(['rnapNoHls', 'rnapCast']);
+    const built = apk.libraries.filter((l) => !l.failed);
+    const kb = (bytes) => bytes / 1024;
+    const rows = built
+      .filter((l) => !variants.has(l.id))
+      .map((l) => ({
+        label: l.label,
+        value: kb(l.r8.apkBytes),
+        later: Math.max(0, kb(l.noR8.apkBytes - l.r8.apkBytes)) || undefined,
+        text: `${fmt(kb(l.r8.apkBytes))} · ${fmt(kb(l.noR8.apkBytes))} without R8`,
+        valueTitle: 'with R8',
+        laterTitle: 'more without R8',
+        highlight: l.id === 'rnap',
+      }))
+      .sort((a, b) => a.value - b.value);
+    const variantNote = built
+      .filter((l) => variants.has(l.id))
+      .map((l) => `${l.label}: ${fmt(kb(l.r8.apkBytes))} KB`)
+      .join(' · ');
+    const failed = apk.libraries.filter((l) => l.failed).map((l) => l.label);
+    charts['apk-size.svg'] = hbar({
+      title: 'Added to a release APK',
+      subtitle: `React Native ${apk.reactNative}, ${apk.abi}, against an empty app: with R8 (solid) and without (lighter), in KB`,
+      unit: 'KB',
+      rows,
+      note: [
+        `Built ${apk.measuredAt} · benchmarks/android/measure-apk.mjs`,
+        ...(variantNote ? [`With R8: ${variantNote}`] : []),
+        ...(failed.length ? [`Did not build with React Native ${apk.reactNative}: ${failed.join(', ')}`] : []),
+      ],
     });
   }
 

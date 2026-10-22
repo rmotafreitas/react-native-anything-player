@@ -42,7 +42,8 @@ apply plugin: "com.facebook.react"
 
 def media3Version = rootProject.ext.has("rnapMedia3Version") ? rootProject.ext.get("rnapMedia3Version") : AnythingPlayer.media3Version
 def mediaRouterVersion = AnythingPlayer.mediaRouterVersion
-// Google Cast is opt-in (the SDKs add several MB): `rnapCast=true` in
+// Google Cast is opt-in (1.4 MB more in an R8-shrunk APK, 7 MB without R8;
+// benchmarks/results/apk.json): `rnapCast=true` in
 // gradle.properties (or -PrnapCast=true, or `rnapCast` in the root `ext`).
 // Off, `src/nocast` stubs report `unavailable` and no Cast SDK is linked.
 def includeCast = ["rnapCast"].any { name ->
@@ -50,8 +51,8 @@ def includeCast = ["rnapCast"].any { name ->
   value != null && value.toString() == "true"
 }
 // HLS is on by default (many stations and podcasts are HLS-only). Apps that
-// only play progressive streams can drop ~300 KB with `rnapHls=false` in
-// gradle.properties.
+// only play progressive streams can drop it with `rnapHls=false` in
+// gradle.properties (64 KB in an R8-shrunk APK, 96 KB without R8).
 def includeHls = !project.hasProperty("rnapHls") || project.property("rnapHls") != "false"
 
 android {

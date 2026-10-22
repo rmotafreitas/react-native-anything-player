@@ -1,0 +1,222 @@
+{
+  "measuredAt": "2026-10-22",
+  "method": "benchmarks/android/measure-apk.mjs",
+  "reactNative": "0.86.3",
+  "abi": "arm64-v8a",
+  "baseline": {
+    "r8": {
+      "apkBytes": 14859850,
+      "dexBytes": 1017131,
+      "nativeBytes": 12154584,
+      "resourceBytes": 490184,
+      "otherBytes": 1058871
+    },
+    "noR8": {
+      "apkBytes": 18027277,
+      "dexBytes": 4101283,
+      "nativeBytes": 12154584,
+      "resourceBytes": 569459,
+      "otherBytes": 1059896
+    }
+  },
+  "libraries": [
+    {
+      "id": "rnap",
+      "label": "RNAP",
+      "name": "react-native-anything-player",
+      "version": "1.1.0",
+      "gradle": {},
+      "r8": {
+        "apkBytes": 1204382,
+        "dexBytes": 855041,
+        "nativeBytes": 82320,
+        "resourceBytes": 247672,
+        "otherBytes": 5131
+      },
+      "noR8": {
+        "apkBytes": 3847757,
+        "dexBytes": 3027861,
+        "nativeBytes": 82320,
+        "resourceBytes": 673161,
+        "otherBytes": 5220
+      }
+    },
+    {
+      "id": "rnapNoHls",
+      "label": "RNAP without HLS",
+      "name": "react-native-anything-player",
+      "version": "1.1.0",
+      "gradle": {
+        "rnapHls": "false"
+      },
+      "r8": {
+        "apkBytes": 1138846,
+        "dexBytes": 796087,
+        "nativeBytes": 82320,
+        "resourceBytes": 247672,
+        "otherBytes": 5094
+      },
+      "noR8": {
+        "apkBytes": 3749453,
+        "dexBytes": 2939922,
+        "nativeBytes": 82320,
+        "resourceBytes": 673161,
+        "otherBytes": 5214
+      }
+    },
+    {
+      "id": "rnapCast",
+      "label": "RNAP with Cast",
+      "name": "react-native-anything-player",
+      "version": "1.1.0",
+      "gradle": {
+        "rnapCast": "true"
+      },
+      "r8": {
+        "apkBytes": 2672113,
+        "dexBytes": 1223505,
+        "nativeBytes": 92416,
+        "resourceBytes": 1242142,
+        "otherBytes": 21482
+      },
+      "noR8": {
+        "apkBytes": 11239208,
+        "dexBytes": 9426194,
+        "nativeBytes": 92416,
+        "resourceBytes": 1587802,
+        "otherBytes": 29401
+      }
+    },
+    {
+      "id": "rntp5",
+      "label": "RNTP 5",
+      "name": "@rntp/player",
+      "version": "5.12.1",
+      "gradle": {},
+      "r8": {
+        "apkBytes": 2733945,
+        "dexBytes": 1337115,
+        "nativeBytes": 56040,
+        "resourceBytes": 1242214,
+        "otherBytes": 17765
+      },
+      "noR8": {
+        "apkBytes": 11219048,
+        "dexBytes": 9466683,
+        "nativeBytes": 56040,
+        "resourceBytes": 1587802,
+        "otherBytes": 24890
+      }
+    },
+    {
+      "id": "rntp4",
+      "label": "RNTP 4",
+      "failed": true
+    },
+    {
+      "id": "video",
+      "label": "react-native-video",
+      "name": "react-native-video",
+      "version": "6.19.3",
+      "gradle": {},
+      "r8": {
+        "apkBytes": 1302172,
+        "dexBytes": 780193,
+        "nativeBytes": 0,
+        "resourceBytes": 499111,
+        "otherBytes": 4581
+      },
+      "noR8": {
+        "apkBytes": 3465682,
+        "dexBytes": 2848006,
+        "nativeBytes": 0,
+        "resourceBytes": 577924,
+        "otherBytes": 5027
+      }
+    },
+    {
+      "id": "audioPro",
+      "label": "react-native-audio-pro",
+      "name": "react-native-audio-pro",
+      "version": "10.1.2",
+      "gradle": {},
+      "r8": {
+        "apkBytes": 869622,
+        "dexBytes": 674717,
+        "nativeBytes": 0,
+        "resourceBytes": 188322,
+        "otherBytes": 70
+      },
+      "noR8": {
+        "apkBytes": 2649533,
+        "dexBytes": 2428472,
+        "nativeBytes": 0,
+        "resourceBytes": 218358,
+        "otherBytes": 157
+      }
+    },
+    {
+      "id": "nitroSound",
+      "label": "react-native-nitro-sound",
+      "name": "react-native-nitro-sound",
+      "version": "0.2.20",
+      "gradle": {},
+      "r8": {
+        "apkBytes": 1605878,
+        "dexBytes": 28369,
+        "nativeBytes": 1575480,
+        "resourceBytes": 63,
+        "otherBytes": 3
+      },
+      "noR8": {
+        "apkBytes": 1622266,
+        "dexBytes": 37744,
+        "nativeBytes": 1575480,
+        "resourceBytes": 64,
+        "otherBytes": 31
+      }
+    },
+    {
+      "id": "audioApi",
+      "label": "react-native-audio-api",
+      "name": "react-native-audio-api",
+      "version": "0.13.6",
+      "gradle": {},
+      "r8": {
+        "apkBytes": 9800756,
+        "dexBytes": 49133,
+        "nativeBytes": 9708248,
+        "resourceBytes": 13414,
+        "otherBytes": 18
+      },
+      "noR8": {
+        "apkBytes": 9867440,
+        "dexBytes": 114341,
+        "nativeBytes": 9708248,
+        "resourceBytes": 14463,
+        "otherBytes": 2
+      }
+    },
+    {
+      "id": "sound",
+      "label": "react-native-sound",
+      "name": "react-native-sound",
+      "version": "0.13.0",
+      "gradle": {},
+      "r8": {
+        "apkBytes": 16384,
+        "dexBytes": 3645,
+        "nativeBytes": 26184,
+        "resourceBytes": 0,
+        "otherBytes": -3
+      },
+      "noR8": {
+        "apkBytes": 16384,
+        "dexBytes": 6617,
+        "nativeBytes": 26184,
+        "resourceBytes": 0,
+        "otherBytes": 1
+      }
+    }
+  ]
+}
