@@ -77,7 +77,7 @@ enum RNAPPlayError: Error, CustomLocalizedStringResourceConvertible {
 /// Plays a catalog item, without opening the app (see the audio conformances
 /// at the end).
 @available(iOS 16, *)
-struct PlayCatalogItemIntent: AppIntent {
+struct PlayCatalogItemIntent: SystemIntent {
   static let title: LocalizedStringResource = "Play"
   static let description: IntentDescription? = IntentDescription("Plays a station, a show or a song.")
 
@@ -103,7 +103,7 @@ struct PlayCatalogItemIntent: AppIntent {
 
 /// Plays the last item played, else the first.
 @available(iOS 16, *)
-struct PlaySomethingIntent: AppIntent {
+struct PlaySomethingIntent: SystemIntent {
   static let title: LocalizedStringResource = "Play Something"
   static let description: IntentDescription? = IntentDescription("Plays what you listened to last.")
 
@@ -129,7 +129,9 @@ enum RNAPPlay {
 // over the audio. iOS 16 calls the protocol AudioStartingIntent, iOS 17
 // renamed it AudioPlaybackIntent. (Swift warns about the old name even below
 // iOS 17, except inside something deprecated: hence `deprecated` on the
-// extensions, which only affects warnings.)
+// extensions, which only affects warnings. The intents declare SystemIntent,
+// which both refine, themselves, so that conformance is not the deprecated
+// extension's.)
 @available(iOS 16, *)
 @available(*, deprecated, message: "iOS 16's AudioPlaybackIntent")
 extension PlayCatalogItemIntent: AudioStartingIntent {}
