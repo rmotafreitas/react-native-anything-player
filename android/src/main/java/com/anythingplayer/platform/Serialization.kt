@@ -191,6 +191,13 @@ internal fun statusToMap(status: Status, seq: Long): WritableMap =
     putDouble("volume", status.volume)
     putBoolean("muted", status.muted)
     putDouble("rate", status.rate)
+    putMap(
+      "route",
+      Arguments.createMap().apply {
+        putString("kind", status.route.kind.wire)
+        if (status.route.name == null) putNull("name") else putString("name", status.route.name)
+      },
+    )
   }
 
 internal fun metadataToMap(metadata: StreamMetadata, timestamp: Long): WritableMap =

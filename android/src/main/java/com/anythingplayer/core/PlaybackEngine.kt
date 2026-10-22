@@ -30,6 +30,12 @@ interface EngineDriver {
   /** Effective output volume (volume × mute × duck), 0..1. */
   fun setVolume(effective: Double)
   fun setRate(rate: Double)
+  /**
+   * Send what follows to another output (`'local'`, `'cast:<device>'`). Only
+   * the platform's routing driver implements a real switch; the engine calls
+   * it from `handoff`, after unloading the item from the previous output.
+   */
+  fun switchOutput(outputId: String)
   fun sample(): PlaybackSample
 }
 
@@ -95,6 +101,12 @@ class PlaybackEngine(
   private var muted = false
   private var rate = 1.0
 
+  // ── Output ──
+  private var route = AudioRoute.UNKNOWN
+  private var outputId = "local"
+  /** The audio plays on another device (Cast): the local audio rules are off. */
+  private var remote = false
+
   // ── Timing (monotonic ms) ──
   private var lastOpenAt: Long? = null
   private var flowedSinceOpen = false
@@ -153,6 +165,7 @@ class PlaybackEngine(
         volume = volume,
         muted = muted,
         rate = rate,
+        route = route,
       )
     }
 
@@ -164,7 +177,10 @@ class PlaybackEngine(
 
   /** Whether the player holds (or may soon re-take) audio focus. */
   val needsAudioFocus: Boolean
-    get() = playWhenReady || (interruption?.resumable ?: false)
+    get() {
+      if (remote) return false
+      return playWhenReady || (interruption?.resumable ?: false)
+    }
 
   /** Native observations for any other generation are stale and must be dropped. */
   fun accepts(generation: Int): Boolean = !released && generation == this.generation
@@ -189,7 +205,7 @@ class PlaybackEngine(
     resetRecovery()
     resumePosition = startPosition
     playWhenReady = wanted
-    if (wanted) applyFocus(delegate?.engineRequestsAudioFocus() ?: FocusResult.GRANTED)
+    if (wanted) applyFocus(requestFocus())
     log("load", mapOf("uri" to newSource.uri, "autoplay" to "$playWhenReady"))
     open(startPosition, "load")
     commit()
@@ -202,7 +218,7 @@ class PlaybackEngine(
       commit()
       return
     }
-    when (delegate?.engineRequestsAudioFocus() ?: FocusResult.GRANTED) {
+    when (requestFocus()) {
       FocusResult.DENIED -> {
         interruption = Interruption(InterruptionReason.AUDIO_FOCUS_DENIED, false, clock.wallMs)
         log("play refused", mapOf("focus" to "denied"))
@@ -325,7 +341,7 @@ class PlaybackEngine(
   fun setDucked(ducked: Boolean) {
     if (released) return
     duckFactor = if (ducked) 0.2 else 1.0
-    applyVolume()
+    if (!remote) applyVolume()
   }
 
   fun release() {
@@ -340,6 +356,59 @@ class PlaybackEngine(
     commit()
     released = true
     delegate?.engineWakeupAt(null)
+  }
+
+  // ── Output ──
+
+  /** The local output changed (headphones, AirPlay, Bluetooth). Ignored while casting. */
+  fun routeChanged(next: AudioRoute) {
+    if (released) return
+    if (remote) {
+      log("route ignored", mapOf("kind" to next.kind.wire, "note" to "remote output"))
+      return
+    }
+    route = next
+    commit()
+  }
+
+  /**
+   * The audio moves to another output: a Cast receiver, or back to the
+   * device. The item is unloaded from the previous output and, if it was
+   * active, re-opened on the new one at the same position. `resume` keeps the
+   * play intent; without it the item arrives paused. An inactive item
+   * (stopped, ended, failed) re-opens on the new output at the next `play()`.
+   */
+  fun handoff(next: AudioRoute, outputId: String, resume: Boolean) {
+    if (released) return
+    if (outputId == this.outputId) {
+      route = next
+      commit()
+      return
+    }
+    val position = handoffPosition()
+    // A paused stream whose connection was released stays released.
+    val active =
+      source != null && continuesIntent(state) && !(state == PlaybackState.PAUSED && connectionReleased)
+    if (source != null) driver.unload()
+    driver.switchOutput(outputId)
+    this.outputId = outputId
+    route = next
+    remote = next.kind == AudioRouteKind.CAST
+    log("handoff", mapOf("to" to outputId, "resume" to "$resume"))
+    applyVolume()
+    if (active) {
+      playWhenReady = resume && playWhenReady
+      resetRecovery()
+      resumePosition = position
+      if (playWhenReady) applyFocus(requestFocus())
+      open(position, "handoff")
+    } else {
+      // Old-output callbacks are stale; nothing is loaded on the new one.
+      generation += 1
+      readyForGeneration = false
+      if (source != null) connectionReleased = true
+    }
+    commit()
   }
 
   // ── Native observations (generation-guarded) ──
@@ -430,13 +499,23 @@ class PlaybackEngine(
   fun onPausedExternally(generation: Int, reason: InterruptionReason) {
     if (!accepts(generation)) return logStale("paused externally", generation)
     if (!playWhenReady) return
-    interruptionBegan(reason, false)
+    systemPause(reason, false)
   }
 
   // ── System events ──
 
   fun interruptionBegan(reason: InterruptionReason, resumable: Boolean) {
     if (released) return
+    if (remote) {
+      // A call on the phone does not pause the living-room speaker.
+      log("interruption ignored", mapOf("reason" to reason.wire, "note" to "remote output"))
+      return
+    }
+    systemPause(reason, resumable)
+  }
+
+  /** Shared by the system inputs and the externally-paused observation. */
+  private fun systemPause(reason: InterruptionReason, resumable: Boolean) {
     if (!playWhenReady) {
       val current = interruption
       if (current != null && current.resumable && !resumable) {
@@ -468,6 +547,11 @@ class PlaybackEngine(
     if (released) return
     val previous = network
     network = next
+    if (remote) {
+      // The receiver has its own network: the phone's must not reload it.
+      commit()
+      return
+    }
     val t = now
     when {
       previous == NetworkState.ONLINE && next == NetworkState.OFFLINE -> {
@@ -495,7 +579,7 @@ class PlaybackEngine(
 
   /** The app came to the foreground: recover wanted-but-silent audio now. */
   fun appForegrounded() {
-    if (released || !playWhenReady) return
+    if (released || !playWhenReady || remote) return
     if (state == PlaybackState.RECONNECTING || state == PlaybackState.BUFFERING || state == PlaybackState.LOADING) {
       attemptReconnect("app foregrounded")
     }
@@ -504,7 +588,7 @@ class PlaybackEngine(
 
   /** The platform media stack was reset; the driver has been rebuilt. */
   fun platformReset() {
-    if (released || source == null || state == PlaybackState.IDLE) return
+    if (released || remote || source == null || state == PlaybackState.IDLE) return
     log("platform reset", emptyMap())
     if (state == PlaybackState.STOPPED || state == PlaybackState.ENDED || state == PlaybackState.ERROR) {
       connectionReleased = true
@@ -580,6 +664,10 @@ class PlaybackEngine(
     if (released) throw PlayerError(ErrorCode.PLAYER_RELEASED, "The player was released.", false)
   }
 
+  /** Audio focus is the device's: a remote output always has it. */
+  private fun requestFocus(): FocusResult =
+    if (remote) FocusResult.GRANTED else delegate?.engineRequestsAudioFocus() ?: FocusResult.GRANTED
+
   private fun applyFocus(focus: FocusResult) {
     when (focus) {
       FocusResult.GRANTED -> Unit
@@ -617,15 +705,22 @@ class PlaybackEngine(
         }
       }
       PlaybackState.STOPPED, PlaybackState.ERROR -> reopen(cause, if (isLive) null else resumePosition)
-      PlaybackState.ENDED -> {
-        resumePosition = 0.0
-        setState(PlaybackState.BUFFERING, "$cause: restart")
-        beginWaiting()
-        driver.seek(0.0)
-        driver.play()
-      }
+      PlaybackState.ENDED -> restartFromEnd(cause)
       PlaybackState.BUFFERING, PlaybackState.PLAYING, PlaybackState.RECONNECTING -> Unit
     }
+  }
+
+  private fun restartFromEnd(cause: String) {
+    resumePosition = 0.0
+    if (connectionReleased) {
+      // The item left its output (a handoff): open it again.
+      reopen("$cause: restart", 0.0)
+      return
+    }
+    setState(PlaybackState.BUFFERING, "$cause: restart")
+    beginWaiting()
+    driver.seek(0.0)
+    driver.play()
   }
 
   private fun pauseIntent(cause: String) {
@@ -679,6 +774,15 @@ class PlaybackEngine(
 
   private fun currentPositionEstimate(): Double? =
     if (isLive) null else if (lastPosition > 0) lastPosition else null
+
+  /** Where the item is, read before it leaves its output. */
+  private fun handoffPosition(): Double? {
+    if (isLive) return null
+    val sampled =
+      state == PlaybackState.PLAYING || state == PlaybackState.BUFFERING || state == PlaybackState.PAUSED
+    if (sampled && readyForGeneration && !connectionReleased) rememberPosition()
+    return resumePosition ?: currentPositionEstimate()
+  }
 
   private fun rememberPosition() {
     if (isLive) return
@@ -768,7 +872,11 @@ class PlaybackEngine(
       return
     }
     if (recoveringSince == null) recoveringSince = now
-    if (network == NetworkState.OFFLINE && offlineSkips < RecoveryPolicy.OFFLINE_PROBE_EVERY) {
+    if (
+      !remote &&
+      network == NetworkState.OFFLINE &&
+      offlineSkips < RecoveryPolicy.OFFLINE_PROBE_EVERY
+    ) {
       offlineSkips += 1
       val delay = backoff.next()
       nextAttemptAt = now + delay
@@ -801,7 +909,7 @@ class PlaybackEngine(
         }
       }
       PlaybackState.PLAYING -> heartbeatPlaying(t, suspect)
-      PlaybackState.BUFFERING -> heartbeatBuffering(t, suspect)
+      PlaybackState.BUFFERING -> if (remote) heartbeatRemoteBuffering(t) else heartbeatBuffering(t, suspect)
       else -> Unit
     }
   }
@@ -809,16 +917,23 @@ class PlaybackEngine(
   private fun heartbeatPlaying(t: Long, suspect: Boolean) {
     val sample = driver.sample()
     if (!isLive) resumePosition = sample.position
-    if (sample.position > lastPosition + 0.05 || sample.position < lastPosition - 0.5) {
-      lastPosition = sample.position
-      lastPositionAdvanceAt = t
-    } else {
-      val stallLimit = if (suspect) RecoveryPolicy.SUSPECT_SILENT_STALL_MS else RecoveryPolicy.SILENT_STALL_MS
-      if (t - lastPositionAdvanceAt >= stallLimit && rate > 0) {
-        log("silent stall", mapOf("frozenMs" to "${t - lastPositionAdvanceAt}"))
-        setState(PlaybackState.BUFFERING, "silent stall")
-        beginWaiting()
-        stallStartedAt = lastPositionAdvanceAt
+    when {
+      sample.position > lastPosition + 0.05 || sample.position < lastPosition - 0.5 -> {
+        lastPosition = sample.position
+        lastPositionAdvanceAt = t
+      }
+      remote -> {
+        // A receiver's position is interpolated between its reports: only the
+        // state it reports (buffering, failed) counts.
+      }
+      else -> {
+        val stallLimit = if (suspect) RecoveryPolicy.SUSPECT_SILENT_STALL_MS else RecoveryPolicy.SILENT_STALL_MS
+        if (t - lastPositionAdvanceAt >= stallLimit && rate > 0) {
+          log("silent stall", mapOf("frozenMs" to "${t - lastPositionAdvanceAt}"))
+          setState(PlaybackState.BUFFERING, "silent stall")
+          beginWaiting()
+          stallStartedAt = lastPositionAdvanceAt
+        }
       }
     }
     val playing = playingSince
@@ -853,6 +968,14 @@ class PlaybackEngine(
     }
   }
 
+  /** No buffer to watch on a receiver: only a stall that lasts too long. */
+  private fun heartbeatRemoteBuffering(t: Long) {
+    val stalled = stallStartedAt
+    if (stalled != null && t - stalled >= RecoveryPolicy.STALL_MAX_MS) {
+      attemptReconnect("stalled ${t - stalled}ms")
+    }
+  }
+
   private fun armPauseRelease() {
     val source = this.source ?: return
     if (!source.isNetwork || !(isLive || duration == null) || connectionReleased) return
@@ -874,7 +997,8 @@ class PlaybackEngine(
   }
 
   private fun applyVolume() {
-    driver.setVolume(if (muted) 0.0 else volume * duckFactor)
+    val duck = if (remote) 1.0 else duckFactor
+    driver.setVolume(if (muted) 0.0 else volume * duck)
   }
 
   private fun settlePendingLoad(outcome: LoadOutcome) {

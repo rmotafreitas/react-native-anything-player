@@ -131,6 +131,36 @@ data class ReconnectInfo(
   val reason: String,
 )
 
+/** The kind of audio output. Mirrors `AudioRouteKind` in `src/types.ts`. */
+enum class AudioRouteKind(val wire: String) {
+  SPEAKER("speaker"),
+  HEADPHONES("headphones"),
+  BLUETOOTH("bluetooth"),
+  AIRPLAY("airplay"),
+  CAST("cast"),
+  CAR("car"),
+  HDMI("hdmi"),
+  USB("usb"),
+  OTHER("other"),
+  UNKNOWN("unknown");
+
+  companion object {
+    fun fromWire(value: String?): AudioRouteKind? = entries.firstOrNull { it.wire == value }
+  }
+}
+
+/** Where a player's audio goes. Mirrors `AudioRoute` in `src/types.ts`. */
+data class AudioRoute(
+  val kind: AudioRouteKind,
+  /** The device's name when the platform tells it ("Living Room"), else `null`. */
+  val name: String?,
+) {
+  companion object {
+    /** The route before the platform reports one: the engine never guesses. */
+    val UNKNOWN = AudioRoute(AudioRouteKind.UNKNOWN, null)
+  }
+}
+
 /** The authoritative snapshot published to JS. Mirrors `PlayerStatus` in TS. */
 data class Status(
   val state: PlaybackState = PlaybackState.IDLE,
@@ -147,6 +177,8 @@ data class Status(
   val volume: Double = 1.0,
   val muted: Boolean = false,
   val rate: Double = 1.0,
+  /** The output the audio goes to (speaker, AirPods, a Cast receiver). */
+  val route: AudioRoute = AudioRoute.UNKNOWN,
 )
 
 /** One structured diagnostic line (ring-buffered natively, optionally streamed). */

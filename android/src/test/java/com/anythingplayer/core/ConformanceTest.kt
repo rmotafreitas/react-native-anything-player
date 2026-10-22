@@ -137,6 +137,12 @@ class ConformanceTest {
           },
           step.optBoolean("handoff", false),
         )
+      step.has("route") -> h.engine.routeChanged(
+        AudioRoute(
+          AudioRouteKind.fromWire(step.getString("route")) ?: error("$at: bad route kind"),
+          text(step, "name"),
+        ),
+      )
       step.has("platformReset") -> h.engine.platformReset()
       step.has("advance") -> h.advance(step.getLong("advance"))
       step.has("expect") -> check(step.getJSONObject("expect"), h, at)
@@ -164,9 +170,22 @@ class ConformanceTest {
       "rate" -> h.engine.setRate(value)
       "duck" -> h.engine.setDucked(step.optBoolean("value", false))
       "foreground" -> h.engine.appForegrounded()
+      "handoff" ->
+        h.engine.handoff(
+          AudioRoute(
+            AudioRouteKind.fromWire(step.getString("route")) ?: error("bad route kind"),
+            text(step, "name"),
+          ),
+          step.getString("output"),
+          step.optBoolean("resume", false),
+        )
       else -> fail("unknown call $call")
     }
   }
+
+  /** A string field that may be absent or JSON-null. */
+  private fun text(step: JSONObject, key: String): String? =
+    if (step.has(key) && !step.isNull(key)) step.getString(key) else null
 
   private fun stringList(array: JSONArray): List<String> = (0 until array.length()).map { array.getString(it) }
 
@@ -192,6 +211,8 @@ class ConformanceTest {
         "ended" -> assertEquals("$at: ended", (v as Number).toInt(), h.recorder.ended)
         "wantsKeepalive" -> assertEquals("$at: wantsKeepalive", v, h.engine.wantsKeepalive)
         "needsAudioFocus" -> assertEquals("$at: needsAudioFocus", v, h.engine.needsAudioFocus)
+        "route" -> assertEquals("$at: route", v, s.route.kind.wire)
+        "routeName" -> assertEquals("$at: routeName", v, s.route.name)
         else -> fail("$at: unknown expectation $key")
       }
     }
