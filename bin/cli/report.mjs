@@ -150,13 +150,15 @@ export function formatModuleChanges({
   action,
   applied,
   skipped,
+  failed = [],
   dryRun,
   manual,
   nextSteps,
   paint,
 }) {
   const lines = [];
-  const total = applied.length + skipped.length;
+  const notApplied = skipped.length + failed.length;
+  const total = applied.length + notApplied;
   lines.push('');
   if (total === 0) {
     lines.push(
@@ -171,7 +173,7 @@ export function formatModuleChanges({
   } else {
     lines.push(
       `${applied.length} file${applied.length === 1 ? '' : 's'} changed${
-        skipped.length > 0 ? `, ${skipped.length} not applied` : ''
+        notApplied > 0 ? `, ${notApplied} not applied` : ''
       }.`
     );
   }

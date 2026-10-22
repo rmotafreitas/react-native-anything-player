@@ -349,7 +349,7 @@ export async function runToggle({
       })
     );
 
-  const { applied, skipped } = await reviewChanges({
+  const { applied, skipped, failed } = await reviewChanges({
     changes,
     yes: Boolean(yes) && !dryRun,
     dryRun: effectiveDryRun,
@@ -368,13 +368,14 @@ export async function runToggle({
     modules: rows,
     applied: applied.map(changeSummary),
     skipped: skipped.map(changeSummary),
+    failed: failed.map(failureSummary),
     manual,
     nextSteps: nextSteps(effectiveDryRun ? changes : applied),
   };
 
   if (json) {
     stdout.write(`${JSON.stringify(report, null, 2)}\n`);
-    return 0;
+    return failed.length > 0 ? 1 : 0;
   }
 
   for (const row of rows) {
@@ -388,13 +389,18 @@ export async function runToggle({
       action,
       applied,
       skipped,
+      failed,
       dryRun: effectiveDryRun,
       manual,
       nextSteps: report.nextSteps,
       paint,
     })
   );
-  return 0;
+  return failed.length > 0 ? 1 : 0;
+}
+
+function failureSummary({ change, error }) {
+  return { file: relative(change.cwd, change.absolute), error };
 }
 
 function changeSummary(change) {

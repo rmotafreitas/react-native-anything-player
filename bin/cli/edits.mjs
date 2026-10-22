@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { unifiedDiff } from './diff.mjs';
+import { Unsupported, patchJson } from './json-edit.mjs';
 
 function within(root, target) {
   return target === root || target.startsWith(`${root}${path.sep}`);
@@ -40,13 +41,45 @@ export function withEol(text, template) {
   return template.includes('\r\n') ? text.replace(/\n/g, '\r\n') : text;
 }
 
-/** Minimal, format-preserving JSON edit (indent and newlines kept). */
-export function editJson(text, mutate) {
+/**
+ * A format-preserving JSON edit: only the keys the mutation touches change in
+ * the text, the rest of the file stays byte for byte. For a structure it cannot
+ * patch (a removed key, a shortened array) the whole file is reserialized, and
+ * `note` says so. `null` when the mutation changes nothing.
+ *
+ * @returns {{text: string, note: string|null}|null}
+ */
+export function editJsonDetailed(text, mutate) {
   const value = JSON.parse(text);
-  if (mutate(value) === false) return null;
+  const next = structuredClone(value);
+  if (mutate(next) === false) return null;
+  try {
+    return { text: patchJson(text, value, next), note: null };
+  } catch (error) {
+    if (!(error instanceof Unsupported)) throw error;
+  }
   const indent = /^[{[][^\n]*\r?\n([ \t]+)/.exec(text)?.[1] ?? '  ';
-  const body = JSON.stringify(value, null, indent);
-  return withEol(body, text) + (text.endsWith('\n') ? '\n' : '');
+  const body = JSON.stringify(next, null, indent);
+  return {
+    text: withEol(body, text) + (text.endsWith('\n') ? '\n' : ''),
+    note: 'the file is rewritten in full: its layout cannot be patched in place',
+  };
+}
+
+/** `editJsonDetailed` for callers that only want the text (or `null`). */
+export function editJson(text, mutate) {
+  return editJsonDetailed(text, mutate)?.text ?? null;
+}
+
+/**
+ * What an edit function returned as text and a note: edits return the new text,
+ * `null` for no change, or `{ text, note }` (a JSON edit that fell back to
+ * rewriting the whole file says so).
+ */
+export function editResult(result) {
+  if (result === null || result === undefined) return { after: null, note: null };
+  if (typeof result === 'string') return { after: result, note: null };
+  return { after: result.text, note: result.note ?? null };
 }
 
 /** One file change: the diff is computed once, from the text it started with. */
@@ -72,6 +105,18 @@ export function buildChange({
   };
 }
 
+/** The target changed after the diff was shown: nothing is written. */
+export class ChangedSinceDiffError extends Error {}
+
+function currentText(file) {
+  try {
+    return fs.readFileSync(file, 'utf8');
+  } catch (error) {
+    if (error.code === 'ENOENT') return null;
+    throw error;
+  }
+}
+
 export function applyChange(change) {
   // Checked again: the tree may have changed while the user read the diff.
   if (
@@ -79,7 +124,31 @@ export function applyChange(change) {
     change.absolute
   )
     throw new Error(`${change.file} is no longer a file inside the project`);
-  fs.writeFileSync(change.absolute, change.after, 'utf8');
+  // The diff was computed from `before`: a file that is no longer that text
+  // would lose whatever was written in the meantime.
+  const current = currentText(change.absolute);
+  if (current !== (change.create && current === null ? null : change.before))
+    throw new ChangedSinceDiffError(
+      `${change.file} changed since the diff was shown, so nothing was written to it: run the command again`
+    );
+
+  // Written beside the target and renamed over it: a crash leaves the old file
+  // or the new one, never half of either. The file's mode is kept.
+  const directory = path.dirname(change.absolute);
+  const temporary = path.join(
+    directory,
+    `.${path.basename(change.absolute)}.rnap-${process.pid}.tmp`
+  );
+  const mode =
+    current === null ? 0o644 : fs.statSync(change.absolute).mode & 0o7777;
+  try {
+    fs.writeFileSync(temporary, change.after, { encoding: 'utf8', mode });
+    fs.chmodSync(temporary, mode);
+    fs.renameSync(temporary, change.absolute);
+  } catch (error) {
+    fs.rmSync(temporary, { force: true });
+    throw error;
+  }
 }
 
 /**
@@ -128,7 +197,11 @@ export function createAsker(input, output) {
  * Shows every change as a unified diff and applies the accepted ones.
  * `--yes` accepts everything, `--dry-run` asks nothing and writes nothing.
  *
- * @returns {Promise<{applied: object[], skipped: object[]}>}
+ * A change that cannot be written (the file changed since the diff, or left
+ * the project) is reported, listed in `failed` and left untouched; the other
+ * changes go on.
+ *
+ * @returns {Promise<{applied: object[], skipped: object[], failed: {change: object, error: string}[]}>}
  */
 export async function reviewChanges({
   changes,
@@ -141,6 +214,7 @@ export async function reviewChanges({
 }) {
   const applied = [];
   const skipped = [];
+  const failed = [];
   const asker = yes || dryRun ? null : createAsker(stdin, stdout);
   try {
     for (const [index, change] of changes.entries()) {
@@ -164,12 +238,19 @@ export async function reviewChanges({
         skipped.push(change);
         continue;
       }
-      applyChange(change);
+      try {
+        applyChange(change);
+      } catch (error) {
+        if (!(error instanceof Error)) throw error;
+        failed.push({ change, error: error.message });
+        if (!quiet) stdout.write(`${paint(`Not applied: ${error.message}`, 'red')}\n`);
+        continue;
+      }
       applied.push(change);
       if (!quiet) stdout.write('Applied.\n');
     }
   } finally {
     asker?.close();
   }
-  return { applied, skipped };
+  return { applied, skipped, failed };
 }

@@ -15,7 +15,7 @@ import {
   removePlistArrayItem,
   setPlistString,
 } from './plist.mjs';
-import { editJson } from './edits.mjs';
+import { editJsonDetailed, editResult } from './edits.mjs';
 import { readText, relative } from './util.mjs';
 
 /**
@@ -310,9 +310,9 @@ function pluginEntryIndex(plugins) {
   );
 }
 
-/** Sets one plugin option in an app.json, keeping the file's layout. */
+/** Sets one plugin option in an app.json, keeping the file's layout (see `editJsonDetailed`). */
 export function setPluginOption(text, key, value) {
-  return editJson(text, (config) => {
+  return editJsonDetailed(text, (config) => {
     const expo = config.expo;
     if (!expo || typeof expo !== 'object') return false;
     const plugins = Array.isArray(expo.plugins) ? expo.plugins : [];
@@ -381,15 +381,22 @@ export function planModuleChanges(ctx, module, on, { readFile } = {}) {
     const before = read(file) ?? '';
     if (before === '' && !create) return false;
     let after;
+    let note;
     try {
-      after = apply(before);
+      ({ after, note } = editResult(apply(before)));
     } catch {
       // A file the CLI cannot parse stays a printed instruction.
       manual.push(`Could not edit ${file}: fix it by hand, then ${change}.`);
       return false;
     }
     if (after === null || after === before) return false;
-    edits.push({ file, before, after, change, create });
+    edits.push({
+      file,
+      before,
+      after,
+      change: note ? `${change} (${note})` : change,
+      create,
+    });
     return true;
   };
 
@@ -437,7 +444,7 @@ export function planModuleChanges(ctx, module, on, { readFile } = {}) {
     addEdit(
       PODFILE_PROPERTIES,
       (before) =>
-        editJson(before === '' ? '{}\n' : before, (properties) => {
+        editJsonDetailed(before === '' ? '{}\n' : before, (properties) => {
           const value = propertyValue(on);
           if (properties[module.pod.key] === value) return false;
           properties[module.pod.key] = value;

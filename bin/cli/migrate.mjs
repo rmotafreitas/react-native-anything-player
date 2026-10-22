@@ -1429,7 +1429,7 @@ export async function runMigrate({
 
   const effectiveDryRun = Boolean(dryRun || (json && !yes));
   if (!json) stdout.write(formatMigrateHeader({ cwd, version, paint }));
-  const { applied, skipped: refused } = await reviewChanges({
+  const { applied, skipped: refused, failed } = await reviewChanges({
     changes,
     yes: Boolean(yes) && !dryRun,
     dryRun: effectiveDryRun,
@@ -1455,12 +1455,14 @@ export async function runMigrate({
       file: change.file,
       reason: 'not applied',
     })),
+    failed: failed.map(({ change, error }) => ({ file: change.file, error })),
     unparsed,
   };
+  const exitCode = unparsed.length > 0 || failed.length > 0 ? 1 : 0;
 
   if (json) {
     stdout.write(`${JSON.stringify(report, null, 2)}\n`);
-    return unparsed.length > 0 ? 1 : 0;
+    return exitCode;
   }
 
   if (changes.length === 0) {
@@ -1486,5 +1488,5 @@ export async function runMigrate({
   stdout.write(
     '\nNext: follow the guide for the parts marked `// rnap-migrate:`, then remove the old package and rebuild.\n'
   );
-  return unparsed.length > 0 ? 1 : 0;
+  return exitCode;
 }
