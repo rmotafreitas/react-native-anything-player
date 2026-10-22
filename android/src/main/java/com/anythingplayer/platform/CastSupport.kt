@@ -29,6 +29,9 @@ internal interface CastHost {
   fun onCastSessionStarted(deviceId: String, deviceName: String)
 
   fun onCastSessionEnded()
+
+  /** The receiver's own volume changed (its remote, another sender, our own request). */
+  fun onCastVolumeChanged()
 }
 
 /**

@@ -6,6 +6,7 @@ import android.os.Looper
 import android.util.Log
 import androidx.annotation.OptIn
 import androidx.media3.common.C
+import androidx.media3.common.DeviceInfo
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
@@ -15,6 +16,8 @@ import androidx.media3.common.SimpleBasePlayer
 import androidx.media3.common.util.UnstableApi
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
+import kotlin.math.roundToInt
+import com.anythingplayer.core.AudioRouteKind
 import com.anythingplayer.core.PlaybackState
 import com.anythingplayer.core.PlayerError
 
@@ -32,6 +35,9 @@ import com.anythingplayer.core.PlayerError
  * - Every command must go through the engine (live-edge policy, user-pause
  *   latch), never straight to ExoPlayer.
  */
+/** The receiver's volume as the session's remote-volume scale: one hardware key press is one step (5 %). */
+private const val CAST_VOLUME_STEPS = 20
+
 @OptIn(UnstableApi::class)
 internal class SessionPlayer : SimpleBasePlayer(Looper.getMainLooper()) {
   /** The last local artwork read (uri → bytes): states are rebuilt often. */
@@ -117,6 +123,7 @@ internal class SessionPlayer : SimpleBasePlayer(Looper.getMainLooper()) {
     val builder =
       State.Builder()
         .setAvailableCommands(commands)
+        .also { withReceiverVolume(it, status.route.kind == AudioRouteKind.CAST) }
         .setPlaylist(listOf(itemBuilder.build()))
         .setCurrentMediaItemIndex(0)
         .setPlaybackParameters(PlaybackParameters(status.rate.toFloat()))
@@ -153,6 +160,19 @@ internal class SessionPlayer : SimpleBasePlayer(Looper.getMainLooper()) {
     return builder.build()
   }
 
+  /**
+   * While the receiver plays, the session is remote playback: the hardware
+   * volume keys control the receiver's volume (the stream volume stays the
+   * player's `setVolume`).
+   */
+  private fun withReceiverVolume(state: State.Builder, casting: Boolean) {
+    if (!casting) return
+    val volume = AnythingPlayerRuntime.castVolume() ?: return
+    state
+      .setDeviceInfo(DeviceInfo.Builder(DeviceInfo.PLAYBACK_TYPE_REMOTE).setMinVolume(0).setMaxVolume(CAST_VOLUME_STEPS).build())
+      .setDeviceVolume((volume * CAST_VOLUME_STEPS).roundToInt())
+  }
+
   private fun availableCommands(seekable: Boolean, remote: Set<String>): Player.Commands {
     val commands =
       Player.Commands.Builder()
@@ -165,6 +185,13 @@ internal class SessionPlayer : SimpleBasePlayer(Looper.getMainLooper()) {
           Player.COMMAND_GET_TIMELINE,
           Player.COMMAND_RELEASE,
         )
+    if (AnythingPlayerRuntime.castVolume() != null) {
+      commands.addAll(
+        Player.COMMAND_GET_DEVICE_VOLUME,
+        Player.COMMAND_SET_DEVICE_VOLUME_WITH_FLAGS,
+        Player.COMMAND_ADJUST_DEVICE_VOLUME_WITH_FLAGS,
+      )
+    }
     // Voice: an assistant can replace what plays with something from the catalog.
     if (Voice.hasItems()) commands.addAll(Player.COMMAND_SET_MEDIA_ITEM, Player.COMMAND_CHANGE_MEDIA_ITEMS)
     if (seekable) commands.add(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)
@@ -213,6 +240,21 @@ internal class SessionPlayer : SimpleBasePlayer(Looper.getMainLooper()) {
     } catch (error: PlayerError) {
       Log.w("RNAP", "assistant request failed: ${error.message}")
     }
+    return Futures.immediateVoidFuture()
+  }
+
+  override fun handleSetDeviceVolume(deviceVolume: Int, flags: Int): ListenableFuture<*> {
+    AnythingPlayerRuntime.setCastVolume(deviceVolume.toDouble() / CAST_VOLUME_STEPS)
+    return Futures.immediateVoidFuture()
+  }
+
+  override fun handleIncreaseDeviceVolume(flags: Int): ListenableFuture<*> = stepReceiverVolume(+1)
+
+  override fun handleDecreaseDeviceVolume(flags: Int): ListenableFuture<*> = stepReceiverVolume(-1)
+
+  private fun stepReceiverVolume(direction: Int): ListenableFuture<*> {
+    val current = AnythingPlayerRuntime.castVolume() ?: return Futures.immediateVoidFuture()
+    AnythingPlayerRuntime.setCastVolume(((current * CAST_VOLUME_STEPS).roundToInt() + direction).toDouble() / CAST_VOLUME_STEPS)
     return Futures.immediateVoidFuture()
   }
 

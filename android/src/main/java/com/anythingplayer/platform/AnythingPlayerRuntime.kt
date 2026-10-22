@@ -219,6 +219,10 @@ internal object AnythingPlayerRuntime : FocusListener {
       override fun onCastSessionStarted(deviceId: String, deviceName: String) = cast.sessionStarted(deviceId, deviceName, active)
 
       override fun onCastSessionEnded() = cast.sessionEnded()
+
+      override fun onCastVolumeChanged() {
+        sessionPlayer?.refresh()
+      }
     }
 
   /** Any thread. */
