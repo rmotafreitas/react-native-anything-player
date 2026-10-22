@@ -292,6 +292,24 @@ describe('a ManagedMediaSource and AirPlay', () => {
     expect(element.disableRemotePlayback).toBe(true);
   });
 
+  it("clears a previous item's src before attaching the media source", async () => {
+    const id = module.createPlayer({});
+    module
+      .load(id, { uri: 'https://cdn.example/song.mp3', live: false }, {})
+      .catch(() => undefined);
+    await flush();
+    const element = world.element();
+    expect(element.src).toBe('https://cdn.example/song.mp3');
+    world.fetch.respond({ headers: ICY });
+    module
+      .load(id, { uri: 'https://radio.example/live.mp3' }, { autoplay: true })
+      .catch(() => undefined);
+    await flush();
+    expect(element.src).toBe('');
+    expect(element.children).toHaveLength(2);
+    expect(element.mediaSource).not.toBeNull();
+  });
+
   it('removes the sources with the stream, and lets the next item use AirPlay again', async () => {
     const { id, element } = await open('https://radio.example/live', {
       Authorization: 'secret',

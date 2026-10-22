@@ -223,7 +223,7 @@ export class WebPlayerController implements EngineDelegate, DriverObserver {
     this.clearTimers();
     this.engine.release();
     this.elementRoute.detach();
-    this.driver.destroy();
+    this.routing.destroy();
     this.pendingLoads.clear();
   }
 

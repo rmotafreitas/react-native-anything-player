@@ -583,6 +583,10 @@ describe('playing on a receiver', () => {
     await flush();
     await module.releasePlayer(id);
     expect(cast.stops).toBe(1);
+    // The SDK outlives the player: nothing of it stays subscribed.
+    expect(cast.controllers.map((c) => c.count('anyChanged'))).toEqual(
+      cast.controllers.map(() => 0)
+    );
   });
 
   it('fails softly when there is no session to play on', async () => {

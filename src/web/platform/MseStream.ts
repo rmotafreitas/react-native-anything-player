@@ -200,6 +200,9 @@ export class MseStream {
    */
   private attachManaged(objectUrl: string): void {
     const document = browser().document!;
+    // An element `src` (the previous item's) would win over child sources.
+    this.element.removeAttribute('src');
+    this.element.load();
     const primary = document.createElement('source');
     primary.src = objectUrl;
     this.sources = [primary];

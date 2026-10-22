@@ -75,6 +75,8 @@ export class CastDriver implements EngineDriver {
   private source: SourceDescriptor | null = null;
   private player: RemotePlayerLike | null = null;
   private controller: RemotePlayerControllerLike | null = null;
+  private changeType: string | null = null;
+  private readonly changed = () => this.receiverChanged();
   /** An item is open on the receiver (between `open` and `unload`/`releaseConnection`). */
   private active = false;
   /** The receiver accepted the load: its state is now the item's. */
@@ -218,10 +220,17 @@ export class CastDriver implements EngineDriver {
     const { framework } = sdk;
     this.player = new framework.RemotePlayer();
     this.controller = new framework.RemotePlayerController(this.player);
-    this.controller.addEventListener(
-      framework.RemotePlayerEventType.ANY_CHANGE,
-      () => this.receiverChanged()
-    );
+    this.changeType = framework.RemotePlayerEventType.ANY_CHANGE;
+    this.controller.addEventListener(this.changeType, this.changed);
+  }
+
+  /** The player was released: stop observing the receiver (the SDK outlives players). */
+  dispose(): void {
+    if (this.controller && this.changeType)
+      this.controller.removeEventListener(this.changeType, this.changed);
+    this.controller = null;
+    this.player = null;
+    this.changeType = null;
   }
 
   private loadSettled(generation: number, code: string | null): void {

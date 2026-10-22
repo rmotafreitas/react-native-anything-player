@@ -251,6 +251,7 @@ class FakeContext extends Emitter {
 
 interface FakeController {
   change(): void;
+  count(type: string): number;
 }
 
 function namespacesOf(fake: FakeCast): { cast: object; chrome: object } {

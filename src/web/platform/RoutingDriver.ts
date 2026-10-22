@@ -20,6 +20,12 @@ export class RoutingDriver implements EngineDriver {
     this.target = local;
   }
 
+  /** The player was released: free the element and stop observing the receiver. */
+  destroy(): void {
+    this.local.destroy();
+    this.cast.dispose();
+  }
+
   /** Whether the audio plays on the Cast receiver. */
   get casting(): boolean {
     return this.target === this.cast;
