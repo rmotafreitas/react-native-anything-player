@@ -3,37 +3,46 @@
 top to bottom direction
 
 package "JavaScript  (src/)" {
-  rectangle "<b>Player · hooks · PlayerError" as JS #FFE4D5
+  rectangle "<b>Player · hooks · PlayerError\n<size:11><color:#6B4A45>react-native-anything-player · /react · /web" as JS #FFE4D5
 }
 
-package "TurboModule  (Codegen spec: src/native/NativeAnythingPlayer.ts)" {
+package "Module  (one contract: the Codegen spec, src/native/NativeAnythingPlayer.ts)" {
   rectangle "<b>AnythingPlayerModule.mm → AnythingPlayerBridge.swift" as BridgeIOS
   rectangle "<b>AnythingPlayerModule.kt" as BridgeAndroid
+  rectangle "<b>WebModule.ts\n<size:11><color:#6B4A45>the browser, no native code" as BridgeWeb
 }
 
 package "Host  (one per platform)" {
   rectangle "<b>PlayerController\n<size:11><color:#6B4A45>engine delegate · snapshots · events" as Controller
-  rectangle "<b>Runtime\n<size:11><color:#6B4A45>audio session / focus · network · lifecycle\n<size:11><color:#6B4A45>media session · keepalive / wake locks" as Runtime
+  rectangle "<b>Runtime\n<size:11><color:#6B4A45>audio session / focus · network · lifecycle\n<size:11><color:#6B4A45>media session · Cast session · voice catalog" as Runtime
 }
 
-package "Engine  (twins, no media framework imports)" {
-  rectangle "<b>PlaybackEngine\n<size:11><color:#6B4A45>intent · state machine · recovery · timing\n<size:11><color:#6B4A45>Swift: ios/Core/ · Kotlin: android/…/core/" as Engine #FFE4D5
-  rectangle "<b>conformance/*.json\n<size:11><color:#6B4A45>59 shared scenarios" as Spec
+package "Engine  (three twins, no media framework imports)" {
+  rectangle "<b>PlaybackEngine\n<size:11><color:#6B4A45>intent · state machine · recovery · output handoff\n<size:11><color:#6B4A45>Swift: ios/Core/ · Kotlin: android/…/core/ · TypeScript: src/web/engine/" as Engine #FFE4D5
+  rectangle "<b>conformance/*.json\n<size:11><color:#6B4A45>80 shared scenarios" as Spec
 }
 
 package "Drivers" {
+  rectangle "<b>RoutingDriver\n<size:11><color:#6B4A45>this device, or a Cast receiver" as Routing
   rectangle "<b>AVPlayerDriver + StreamProxy" as AV
   rectangle "<b>ExoPlayerDriver (Media3)" as Exo
+  rectangle "<b>MediaElementDriver + MseStream" as Web
+  rectangle "<b>Cast output\n<size:11><color:#6B4A45>opt-in" as Cast
 }
 
 JS -down-> BridgeIOS : commands\n(in call order)
-JS -down-> BridgeAndroid : sync reads (JSI)\ngetProgress / getStatus
+JS -down-> BridgeAndroid : sync reads\ngetProgress / getStatus
+JS -down-> BridgeWeb
 BridgeIOS -down-> Controller
 BridgeAndroid -down-> Controller
+BridgeWeb -down-> Controller
 Controller -up-> JS : seq-numbered\nstatus + events
 Controller -down-> Engine
-Runtime -down-> Engine : interruptions · focus\nnetwork edges
-Engine -down-> AV : open / play / pause\nseek / release
-Engine -down-> Exo
-Spec .left.> Engine : both twins pass
+Runtime -down-> Engine : interruptions · focus\nnetwork edges · handoff
+Engine -down-> Routing : open / play / pause\nseek / switchOutput
+Routing -down-> AV
+Routing -down-> Exo
+Routing -down-> Web
+Routing -down-> Cast
+Spec .left.> Engine : all three twins pass
 @enduml

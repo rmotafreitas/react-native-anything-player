@@ -33,7 +33,7 @@ Pod::Spec.new do |s|
   s.authors      = package["author"]
 
   s.platforms    = { :ios => min_ios_version_supported }
-  s.source       = { :git => "https://github.com/rmotafreitas/react-native-anything-player.git", :tag => "#{s.version}" }
+  s.source       = { :git => "https://github.com/rmotafreitas/react-native-anything-player.git", :tag => "v#{s.version}" }
 
   # Core/ is platform-free (also unit-tested with `swift test`), Platform/ is
   # the AVFoundation/MediaPlayer layer, AnythingPlayerModule.mm the TurboModule

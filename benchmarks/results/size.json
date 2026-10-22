@@ -1,29 +1,39 @@
 {
-  "measuredAt": "2026-10-05",
+  "measuredAt": "2026-10-22",
   "method": "benchmarks/size/measure.mjs",
   "packages": [
     {
       "name": "react-native-anything-player",
       "label": "RNAP",
       "role": "player (this repo)",
-      "version": "0.1.0",
+      "version": "1.1.0",
       "license": "PolyForm-Noncommercial-1.0.0",
-      "tarballBytes": 128650,
-      "unpackedBytes": 459690,
-      "jsMinBytes": 8105,
-      "jsGzipBytes": 2946,
+      "tarballBytes": 492937,
+      "unpackedBytes": 1797892,
+      "jsMinBytes": 19610,
+      "jsGzipBytes": 9206,
       "runtimeDependencies": [],
       "requiredPeers": [],
       "native": {
-        "files": 37,
-        "bytes": 327404,
-        "lines": 7877
+        "files": 61,
+        "bytes": 507694,
+        "lines": 12109,
+        "optIn": {
+          "files": 8,
+          "bytes": 46133,
+          "lines": 1110
+        }
       },
       "androidDependencies": [
         "androidx.media3:media3-datasource-okhttp",
         "androidx.media3:media3-exoplayer",
         "androidx.media3:media3-exoplayer-hls",
-        "androidx.media3:media3-session"
+        "androidx.media3:media3-session",
+        "androidx.mediarouter:mediarouter"
+      ],
+      "optInAndroidDependencies": [
+        "androidx.media3:media3-cast",
+        "com.google.android.gms:play-services-cast-framework"
       ],
       "vendoredBinaries": false
     },
@@ -53,6 +63,7 @@
         "androidx.mediarouter:mediarouter",
         "org.jetbrains.kotlinx:kotlinx-serialization-json"
       ],
+      "optInAndroidDependencies": [],
       "vendoredBinaries": false
     },
     {
@@ -79,27 +90,28 @@
         "com.github.doublesymmetry:kotlinaudio",
         "org.jetbrains.kotlinx:kotlinx-coroutines-core"
       ],
+      "optInAndroidDependencies": [],
       "vendoredBinaries": false
     },
     {
       "name": "expo-audio",
       "label": "expo-audio",
       "role": "player + recorder",
-      "version": "57.0.5",
+      "version": "58.0.10",
       "license": "MIT",
-      "tarballBytes": 688132,
-      "unpackedBytes": 1329801,
-      "jsMinBytes": 8288,
-      "jsGzipBytes": 2994,
+      "tarballBytes": 776277,
+      "unpackedBytes": 1344608,
+      "jsMinBytes": 8298,
+      "jsGzipBytes": 3011,
       "runtimeDependencies": [],
       "requiredPeers": [
         "expo",
         "expo-asset"
       ],
       "native": {
-        "files": 36,
-        "bytes": 221239,
-        "lines": 6410
+        "files": 41,
+        "bytes": 277076,
+        "lines": 7896
       },
       "androidDependencies": [
         "androidx.appcompat:appcompat",
@@ -113,6 +125,7 @@
         "androidx.media3:media3-session",
         "androidx.media3:media3-ui"
       ],
+      "optInAndroidDependencies": [],
       "vendoredBinaries": false
     },
     {
@@ -140,6 +153,7 @@
         "com.squareup.okhttp3:okhttp",
         "com.squareup.okhttp3:okhttp-urlconnection"
       ],
+      "optInAndroidDependencies": [],
       "vendoredBinaries": true
     },
     {
@@ -150,8 +164,8 @@
       "license": "MIT",
       "tarballBytes": 56273,
       "unpackedBytes": 274346,
-      "jsMinBytes": 10696,
-      "jsGzipBytes": 3599,
+      "jsMinBytes": 10675,
+      "jsGzipBytes": 3600,
       "runtimeDependencies": [
         "zustand"
       ],
@@ -170,6 +184,7 @@
         "androidx.media3:media3-session",
         "org.jetbrains.kotlinx:kotlinx-coroutines-guava"
       ],
+      "optInAndroidDependencies": [],
       "vendoredBinaries": false
     },
     {
@@ -196,6 +211,7 @@
       "androidDependencies": [
         "org.jetbrains.kotlinx:kotlinx-coroutines-android"
       ],
+      "optInAndroidDependencies": [],
       "vendoredBinaries": false
     },
     {
@@ -230,6 +246,7 @@
         "androidx.media3:media3-session",
         "androidx.media3:media3-ui"
       ],
+      "optInAndroidDependencies": [],
       "vendoredBinaries": false
     },
     {
@@ -257,6 +274,7 @@
         "com.facebook.fbjni:fbjni",
         "com.google.oboe:oboe"
       ],
+      "optInAndroidDependencies": [],
       "vendoredBinaries": true
     },
     {
@@ -277,6 +295,7 @@
         "lines": 878
       },
       "androidDependencies": [],
+      "optInAndroidDependencies": [],
       "vendoredBinaries": false
     }
   ]

@@ -7,7 +7,8 @@ RNAP's goal is to be the audio library React Native developers pick first: **lig
 - **Bulletproof streaming.** It is the only library that recovers a stream on its own: dead-socket and silent-stall detection, backoff, offline probing, Wi-Fi ↔ cellular handoff, and live-edge re-open. All of it is native, so it keeps working while JS is frozen. RNTP 5, RNTP 4 and expo-audio leave every one of these to app code ([matrix](comparison.md#what-you-get-out-of-the-box)).
 - **Correctness under races.** Generations, sequence-numbered snapshots and ordered events, checked by 80 shared conformance scenarios run against all three engines (Swift, Kotlin, TypeScript).
 - **Radio.** ICY metadata timed to when it is *heard*, charset repair, one connection per stream, paused-stream release, song progress on the lock screen, and a visualizer for iOS live streams (no one else has one).
-- **Lean.** Media3 only on Android, no framework requirement, zero runtime JS dependencies.
+- **Everywhere.** One engine and one API on iOS, Android, Expo web, React Native Web, React (Vite, Next.js) and plain web pages, with AirPlay, Google Cast and the voice assistants ([feature matrix](features.md)).
+- **Lean.** Media3 and MediaRouter on Android (Google Cast only when opted in), no framework requirement, zero runtime JS dependencies.
 
 ## Gaps, in priority order
 
@@ -47,6 +48,8 @@ In order: web first, then outputs, casting and voice, then cars (CarPlay and And
 | CarPlay / Android Auto browsing | Next: a browse tree over the same catalog, on the Media3 `MediaLibraryService` (already serving the catalog to Assistant) and `CPListTemplate`. Needed by car-first radio apps. |
 | Recording | Out of scope. expo-audio and react-native-audio-api cover it; staying a player keeps RNAP small. |
 
-## Before 1.0
+## Hardware verification
+
+RNAP runs in production in the Rádio Animu app since 1.0.0. These behaviours have not yet been checked deliberately on real devices:
 
 - Exercise on hardware what [Testing](testing.md) lists as unverified: real calls, Siri (transport and "play X on MyApp", including a cold start), Google Assistant and Gemini, Bluetooth / AirPods, CarPlay / Android Auto, wired-headset unplug, AirPlay, Google Cast (Android, iOS, Chrome), cellular handoff, Apple Watch and Wear OS controls.

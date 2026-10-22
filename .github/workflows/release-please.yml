@@ -1,0 +1,60 @@
+# Keeps a release pull request open with the next version and the changelog
+# entries generated from Conventional Commit messages since the last release
+# (see docs/releases.md). Merging it tags vX.Y.Z and publishes the GitHub
+# Release, with the packed package attached as react-native-anything-player.tgz
+# (what apps install until the package is on npm). Nothing goes to npm.
+name: Release Please
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-please
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      created: ${{ steps.release.outputs.release_created }}
+      tag: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - id: release
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  package:
+    needs: release-please
+    if: needs.release-please.outputs.created == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.release-please.outputs.tag }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - name: Pack the release
+        run: |
+          yarn prepare
+          npm pack --silent
+          mv react-native-anything-player-*.tgz react-native-anything-player.tgz
+      - name: Attach it to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.release-please.outputs.tag }}
+        run: gh release upload "$TAG" react-native-anything-player.tgz --clobber --repo "$GITHUB_REPOSITORY"

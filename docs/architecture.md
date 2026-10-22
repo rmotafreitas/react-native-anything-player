@@ -4,7 +4,7 @@
 
 React Native freezes JS timers in the background, can suspend or reload the JS runtime, and delivers native events asynchronously to a thread that may be busy. A player whose logic lives in JS needs workarounds for every one of those: timers pumped by native frames, keepalives gated on JS state, stale-frame filters. RNAP moves the whole player into native code. JS is a client: it sends commands and mirrors snapshots.
 
-![Layers: JavaScript mirrors a native host, which drives one platform-free engine per platform over AVPlayer or ExoPlayer](assets/diagrams/architecture.svg)
+![Layers: JavaScript mirrors a host (native on iOS and Android, the browser on the web), which drives one platform-free engine per platform through a routing driver over AVPlayer, ExoPlayer, the browser's audio element or a Cast receiver](assets/diagrams/architecture.svg)
 
 ### The engine
 
@@ -26,7 +26,7 @@ Each engine drives one *routing driver*: the platform's local player, plus a Cas
 
 ### Players without JavaScript
 
-A voice assistant can start the app with no JavaScript running. The native runtime can therefore create a player itself, from options stored with the voice catalog, and emits events only while a JS module is attached. A player created with an `id` survives the JS runtime that created it, and `new Player({ id })` attaches to it. The catalog's search is the fourth twin: TypeScript, Swift and Kotlin implementations of one specified matcher, held to `conformance/catalog`.
+A voice assistant can start the app with no JavaScript running. The native runtime can therefore create a player itself, from options stored with the voice catalog, and emits events only while a JS module is attached. A player created with an `id` survives the JS runtime that created it, and `new Player({ id })` attaches to it. The catalog's search follows the same pattern: TypeScript, Swift and Kotlin implementations of one specified matcher, held to `conformance/catalog`.
 
 ## Platform layers
 

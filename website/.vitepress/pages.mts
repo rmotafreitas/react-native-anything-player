@@ -7,6 +7,8 @@ export interface DocPage {
   text: string;
   /** ≤ 160 characters: Google truncates longer snippets. */
   description: string;
+  /** The markdown file, when it is not `<link>.md` (a rewritten page). */
+  source?: string;
 }
 
 export interface DocSection {
@@ -184,7 +186,20 @@ export const SECTIONS: DocSection[] = [
         link: '/docs/roadmap',
         text: 'Roadmap',
         description:
-          'Where RNAP stands against React Native Track Player and expo-audio, and what comes before 1.0: queues, CarPlay and Android Auto, Cast and more.',
+          'Where RNAP stands against React Native Track Player and expo-audio, and what comes next: a queue, CarPlay and Android Auto, caching and more.',
+      },
+      {
+        link: '/docs/changelog',
+        source: 'CHANGELOG.md',
+        text: 'Changelog',
+        description:
+          'Every RNAP release and what changed in it, from 1.0.0, the version the Rádio Animu app shipped, onwards.',
+      },
+      {
+        link: '/docs/releases',
+        text: 'Versioning & releases',
+        description:
+          'How RNAP versions work: what is a breaking change, deprecations, supported platforms, how releases are cut, and project housekeeping.',
       },
     ],
   },

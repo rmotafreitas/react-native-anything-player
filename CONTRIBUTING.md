@@ -107,3 +107,9 @@ When you're sending a pull request:
 - Review the documentation to make sure it looks good.
 - Follow the pull request template when opening a pull request.
 - For pull requests that change the API or implementation, discuss with maintainers first by opening an issue.
+
+### Commit messages and releases
+
+Commit messages (and pull request titles, which become the squash commit) follow [Conventional Commits](https://www.conventionalcommits.org/): `feat(web): …`, `fix(android): …`, `docs: …`. They decide the next version and become the changelog entries, so write them for app developers: what changes for them, not how. A breaking change is marked `feat!:` (or a `BREAKING CHANGE:` footer) and says how to migrate. See [Versioning and releases](docs/releases.md).
+
+Do not edit `CHANGELOG.md` or the version by hand: the release pull request does both.

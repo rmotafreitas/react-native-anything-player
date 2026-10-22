@@ -4,11 +4,13 @@
 
 | | Minimum | Tested with |
 |---|---|---|
-| React Native | 0.80, New Architecture | 0.86.2 |
+| React Native | 0.80, New Architecture | 0.86.3 |
 | iOS | 15.1 | iOS 27 simulator |
 | Android | 7.0 (API 24) | Android 16 (API 36) emulator |
 | Expo | SDK with RN ≥ 0.80, development build (or Expo web) | SDK 57 |
 | Web | a browser with Media Source Extensions for ICY metadata | Chromium, Firefox, WebKit ([Web](web.md)) |
+| React without React Native | React 18+ (react-dom: Vite, Next.js) | React 19.2, Vite 6 ([Web](web.md#react-react-dom-vite-next-js-create-react-app)) |
+| CLI (`doctor`, `init`) | Node 20 | Node 24 |
 
 RNAP is a TurboModule. The legacy architecture (bridge) is not supported.
 
@@ -17,6 +19,15 @@ RNAP is a TurboModule. The legacy architecture (bridge) is not supported.
 ```sh
 npm install react-native-anything-player
 ```
+
+> [!NOTE]
+> **Not on npm yet.** Until the first npm release, install the package tarball attached to each [GitHub release](https://github.com/rmotafreitas/react-native-anything-player/releases):
+>
+> ```sh
+> npm install https://github.com/rmotafreitas/react-native-anything-player/releases/latest/download/react-native-anything-player.tgz
+> ```
+>
+> To pin a version, use `releases/download/v1.1.0/react-native-anything-player.tgz`.
 
 (`yarn add` / `pnpm add` work the same; the package has no JS dependencies.)
 

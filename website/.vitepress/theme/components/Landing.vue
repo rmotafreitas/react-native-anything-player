@@ -102,7 +102,7 @@ const outage = [
 const PLAYERS = ['react-native-anything-player', '@rntp/player', 'react-native-track-player', 'expo-audio', 'react-native-audio-pro'];
 
 const stats = [
-  { value: '59', label: 'engine scenarios, run on Swift and Kotlin' },
+  { value: '80', label: 'engine scenarios, run on Swift, Kotlin and TypeScript' },
   { value: '3 s', label: 'to detect a dead socket and re-open' },
   { value: '~10 µs', label: 'getProgress() over JSI (iOS p50)' },
   { value: '1', label: 'connection per stream, counted server-side' },
@@ -118,8 +118,8 @@ const stats = [
         <p class="fullname">React Native Anything Player</p>
         <p class="slogan">The audio player that doesn’t give up.</p>
         <p class="lede">
-          Native-first audio for React Native: files, streams and internet radio that keep playing through dead
-          sockets, network switches, phone calls and frozen JavaScript.
+          Native-first audio for React Native and the web: files, streams and internet radio that keep playing
+          through dead sockets, network switches, phone calls and frozen JavaScript.
         </p>
         <div class="actions">
           <a class="btn brand" :href="withBase('/docs/getting-started')">Get started</a>
@@ -228,7 +228,7 @@ const stats = [
     <section class="block">
       <p class="eyebrow">Pull the plug</p>
       <h2>What happens when the Wi-Fi drops</h2>
-      <p class="sub">The engine runs this sequence natively. It is the same on iOS and Android, because both engines pass one shared conformance suite.</p>
+      <p class="sub">The engine runs this sequence natively. It is the same on iOS, Android and the web, because all three engines pass one shared conformance suite.</p>
       <ol class="timeline">
         <li v-for="(s, i) in outage" :key="i">
           <span class="dot" :class="s.state" aria-hidden="true" />

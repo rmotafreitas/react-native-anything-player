@@ -9,7 +9,13 @@ npx react-native-anything-player doctor
 npx react-native-anything-player init
 ```
 
-Installed (`npm install react-native-anything-player`), the same commands are:
+Until the package is on npm, run it from the release tarball:
+
+```sh
+npx --package=https://github.com/rmotafreitas/react-native-anything-player/releases/latest/download/react-native-anything-player.tgz rnap doctor
+```
+
+Installed (`npm install react-native-anything-player`, or the tarball), the same commands are:
 
 ```sh
 npx rnap doctor
@@ -133,7 +139,7 @@ Files are only written inside the project directory. A second run applies nothin
     "kind": "expo",
     "reactNative": "0.86.3",
     "library": {
-      "version": "0.1.0",
+      "version": "1.1.0",
       "installed": true,
       "path": "node_modules/react-native-anything-player"
     },

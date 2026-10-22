@@ -65,7 +65,7 @@ Import `react-native-anything-player/web`. It has no React or React Native depen
 </script>
 ```
 
-With a bundler, `import { Player } from 'react-native-anything-player/web'` works the same. [`example-web/`](../example-web/main.js) is a complete page (stations, controls, metadata, a visualizer).
+esm.sh serves packages from npm, so the snippet works once RNAP is published there; until then, use a bundler, or serve `lib/module/` from the [release tarball](getting-started.md#install). With a bundler, `import { Player } from 'react-native-anything-player/web'` works the same. [`example-web/`](../example-web/main.js) is a complete page (stations, controls, metadata, a visualizer).
 
 ## How a stream is played
 

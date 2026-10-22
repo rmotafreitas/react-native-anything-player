@@ -69,7 +69,8 @@ export default defineConfig({
   srcDir: '..',
   srcExclude: [
     '**/node_modules/**',
-    '*.md',
+    // Root markdown stays on GitHub, except the changelog (rewritten below).
+    '!(CHANGELOG).md',
     '.github/**',
     'android/**',
     'benchmarks/**',
@@ -82,7 +83,10 @@ export default defineConfig({
     'src/**',
     'docs/diagrams/**',
   ],
-  rewrites: { 'website/index.md': 'index.md' },
+  rewrites: {
+    'website/index.md': 'index.md',
+    'CHANGELOG.md': 'docs/changelog.md',
+  },
   vite: {
     // srcDir is the repository root, whose public/ would be the default.
     publicDir: path.resolve(HERE, '../public'),
@@ -211,6 +215,17 @@ export default defineConfig({
 
   markdown: {
     config(md) {
+      // CHANGELOG.md lives at the root (GitHub links it as docs/x.md) but is
+      // served as docs/changelog: its links to docs/ become siblings.
+      md.core.ruler.after('inline', 'rnap-changelog-links', (state) => {
+        if (!String(state.env?.relativePath ?? '').endsWith('changelog.md')) return;
+        for (const block of state.tokens) {
+          for (const token of block.children ?? []) {
+            const href = token.type === 'link_open' ? token.attrGet('href') : null;
+            if (href?.startsWith('docs/')) token.attrSet('href', `./${href.slice('docs/'.length)}`);
+          }
+        }
+      });
       // A paragraph that is only a chart or diagram image becomes the native
       // component on the site (HTML bars, an HTML table, an inline themable
       // SVG). GitHub keeps rendering the image itself.
@@ -277,7 +292,7 @@ export default defineConfig({
       fs.mkdirSync(path.dirname(path.join(site.outDir, page)), { recursive: true });
       fs.writeFileSync(path.join(site.outDir, page), source);
       const title = /^#\s+(.+)$/m.exec(source)?.[1] ?? page;
-      const summary = PAGES.find((p) => `${p.link.slice(1)}.md` === page)?.description;
+      const summary = PAGES.find((p) => (p.source ?? `${p.link.slice(1)}.md`) === page)?.description;
       index.push(`- [${title}](${url(page)})${summary ? `: ${summary}` : ''}`);
       sections.push(source.trim());
     }

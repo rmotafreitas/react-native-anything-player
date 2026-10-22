@@ -53,13 +53,14 @@ function walk(dir, out = []) {
   return out;
 }
 
-/** Native sources that compile into an app (tests, examples and builds excluded). */
-function nativeFootprint(pkgDir) {
-  const files = [...walk(path.join(pkgDir, 'ios')), ...walk(path.join(pkgDir, 'apple')),
-    ...walk(path.join(pkgDir, 'android')), ...walk(path.join(pkgDir, 'cpp')),
-    ...walk(path.join(pkgDir, 'common')), ...walk(path.join(pkgDir, 'nitrogen'))]
-    .filter((f) => NATIVE_EXT.test(f))
-    .filter((f) => !/[\\/](test|tests|androidTest|Tests|example|build|\.build)[\\/]/.test(f));
+/**
+ * RNAP's opt-in parts: Google Cast (the `cast` build flag) and the Siri
+ * templates an app compiles only with `siri`. Reported apart from what every
+ * app compiles.
+ */
+const OPT_IN_NATIVE = /[\\/](ios[\\/](Cast|AppIntents|IntentsExtension)|android[\\/]src[\\/]cast)[\\/]/;
+
+function countLines(files) {
   let bytes = 0;
   let lines = 0;
   for (const f of files) {
@@ -70,14 +71,35 @@ function nativeFootprint(pkgDir) {
   return { files: files.length, bytes, lines };
 }
 
+/** Native sources that compile into an app (tests, examples and builds excluded), and RNAP's opt-in ones apart. */
+function nativeFootprint(pkgDir) {
+  const files = [...walk(path.join(pkgDir, 'ios')), ...walk(path.join(pkgDir, 'apple')),
+    ...walk(path.join(pkgDir, 'android')), ...walk(path.join(pkgDir, 'cpp')),
+    ...walk(path.join(pkgDir, 'common')), ...walk(path.join(pkgDir, 'nitrogen'))]
+    .filter((f) => NATIVE_EXT.test(f))
+    .filter((f) => !/[\\/](test|tests|androidTest|Tests|example|build|\.build)[\\/]/.test(f));
+  const optIn = files.filter((f) => OPT_IN_NATIVE.test(f));
+  const always = files.filter((f) => !OPT_IN_NATIVE.test(f));
+  return optIn.length > 0
+    ? { ...countLines(always), optIn: countLines(optIn) }
+    : countLines(always);
+}
+
 /** Maven artifacts a package adds to an Android app (React Native / Kotlin / tests excluded). */
-function androidDependencies(pkgDir) {
+function androidDependencies(pkgDir, { optIn = false } = {}) {
   const gradle = path.join(pkgDir, 'android/build.gradle');
   if (!fs.existsSync(gradle)) return [];
   const deps = new Set();
+  // Inside `if (includeCast) { … }` (RNAP's opt-in Cast): counted apart.
+  let castDepth = 0;
   for (const line of fs.readFileSync(gradle, 'utf8').split('\n')) {
+    if (castDepth === 0 && /^\s*if\s*\(.*[Cc]ast.*\)\s*\{/.test(line)) {
+      castDepth = 1;
+      continue;
+    }
+    if (castDepth > 0) castDepth += (line.match(/\{/g) ?? []).length - (line.match(/\}/g) ?? []).length;
     const m = /^\s*(implementation|api)\s*\(?\s*["']([^"'$]+)/.exec(line);
-    if (!m) continue;
+    if (!m || (castDepth > 0) !== optIn) continue;
     const coord = m[2].split(':').slice(0, 2).join(':');
     if (/^com\.facebook\.react|^org\.jetbrains\.kotlin:kotlin-stdlib/.test(coord)) continue;
     deps.add(coord);
@@ -175,6 +197,7 @@ async function main() {
       requiredPeers: peers,
       native: nativeFootprint(dir),
       androidDependencies: androidDependencies(dir),
+      optInAndroidDependencies: androidDependencies(dir, { optIn: true }),
       vendoredBinaries: vendoredBinaries(dir),
     };
     rows.push(row);

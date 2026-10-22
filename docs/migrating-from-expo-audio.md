@@ -22,6 +22,8 @@ npm uninstall expo-audio            # only if you do not record
 npm install react-native-anything-player
 ```
 
+RNAP is not on npm yet: until it is, install the release tarball ([Getting started](getting-started.md#install)).
+
 ```diff
  // app.json
  {

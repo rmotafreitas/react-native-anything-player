@@ -10,7 +10,7 @@ yarn run check:ci
 Both GitHub Actions and Jenkins call that command. It scans complete Git history
 and current tracked/unignored files for secrets, then runs `check:quality`:
 
-- Regression tests for the gate tooling.
+- Regression tests for the gate tooling, the Expo config plugin and the CLI.
 - Dependency audit: unreviewed high/critical findings fail; registry failures fail
   closed. Narrow, version/path-specific exceptions match the app and remain visible.
 - ESLint, including SonarJS production-code rules, with zero warnings allowed.
@@ -31,12 +31,18 @@ The web engine's browser layer is JavaScript, so it counts toward the floors lik
 the rest: it is unit-tested against a scripted fake browser (`src/web/__tests__`).
 
 The `e2e-web` GitHub Actions job runs `yarn test:web`: Playwright in Chromium,
-Firefox and WebKit against the test radio, including the integration scenarios
-on the Expo example's web export (see [Testing](testing.md#web-end-to-end)).
+Firefox and WebKit against the test radio: the plain-web example, the React
+example (Vite), a scripted Cast receiver, and the integration scenarios on the
+Expo example's web export (see [Testing](testing.md#web-end-to-end)).
 
 GitHub Actions also runs CodeQL security-and-quality queries on JS/TS and workflow
 code on PRs, main pushes, merge queues and weekly schedules. Dependabot covers npm
-and Actions dependencies. Existing Swift/Kotlin conformance tests, example builds and the docs build remain required CI jobs. Android also runs lintDebug.
+and Actions dependencies. The Swift and Kotlin conformance tests, the example
+builds (iOS and Android, each with Google Cast off and on) and the docs build are
+required CI jobs. Android also runs `lintDebug`, with Cast off and on.
+
+Releases are cut by release-please from the commit messages; see
+[Versioning and releases](releases.md).
 
 ## SonarQube on Jenkins
 

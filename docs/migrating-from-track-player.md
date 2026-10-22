@@ -26,6 +26,8 @@ npm install react-native-anything-player
 cd ios && pod install
 ```
 
+RNAP is not on npm yet: until it is, install the release tarball ([Getting started](getting-started.md#install)).
+
 | Step | RNTP 4 | RNTP 5 | RNAP |
 |---|---|---|---|
 | Playback service | `TrackPlayer.registerPlaybackService(() => service)` in `index.js` | `registerPlaybackSession(() => { … })` and `registerRemoteHandlers({ … })` in `index.js` | **Nothing.** Delete the service file and the registration |

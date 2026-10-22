@@ -2,7 +2,7 @@
 
 # React Native Anything Player (RNAP)
 
-`react-native-anything-player` is a native-first audio player for React Native — files, streams and **internet radio** — that keeps playing correctly in the background, through network loss, interruptions and JavaScript freezes.
+`react-native-anything-player` is a native-first audio player for React Native and the web — files, streams and **internet radio** — that keeps playing correctly in the background, through network loss, interruptions and JavaScript freezes. One API on iOS, Android, Expo web, React Native Web, React (Vite, Next.js) and plain web pages, with AirPlay, Google Cast and the voice assistants.
 
 ```ts
 import { Player } from 'react-native-anything-player';
@@ -31,10 +31,12 @@ Read from each library's published source; sizes, methodology and the gaps RNAP 
 - **Recovery**: stall and silent-stall detection, dead-socket re-open, jittered exponential backoff, offline-aware probing, network-handoff awareness, a give-up limit, circuit breakers against connection storms.
 - **System integration**: background playback, lock screen / Control Center / notification, headset, Bluetooth, car and Wear controls, Android audio focus (incl. Android 15 rules), iOS interruptions, output disconnects, media-services reset.
 - **Correctness**: per-open generations reject stale native events; commands are applied in call order; status snapshots are sequence-numbered; events are ordered after the status they imply.
-- **Visualizer**: decoded-audio windows (`audioSample`) on both platforms — including live HTTP streams on iOS, where AVPlayer's audio tap never runs.
+- **Visualizer**: decoded-audio windows (`audioSample`) on iOS, Android and the web — including live HTTP streams on iOS, where AVPlayer's audio tap never runs.
+- **Outputs and casting**: where the audio goes (`status.route`), the system output picker (`<RoutePicker />`: AirPlay, Android's Output Switcher), and Google Cast as a build option (`<CastButton />`), with radio titles kept while casting.
+- **Voice assistants**: a catalog stored on the device answers "Hey Siri / Hey Google, play X on MyApp", even with the app closed; Siri shortcuts on iOS 16+; the same search on the web (`playFromSearch`).
 - **Song progress for radio**: give the current song's duration and the lock screen shows its progress, advanced natively.
 - **Web**: the same API in Expo web, React Native Web, React apps without React Native (`react-native-anything-player/react`: Vite, Next.js) and plain pages (`react-native-anything-player/web`), on a TypeScript twin of the engine that passes the same conformance suite: ICY metadata over fetch + MSE, splices, recovery, the Media Session, the visualizer.
-- **Observability**: a native ring buffer of structured engine traces, readable any time with `player.getDiagnostics()`.
+- **Observability**: a native ring buffer of structured engine traces, readable any time with `player.getDiagnostics()`, and a CLI (`doctor`) that checks an app's setup and its stream URLs.
 - **Small and fast**: a TurboModule with zero JS dependencies; progress is a synchronous JSI read (~10 µs), so a progress bar needs no events. Opt into `progress` events from a native timer (`progressInterval`) when JS must follow the audio where its own timers are frozen.
 
 ## Install
@@ -43,6 +45,15 @@ Read from each library's published source; sizes, methodology and the gaps RNAP 
 npm install react-native-anything-player
 # or: yarn add react-native-anything-player / pnpm add react-native-anything-player
 ```
+
+> [!NOTE]
+> **Not on npm yet.** Until the first npm release, install the package tarball attached to each [GitHub release](https://github.com/rmotafreitas/react-native-anything-player/releases):
+>
+> ```sh
+> npm install https://github.com/rmotafreitas/react-native-anything-player/releases/latest/download/react-native-anything-player.tgz
+> ```
+>
+> To pin a version, use `releases/download/v1.1.0/react-native-anything-player.tgz`.
 
 Requires React Native **≥ 0.80** with the New Architecture (the default), iOS 15.1+, Android 7.0+ (API 24). On the web: any current browser ([Web](docs/web.md)). Expo Go cannot load native code: use a development build.
 
@@ -111,7 +122,9 @@ function NowPlaying() {
 | [Debugging & troubleshooting](docs/debugging.md) | Diagnostics, logs, common problems, FAQ |
 | [Architecture](docs/architecture.md) | Design decisions and research |
 | [Testing](docs/testing.md) | Test layers, conformance suite, device tests, soak results |
+| [CLI](docs/cli.md) | `doctor` and `init`: check and fix an app's setup |
 | [Roadmap](docs/roadmap.md) | What RNAP still needs, in priority order |
+| [Changelog](CHANGELOG.md), [Versioning & releases](docs/releases.md) | Every release; what a version number promises |
 
 The same pages are published as a site (search included): `yarn docs` runs it locally, `yarn docs:build` builds it. The site also carries an API reference for every export, generated from the TSDoc in `src/` by TypeDoc (`yarn docs:api` writes it to `docs/api/`, which is not committed). Diagrams are PlantUML sources in `docs/diagrams/` (`node scripts/render-diagrams.mjs`); charts come from `benchmarks/` (`node benchmarks/size/measure.mjs && node benchmarks/charts/render.mjs`).
 

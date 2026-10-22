@@ -91,7 +91,7 @@ const cards: Card[] = [
   },
   ...PAGES.map((page) => {
     const source = fs.readFileSync(
-      path.join(ROOT, `${page.link.slice(1)}.md`),
+      path.join(ROOT, page.source ?? `${page.link.slice(1)}.md`),
       'utf8'
     );
     return {

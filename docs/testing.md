@@ -4,9 +4,9 @@ RNAP is tested at six layers. Everything below runs locally; the device layers n
 
 | Layer | What | Command |
 |---|---|---|
-| Engine conformance (iOS) | the Swift engine against the shared scenarios + ICY cases + ICY de-interleave / re-frame / splice fuzzing | `yarn test:ios` (`cd ios && swift test`) |
-| Engine conformance (Android) | the Kotlin engine against the same scenarios + ICY cases | `yarn test:android` |
-| Engine conformance (web) and JS | the TypeScript engine against the same scenarios + ICY cases; `Player`, hooks, errors, source validation against a fake native module; the browser layer against a scripted fake browser (coverage threshold enforced) | `yarn test --coverage` |
+| Engine conformance (iOS) | the Swift engine against the shared scenarios + ICY cases + catalog search cases + ICY de-interleave / re-frame / splice fuzzing | `yarn test:ios` (`cd ios && swift test`; the core also runs on Linux in the `swift` Docker image) |
+| Engine conformance (Android) | the Kotlin engine against the same scenarios + ICY and catalog cases; the platform layer's pure parts (catalog store, intents, routes, the Cast receiver mapping) | `yarn test:android` |
+| Engine conformance (web) and JS | the TypeScript engine against the same scenarios + ICY cases; `Player`, hooks, errors, source validation against a fake native module; the browser layer against a scripted fake browser; the React DOM entry, including server rendering (coverage threshold enforced) | `yarn test --coverage` |
 | Web end-to-end | the browser engine in Chromium, Firefox and WebKit against the controllable server, including the integration scenarios below on Expo web | `yarn test:web` |
 | On-device integration | the real native player in the example apps against the controllable server | see below |
 | System & soak | background, lock screen, media keys, focus, Doze, connectivity; long-running memory/connection sampling | see below |
@@ -77,9 +77,11 @@ Debug builds of the bare example passed the 16 scenarios that existed before the
 
 ## Web end-to-end
 
-`yarn test:web` builds the library and the Expo example's web export (`scripts/build-expo-web.sh`), starts the test radio, and runs Playwright (`e2e/`) in Chromium, Firefox and WebKit:
+`yarn test:web` builds the library, the Expo example's web export (`scripts/build-expo-web.sh`) and the React example (`example-react/`, Vite), starts the test radio, and runs Playwright (`e2e/`) in Chromium, Firefox and WebKit:
 
 - the plain-web example (`example-web/`, served from its own origin so the radio is cross-origin): ICY over MSE with titles timed to the audio and the Media Session, the plain `<audio>` fallback without CORS, file seeking, a dropped connection spliced without a state change (one connection on the server), recovery from an outage, the Web Audio visualizer, and the autoplay policy (`AUTOPLAY_BLOCKED`, then playback from a tap);
+- outputs and Cast (`e2e/cast.spec.ts`): a scripted Cast SDK whose receiver fetches from the test radio, so the handoff, the titles-only connection and the return to the device are counted server-side; the output picker's availability; `playFromSearch` from a search box and from speech;
+- the React example (`example-react/`, react-dom and Vite, no React Native): hooks rendering the player's state, pause, and a search result;
 - the Expo example's integration scenarios on React Native Web (Chromium).
 
 Firefox's MSE does not take raw MP3 or AAC, so RNAP repackages the frames as fragmented MP4 there; a test forces that path in all three browsers. HLS runs through native HLS where a browser has it and through hls.js elsewhere, against the test radio's `/hls/` playlists. CI needs `ffmpeg` for the test media, and an audio output: on a machine with no sound device (a CI runner), Firefox never starts playback, so CI runs a PulseAudio null sink.
@@ -108,7 +110,9 @@ Verified on the iOS 27 simulator:
 - Siri: "play ⟨station⟩ on ⟨app⟩" with the app in the foreground, backgrounded and force-quit; "play something on ⟨app⟩"; a name only the search handler knows. Check first that iOS delivers the extension's "handle in app" to `application(_:handle:completionHandler:)` on the iOS versions you support: Apple documents that path for media intents but lists the delegate method as iOS 11–14, and developers have reported it not being called on some versions.
 - Siri shortcuts (App Intents, iOS 16+), after a `setCatalog` and one launch: "Play ⟨item⟩ in ⟨app⟩" and "Play ⟨app⟩" with the app in the foreground, backgrounded and force-quit (`searchPlay` with `origin: 'siri'`); a new item's phrase after a second `setCatalog`; the shortcuts in Spotlight and in the Shortcuts app (the *Play* action's picker searches the catalog); one on the Action button (iPhone 15 Pro and later); and which path answers "play ⟨item⟩ on ⟨app⟩" when the extension is installed too. CI only compiles the template (`build-ios` builds it into the bare example, with the Intents extension as an embedded target); Siri's phrase recognition, Spotlight and the Action button need a device.
 - Google Assistant and Gemini: the same requests, on a phone where each is the default assistant; and `adb shell am start -a android.media.action.MEDIA_PLAY_FROM_SEARCH -e query "⟨station⟩" ⟨package⟩`.
- The code paths are covered by the conformance scenarios (interruptions, focus, output-disconnect, handoff) and follow the platform APIs, but they should be exercised on hardware before a 1.0.
+
+The code paths are covered by the conformance scenarios (interruptions, focus, output-disconnect, handoff) and follow the platform APIs. They are exercised on hardware as devices become available; the [roadmap](roadmap.md#hardware-verification) tracks what is left.
+
 
 ## Soak
 

@@ -1,5 +1,5 @@
 PODS:
-  - AnythingPlayer (0.1.0):
+  - AnythingPlayer (1.1.0):
     - hermes-engine
     - RCTRequired
     - RCTTypeSafety
