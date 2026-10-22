@@ -41,7 +41,7 @@ A player with an `id` outlives the JavaScript that created it, and `new Player({
 What gets picked:
 
 - The best match in the catalog. Matching ignores case and accents, drops filler words ("play", "listen to", "the" at the start, "radio" or "station" at the end, unless they are part of a name), and forgives one typo in a long word. Titles and keywords weigh most, then artist, album and genre. The assistant's own understanding of the request (an artist, a genre, "a podcast") narrows the results when it matches.
-- "Play something on MyRadio" (nothing but filler): the last item played from the catalog, else the first.
+- "Play something on MyRadio" (nothing but filler): the last item played from the catalog, else the first. With no JavaScript running (Android can start the playback service on its own), a bare Play from a headset, the lock screen or an assistant does the same when nothing is loaded; with JavaScript running it is forwarded as a `remoteCommand`, as always.
 - Nothing matches: your search handler, if the app is running.
 
 ```ts

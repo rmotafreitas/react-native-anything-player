@@ -92,7 +92,7 @@ When a Cast session starts, the player on the lock screen moves to the receiver.
 |---|---|
 | Recovery | The engine's policy, against the receiver: a receiver error reconnects with the usual backoff, and so does a receiver that buffers for over 20 s. The phone losing its own network does not reload the receiver, which has its own. |
 | Radio titles | The phone keeps reading the stream's ICY metadata on a connection of its own (it discards the audio), so `metadata` events and the lock screen keep updating. Titles arrive a little ahead of what the receiver plays (its buffer). This costs the stream's bandwidth a second time. On iOS the reader stops while the app is suspended in the background, and catches up when it returns. |
-| Volume | `setVolume()` sets the receiver's stream volume. The device volume stays with the system (the hardware buttons). |
+| Volume | `setVolume()` sets the receiver's stream volume. The hardware volume buttons change the receiver's own volume (on Android through the media session; on iOS and in Chrome as the Cast SDK does). |
 | Calls, other apps, ducking | Do not pause or duck the receiver. |
 | Another player starts | The Cast session follows the player on the lock screen: the previous one returns to the phone, paused, and the new one moves to the receiver. |
 | Casting ends | The player returns to the phone **paused**, at the receiver's position, so it never suddenly plays from the phone's speaker. |
