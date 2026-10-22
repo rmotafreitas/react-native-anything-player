@@ -138,9 +138,7 @@ function items(s: ChartSpec): Item[] {
       .filter(
         (l) =>
           !('failed' in l && l.failed) &&
-          l.id !== 'rnapNoHls' &&
-          l.id !== 'rnapCast' &&
-          l.id !== 'expoRuntime'
+          !['rnapNoHls', 'rnapCast', 'rnapSound', 'rnapCar', 'expoRuntime'].includes(l.id)
       )
       .map((l) => {
         const lib = l as Extract<(typeof apk.libraries)[number], { r8: unknown }>;
