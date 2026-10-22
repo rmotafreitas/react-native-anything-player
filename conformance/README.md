@@ -78,11 +78,26 @@ happened since the previous one.
 | `volume` | `status.volume` (the app's volume, never the faded one) |
 | `sleepAt` | `status.sleepAt` minus the fake wall clock's base: the monotonic ms the timer fires at, or `null` |
 | `sleeps`, `fades` | sleep timers fired / `fadeTo` calls settled since the previous expect |
+| `orderedCommands` | ordered driver commands, each entry matched by string prefix at or after the previous match (subsequence): a fade-out that lands on a pause must send its last `volume(0.00)` before the `pause` |
 | `route`, `routeName` | `status.route.kind` / `status.route.name` |
 
 Command formats: `open(gen=N,start=-|S.S,play=B)`, `play`, `pause`,
 `seek(S.S)`, `release`, `unload`, `volume(V.VV)`, `rate(R.RR)`,
 `switchOutput(ID)`. The fake driver's playhead freezes on `switchOutput`.
+
+## Event/status ordering invariant
+
+Every scenario runs on a harness whose recorder holds the platform engine to
+one rule independent of the steps: a discrete event (`ended`, `error`,
+`sleep`) is never delivered before the status that implies it. `ended` needs
+a state of `ended`, a fatal error an `error` state, and a `sleep` event a
+status with `sleepAt` back to `null` — the timer always leaves the player
+paused, so that status also has `playWhenReady` false (asserted on every
+engine; a playing player is paused, a paused one stays paused). Breaches are
+reported through the recorder's `violations` list, and every scenario fails
+unless it is empty. Sequence details a single scenario can pin down beyond
+this — such as the last fade-out volume command landing on the driver before
+its pause — use the `orderedCommands` expectation above.
 
 ## Outputs (`route.json`)
 
@@ -107,7 +122,9 @@ fade moves, so a 200 ms fade records four volume commands. A fade-out keeps
 the state `playing` with `playWhenReady` false until it lands, then pauses or
 stops. Fades and `fadeTo` are instant on a Cast receiver, where the sleep
 timer pauses without a fade-out. `sleepAt` counts in the engine's clock and
-fires in `onWakeup`.
+fires in `onWakeup`. When a fade-out lands on a pause, the last
+`volume(0.00)` reaches the driver before the `pause`; scenarios that pin
+this down use the `orderedCommands` expectation.
 
 ## Catalog search (`catalog/`)
 

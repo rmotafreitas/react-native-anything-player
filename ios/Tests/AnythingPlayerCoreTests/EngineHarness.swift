@@ -130,7 +130,14 @@ final class Recorder: EngineDelegate {
     ended += 1
   }
   func engineSleepFired() {
-    if statuses.last?.sleepAt != nil { violations.append("sleep event before its status") }
+    if let last = statuses.last {
+      if last.sleepAt != nil { violations.append("sleep event before its status") }
+      // The timer always leaves the player paused: a playing player is
+      // paused, and a paused one stays paused, so `playWhenReady` is false.
+      if last.playWhenReady { violations.append("sleep event while playWhenReady") }
+    } else {
+      violations.append("sleep event before its status")
+    }
     sleeps += 1
   }
   func engine(diagnostic: DiagnosticEntry) { diagnostics.append(diagnostic) }

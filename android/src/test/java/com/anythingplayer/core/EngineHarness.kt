@@ -128,7 +128,15 @@ class Recorder : EngineDelegate {
     ended += 1
   }
   override fun engineSleepFired() {
-    if (statuses.lastOrNull()?.sleepAt != null) violations.add("sleep event before its status")
+    when (val last = statuses.lastOrNull()) {
+      null -> violations.add("sleep event before its status")
+      else -> {
+        if (last.sleepAt != null) violations.add("sleep event before its status")
+        // The timer always leaves the player paused: a playing player is
+        // paused, and a paused one stays paused, so `playWhenReady` is false.
+        if (last.playWhenReady) violations.add("sleep event while playWhenReady")
+      }
+    }
     sleeps += 1
   }
   override fun engineDiagnostic(entry: DiagnosticEntry) { diagnostics.add(entry) }

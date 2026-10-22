@@ -13,7 +13,7 @@
       { "advance": 100 },
       { "expect": { "state": "playing", "commands": ["volume(0.75)", "volume(0.50)"] } },
       { "advance": 100 },
-      { "expect": { "state": "paused", "playWhenReady": false, "commands": ["volume(0.25)", "volume(0.00)", "pause"], "needsAudioFocus": false, "volume": 1 } },
+      { "expect": { "state": "paused", "playWhenReady": false, "commands": ["volume(0.25)", "volume(0.00)", "pause"], "orderedCommands": ["volume(0.00)", "pause"], "needsAudioFocus": false, "volume": 1 } },
       { "call": "play" },
       { "expect": { "state": "buffering", "playWhenReady": true, "commands": ["volume(1.00)", "play"] } }
     ]
@@ -29,7 +29,7 @@
       { "advance": 50 },
       { "expect": { "state": "playing", "commands": ["open(gen=1,start=-,play=true)", "volume(0.75)"] } },
       { "call": "pause" },
-      { "expect": { "state": "paused", "playWhenReady": false, "commands": ["volume(0.00)", "pause"] } },
+      { "expect": { "state": "paused", "playWhenReady": false, "commands": ["volume(0.00)", "pause"], "orderedCommands": ["volume(0.00)", "pause"] } },
       { "advance": 200 },
       { "expect": { "state": "paused", "commands": [] } }
     ]
@@ -75,7 +75,7 @@
       { "call": "pause" },
       { "advance": 50 },
       { "native": "buffering" },
-      { "expect": { "state": "paused", "playWhenReady": false, "commands": ["open(gen=1,start=-,play=true)", "volume(0.75)", "volume(0.00)", "pause"] } }
+      { "expect": { "state": "paused", "playWhenReady": false, "commands": ["open(gen=1,start=-,play=true)", "volume(0.75)", "volume(0.00)", "pause"], "orderedCommands": ["volume(0.00)", "pause"] } }
     ]
   },
   {
@@ -136,7 +136,7 @@
       { "expect": { "commands": ["volume(0.00)", "open(gen=1,start=-,play=true)", "volume(0.25)", "volume(0.50)"] } },
       { "call": "pause" },
       { "advance": 100 },
-      { "expect": { "state": "paused", "commands": ["volume(0.25)", "volume(0.00)", "pause"] } }
+      { "expect": { "state": "paused", "commands": ["volume(0.25)", "volume(0.00)", "pause"], "orderedCommands": ["volume(0.00)", "pause"] } }
     ]
   },
   {
@@ -190,7 +190,7 @@
       { "call": "duck", "value": false },
       { "expect": { "commands": ["volume(0.60)"], "volume": 0.8 } },
       { "advance": 150 },
-      { "expect": { "state": "paused", "commands": ["volume(0.40)", "volume(0.20)", "volume(0.00)", "pause"], "volume": 0.8 } }
+      { "expect": { "state": "paused", "commands": ["volume(0.40)", "volume(0.20)", "volume(0.00)", "pause"], "orderedCommands": ["volume(0.00)", "pause"], "volume": 0.8 } }
     ]
   },
   {
@@ -204,7 +204,7 @@
       { "advance": 50 },
       { "expect": { "commands": ["open(gen=1,start=-,play=true)", "volume(0.75)"] } },
       { "interruption": "began", "reason": "interruption", "resumable": true },
-      { "expect": { "state": "paused", "playWhenReady": false, "interruption": null, "commands": ["volume(0.00)", "pause"] } },
+      { "expect": { "state": "paused", "playWhenReady": false, "interruption": null, "commands": ["volume(0.00)", "pause"], "orderedCommands": ["volume(0.00)", "pause"] } },
       { "interruption": "ended", "shouldResume": true },
       { "advance": 300 },
       { "expect": { "state": "paused", "playWhenReady": false, "commands": [] } }
@@ -259,7 +259,7 @@
       { "advance": 100 },
       { "expect": { "state": "playing", "commands": ["volume(0.75)", "volume(0.50)"], "volume": 1 } },
       { "advance": 100 },
-      { "expect": { "state": "paused", "sleepAt": null, "commands": ["volume(0.25)", "volume(0.00)", "pause"], "sleeps": 1, "volume": 1 } },
+      { "expect": { "state": "paused", "sleepAt": null, "commands": ["volume(0.25)", "volume(0.00)", "pause"], "orderedCommands": ["volume(0.00)", "pause"], "sleeps": 1, "volume": 1 } },
       { "call": "play" },
       { "expect": { "state": "buffering", "commands": ["volume(1.00)", "play"] } }
     ]
@@ -396,7 +396,7 @@
       { "advance": 50 },
       { "expect": { "commands": ["open(gen=1,start=-,play=true)", "volume(0.75)"] } },
       { "call": "handoff", "route": "cast", "name": "TV", "output": "cast:tv", "resume": true },
-      { "expect": { "state": "loading", "playWhenReady": false, "commands": ["volume(0.00)", "pause", "unload", "switchOutput(cast:tv)", "volume(1.00)", "open(gen=2,start=-,play=false)"] } }
+      { "expect": { "state": "loading", "playWhenReady": false, "commands": ["volume(0.00)", "pause", "unload", "switchOutput(cast:tv)", "volume(1.00)", "open(gen=2,start=-,play=false)"], "orderedCommands": ["volume(0.00)", "pause"] } }
     ]
   }
 ]

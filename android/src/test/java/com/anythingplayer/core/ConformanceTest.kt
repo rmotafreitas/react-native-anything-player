@@ -197,6 +197,21 @@ class ConformanceTest {
 
   private fun stringList(array: JSONArray): List<String> = (0 until array.length()).map { array.getString(it) }
 
+  /**
+   * Ordered commands: each entry must match (as a string prefix) a recorded
+   * command at or after the previous match — a subsequence, not a run.
+   */
+  private fun orderedCommands(at: String, expected: List<String>, actual: List<String>) {
+    var cursor = 0
+    for (pattern in expected) {
+      while (cursor < actual.size && !actual[cursor].startsWith(pattern)) cursor += 1
+      if (cursor >= actual.size) {
+        fail("$at: orderedCommands: no command starting with \"$pattern\" at or after index $cursor in $actual")
+      }
+      cursor += 1
+    }
+  }
+
   private fun nullable(o: JSONObject, key: String): Any? = if (o.isNull(key)) null else o.get(key)
 
   private fun check(expect: JSONObject, h: EngineHarness, at: String) {
@@ -225,6 +240,7 @@ class ConformanceTest {
         "sleepAt" -> assertEquals("$at: sleepAt", (v as Number?)?.toLong(), s.sleepAt?.let { it - WALL_BASE })
         "sleeps" -> assertEquals("$at: sleeps", (v as Number).toInt(), h.recorder.sleeps)
         "fades" -> assertEquals("$at: fades", (v as Number).toInt(), h.recorder.fades)
+        "orderedCommands" -> orderedCommands(at, stringList(v as JSONArray), h.driver.commands)
         else -> fail("$at: unknown expectation $key")
       }
     }

@@ -200,8 +200,17 @@ export class Recorder implements EngineDelegate {
   }
 
   engineSleepFired(): void {
-    if (this.statuses[this.statuses.length - 1]?.sleepAt != null)
+    const last = this.statuses[this.statuses.length - 1];
+    if (last == null) {
       this.violations.push('sleep event before its status');
+    } else {
+      if (last.sleepAt != null)
+        this.violations.push('sleep event before its status');
+      // The timer always leaves the player paused: a playing player is
+      // paused, and a paused one stays paused, so `playWhenReady` is false.
+      if (last.playWhenReady)
+        this.violations.push('sleep event while playWhenReady');
+    }
     this.sleeps += 1;
   }
 

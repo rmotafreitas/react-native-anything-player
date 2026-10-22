@@ -204,6 +204,8 @@ final class ConformanceTests: XCTestCase {
           s.sleepAt.map { $0 - wallBase }, (value as? NSNumber)?.int64Value, "\(at): sleepAt")
       case "sleeps": XCTAssertEqual(h.recorder.sleeps, (value as? NSNumber)?.intValue, "\(at): sleeps")
       case "fades": XCTAssertEqual(h.recorder.fades, (value as? NSNumber)?.intValue, "\(at): fades")
+      case "orderedCommands":
+        orderedCommands(at, expected: value as? [String] ?? [], actual: h.driver.commands)
       default: XCTFail("\(at): unknown expectation \(key)")
       }
     }
@@ -213,5 +215,20 @@ final class ConformanceTests: XCTestCase {
     h.recorder.ended = 0
     h.recorder.sleeps = 0
     h.recorder.fades = 0
+  }
+
+  /// Ordered commands: each entry must match (as a string prefix) a recorded
+  /// command at or after the previous match — a subsequence, not a run.
+  private func orderedCommands(
+    _ at: String, expected: [String], actual: [String]
+  ) {
+    var cursor = 0
+    for pattern in expected {
+      while cursor < actual.count, !actual[cursor].hasPrefix(pattern) { cursor += 1 }
+      XCTAssertTrue(
+        cursor < actual.count,
+        "\(at): orderedCommands: no command starting with \"\(pattern)\" at or after index \(cursor) in \(actual)")
+      cursor += 1
+    }
   }
 }
