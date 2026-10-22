@@ -51,6 +51,12 @@
 		<key>UIApplicationSupportsMultipleScenes</key>
 		<false/>
 	</dict>
+	<key>NSSiriUsageDescription</key>
+	<string>Lets you ask Siri to play the example's stations.</string>
+	<key>NSUserActivityTypes</key>
+	<array>
+		<string>INPlayMediaIntent</string>
+	</array>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>
