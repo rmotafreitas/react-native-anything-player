@@ -14,9 +14,11 @@ import androidx.annotation.OptIn
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
+import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.WritableMap
 import com.google.common.util.concurrent.ListenableFuture
 import com.anythingplayer.core.AudioRoute
+import com.anythingplayer.core.AudioRouteKind
 import com.anythingplayer.core.ErrorCode
 import com.anythingplayer.core.FocusResult
 import com.anythingplayer.core.InterruptionReason
@@ -60,6 +62,8 @@ internal object AnythingPlayerRuntime : FocusListener {
   private lateinit var focus: AudioFocusCoordinator
   private lateinit var network: NetworkMonitor
   private lateinit var routes: RouteMonitor
+  private var castBackend: CastBackend? = null
+  private val cast = CastCoordinator { localRoute }
   private var wakeLock: PowerManager.WakeLock? = null
   private var wifiLock: WifiManager.WifiLock? = null
   private var startedActivities = 0
@@ -150,6 +154,7 @@ internal object AnythingPlayerRuntime : FocusListener {
         players.values.forEach { it.engine.routeChanged(route) }
       }
     routes.start()
+    castBackend = CastBackends.create(appContext, castHost)
     (appContext as? Application)?.registerActivityLifecycleCallbacks(foregroundTracker)
   }
 
@@ -163,18 +168,21 @@ internal object AnythingPlayerRuntime : FocusListener {
   /** Main thread. */
   fun unregister(controller: PlayerController) {
     players.remove(controller.id)
+    cast.released(controller)
     if (active === controller) active = players.values.lastOrNull { it.options.mediaSession && it.status.state != PlaybackState.IDLE }
+    cast.activeChanged(active)
     refresh()
   }
 
   /** A Cast output for [controller]'s routing driver; `null` where Cast is not built in. */
-  fun newRemoteOutput(controller: PlayerController): RemoteOutput? = null
+  fun newRemoteOutput(controller: PlayerController): RemoteOutput? = castBackend?.newOutput(controller, controller::nowPlaying)
 
   // ── Voice ──
 
   /** An assistant's request made [controller] the player to control: show it on the lock screen. Main thread. */
   fun activate(controller: PlayerController) {
     if (controller.options.mediaSession) active = controller
+    cast.activeChanged(active)
     refresh()
   }
 
@@ -190,6 +198,51 @@ internal object AnythingPlayerRuntime : FocusListener {
   fun showRoutePicker() {
     val via = OutputPicker.show(appContext, foregroundActivity)
     Log.d(TAG, "output picker via ${via.name}")
+  }
+
+  // ── Cast ──
+
+  /** Where the Cast integration reports to. */
+  private val castHost =
+    object : CastHost {
+      override fun onCastStatus(status: CastStatus) {
+        emit(
+          Arguments.createMap().apply {
+            putString("type", "castState")
+            putString("state", status.state.wire)
+            if (status.device == null) putNull("device") else putString("device", status.device)
+          }
+        )
+        sessionPlayer?.refresh()
+      }
+
+      override fun onCastSessionStarted(deviceId: String, deviceName: String) = cast.sessionStarted(deviceId, deviceName, active)
+
+      override fun onCastSessionEnded() = cast.sessionEnded()
+    }
+
+  /** Any thread. */
+  val castStatus: CastStatus
+    get() = castBackend?.status ?: CastStatus.UNAVAILABLE
+
+  /** Main thread. The device chooser (the dialog to stop while connected); throws `CAST_UNAVAILABLE`. */
+  fun showCastPicker() {
+    val backend = castBackend ?: throw PlayerError(ErrorCode.CAST_UNAVAILABLE, "Google Cast is not available yet.", false)
+    backend.showPicker(foregroundActivity)
+  }
+
+  fun stopCasting() {
+    castBackend?.stopCasting()
+  }
+
+  /** A player is about to load [source]: if it is on the receiver and the receiver cannot reach it, it returns to the device. */
+  fun beforeLoad(controller: PlayerController, reachable: Boolean) = cast.beforeLoad(controller, reachable)
+
+  /** The receiver's volume, 0..1, while casting from the active player; the hardware keys control it. */
+  fun castVolume(): Double? = if (active?.status?.route?.kind == AudioRouteKind.CAST) castBackend?.deviceVolume() else null
+
+  fun setCastVolume(volume: Double) {
+    castBackend?.setDeviceVolume(volume.coerceIn(0.0, 1.0))
   }
 
   // ── Focus ──
@@ -250,6 +303,7 @@ internal object AnythingPlayerRuntime : FocusListener {
     val status = controller.status
     if (controller.options.mediaSession && status.playWhenReady) active = controller
     if (active == null && controller.options.mediaSession && status.state != PlaybackState.IDLE) active = controller
+    cast.activeChanged(active)
     // Playing is when the output matters: read it now, then keep an eye on it.
     if (status.state == PlaybackState.PLAYING) routes.refresh()
     refresh()
@@ -277,8 +331,11 @@ internal object AnythingPlayerRuntime : FocusListener {
    * screen off the CPU could sleep through the backoff. Hold our own (bounded)
    * locks while any player wants audio that is not flowing.
    */
+  private val renewLocks = Runnable { updateRecoveryLocks() }
+
   private fun updateRecoveryLocks() {
-    val wanted = players.values.any { it.engine.wantsKeepalive }
+    // Reading a cast stream's titles needs the CPU awake too (nothing else holds a lock then).
+    val wanted = players.values.any { it.engine.wantsKeepalive || it.readsTitles }
     try {
       if (wanted) {
         val wl =
@@ -306,6 +363,9 @@ internal object AnythingPlayerRuntime : FocusListener {
         if (wakeLock?.isHeld == true) wakeLock?.release()
         if (wifiLock?.isHeld == true) wifiLock?.release()
       }
+      // The lock is bounded; a title reader outlives it, so renew it.
+      main.removeCallbacks(renewLocks)
+      if (wanted) main.postDelayed(renewLocks, RECOVERY_WAKE_LOCK_MS / 2)
     } catch (e: SecurityException) {
       Log.w(TAG, "recovery wake lock unavailable: ${e.message}")
     }

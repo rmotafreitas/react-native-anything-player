@@ -187,21 +187,32 @@ class AnythingPlayerModule(reactContext: ReactApplicationContext) : NativeAnythi
   override fun isRoutePickerAvailable(): Boolean = true
 
   override fun getCastState(): WritableMap =
-    Arguments.createMap().apply {
-      putString("state", "unavailable")
-      putNull("device")
+    AnythingPlayerRuntime.castStatus.let { status ->
+      Arguments.createMap().apply {
+        putString("state", status.state.wire)
+        if (status.device == null) putNull("device") else putString("device", status.device)
+      }
     }
 
-  override fun configureCast(options: ReadableMap, promise: Promise) {
-    promise.reject("NOT_IMPLEMENTED", "Cast is not implemented on Android yet.", null)
-  }
+  /** The receiver is set at build time (`com.anythingplayer.CAST_RECEIVER_ID`); nothing to load here. */
+  override fun configureCast(options: ReadableMap, promise: Promise) = promise.resolve(null)
 
   override fun showCastPicker(promise: Promise) {
-    promise.reject("NOT_IMPLEMENTED", "Cast is not implemented on Android yet.", null)
+    main.post {
+      try {
+        AnythingPlayerRuntime.showCastPicker()
+        promise.resolve(null)
+      } catch (error: PlayerError) {
+        reject(promise, error)
+      }
+    }
   }
 
   override fun stopCasting(promise: Promise) {
-    promise.reject("NOT_IMPLEMENTED", "Cast is not implemented on Android yet.", null)
+    main.post {
+      AnythingPlayerRuntime.stopCasting()
+      promise.resolve(null)
+    }
   }
 
   // ── Catalog & voice ──

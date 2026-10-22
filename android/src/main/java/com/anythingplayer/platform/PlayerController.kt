@@ -7,9 +7,12 @@ import android.os.SystemClock
 import android.util.Log
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.WritableMap
+import com.anythingplayer.core.AudioRoute
+import com.anythingplayer.core.AudioRouteKind
 import com.anythingplayer.core.DiagnosticEntry
 import com.anythingplayer.core.EngineClock
 import com.anythingplayer.core.EngineDelegate
+import com.anythingplayer.core.ErrorCode
 import com.anythingplayer.core.FocusResult
 import com.anythingplayer.core.InterruptionReason
 import com.anythingplayer.core.LoadOutcome
@@ -61,7 +64,7 @@ internal class PlayerController(
    * reload and a new `Player({ id })` attaches to it.
    */
   val appId: Boolean = false,
-) : EngineDelegate, DriverObserver {
+) : EngineDelegate, DriverObserver, CastTarget {
   private val handler = Handler(Looper.getMainLooper())
   private val localDriver = ExoPlayerDriver(context, options.speech, options.titleFormat, this)
   private val driver = RoutingDriver(localDriver) { runtime.newRemoteOutput(this) }
@@ -121,6 +124,7 @@ internal class PlayerController(
   // ── Commands (main thread) ──
 
   fun load(source: SourceDescriptor, fields: NowPlayingFields, autoplay: Boolean?, start: Double?, completion: LoadCompletion? = null) {
+    runtime.beforeLoad(this, source.isNetwork)
     sourceFields = fields
     overrides = NowPlayingFields()
     trackClock = null
@@ -150,6 +154,7 @@ internal class PlayerController(
   fun release() {
     if (released) return
     released = true
+    stopTitleReader()
     localDriver.sampler.enabled = false
     localDriver.sampler.onWindow = null
     handler.removeCallbacks(wakeup)
@@ -265,10 +270,78 @@ internal class PlayerController(
     event.putString("playerId", id)
     event.putString("type", "status")
     runtime.emit(event)
+    updateTitleReader(status)
     // The song advances with the audio, not the wall clock.
     trackClock?.setRunning(status.state == PlaybackState.PLAYING, AndroidClock.monotonicMs)
     updateProgressTicks(status.state)
     runtime.onStatusChanged(this)
+  }
+
+  // ── Cast ──
+
+  override val castableSource: Boolean?
+    get() = engine.source?.isNetwork
+
+  override fun handoff(route: AudioRoute, outputId: String, resume: Boolean) = engine.handoff(route, outputId, resume)
+
+  override fun castRefused() =
+    engineError(
+      PlayerError(
+        ErrorCode.CAST_UNSUPPORTED_SOURCE,
+        "A Cast receiver can only play http(s) sources; local files, content:// URIs and bundled assets stay on this device.",
+        false,
+      ),
+      fatal = false,
+    )
+
+  /**
+   * While a live stream plays on a Cast receiver, the phone reads its ICY
+   * titles on a connection of its own (the receiver's connection is not ours
+   * to read). Runs for the current load only, and only while playback is
+   * wanted; the audio it downloads is discarded.
+   */
+  private var titleReader: IcyMetadataReader? = null
+  private var titleReaderLoad = -1
+
+  /** Whether the title reader is running (it needs the CPU awake). */
+  val readsTitles: Boolean
+    get() = titleReader != null
+
+  private fun updateTitleReader(status: Status) {
+    val source = engine.source
+    val wanted =
+      !released &&
+        status.route.kind == AudioRouteKind.CAST &&
+        source != null &&
+        source.isNetwork &&
+        status.isLive &&
+        status.playWhenReady &&
+        (status.state == PlaybackState.LOADING ||
+          status.state == PlaybackState.BUFFERING ||
+          status.state == PlaybackState.PLAYING ||
+          status.state == PlaybackState.RECONNECTING)
+    if (!wanted) {
+      stopTitleReader()
+      return
+    }
+    if (titleReader != null && titleReaderLoad == status.loadId) return
+    stopTitleReader()
+    val reader =
+      IcyMetadataReader(source!!, titleReaderUserAgent(source), options.titleFormat) { metadata ->
+        handler.post { if (titleReader != null && !released) onStreamMetadata(engine.generation, metadata) }
+      }
+    titleReader = reader
+    titleReaderLoad = status.loadId
+    reader.start()
+  }
+
+  private fun titleReaderUserAgent(source: SourceDescriptor): String =
+    source.headers.entries.firstOrNull { it.key.equals("User-Agent", ignoreCase = true) }?.value ?: "RNAP"
+
+  private fun stopTitleReader() {
+    titleReader?.stop()
+    titleReader = null
+    titleReaderLoad = -1
   }
 
   override fun engineLoadSettled(loadId: Int, outcome: LoadOutcome) {
