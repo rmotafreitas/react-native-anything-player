@@ -49,6 +49,14 @@ Some parts of RNAP are chosen at build time, not at runtime: HLS, Cast, Siri, As
 
 The switch is a native file — `android/gradle.properties`, `ios/Podfile.properties.json`, the app's `Info.plist` — or an option of the Expo config plugin, described in [Build-time options](#build-time-options). `rnap add sound` and `rnap add car` write the Sound API and Android Auto / CarPlay switches ([Sound](sound.md#enabling-it), [Cars & watches](cars-and-watches.md)); CarPlay's entitlement and scene stay with the app, and the CLI prints them.
 
+Three more switches were measured and left out, because they would save little or cost a core feature (code sizes in the dex of a release APK built with R8, before compression):
+
+| Candidate | What it would remove | Size | Decision |
+|---|---|--:|---|
+| Visualizer off | the audio tap (`AudioSampler`, `TeeAudioProcessor`) | about 2 KB | not worth a switch: an app that never turns sampling on pays almost nothing |
+| Local files only | Media3's OkHttp data source and the network monitor | about 3 KB | not worth a switch: OkHttp itself ships with React Native |
+| No media session | Media3 session | about 297 KB | not possible: on Android the media session's service is what keeps playback alive in the background and on the lock screen |
+
 ## Build-time options
 
 | Where | Option | Effect |
