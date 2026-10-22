@@ -48,6 +48,10 @@ export interface PlayerHost {
   module(): PlayerModule;
   /** Calls `listener` whenever the app returns to the foreground. */
   onForeground(listener: () => void): void;
+  /** Whether the app (or page) is in the foreground now. */
+  isForeground(): boolean;
+  /** Calls `listener` on every foreground change; returns the unsubscribe function. */
+  onForegroundChange(listener: (foreground: boolean) => void): () => void;
   /** Resolves `require('./file.mp3')` to a URI, or `null` when it cannot. */
   resolveAsset(module: number): string | null;
   /** Whether sources with this URI scheme (beyond the native ones) play here: `blob:` and `data:` on the web. */

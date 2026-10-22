@@ -17,6 +17,15 @@ installHost({
       if (g.document?.visibilityState === 'visible') listener();
     });
   },
+  // A page without a document (server rendering) counts as in the foreground.
+  isForeground: () => browser().document?.visibilityState !== 'hidden',
+  onForegroundChange(listener) {
+    const document = browser().document;
+    if (!document) return () => undefined;
+    const changed = () => listener(document.visibilityState !== 'hidden');
+    document.addEventListener('visibilitychange', changed);
+    return () => document.removeEventListener('visibilitychange', changed);
+  },
   // A web page has no bundled-asset registry: sources are URLs.
   resolveAsset: () => null,
   acceptsScheme: (scheme) => WEB_ONLY_SCHEMES.has(scheme),

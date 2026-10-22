@@ -34,6 +34,7 @@ export default defineConfig([
       '**/build/',
       'ios/.build/',
       'website/.vitepress/dist/',
+      'example-react/dist/',
       'website/.vitepress/cache/',
     ],
   },

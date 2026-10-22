@@ -4715,6 +4715,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@types/react-dom@npm:^19":
+  version: 19.3.0
+  resolution: "@types/react-dom@npm:19.3.0"
+  peerDependencies:
+    "@types/react": ^19.3.0
+  checksum: 10c0/ce0066d28b62bc6afdd17ca84756b8fbe0f6ffc0c8b1e60739abc30e81510da2edbc1007e6ab3d974d30f5a8c25bb0f7de8d7ce09736c909fe84c0f9aed0b946
+  languageName: node
+  linkType: hard
+
 "@types/react-reconciler@npm:~0.33.0":
   version: 0.33.1
   resolution: "@types/react-reconciler@npm:0.33.1"
@@ -11762,6 +11771,17 @@ __metadata:
   languageName: node
   linkType: hard
 
+"react-dom@npm:19.2.3":
+  version: 19.2.3
+  resolution: "react-dom@npm:19.2.3"
+  dependencies:
+    scheduler: "npm:^0.27.0"
+  peerDependencies:
+    react: ^19.2.3
+  checksum: 10c0/dc43f7ede06f46f3acc16ee83107c925530de9b91d1d0b3824583814746ff4c498ea64fd65cd83aba363205268adff52e2827c582634ae7b15069deaeabc4892
+  languageName: node
+  linkType: hard
+
 "react-is@npm:^16.13.1":
   version: 16.13.1
   resolution: "react-is@npm:16.13.1"
@@ -11820,6 +11840,7 @@ __metadata:
     "@types/jest": "npm:^30"
     "@types/node": "npm:^26.6.4"
     "@types/react": "npm:^19.2.0"
+    "@types/react-dom": "npm:^19"
     "@types/react-test-renderer": "npm:^19"
     del-cli: "npm:^8.0.1"
     eslint: "npm:^9.39.5"
@@ -11834,6 +11855,7 @@ __metadata:
     prettier: "npm:^3.9.10"
     react: "npm:19.2.3"
     react-doctor: "npm:0.9.18"
+    react-dom: "npm:19.2.3"
     react-native: "npm:0.86.3"
     react-native-builder-bob: "npm:^0.43.2"
     react-test-renderer: "npm:19.2.3"
@@ -11843,12 +11865,17 @@ __metadata:
     typedoc-plugin-markdown: "npm:^4.14.1"
     typedoc-vitepress-theme: "npm:^1.1.4"
     typescript: "npm:^6.0.3"
+    vite: "npm:6.4.4"
   peerDependencies:
     expo: "*"
     react: "*"
     react-native: ">=0.80.0"
   peerDependenciesMeta:
     expo:
+      optional: true
+    react:
+      optional: true
+    react-native:
       optional: true
   bin:
     react-native-anything-player: bin/rnap.mjs

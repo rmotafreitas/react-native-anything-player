@@ -1,0 +1,13 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM"],
+    "jsx": "react-jsx",
+    "types": [],
+    "paths": {
+      "react-native-anything-player/react": ["../src/react/index.ts"]
+    }
+  },
+  "include": ["src"],
+  "exclude": ["dist"]
+}

@@ -19,6 +19,11 @@
       "types": "./lib/typescript/src/web/index.d.ts",
       "default": "./lib/module/web/index.js"
     },
+    "./react": {
+      "react-native-anything-player-source": "./src/react/index.ts",
+      "types": "./lib/typescript/src/react/index.d.ts",
+      "default": "./lib/module/react/index.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -55,7 +60,7 @@
     "docs:api": "typedoc",
     "clean": "del-cli android/build example/android/build example/android/app/build example/ios/build lib",
     "prepare": "bob build",
-    "typecheck": "tsc && tsc -p e2e",
+    "typecheck": "tsc && tsc -p e2e && tsc -p example-react",
     "lint": "eslint \"**/*.{js,ts,tsx}\" --max-warnings 0",
     "test": "jest",
     "test:coverage": "jest --coverage",
@@ -63,7 +68,7 @@
     "test:android": "cd example/android && ./gradlew :react-native-anything-player:testDebugUnitTest",
     "check:audit": "node scripts/check-dependency-audit.mjs",
     "check:secrets": "node scripts/check-secrets.mjs",
-    "test:web": "bash scripts/build-expo-web.sh && playwright test -c e2e",
+    "test:web": "bash scripts/build-expo-web.sh && vite build example-react --logLevel warn && playwright test -c e2e",
     "test:tooling": "node --test scripts/__tests__/*.test.mjs",
     "doctor:gate": "node scripts/react-doctor-gate.mjs",
     "check:ci": "yarn run check:secrets && yarn run check:quality",
@@ -111,6 +116,7 @@
     "@types/jest": "^30",
     "@types/node": "^26.6.4",
     "@types/react": "^19.2.0",
+    "@types/react-dom": "^19",
     "@types/react-test-renderer": "^19",
     "del-cli": "^8.0.1",
     "eslint": "^9.39.5",
@@ -125,6 +131,7 @@
     "prettier": "^3.9.10",
     "react": "19.2.3",
     "react-doctor": "0.9.18",
+    "react-dom": "19.2.3",
     "react-native": "0.86.3",
     "react-native-builder-bob": "^0.43.2",
     "react-test-renderer": "19.2.3",
@@ -133,7 +140,8 @@
     "typedoc": "^0.28.20",
     "typedoc-plugin-markdown": "^4.14.1",
     "typedoc-vitepress-theme": "^1.1.4",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vite": "6.4.4"
   },
   "peerDependencies": {
     "expo": "*",
@@ -196,6 +204,12 @@
   },
   "peerDependenciesMeta": {
     "expo": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    },
+    "react-native": {
       "optional": true
     }
   },

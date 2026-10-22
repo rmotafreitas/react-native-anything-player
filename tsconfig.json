@@ -38,6 +38,7 @@
   "exclude": [
     "e2e",
     "example-expo",
+    "example-react",
     "lib",
     "node_modules",
     "website"

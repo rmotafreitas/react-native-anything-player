@@ -36,6 +36,12 @@ export const SECTIONS: DocSection[] = [
           'Install React Native Anything Player in a React Native or Expo app (New Architecture, iOS 15.1+, Android 7+) and play your first stream.',
       },
       {
+        link: '/docs/features',
+        text: 'Feature matrix',
+        description:
+          'What works where: iOS, Android, Expo web, React Native Web, React (Vite, Next.js) and plain web pages, feature by feature, with the limits of each.',
+      },
+      {
         link: '/docs/comparison',
         text: 'Comparison & benchmarks',
         description:

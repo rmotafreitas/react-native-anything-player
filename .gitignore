@@ -115,6 +115,7 @@ junit.xml
 # Portable CI outputs
 ci-results.json
 example-expo/dist-web/
+example-react/dist/
 
 # Playwright (yarn test:web)
 test-results/

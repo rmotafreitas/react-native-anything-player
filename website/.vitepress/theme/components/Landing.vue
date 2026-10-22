@@ -271,6 +271,23 @@ const stats = [
     </section>
 
     <section class="block">
+      <h2>One player, everywhere</h2>
+      <p class="sub">
+        The same <code>Player</code>, events and recovery rules on every platform: three engines (Swift, Kotlin,
+        TypeScript) held to one shared test suite.
+      </p>
+      <ul class="platforms">
+        <li>iOS</li>
+        <li>Android</li>
+        <li>Expo web</li>
+        <li>React Native Web</li>
+        <li>React (Vite, Next.js)</li>
+        <li>Any web page</li>
+      </ul>
+      <p class="sub small"><a :href="withBase('/docs/features')">What works where: the feature matrix →</a></p>
+    </section>
+
+    <section class="block">
       <h2>How it compares</h2>
       <p class="sub">
         Read from each library’s published source, not marketing. Where RNAP is behind (queues, caching,
@@ -688,6 +705,24 @@ pre code {
 .dark .eyebrow {
   color: var(--brand);
 }
+.platforms {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin: 20px auto 0;
+  padding: 0;
+  list-style: none;
+}
+
+.platforms li {
+  padding: 6px 14px;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
 .sub.small {
   font-size: 15px;
 }

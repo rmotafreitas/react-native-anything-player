@@ -29,6 +29,13 @@ installHost({
       if (state === 'active') listener();
     });
   },
+  isForeground: () => AppState.currentState !== 'background',
+  onForegroundChange(listener) {
+    const subscription = AppState.addEventListener('change', (state) =>
+      listener(state === 'active')
+    );
+    return () => subscription.remove();
+  },
   resolveAsset(module) {
     // React Native Web has no asset resolver: `require()`d audio is a URL there.
     return Image.resolveAssetSource?.(module)?.uri ?? null;

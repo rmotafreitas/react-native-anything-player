@@ -121,4 +121,5 @@ Show the play/pause button from `status.playWhenReady` (the *intent*), and a spi
 - [Playback](playback.md): sources, commands, state model.
 - [Internet radio](internet-radio.md): ICY metadata and live streams.
 - [Background & system](background-and-system.md): lock screen, interruptions, audio focus.
-- [Web](web.md): Expo web, React Native Web and plain web pages.
+- [Web](web.md): Expo web, React Native Web, React (Vite, Next.js) and plain web pages.
+- [Feature matrix](features.md): what works where.

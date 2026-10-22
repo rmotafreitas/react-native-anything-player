@@ -28,6 +28,12 @@ export default defineConfig({
       reuseExistingServer: !process.env.CI,
     },
     {
+      // The React DOM example (example-react, built with Vite).
+      command: 'node ../example-web/serve.mjs 4500 example-react/dist',
+      url: 'http://localhost:4500/__health',
+      reuseExistingServer: !process.env.CI,
+    },
+    {
       // The Expo example's web export (scripts/build-expo-web.sh).
       command: 'node ../example-web/serve.mjs 4400 example-expo/dist-web',
       url: 'http://localhost:4400/__health',

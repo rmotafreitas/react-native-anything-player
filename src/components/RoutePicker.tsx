@@ -1,4 +1,3 @@
-import { useCallback, useSyncExternalStore } from 'react';
 import {
   Image,
   Pressable,
@@ -7,9 +6,8 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { showRoutePicker } from '../core/system';
-import { useRoutePickerAvailable } from '../hooks';
+import { usePlaysElsewhere, useRoutePickerAvailable } from '../core/hooks';
 import type { Player } from '../Player';
-import type { AudioRouteKind } from '../types';
 import { OUTPUT_ICON } from './icons';
 
 /** Props of {@link RoutePicker}. */
@@ -31,28 +29,7 @@ export interface RoutePickerProps {
   accessibilityLabel?: string;
 }
 
-const REMOTE: ReadonlySet<AudioRouteKind> = new Set<AudioRouteKind>([
-  'airplay',
-  'bluetooth',
-  'cast',
-  'car',
-]);
-
 const ignore = () => undefined;
-
-/** Whether `player` plays on another device (`false` without a player). */
-function useRemoteRoute(player: Player | undefined): boolean {
-  const subscribe = useCallback(
-    (onChange: () => void) =>
-      player ? player.on('routeChange', onChange) : () => undefined,
-    [player]
-  );
-  const kind = useSyncExternalStore(
-    subscribe,
-    () => player?.status.route.kind ?? null
-  );
-  return kind != null && REMOTE.has(kind);
-}
 
 /**
  * Opens the system output picker: the Output Switcher on Android, AirPlay in
@@ -68,7 +45,7 @@ export function RoutePicker({
   accessibilityLabel = 'Choose audio output',
 }: RoutePickerProps) {
   const available = useRoutePickerAvailable();
-  const remote = useRemoteRoute(player);
+  const remote = usePlaysElsewhere(player);
   if (!available) return null;
   return (
     <Pressable

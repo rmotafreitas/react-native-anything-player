@@ -1,6 +1,6 @@
 # Web
 
-RNAP plays on the web with the same `Player` API: in **Expo web**, in **React Native Web**, and in a **plain web page** with no framework. The browser engine is a TypeScript twin of the Swift and Kotlin engines and passes the same [conformance suite](../conformance/README.md), so state, intent, events and recovery follow the same rules everywhere.
+RNAP plays on the web with the same `Player` API: in **Expo web**, in **React Native Web**, in **React** apps without React Native (Vite, Next.js), and in a **plain web page** with no framework. [What works where](features.md) lists the differences from iOS and Android. The browser engine is a TypeScript twin of the Swift and Kotlin engines and passes the same [conformance suite](../conformance/README.md), so state, intent, events and recovery follow the same rules everywhere.
 
 ## Setup
 
@@ -12,6 +12,41 @@ Nothing to configure: the bundler picks the browser engine (`nativeModule.web.ts
 npx expo install react-dom react-native-web @expo/metro-runtime
 npx expo start --web
 ```
+
+### React (react-dom: Vite, Next.js, Create React App)
+
+Import `react-native-anything-player/react`: the `Player`, the same hooks as on React Native, and `<button>` versions of `<RoutePicker />` and `<CastButton />` (they take `className` and `style`). No React Native import, so `react-native` does not need to be installed.
+
+```tsx
+import { useEffect, useState } from 'react';
+import { Player, usePlayerStatus, useStreamMetadata, CastButton } from 'react-native-anything-player/react';
+
+export function Radio() {
+  const [player, setPlayer] = useState<Player | null>(null);
+  useEffect(() => {
+    const created = new Player({ id: 'main' });
+    setPlayer(created);
+    return () => void created.release();
+  }, []);
+  return player ? <Controls player={player} /> : null;
+}
+
+function Controls({ player }: { player: Player }) {
+  const { playWhenReady, state } = usePlayerStatus(player);
+  const metadata = useStreamMetadata(player);
+  return (
+    <div>
+      <button onClick={() => (playWhenReady ? player.pause() : player.load('https://radio.example/stream', { autoplay: true }))}>
+        {playWhenReady ? 'Pause' : 'Play'}
+      </button>
+      <span>{state} · {metadata?.title ?? '–'}</span>
+      <CastButton />
+    </div>
+  );
+}
+```
+
+Importing it touches no browser API, so server-rendered pages (Next.js) can import it; create players in the browser, in an effect or a client component. [`example-react/`](../example-react/src/App.tsx) is a Vite app, tested in Chromium, Firefox and WebKit.
 
 ### A plain web page
 
