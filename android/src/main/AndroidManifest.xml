@@ -15,7 +15,12 @@
       android:exported="true"
       android:foregroundServiceType="mediaPlayback">
       <intent-filter>
+        <action android:name="androidx.media3.session.MediaLibraryService" />
         <action android:name="androidx.media3.session.MediaSessionService" />
+      </intent-filter>
+      <!-- Google Assistant and Gemini browse and search the catalog through the legacy MediaBrowser API. -->
+      <intent-filter>
+        <action android:name="android.media.browse.MediaBrowserService" />
       </intent-filter>
     </service>
   </application>

@@ -44,6 +44,10 @@ internal object AnythingPlayerRuntime : FocusListener {
   private lateinit var appContext: Context
   private var initialized = false
 
+  /** The application context; valid once [initialize] ran. */
+  val context: Context
+    get() = appContext
+
   val players = ConcurrentHashMap<String, PlayerController>()
   private val counter = AtomicInteger(0)
 
@@ -136,6 +140,7 @@ internal object AnythingPlayerRuntime : FocusListener {
     if (initialized) return
     initialized = true
     appContext = context.applicationContext
+    Voice.attach(appContext)
     focus = AudioFocusCoordinator(appContext, this)
     network = NetworkMonitor(appContext) { state, changed -> players.values.forEach { it.engine.networkChanged(state, changed) } }
     network.start()
@@ -164,6 +169,20 @@ internal object AnythingPlayerRuntime : FocusListener {
 
   /** A Cast output for [controller]'s routing driver; `null` where Cast is not built in. */
   fun newRemoteOutput(controller: PlayerController): RemoteOutput? = null
+
+  // ── Voice ──
+
+  /** An assistant's request made [controller] the player to control: show it on the lock screen. Main thread. */
+  fun activate(controller: PlayerController) {
+    if (controller.options.mediaSession) active = controller
+    refresh()
+  }
+
+  /** The catalog changed: the media library the assistants browse and the session's commands follow. Main thread. */
+  fun catalogChanged() {
+    sessionPlayer?.refresh()
+    service?.notifyCatalogChanged()
+  }
 
   // ── Outputs ──
 
@@ -347,6 +366,8 @@ internal object AnythingPlayerRuntime : FocusListener {
 
   /** A command from the system media controls (lock screen, headset, car, Bluetooth). */
   fun remote(command: String, position: Double? = null) {
+    // An assistant's bare "play" with nothing loaded: the catalog has something.
+    if (command == "play" && Voice.nothingLoaded() && Voice.playDefault(autoplay = true)) return
     val target = active ?: return
     var nothingLoaded = false
     try {

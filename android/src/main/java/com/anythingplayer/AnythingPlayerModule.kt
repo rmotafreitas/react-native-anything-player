@@ -15,10 +15,15 @@ import com.anythingplayer.core.PlayerError
 import com.anythingplayer.platform.AnythingPlayerRuntime
 import com.anythingplayer.platform.EventSink
 import com.anythingplayer.platform.PlayerController
+import com.anythingplayer.platform.SearchRequest
+import com.anythingplayer.platform.Voice
 import com.anythingplayer.platform.errorToMap
 import com.anythingplayer.platform.optBoolean
 import com.anythingplayer.platform.optDouble
+import com.anythingplayer.platform.optMap
 import com.anythingplayer.platform.optString
+import com.anythingplayer.platform.toJson
+import com.anythingplayer.platform.toWritableMap
 import com.anythingplayer.platform.parseNowPlaying
 import com.anythingplayer.platform.parseOptions
 import com.anythingplayer.platform.parseSource
@@ -199,30 +204,71 @@ class AnythingPlayerModule(reactContext: ReactApplicationContext) : NativeAnythi
     promise.reject("NOT_IMPLEMENTED", "Cast is not implemented on Android yet.", null)
   }
 
+  // ── Catalog & voice ──
+
   override fun setCatalog(items: ReadableArray, options: ReadableMap, promise: Promise) {
-    promise.reject("NOT_IMPLEMENTED", "The voice catalog is not implemented on Android yet.", null)
+    try {
+      Voice.attach(reactApplicationContext)
+      val serialized = (0 until items.size()).mapNotNull { items.getMap(it)?.toJson() }
+      Voice.set(serialized, options.optString("playerId") ?: "default", options.optMap("playerOptions")?.toJson())
+      promise.resolve(null)
+    } catch (error: Throwable) {
+      reject(promise, PlayerError(ErrorCode.INTERNAL_ERROR, error.message ?: error.javaClass.simpleName, false, causeDescription = error.toString()))
+    }
   }
 
   override fun searchCatalog(request: ReadableMap, promise: Promise) {
-    promise.resolve(Arguments.createArray())
+    Voice.attach(reactApplicationContext)
+    val matches = Arguments.createArray()
+    Voice.search(searchRequest(request)).forEach { matches.pushMap(it.json.toWritableMap()) }
+    promise.resolve(matches)
   }
 
   override fun playFromSearch(request: ReadableMap, playerId: String?, promise: Promise) {
-    promise.resolve(Arguments.createMap().apply { putNull("item") })
+    Voice.attach(reactApplicationContext)
+    val asked = searchRequest(request)
+    main.post {
+      Voice.playFromSearch(asked, playerId) { result ->
+        result.fold(
+          onSuccess = { entry ->
+            promise.resolve(
+              Arguments.createMap().apply {
+                if (entry == null) putNull("item") else putMap("item", entry.json.toWritableMap())
+              }
+            )
+          },
+          onFailure = { error ->
+            reject(promise, error as? PlayerError ?: PlayerError(ErrorCode.INTERNAL_ERROR, error.message ?: "playFromSearch failed", false, causeDescription = error.toString()))
+          },
+        )
+      }
+    }
   }
 
   override fun setSearchHandlerEnabled(enabled: Boolean) {
-    // No-op until the native catalog glue lands.
+    Voice.handlerEnabled = enabled
   }
 
   override fun resolveSearchRequest(requestId: String, result: ReadableMap) {
-    // No-op until the native catalog glue lands.
+    Voice.answer(requestId, result.optMap("item")?.toJson())
   }
+
+  private fun searchRequest(map: ReadableMap) =
+    SearchRequest(
+      query = map.optString("query") ?: "",
+      title = map.optString("title"),
+      artist = map.optString("artist"),
+      album = map.optString("album"),
+      genre = map.optString("genre"),
+      focus = map.optString("focus"),
+      origin = "app",
+    )
 
   /** JS reload / React host teardown: no JS can control these players any more. */
   override fun invalidate() {
     synchronized(sinkLock) { invalidated = true }
     AnythingPlayerRuntime.detachModule(sink)
+    main.post { Voice.jsDetached() }
     val ids = synchronized(owned) { owned.toList().also { owned.clear() } }
     main.post {
       ids.forEach { id ->
