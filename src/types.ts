@@ -263,7 +263,11 @@ export interface NowPlayingMetadata {
 
 /** What to play, with per-source options. */
 export interface Source {
-  /** `https://…`, `http://…`, `file://…`, `content://…` (Android) or an absolute path. */
+  /**
+   * `https://…`, `http://…`, `file://…`, `content://…` (Android) or an absolute
+   * path. On the web also `blob:…` (an object URL you made) and `data:…`; the
+   * app owns a `blob:` URL it made and revokes it.
+   */
   uri: string;
   /** HTTP headers sent with every request for this source (e.g. `User-Agent`, auth). */
   headers?: Record<string, string>;
@@ -279,6 +283,18 @@ export interface Source {
 
 /** What `load()` accepts: a {@link Source}, a URI, or `require('./file.mp3')`. */
 export type SourceInput = Source | string | AssetModule;
+
+/**
+ * A `Blob` or `File` for `Player.load()` on the web: a file the user picked or
+ * dropped. Described by the two fields RNAP needs so the declarations compile
+ * with React Native's own `Blob`, with the DOM's, and with neither.
+ */
+export interface BlobInput {
+  /** Bytes. */
+  readonly size: number;
+  /** MIME type, `''` when unknown. */
+  readonly type: string;
+}
 
 /** Options for `load()`. */
 export interface LoadOptions {

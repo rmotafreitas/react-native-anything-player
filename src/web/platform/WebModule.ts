@@ -81,7 +81,12 @@ export class WebModule implements PlayerModule {
   load(playerId: string, source: object, options: object): Promise<object> {
     const controller = this.runtime.players.get(playerId);
     if (!controller) return Promise.reject(released());
-    const [descriptor, fields] = parseSource(source);
+    // A picked file: the item plays from an object URL the controller owns.
+    const blob = (source as { blob?: unknown }).blob;
+    const objectUrl = blob == null ? null : browser().URL.createObjectURL(blob);
+    const [descriptor, fields] = parseSource(
+      objectUrl == null ? source : { ...source, uri: objectUrl }
+    );
     const o = options as { autoplay?: unknown; startPosition?: unknown };
     try {
       controller.userGesture();
@@ -89,12 +94,14 @@ export class WebModule implements PlayerModule {
         descriptor,
         fields,
         typeof o.autoplay === 'boolean' ? o.autoplay : null,
-        typeof o.startPosition === 'number' ? o.startPosition : null
+        typeof o.startPosition === 'number' ? o.startPosition : null,
+        objectUrl
       );
       // An autoplay refusal leaves the load ready-but-paused (see status.interruption).
       controller.takePlayAttempt();
       return loaded;
     } catch (error) {
+      if (objectUrl != null) browser().URL.revokeObjectURL(objectUrl);
       return Promise.reject(asError(error));
     }
   }
@@ -115,7 +122,7 @@ export class WebModule implements PlayerModule {
   }
 
   reset(playerId: string): Promise<object> {
-    return this.command(playerId, (c) => c.engine.reset());
+    return this.command(playerId, (c) => c.reset());
   }
 
   seekTo(playerId: string, position: number): Promise<object> {

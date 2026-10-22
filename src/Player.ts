@@ -1,7 +1,7 @@
-import { AppState, Image } from 'react-native';
+import { AppState, Image, Platform } from 'react-native';
 import NativeAnythingPlayer from './nativeModule';
 import { PlayerError } from './errors';
-import { installHost, type PlayerModule } from './core/host';
+import { WEB_ONLY_SCHEMES, installHost, type PlayerModule } from './core/host';
 
 // The React Native host: the TurboModule (on React Native Web and Expo web,
 // the bundler resolves `nativeModule.web.ts`: the browser engine), AppState
@@ -32,6 +32,12 @@ installHost({
   resolveAsset(module) {
     // React Native Web has no asset resolver: `require()`d audio is a URL there.
     return Image.resolveAssetSource?.(module)?.uri ?? null;
+  },
+  // Picked files and inline data play on React Native Web, not on a device.
+  acceptsScheme: (scheme) =>
+    Platform.OS === 'web' && WEB_ONLY_SCHEMES.has(scheme),
+  get acceptsBlobs() {
+    return Platform.OS === 'web';
   },
 });
 

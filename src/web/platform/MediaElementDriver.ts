@@ -8,10 +8,12 @@
 // open, so a late event from a replaced item never reaches the engine.
 //
 // Live HTTP streams go through `MseStream` (fetch + Media Source Extensions)
-// for ICY metadata and connection control; everything else, and any stream
+// for ICY metadata and connection control. HLS goes to hls.js where the
+// browser cannot play it itself (`HlsStream`). Everything else, and any stream
 // MSE cannot take, plays as the element's own `src`.
 
 import type { PlayerError } from '../../errors';
+import { hlsConstructor } from '../../core/hls';
 import type { EngineDriver } from '../engine/PlaybackEngine';
 import type {
   StreamMetadata,
@@ -31,6 +33,13 @@ import {
   type AbortControllerLike,
   type AudioElementLike,
 } from './dom';
+import {
+  HLS_HINT,
+  HLS_MISSING,
+  HlsStream,
+  isHlsType,
+  isHlsUri,
+} from './HlsStream';
 import { MseStream, mediaSourceConstructor } from './MseStream';
 
 export interface DriverObserver {
@@ -68,18 +77,26 @@ export interface ProgressReading {
 const MEDIA_ERR_ABORTED = 1;
 const MEDIA_ERR_NETWORK = 2;
 const MEDIA_ERR_DECODE = 3;
+const MEDIA_ERR_SRC_NOT_SUPPORTED = 4;
 
 type Timed = { time: number; fire: () => void };
 
-function isHls(uri: string): boolean {
-  return /\.m3u8(\?|#|$)/i.test(uri);
-}
+/** A source whose bytes the page itself holds (a picked file). */
+const LOCAL_URI = /^(blob|data):/i;
+
+/** What `canPlayType` answers for HLS in browsers that play it natively (Safari, Android). */
+const HLS_MIME = 'application/vnd.apple.mpegurl';
 
 export class MediaElementDriver implements EngineDriver {
   private _element: AudioElementLike;
   private generation = 0;
   private listeners: AbortControllerLike | null = null;
   private stream: MseStream | null = null;
+  private hls: HlsStream | null = null;
+  /** The element is playing an HLS playlist itself: hls.js is the way out if it cannot. */
+  private nativeHls = false;
+  /** The element's own HLS could not open the current source: hls.js plays it from now on. */
+  private nativeHlsFailed = false;
   private source: SourceDescriptor | null = null;
   /** The current source has played before (in any generation): a later "unsupported" is the server failing. */
   private sourcePlayed = false;
@@ -109,9 +126,22 @@ export class MediaElementDriver implements EngineDriver {
     return this._element;
   }
 
-  /** Whether the current item is read through MSE (its bytes are same-origin to Web Audio). */
+  /**
+   * Whether the current item plays from bytes the page holds (a MediaSource
+   * fed by RNAP or hls.js, or a picked file's `blob:` URL): same-origin to Web
+   * Audio, and out of a Remote Playback receiver's reach.
+   */
   get isStreamed(): boolean {
-    return this.stream != null;
+    return (
+      this.stream != null ||
+      this.hls != null ||
+      LOCAL_URI.test(this.source?.uri ?? '')
+    );
+  }
+
+  /** Whether the current item is live (read through MSE, or an HLS playlist without an end). */
+  private get isLive(): boolean {
+    return this.stream != null || this.hls?.live === true;
   }
 
   private createElement(): AudioElementLike {
@@ -131,6 +161,7 @@ export class MediaElementDriver implements EngineDriver {
     if (this.source?.uri !== request.source.uri) {
       this.sourcePlayed = false;
       this.corsProven = false;
+      this.nativeHlsFailed = false;
     }
     this.source = request.source;
     this.flowed = false;
@@ -140,7 +171,7 @@ export class MediaElementDriver implements EngineDriver {
       media != null &&
       isNetworkSource(request.source) &&
       request.source.liveHint !== false &&
-      !isHls(request.source.uri);
+      !isHlsUri(request.source.uri);
     if (streamable) {
       this.attach();
       this.startStream(request.source, media);
@@ -200,6 +231,7 @@ export class MediaElementDriver implements EngineDriver {
     this.source = null;
     this.sourcePlayed = false;
     this.corsProven = false;
+    this.nativeHlsFailed = false;
   }
 
   setVolume(effective: number): void {
@@ -232,11 +264,11 @@ export class MediaElementDriver implements EngineDriver {
     return {
       position,
       duration:
-        Number.isFinite(duration) && duration > 0 && !this.stream
+        Number.isFinite(duration) && duration > 0 && !this.isLive
           ? duration
           : null,
       buffered: Math.max(position, this.bufferedEnd(position)),
-      liveOffset: this.stream ? this.stream.bufferedAhead : null,
+      liveOffset: this.liveOffset(),
       isPlaying: !this._element.paused && this.flowed,
       rate: this._element.playbackRate,
     };
@@ -287,8 +319,32 @@ export class MediaElementDriver implements EngineDriver {
     on('seeked', () => this.pumpTimed());
   }
 
-  private playPlain(source: SourceDescriptor): void {
-    if (this.tapped && isNetworkSource(source)) {
+  private liveOffset(): number | null {
+    if (this.stream) return this.stream.bufferedAhead;
+    return this.hls?.live ? this.hls.liveOffset : null;
+  }
+
+  /** Whether hls.js has to play this: an HLS source on an element that cannot. */
+  private needsHls(source: SourceDescriptor, contentType: string | null) {
+    const hls = isHlsUri(source.uri) || isHlsType(contentType);
+    return (
+      hls &&
+      (this.nativeHlsFailed || this._element.canPlayType(HLS_MIME) === '')
+    );
+  }
+
+  /**
+   * Plays on the element itself. `contentType`: the response's, when a read
+   * through MSE found it was an HLS playlist.
+   */
+  private playPlain(
+    source: SourceDescriptor,
+    contentType: string | null = null
+  ): void {
+    const hls = this.needsHls(source, contentType);
+    this.nativeHls = !hls && (isHlsUri(source.uri) || isHlsType(contentType));
+    // hls.js feeds the element from a MediaSource: the audio is same-origin.
+    if (this.tapped && isNetworkSource(source) && !hls) {
       // A Web Audio-routed element plays a cross-origin source as silence:
       // continue on a fresh element (the old one stays with the sampler).
       this._element.pause();
@@ -299,8 +355,74 @@ export class MediaElementDriver implements EngineDriver {
       this.observer.onElementReplaced(this._element);
     }
     this.attach();
+    if (hls) {
+      this.startHls(source);
+      return;
+    }
     this._element.src = source.uri;
     this._element.load();
+  }
+
+  /**
+   * A browser may say it plays HLS and still fail on a playlist (Chrome's
+   * native HLS takes fewer streams than hls.js does): before anything played,
+   * the same item is tried with hls.js, if there is one.
+   */
+  private retryWithHls(generation: number): boolean {
+    const source = this.source;
+    if (!this.nativeHls || this.sourcePlayed || !source) return false;
+    if (!hlsConstructor()?.isSupported()) return false;
+    this.nativeHls = false;
+    // Later opens of this source (reconnects) go to hls.js directly.
+    this.nativeHlsFailed = true;
+    this.listeners?.abort();
+    this._element.removeAttribute('src');
+    this._element.load();
+    this.observer.onNote(generation, 'hls.js', {
+      reason: 'native HLS could not open the source',
+    });
+    this.attach();
+    this.startHls(source);
+    // Loading the element anew dropped the play() that was pending.
+    if (this.playRequested) this.play();
+    return true;
+  }
+
+  private startHls(source: SourceDescriptor): void {
+    const generation = this.generation;
+    const ctor = hlsConstructor();
+    if (!ctor?.isSupported()) {
+      const message = ctor
+        ? 'hls.js is not supported in this browser (it needs Media Source Extensions).'
+        : HLS_MISSING;
+      // Not from inside open(): the engine is still handling the command.
+      browser().queueMicrotask(() => {
+        if (generation !== this.generation) return;
+        this.observer.onFailed(
+          generation,
+          engineError('UNSUPPORTED_FORMAT', message, false)
+        );
+      });
+      return;
+    }
+    const live = () => generation === this.generation && this.hls === hls;
+    const hls: HlsStream = new HlsStream(this._element, source, ctor, {
+      onMetadata: (metadata, time) => {
+        if (live())
+          this.schedule(time, () =>
+            this.observer.onStreamMetadata(generation, metadata)
+          );
+      },
+      onFailure: (error) => {
+        if (live()) this.observer.onFailed(generation, error);
+      },
+      onNote: (event, details) => {
+        if (live()) this.observer.onNote(generation, event, details);
+      },
+    });
+    this.hls = hls;
+    this.observer.onNote(generation, 'hls.js', { reason: 'no native HLS' });
+    hls.start();
   }
 
   private startStream(
@@ -333,13 +455,13 @@ export class MediaElementDriver implements EngineDriver {
             this.observer.onDiscontinuity(generation, time)
           );
         },
-        onFallback: (reason) => {
+        onFallback: (reason, contentType) => {
           if (!live()) return;
           this.observer.onNote(generation, 'plain playback', { reason });
           stream.close();
           this.stream = null;
           this.listeners?.abort();
-          this.playPlain(source);
+          this.playPlain(source, contentType ?? null);
           if (this.playRequested) this.play();
         },
         onFailure: (error) => {
@@ -360,21 +482,39 @@ export class MediaElementDriver implements EngineDriver {
 
   private onLoadedMetadata(generation: number): void {
     const element = this._element;
-    const duration = element.duration;
-    const finite = !this.stream && Number.isFinite(duration) && duration > 0;
-    const info: ReadyInfo = finite
-      ? { duration, isLive: false, seekable: element.seekable.length > 0 }
-      : { duration: null, isLive: true, seekable: false };
-    if (finite && this.pendingStart != null && this.pendingStart > 0) {
-      element.currentTime = Math.min(this.pendingStart, duration);
+    // An HLS playlist says whether it is live (the element's duration alone
+    // cannot, before the first segments); everything else is the element's.
+    const info = this.hls?.readyInfo() ?? this.elementReadyInfo();
+    if (
+      info.duration != null &&
+      this.pendingStart != null &&
+      this.pendingStart > 0
+    ) {
+      element.currentTime = Math.min(this.pendingStart, info.duration);
     }
     this.pendingStart = null;
     this.observer.onReady(generation, info);
   }
 
+  private elementReadyInfo(): ReadyInfo {
+    const element = this._element;
+    const duration = element.duration;
+    const finite = !this.stream && Number.isFinite(duration) && duration > 0;
+    return finite
+      ? { duration, isLive: false, seekable: element.seekable.length > 0 }
+      : { duration: null, isLive: true, seekable: false };
+  }
+
   private onError(generation: number): void {
     const error = this._element.error;
     if (!error || error.code === MEDIA_ERR_ABORTED) return;
+    // hls.js already reported the failure that stopped the element.
+    if (this.hls?.failed) return;
+    if (
+      error.code === MEDIA_ERR_SRC_NOT_SUPPORTED &&
+      this.retryWithHls(generation)
+    )
+      return;
     this.observer.onFailed(
       generation,
       this.mapError(error.code, error.message)
@@ -424,7 +564,8 @@ export class MediaElementDriver implements EngineDriver {
     }
     return engineError(
       'UNSUPPORTED_FORMAT',
-      'The browser could not open the source (unsupported format, or the server refused it).',
+      'The browser could not open the source (unsupported format, or the server refused it).' +
+        (this.nativeHls ? HLS_HINT : ''),
       false,
       details
     );
@@ -435,6 +576,9 @@ export class MediaElementDriver implements EngineDriver {
     this.listeners = null;
     this.stream?.close();
     this.stream = null;
+    this.hls?.close();
+    this.hls = null;
+    this.nativeHls = false;
     this.timed = [];
     this.clearTimedTimer();
     this.playRequested = false;

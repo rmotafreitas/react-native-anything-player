@@ -4,6 +4,8 @@
 // Audio — just enough behaviour to drive `WebModule` through every path.
 // The real-browser counterpart is the Playwright suite (example web app).
 
+import { boxes, parseInit, parseSegment } from './audioFixtures';
+
 type Handler = (event: unknown) => void;
 
 export class FakeEvents {
@@ -53,10 +55,26 @@ export function ranges(list: Array<[number, number]>) {
 /** Audio bytes per second of media in the fake source buffer. */
 export const BYTES_PER_SECOND = 16_000; // 128 kbps
 
+/** The MSE types a Chromium-like browser takes for MP3 and AAC. */
+export const RAW_AUDIO_TYPES = ['audio/mpeg', 'audio/aac'];
+/** The MSE types a Firefox-like browser takes: the codecs only inside MP4. */
+export const MP4_AUDIO_TYPES = [
+  'audio/mp4; codecs="mp3"',
+  'audio/mp4; codecs="mp4a.40.2"',
+];
+
 export class FakeSourceBuffer extends FakeEvents {
   mode = 'segments';
   updating = false;
   bytes = 0;
+  /** Everything appended, in order. */
+  appended: Uint8Array[] = [];
+  /** MP4 the fake's parser refused (a media segment before an init segment, a bad box). */
+  mp4Errors: string[] = [];
+  /** `baseMediaDecodeTime` of each media segment appended (MP4 types). */
+  segmentStarts: number[] = [];
+  private timescale = 0;
+  private mp4Seconds = 0;
   /** Media time evicted from the front. */
   start = 0;
   removed: Array<[number, number]> = [];
@@ -70,10 +88,39 @@ export class FakeSourceBuffer extends FakeEvents {
     super();
   }
 
+  private get mp4(): boolean {
+    return this.type.startsWith('audio/mp4');
+  }
+
   get buffered() {
-    return this.bytes > 0
-      ? ranges([[this.start, this.bytes / BYTES_PER_SECOND]])
-      : ranges([]);
+    // MP4 time comes from the segments' own durations; raw audio from its bit rate.
+    const end = this.mp4 ? this.mp4Seconds : this.bytes / BYTES_PER_SECOND;
+    return end > 0 ? ranges([[this.start, end]]) : ranges([]);
+  }
+
+  /** Reads an appended MP4 chunk the way a demuxer would; sequence mode puts segments end to end. */
+  private ingest(data: Uint8Array): void {
+    try {
+      const top = boxes(data);
+      const moov = top.find((b) => b.type === 'moov');
+      if (moov) {
+        this.timescale = parseInit(
+          data.subarray(0, moov.start + moov.size)
+        ).timescale;
+      }
+      const moof = top.find((b) => b.type === 'moof');
+      if (!moof) return;
+      if (this.timescale === 0) {
+        this.mp4Errors.push('media segment before an init segment');
+        return;
+      }
+      const segment = parseSegment(data.subarray(moof.start));
+      this.segmentStarts.push(segment.baseMediaDecodeTime);
+      for (const sample of segment.samples)
+        this.mp4Seconds += sample.duration / this.timescale;
+    } catch (error) {
+      this.mp4Errors.push(String(error));
+    }
   }
 
   appendBuffer(data: Uint8Array): void {
@@ -87,8 +134,10 @@ export class FakeSourceBuffer extends FakeEvents {
       throw Object.assign(new Error('full'), { name: 'QuotaExceededError' });
     }
     this.updating = true;
+    this.appended.push(data.slice());
     queueMicrotask(() => {
       this.bytes += data.length;
+      if (this.mp4) this.ingest(data);
       this.updating = false;
       this.dispatch('updateend');
     });
@@ -110,7 +159,7 @@ export class FakeSourceBuffer extends FakeEvents {
 }
 
 export class FakeMediaSource extends FakeEvents {
-  static supported = new Set(['audio/mpeg', 'audio/aac']);
+  static supported = new Set(RAW_AUDIO_TYPES);
   static instances: FakeMediaSource[] = [];
   readyState = 'closed';
   duration = NaN;
@@ -147,8 +196,17 @@ export class FakeMediaSource extends FakeEvents {
 const objectUrls = new Map<string, unknown>();
 let urlCounter = 0;
 
+/** The object URLs made for a `Blob` or `File` and not revoked (MediaSources are not counted). */
+export function liveBlobUrls(): string[] {
+  return [...objectUrls]
+    .filter(([, object]) => object instanceof Blob)
+    .map(([url]) => url);
+}
+
 /** Features the next fake elements have (set by `install`). */
 export const elementFeatures = {
+  /** Safari / Android: the element plays HLS itself. */
+  nativeHls: false,
   airplay: false,
   remote: false,
   refuseWatch: false,
@@ -317,6 +375,12 @@ export class FakeAudio extends FakeEvents {
 
   load(): void {
     this.loads += 1;
+  }
+
+  canPlayType(type: string): string {
+    return elementFeatures.nativeHls && type === 'application/vnd.apple.mpegurl'
+      ? 'maybe'
+      : '';
   }
 
   removeAttribute(name: string): void {
@@ -590,6 +654,10 @@ let saved: Record<string, PropertyDescriptor | undefined> = {};
 export function install(
   options: {
     mediaSource?: 'standard' | 'managed' | 'none';
+    /** The MSE types `isTypeSupported` accepts (default: MP3 and AAC raw, as Chromium). */
+    mediaTypes?: string[];
+    /** Safari: the element plays HLS itself. */
+    nativeHls?: boolean;
     audioContext?: boolean;
     mediaSession?: boolean;
     /** Safari: elements have the AirPlay API. */
@@ -606,9 +674,12 @@ export function install(
   saved = Object.fromEntries(
     KEYS.map((k) => [k, Object.getOwnPropertyDescriptor(g, k)])
   );
+  objectUrls.clear();
+  urlCounter = 0;
   FakeMediaSource.instances = [];
   FakeMediaSource.failAdd = false;
-  FakeMediaSource.supported = new Set(['audio/mpeg', 'audio/aac']);
+  FakeMediaSource.supported = new Set(options.mediaTypes ?? RAW_AUDIO_TYPES);
+  elementFeatures.nativeHls = options.nativeHls === true;
   FakeAudioContext.instances = [];
   elementFeatures.airplay = options.airplay === true;
   elementFeatures.remote = options.remotePlayback === true;
