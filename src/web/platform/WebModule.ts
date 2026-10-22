@@ -10,6 +10,7 @@ import { PlayerError, toPlayerError } from '../../errors';
 import type { PlayerModule } from '../../core/host';
 import { browser } from './dom';
 import { parseNowPlaying, parseOptions, parseSource } from './serialization';
+import { WebCatalog, type StoredItem } from './WebCatalog';
 import { WebPlayerController } from './WebPlayerController';
 import { WebRuntime } from './WebRuntime';
 
@@ -34,20 +35,40 @@ function autoplayBlocked(): PlayerError {
   });
 }
 
+function unavailable(
+  code: 'ROUTE_PICKER_UNAVAILABLE' | 'CAST_UNAVAILABLE',
+  message: string
+): PlayerError {
+  return new PlayerError({
+    code,
+    message,
+    recoverable: false,
+    platform: 'web',
+  });
+}
+
 function asError(error: unknown): PlayerError {
   return error instanceof PlayerError ? error : toPlayerError(error);
 }
 
 export class WebModule implements PlayerModule {
   private readonly runtime = new WebRuntime();
+  private readonly catalog = new WebCatalog();
   private readonly listeners = new Set<Listener>();
   private queue: object[] = [];
   private flushScheduled = false;
   private counter = 0;
 
   createPlayer(options: object): string {
+    const requested = (options as { id?: unknown }).id;
+    // An id that already exists attaches to that player.
+    if (typeof requested === 'string' && this.runtime.players.has(requested))
+      return requested;
     this.counter += 1;
-    const id = `web-${this.counter}-${Date.now().toString(36)}`;
+    const id =
+      typeof requested === 'string'
+        ? requested
+        : `web-${this.counter}-${Date.now().toString(36)}`;
     const controller = new WebPlayerController(
       id,
       parseOptions(options),
@@ -165,12 +186,112 @@ export class WebModule implements PlayerModule {
     );
   }
 
+  // ── Outputs ──
+
+  showRoutePicker(): Promise<void> {
+    return Promise.reject(
+      unavailable(
+        'ROUTE_PICKER_UNAVAILABLE',
+        'This browser has no output picker.'
+      )
+    );
+  }
+
+  isRoutePickerAvailable(): boolean {
+    return false;
+  }
+
+  // ── Google Cast ──
+
+  getCastState(): object {
+    return { state: 'unavailable', device: null };
+  }
+
+  async configureCast(): Promise<void> {
+    // Nothing to load where Cast is unavailable.
+  }
+
+  showCastPicker(): Promise<void> {
+    return Promise.reject(
+      unavailable('CAST_UNAVAILABLE', 'Google Cast is not available here.')
+    );
+  }
+
+  async stopCasting(): Promise<void> {
+    // Not casting.
+  }
+
+  // ── Catalog ──
+
+  async setCatalog(items: object[], options: object): Promise<void> {
+    this.catalog.set(items, options);
+  }
+
+  async searchCatalog(request: object): Promise<object[]> {
+    return this.catalog.search(request as { query: string });
+  }
+
+  async playFromSearch(
+    request: object,
+    playerId: string | null
+  ): Promise<object> {
+    const asked = {
+      ...(request as Record<string, unknown>),
+      query: String((request as { query?: unknown }).query ?? ''),
+      origin: 'app',
+    };
+    let item = this.catalog.resolve(asked);
+    if (!item && this.catalog.handlerEnabled)
+      item = await this.catalog.ask(asked, (event) => this.emit(event));
+    if (!item) return { item: null };
+    await this.playItem(this.voicePlayer(playerId), item, asked);
+    return { item };
+  }
+
+  setSearchHandlerEnabled(enabled: boolean): void {
+    this.catalog.handlerEnabled = enabled;
+  }
+
+  resolveSearchRequest(requestId: string, result: object): void {
+    this.catalog.answer(requestId, result);
+  }
+
   onPlayerEvent(listener: Listener): { remove(): void } {
     this.listeners.add(listener);
     return { remove: () => this.listeners.delete(listener) };
   }
 
   // ── Internals ──
+
+  /** The given player, else the one on the lock screen, else the catalog's (created). */
+  private voicePlayer(playerId: string | null): WebPlayerController {
+    if (playerId != null) {
+      const given = this.runtime.players.get(playerId);
+      if (!given) throw released();
+      return given;
+    }
+    const active = this.runtime.activePlayer;
+    if (active) return active;
+    const id = this.createPlayer({
+      ...this.catalog.playerOptions,
+      id: this.catalog.playerId,
+    });
+    return this.runtime.players.get(id)!;
+  }
+
+  private async playItem(
+    controller: WebPlayerController,
+    item: StoredItem,
+    request: Record<string, unknown>
+  ): Promise<void> {
+    const [descriptor, fields] = parseSource(item.source);
+    controller.userGesture();
+    const loaded = controller.load(descriptor, fields, true, null);
+    controller.takePlayAttempt();
+    this.catalog.played(item);
+    this.emit({ playerId: controller.id, type: 'searchPlay', request, item });
+    await loaded;
+  }
 
   /**
    * Runs a command (synchronously: a play() must stay inside the user's tap),

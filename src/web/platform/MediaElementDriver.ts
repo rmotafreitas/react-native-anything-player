@@ -209,6 +209,10 @@ export class MediaElementDriver implements EngineDriver {
     this._element.playbackRate = rate;
   }
 
+  switchOutput(): void {
+    // The element is the local output; the routing driver switches outputs.
+  }
+
   sample(): PlaybackSample {
     const position = this.position();
     return {

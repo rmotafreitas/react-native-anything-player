@@ -30,6 +30,11 @@ export class WebRuntime implements PlayerRuntime {
   private connectionType: string | undefined;
   private handlers = '';
 
+  /** The player on the lock screen (Media Session), if any. */
+  get activePlayer(): WebPlayerController | null {
+    return this.active;
+  }
+
   register(controller: WebPlayerController): void {
     this.start();
     this.players.set(controller.id, controller);

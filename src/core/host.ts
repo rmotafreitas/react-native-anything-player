@@ -26,6 +26,17 @@ export interface PlayerModule {
   getDiagnostics(playerId: string): object[];
   setDiagnosticsEnabled(playerId: string, enabled: boolean): void;
   setAudioSampling(playerId: string, enabled: boolean, points: number): boolean;
+  showRoutePicker(playerId: string | null): Promise<void>;
+  isRoutePickerAvailable(): boolean;
+  getCastState(): object;
+  configureCast(options: object): Promise<void>;
+  showCastPicker(): Promise<void>;
+  stopCasting(): Promise<void>;
+  setCatalog(items: object[], options: object): Promise<void>;
+  searchCatalog(request: object): Promise<object[]>;
+  playFromSearch(request: object, playerId: string | null): Promise<object>;
+  setSearchHandlerEnabled(enabled: boolean): void;
+  resolveSearchRequest(requestId: string, result: object): void;
   onPlayerEvent(listener: (event: object) => void): { remove(): void };
 }
 

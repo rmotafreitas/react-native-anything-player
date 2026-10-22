@@ -1,6 +1,8 @@
 import { PlayerError, toPlayerError } from '../errors';
 import { host } from './host';
+import { dispatchModuleEvent } from './moduleEvents';
 import type {
+  AudioRoute,
   AudioSamplingOptions,
   DiagnosticEntry,
   LoadOptions,
@@ -13,6 +15,7 @@ import type {
   PlayerStatus,
   Progress,
   RemoteCommandEvent,
+  SearchPlayEvent,
   SourceInput,
 } from '../types';
 
@@ -27,12 +30,14 @@ let subscribed = false;
 /** The platform's engine module (throws when it is missing, e.g. in Expo Go). */
 const native = () => host().module();
 
-function ensureSubscription(): void {
+/** @internal Subscribes to the engine module's events (once). */
+export function ensureSubscription(): void {
   if (subscribed) return;
   native().onPlayerEvent((event) => {
     const e = event as { playerId?: string };
     if (typeof e.playerId === 'string')
       players.get(e.playerId)?._handleEvent(event);
+    else dispatchModuleEvent(event as Record<string, unknown>);
   });
   subscribed = true;
   // Native kept running while JS was suspended; adopt its current truth.
@@ -160,7 +165,24 @@ export class Player {
         });
       }
     }
+    if (options.id != null) {
+      if (typeof options.id !== 'string' || options.id.trim() === '') {
+        throw new PlayerError({
+          code: 'INVALID_ARGUMENT',
+          message: 'A player id must be a non-empty string.',
+          recoverable: false,
+        });
+      }
+      if (players.has(options.id)) {
+        throw new PlayerError({
+          code: 'INVALID_ARGUMENT',
+          message: `A live Player already has the id "${options.id}".`,
+          recoverable: false,
+        });
+      }
+    }
     ensureSubscription();
+    // With an id native already knows, this attaches to that player.
     this.id = native().createPlayer(options as object);
     players.set(this.id, this);
     this._status = native().getStatus(this.id) as NativeStatus;
@@ -438,6 +460,12 @@ export class Player {
           timestamp: event.timestamp as number,
         });
         break;
+      case 'searchPlay':
+        this.emit('searchPlay', {
+          request: event.request,
+          item: event.item,
+        } as SearchPlayEvent);
+        break;
       case 'discontinuity':
         this.emit('discontinuity', {
           position: event.position as number,
@@ -476,6 +504,8 @@ export class Player {
     this.emit('status', this._status);
     if (previous.state !== this._status.state)
       this.emit('stateChange', this._status.state, previous.state);
+    if (!sameRoute(previous.route, this._status.route))
+      this.emit('routeChange', this._status.route, previous.route);
   }
 
   private ensureAlive(): void {
@@ -498,6 +528,15 @@ export class Player {
     }
     if (result) this.apply(result as NativeStatus);
   }
+}
+
+function sameRoute(a: AudioRoute, b: AudioRoute): boolean {
+  return a.kind === b.kind && a.name === b.name;
+}
+
+/** @internal The live `Player` with this native id, if any. */
+export function _livePlayer(id: string): Player | undefined {
+  return players.get(id);
 }
 
 /** @internal Test hook. */

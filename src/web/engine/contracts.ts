@@ -24,6 +24,12 @@ export interface EngineDriver {
   /** Effective output volume (volume × mute × duck), 0..1. */
   setVolume(effective: number): void;
   setRate(rate: number): void;
+  /**
+   * Send what follows to another output (`'local'`, `'cast:<device>'`). Only
+   * the platform's routing driver implements a real switch; the engine calls
+   * it from `handoff`, after unloading the item from the previous output.
+   */
+  switchOutput(outputId: string): void;
   sample(): PlaybackSample;
 }
 

@@ -1,6 +1,26 @@
 export { Player } from './Player';
 export { PlayerError, isPlayerError } from './errors';
 export {
+  addCastStateListener,
+  addRoutePickerAvailabilityListener,
+  configureCast,
+  getCastStatus,
+  isRoutePickerAvailable,
+  playFromSearch,
+  searchCatalog,
+  setCatalog,
+  setSearchHandler,
+  showCastPicker,
+  showRoutePicker,
+  stopCasting,
+} from './core/system';
+export type {
+  CastConfiguration,
+  CastStatus,
+  SearchHandler,
+  SearchInput,
+} from './core/system';
+export {
   usePlayerStatus,
   usePlaybackState,
   useProgress,
@@ -10,8 +30,13 @@ export {
 export type {
   Artwork,
   AssetModule,
+  AudioRoute,
+  AudioRouteKind,
   AudioSample,
   AudioSamplingOptions,
+  CastState,
+  CatalogItem,
+  CatalogOptions,
   DiagnosticEntry,
   Discontinuity,
   Interruption,
@@ -31,6 +56,9 @@ export type {
   ReconnectInfo,
   RemoteCommand,
   RemoteCommandEvent,
+  SearchFocus,
+  SearchPlayEvent,
+  SearchRequest,
   Source,
   SourceInput,
 } from './types';

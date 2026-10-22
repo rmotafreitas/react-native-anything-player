@@ -56,6 +56,47 @@ export interface Spec extends TurboModule {
   /** Returns whether decoded-audio sampling is supported here. */
   setAudioSampling(playerId: string, enabled: boolean, points: number): boolean;
 
+  // ── Outputs (app-global) ──
+  /** Opens the system output picker for `playerId` (`null` = the active player). */
+  showRoutePicker(playerId: string | null): Promise<void>;
+  isRoutePickerAvailable(): boolean;
+
+  // ── Google Cast (app-global) ──
+  /** `{ state: CastState, device: string | null }` */
+  getCastState(): CodegenTypes.UnsafeObject;
+  /** Native reads the receiver id at build time; the web loads the SDK here. */
+  configureCast(options: CodegenTypes.UnsafeObject): Promise<void>;
+  showCastPicker(): Promise<void>;
+  stopCasting(): Promise<void>;
+
+  // ── Catalog & voice (app-global, persisted natively) ──
+  setCatalog(
+    items: CodegenTypes.UnsafeObject[],
+    options: CodegenTypes.UnsafeObject
+  ): Promise<void>;
+  /** Ranked matches, best first. */
+  searchCatalog(
+    request: CodegenTypes.UnsafeObject
+  ): Promise<CodegenTypes.UnsafeObject[]>;
+  /** `{ item: CatalogItem | null }`: what was played. */
+  playFromSearch(
+    request: CodegenTypes.UnsafeObject,
+    playerId: string | null
+  ): Promise<CodegenTypes.UnsafeObject>;
+  /** Whether native may ask JS (`searchRequest` events) when the catalog has no match. */
+  setSearchHandlerEnabled(enabled: boolean): void;
+  /** Answers a `searchRequest` event: `{ item: CatalogItem | null }`. */
+  resolveSearchRequest(
+    requestId: string,
+    result: CodegenTypes.UnsafeObject
+  ): void;
+
+  /**
+   * Player events carry `playerId`. App-global events have none:
+   * `{ type: 'castState', state, device }`,
+   * `{ type: 'routePickerAvailability', available }`,
+   * `{ type: 'searchRequest', requestId, request }`.
+   */
   readonly onPlayerEvent: CodegenTypes.EventEmitter<CodegenTypes.UnsafeObject>;
 }
 

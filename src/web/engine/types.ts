@@ -5,13 +5,17 @@
 
 import { PlayerError } from '../../errors';
 import type {
+  AudioRoute,
   InterruptionReason,
   NetworkState,
   PlaybackState,
   PlayerErrorCode,
 } from '../../types';
 
-export type { InterruptionReason, NetworkState, PlaybackState };
+export type { AudioRoute, InterruptionReason, NetworkState, PlaybackState };
+
+/** The route before the platform reports one: the engine never guesses. */
+export const UNKNOWN_ROUTE: AudioRoute = { kind: 'unknown', name: null };
 
 export type FocusResult = 'granted' | 'delayed' | 'denied';
 
@@ -105,6 +109,7 @@ export interface EngineStatus {
   volume: number;
   muted: boolean;
   rate: number;
+  route: AudioRoute;
 }
 
 /** One structured diagnostic line (ring-buffered, optionally streamed). */

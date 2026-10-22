@@ -28,6 +28,7 @@ export const baseStatus = (
   volume: 1,
   muted: false,
   rate: 1,
+  route: { kind: 'speaker', name: null },
   ...overrides,
 });
 
@@ -91,8 +92,11 @@ export class FakeNative {
   }
 
   createPlayer = (options: object) => {
-    const id = `p${++this.nextId}`;
     this.calls.push(['createPlayer', options]);
+    const requested = (options as { id?: string }).id;
+    // Like native: an id that already exists attaches to that player.
+    if (requested != null && this.statuses.has(requested)) return requested;
+    const id = requested ?? `p${++this.nextId}`;
     this.statuses.set(id, baseStatus());
     return id;
   };
@@ -147,6 +151,49 @@ export class FakeNative {
   setAudioSampling = (id: string, enabled: boolean, points: number) => {
     this.calls.push(['setAudioSampling', id, enabled, points]);
     return true;
+  };
+
+  // ── App-global ──
+  routePickerAvailable = true;
+  castStatus: { state: string; device: string | null } = {
+    state: 'notConnected',
+    device: null,
+  };
+  catalogResults: object[] = [];
+  playResult: object = { item: null };
+
+  private global<T>(name: string, value: T, ...args: unknown[]): Promise<T> {
+    this.calls.push([name, ...args]);
+    if (this.rejectNext) {
+      const error = Object.assign(
+        new Error(this.rejectNext.message),
+        this.rejectNext
+      );
+      this.rejectNext = null;
+      return Promise.reject(error);
+    }
+    return Promise.resolve(value);
+  }
+
+  showRoutePicker = (playerId: string | null) =>
+    this.global('showRoutePicker', undefined, playerId);
+  isRoutePickerAvailable = () => this.routePickerAvailable;
+  getCastState = () => ({ ...this.castStatus });
+  configureCast = (options: object) =>
+    this.global('configureCast', undefined, options);
+  showCastPicker = () => this.global('showCastPicker', undefined);
+  stopCasting = () => this.global('stopCasting', undefined);
+  setCatalog = (items: object[], options: object) =>
+    this.global('setCatalog', undefined, items, options);
+  searchCatalog = (request: object) =>
+    this.global('searchCatalog', this.catalogResults, request);
+  playFromSearch = (request: object, playerId: string | null) =>
+    this.global('playFromSearch', this.playResult, request, playerId);
+  setSearchHandlerEnabled = (enabled: boolean) => {
+    this.calls.push(['setSearchHandlerEnabled', enabled]);
+  };
+  resolveSearchRequest = (requestId: string, result: object) => {
+    this.calls.push(['resolveSearchRequest', requestId, result]);
   };
 }
 

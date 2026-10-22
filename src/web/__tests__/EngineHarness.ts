@@ -143,6 +143,11 @@ export class FakeDriver implements EngineDriver {
   setRate(rate: number): void {
     this.commands.push(`rate(${f2(rate)})`);
   }
+
+  switchOutput(outputId: string): void {
+    this.commands.push(`switchOutput(${outputId})`);
+    this.motion = 'frozen';
+  }
 }
 
 /** Collects everything the engine reports. */

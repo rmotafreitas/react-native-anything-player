@@ -1,0 +1,20 @@
+[
+  { "name": "accents fold away", "text": "Café del Mar", "tokens": ["cafe", "del", "mar"] },
+  { "name": "a combining accent equals the precomposed one", "text": "CAFÉ", "tokens": ["cafe"] },
+  { "name": "Turkish dotted capital I", "text": "İstanbul FM", "tokens": ["istanbul", "fm"] },
+  { "name": "Turkish dotless i", "text": "ıstanbul", "tokens": ["istanbul"] },
+  { "name": "final sigma folds to sigma", "text": "ΟΔΥΣΣΕΥΣ", "tokens": ["οδυσσευσ"] },
+  { "name": "sharp s", "text": "Straße", "tokens": ["strasse"] },
+  { "name": "capital sharp s", "text": "STRAẞE", "tokens": ["strasse"] },
+  { "name": "ampersand reads as and", "text": "Rock&Roll", "tokens": ["rock", "and", "roll"] },
+  { "name": "full-width letters and digits", "text": "Ｒａｄｉｏ　１", "tokens": ["radio", "1"] },
+  { "name": "mathematical letters are compatibility forms", "text": "𝐉𝐚𝐳𝐳", "tokens": ["jazz"] },
+  { "name": "a supplementary-plane letter lowercases", "text": "𐐀", "tokens": ["𐐨"] },
+  { "name": "CJK stays; kana voicing marks are combining marks", "text": "東京 ラジオ", "tokens": ["東京", "ラシオ"] },
+  { "name": "punctuation and underscores separate", "text": "  --Hello__World--  ", "tokens": ["hello", "world"] },
+  { "name": "roman numeral letter number", "text": "Ⅻ", "tokens": ["xii"] },
+  { "name": "vulgar fraction", "text": "½ hour", "tokens": ["1", "2", "hour"] },
+  { "name": "titlecase digraph", "text": "ǅ", "tokens": ["dz"] },
+  { "name": "empty", "text": "", "tokens": [] },
+  { "name": "only punctuation", "text": "!!! ...", "tokens": [] }
+]

@@ -7,6 +7,7 @@ jest.mock('../native/NativeAnythingPlayer', () => ({
 }));
 
 import { Player } from '../Player';
+import { getCastStatus, isRoutePickerAvailable } from '../core/system';
 import { isPlayerError } from '../errors';
 
 it('explains that Expo Go cannot load the native module', () => {
@@ -22,4 +23,9 @@ it('explains that Expo Go cannot load the native module', () => {
     recoverable: false,
   });
   expect((error as Error).message).toContain('development build');
+});
+
+it('reports no output picker and no Cast instead of throwing', () => {
+  expect(isRoutePickerAvailable()).toBe(false);
+  expect(getCastStatus()).toEqual({ state: 'unavailable', device: null });
 });

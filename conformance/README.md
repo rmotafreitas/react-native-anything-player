@@ -47,6 +47,8 @@ Each file holds an array of scenarios:
 | `{"interruption": "began", "reason": "interruption", "resumable": true}` | system pause |
 | `{"interruption": "ended", "shouldResume": true}` | system resume hint |
 | `{"network": "online" \| "offline"}` / `{"network": "online", "handoff": true}` | connectivity |
+| `{"route": "bluetooth", "name": "AirPods"}` | the local output changed (`routeChanged`; `name` optional) |
+| `{"call": "handoff", "route": "cast", "name": "TV", "output": "cast:tv", "resume": true}` | the audio moves to another output (`handoff`) |
 | `{"platformReset": true}` | media services were reset |
 | `{"advance": 1500}` | advance the clock, firing due wake-ups in order |
 | `{"expect": {...}}` | assertions (below) |
@@ -71,9 +73,33 @@ happened since the previous one.
 | `errors` | emitted errors, e.g. `["NETWORK_ERROR:recoverable", "TIMEOUT:fatal"]` |
 | `ended` | number of `ended` events since the previous expect |
 | `wantsKeepalive`, `needsAudioFocus` | engine queries |
+| `route`, `routeName` | `status.route.kind` / `status.route.name` |
 
 Command formats: `open(gen=N,start=-|S.S,play=B)`, `play`, `pause`,
-`seek(S.S)`, `release`, `unload`, `volume(V.VV)`, `rate(R.RR)`.
+`seek(S.S)`, `release`, `unload`, `volume(V.VV)`, `rate(R.RR)`,
+`switchOutput(ID)`. The fake driver's playhead freezes on `switchOutput`.
+
+## Outputs (`route.json`)
+
+`handoff(route, outputId, resume)` moves the audio to another output (a Cast
+receiver, or back to the device): the item is unloaded from the old output,
+the driver switches (`switchOutput`), the volume is re-applied and, when the
+item was active, it re-opens on the new output at the same position with
+`play = resume && playWhenReady`. An inactive item (stopped, ended, failed, or
+a paused stream whose connection was released) re-opens at the next `play()`.
+While the route is `cast`, the device's rules are off: no audio focus, no
+ducking, interruptions and media-services resets ignored, the phone's
+connectivity does not reload the receiver, and the position-based silent-stall
+check is off (a receiver's position is interpolated) — only the state the
+receiver reports, and a stall longer than `STALL_MAX_MS`, drive recovery.
+
+## Catalog search (`catalog/`)
+
+`catalog/normalize.json` (`text` → `tokens`) and `catalog/search.json` (a
+catalog and `request` → ranked `expect` ids, plus `emptyQuery`) specify the
+voice catalog's matcher: `src/core/catalog.ts`, `ios/Core/CatalogSearch.swift`,
+`android/.../core/CatalogSearch.kt`. The pipeline and scores are documented at
+the top of `src/core/catalog.ts`.
 
 The fake jitter source returns 0.5, so backoff delays are exactly
 1000, 2000, 4000, 8000, 16000, 30000 ms.

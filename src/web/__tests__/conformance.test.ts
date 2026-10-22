@@ -5,7 +5,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import type { PlayerErrorCode } from '../../types';
+import type { AudioRouteKind, PlayerErrorCode } from '../../types';
 import {
   DEFAULT_ENGINE_OPTIONS,
   type EngineOptions,
@@ -86,6 +86,15 @@ function perform(call: string, step: Step, h: EngineHarness): void {
       return h.engine.setDucked(step.value === true);
     case 'foreground':
       return h.engine.appForegrounded();
+    case 'handoff':
+      return h.engine.handoff(
+        {
+          kind: step.route as AudioRouteKind,
+          name: (step.name as string | undefined) ?? null,
+        },
+        step.output as string,
+        step.resume === true
+      );
     default:
       throw new Error(`unknown call ${call}`);
   }
@@ -184,6 +193,12 @@ function check(
       case 'error':
         expect_(label, s.error?.code ?? null, v);
         break;
+      case 'route':
+        expect_(label, s.route.kind, v);
+        break;
+      case 'routeName':
+        expect_(label, s.route.name, v);
+        break;
       case 'reconnectAttempt':
         expect_(label, s.reconnect?.attempt ?? null, v);
         break;
@@ -261,6 +276,11 @@ function apply(step: Step, h: EngineHarness, at: string): void {
           ? 'offline'
           : 'unknown';
     h.engine.networkChanged(next, step.handoff === true);
+  } else if ('route' in step) {
+    h.engine.routeChanged({
+      kind: step.route as AudioRouteKind,
+      name: (step.name as string | undefined) ?? null,
+    });
   } else if ('platformReset' in step) {
     h.engine.platformReset();
   } else if ('advance' in step) {

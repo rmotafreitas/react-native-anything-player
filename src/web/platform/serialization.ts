@@ -145,6 +145,7 @@ export function statusToMap(status: EngineStatus, seq: number): Dict {
     volume: status.volume,
     muted: status.muted,
     rate: status.rate,
+    route: { ...status.route },
   };
 }
 

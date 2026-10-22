@@ -111,7 +111,46 @@ export type PlayerErrorCode =
   | 'NATIVE_PLAYER_ERROR'
   | 'AUTOPLAY_BLOCKED'
   | 'NATIVE_MODULE_MISSING'
+  | 'ROUTE_PICKER_UNAVAILABLE'
+  | 'CAST_UNAVAILABLE'
+  | 'CAST_UNSUPPORTED_SOURCE'
   | 'INTERNAL_ERROR';
+
+/**
+ * What kind of output a player's audio goes to.
+ *
+ * | kind | output |
+ * | --- | --- |
+ * | `speaker` | the device's own speaker (or earpiece) |
+ * | `headphones` | wired headphones or a headset |
+ * | `bluetooth` | Bluetooth headphones, speakers or a car kit (A2DP, LE, HFP) |
+ * | `airplay` | an AirPlay receiver (iOS, Safari) |
+ * | `cast` | a Google Cast receiver: the receiver plays the stream itself |
+ * | `car` | CarPlay / a car's audio over USB |
+ * | `hdmi` | HDMI or DisplayPort audio |
+ * | `usb` | a USB audio device |
+ * | `other` | an output the platform reports but RNAP does not classify |
+ * | `unknown` | the platform does not say (a browser's local output) |
+ */
+export type AudioRouteKind =
+  | 'speaker'
+  | 'headphones'
+  | 'bluetooth'
+  | 'airplay'
+  | 'cast'
+  | 'car'
+  | 'hdmi'
+  | 'usb'
+  | 'other'
+  | 'unknown';
+
+/** Where a player's audio goes (see the Casting and AirPlay guide). */
+export interface AudioRoute {
+  /** The kind of output. */
+  kind: AudioRouteKind;
+  /** The device's name when the platform tells it ("Living Room", "AirPods Pro"), else `null`. */
+  name: string | null;
+}
 
 /** The authoritative snapshot of a player. */
 export interface PlayerStatus {
@@ -141,6 +180,8 @@ export interface PlayerStatus {
   muted: boolean;
   /** Playback rate, as set by `setRate`. */
   rate: number;
+  /** Where the audio goes: the speaker, headphones, AirPlay, a Cast receiver… */
+  route: AudioRoute;
 }
 
 /** A progress reading. Positions are seconds. */
@@ -265,6 +306,15 @@ export type RemoteCommand =
 
 /** Options for `new Player()`. All are optional; the defaults suit a radio app. */
 export interface PlayerOptions {
+  /**
+   * A stable id of your choosing (e.g. `'main'`). A player with an id outlives
+   * the JavaScript that created it: when native already has a player with
+   * this id — one Siri or Google Assistant started while the app was not
+   * running, or one that kept playing across a reload — `new Player({ id })`
+   * attaches to it, keeping its source, state and options (the options passed
+   * here are then ignored). Two live `Player` objects cannot share an id.
+   */
+  id?: string;
   /** Automatic recovery (see the Recovery policy guide). */
   recovery?: {
     /** Reconnect after recoverable failures while playback is wanted. Default `true`. */
@@ -376,6 +426,10 @@ export interface PlayerEventMap {
    * it. Reported when the jump becomes audible.
    */
   discontinuity: (event: Discontinuity) => void;
+  /** `status.route` changed (AirPlay chosen, headphones unplugged, casting started…). */
+  routeChange: (route: AudioRoute, previous: AudioRoute) => void;
+  /** A voice assistant, or `playFromSearch()`, started a catalog item on this player. */
+  searchPlay: (event: SearchPlayEvent) => void;
 }
 
 /** See {@link PlayerEventMap.discontinuity}. */
@@ -416,3 +470,99 @@ export interface AudioSamplingOptions {
 
 /** An event name. */
 export type PlayerEvent = keyof PlayerEventMap;
+
+/** What a voice request or `playFromSearch()` asked for. */
+export interface SearchRequest {
+  /**
+   * What the user said, without the app's name: `"jazz radio"`. May be empty
+   * ("play something on MyApp"): then the last catalog item played, or the
+   * first one, plays.
+   */
+  query: string;
+  /** A title the assistant recognised in the request. */
+  title?: string;
+  /** An artist the assistant recognised. */
+  artist?: string;
+  /** An album the assistant recognised. */
+  album?: string;
+  /** A genre the assistant recognised. */
+  genre?: string;
+  /** What the assistant thinks is meant; narrows results to items of that `kind` when any match. */
+  focus?: SearchFocus;
+  /** Who asked: Siri, Google Assistant / Gemini, or the app itself. */
+  origin: 'siri' | 'assistant' | 'app';
+}
+
+/** See {@link SearchRequest.focus}. */
+export type SearchFocus =
+  | 'station'
+  | 'song'
+  | 'artist'
+  | 'album'
+  | 'genre'
+  | 'playlist'
+  | 'podcast'
+  | 'any';
+
+/** Something voice assistants (and `playFromSearch()`) can find and play. */
+export interface CatalogItem {
+  /** Unique within the catalog. */
+  id: string;
+  /** What people call it: a station's or a song's name. */
+  title: string;
+  /** Artist, or a station's network. */
+  artist?: string;
+  /** Album. */
+  album?: string;
+  /** Genre ("jazz", "news"). */
+  genre?: string;
+  /** Remote URL, local file URI, or `require('./cover.png')`. */
+  artwork?: string | Artwork | AssetModule;
+  /** What to play. Its `metadata` defaults to this item's title, artist, album and artwork. */
+  source: SourceInput;
+  /** Other names people say for it: `["Radio One", "BBC 1"]`. */
+  keywords?: string[];
+  /** What it is (default `'station'`). */
+  kind?: 'station' | 'song' | 'album' | 'podcast' | 'audiobook' | 'other';
+}
+
+/** Payload of the `searchPlay` event. */
+export interface SearchPlayEvent {
+  /** What was asked. */
+  request: SearchRequest;
+  /** What is playing because of it. */
+  item: CatalogItem;
+}
+
+/** Options for `setCatalog()`. */
+export interface CatalogOptions {
+  /**
+   * The id of the player voice requests use when the app has none: Siri or
+   * Google Assistant may start the app with no JavaScript running. Native
+   * creates it with {@link playerOptions}; the app's `new Player({ id })`
+   * then attaches to it. Default `'default'`.
+   */
+  playerId?: string;
+  /** Options for that player, when native has to create it. */
+  playerOptions?: Omit<PlayerOptions, 'id'>;
+}
+
+/**
+ * Google Cast availability.
+ *
+ * | state | meaning |
+ * | --- | --- |
+ * | `unavailable` | no Cast here: built without the `cast` flag, or a browser without the Cast SDK (only Chrome has it) |
+ * | `initializing` | the Cast SDK is starting (the web loads it on demand) |
+ * | `noDevices` | no Cast device found on the network |
+ * | `notConnected` | devices found, none in use |
+ * | `connecting` | a session is starting |
+ * | `connected` | casting |
+ */
+export type CastState =
+  | 'unavailable'
+  | 'initializing'
+  | 'noDevices'
+  | 'notConnected'
+  | 'connecting'
+  | 'connected';

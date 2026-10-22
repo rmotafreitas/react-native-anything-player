@@ -1,0 +1,301 @@
+[
+  {
+    "name": "a passive route change is published and commands nothing",
+    "steps": [
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "expect": { "state": "playing", "route": "unknown", "routeName": null, "commands": ["open(gen=1,start=-,play=true)"] } },
+      { "route": "bluetooth", "name": "AirPods" },
+      { "expect": { "state": "playing", "route": "bluetooth", "routeName": "AirPods", "commands": [] } }
+    ]
+  },
+  {
+    "name": "handoff of a playing file re-opens it on the receiver at the same position",
+    "steps": [
+      { "call": "load", "uri": "https://cdn.example/song.mp3", "autoplay": true },
+      { "native": "ready", "duration": 120, "seekable": true },
+      { "native": "playing" },
+      { "driver": "position", "value": 42 },
+      { "expect": { "state": "playing", "commands": ["open(gen=1,start=-,play=true)"], "loads": ["1:ready"] } },
+      { "call": "handoff", "route": "cast", "name": "Living Room", "output": "cast:tv", "resume": true },
+      { "expect": { "state": "loading", "playWhenReady": true, "route": "cast", "routeName": "Living Room", "needsAudioFocus": false, "commands": ["unload", "switchOutput(cast:tv)", "volume(1.00)", "open(gen=2,start=42.0,play=true)"] } },
+      { "native": "ready", "duration": 120, "seekable": true },
+      { "native": "playing" },
+      { "expect": { "state": "playing", "loads": [], "commands": [] } }
+    ]
+  },
+  {
+    "name": "a live stream is handed off at the live edge",
+    "steps": [
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "expect": { "commands": ["open(gen=1,start=-,play=true)"] } },
+      { "call": "handoff", "route": "cast", "name": "TV", "output": "cast:tv", "resume": true },
+      { "expect": { "state": "loading", "commands": ["unload", "switchOutput(cast:tv)", "volume(1.00)", "open(gen=2,start=-,play=true)"] } }
+    ]
+  },
+  {
+    "name": "a paused file arrives paused on the receiver",
+    "steps": [
+      { "call": "load", "uri": "https://cdn.example/song.mp3" },
+      { "native": "ready", "duration": 120, "seekable": true },
+      { "driver": "position", "value": 10 },
+      { "expect": { "state": "paused", "commands": ["open(gen=1,start=-,play=false)"], "loads": ["1:ready"] } },
+      { "call": "handoff", "route": "cast", "name": "TV", "output": "cast:tv", "resume": true },
+      { "expect": { "state": "loading", "playWhenReady": false, "commands": ["unload", "switchOutput(cast:tv)", "volume(1.00)", "open(gen=2,start=10.0,play=false)"] } },
+      { "native": "ready", "duration": 120, "seekable": true },
+      { "expect": { "state": "paused", "playWhenReady": false } }
+    ]
+  },
+  {
+    "name": "back to the phone the item arrives paused, at the receiver's position",
+    "steps": [
+      { "call": "load", "uri": "https://cdn.example/song.mp3", "autoplay": true },
+      { "native": "ready", "duration": 120, "seekable": true },
+      { "native": "playing" },
+      { "call": "handoff", "route": "cast", "name": "TV", "output": "cast:tv", "resume": true },
+      { "native": "ready", "duration": 120, "seekable": true },
+      { "native": "playing" },
+      { "advance": 5000 },
+      { "expect": { "state": "playing", "route": "cast" } },
+      { "call": "handoff", "route": "speaker", "output": "local", "resume": false },
+      { "expect": { "state": "loading", "playWhenReady": false, "route": "speaker", "routeName": null, "commands": ["unload", "switchOutput(local)", "volume(1.00)", "open(gen=3,start=5.0,play=false)"] } },
+      { "native": "ready", "duration": 120, "seekable": true },
+      { "expect": { "state": "paused", "playWhenReady": false, "needsAudioFocus": false } }
+    ]
+  },
+  {
+    "name": "a handoff while idle only switches the output, and the next load opens there",
+    "steps": [
+      { "call": "handoff", "route": "cast", "name": "TV", "output": "cast:tv", "resume": true },
+      { "expect": { "state": "idle", "route": "cast", "commands": ["switchOutput(cast:tv)", "volume(1.00)"] } },
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "expect": { "state": "loading", "playWhenReady": true, "needsAudioFocus": false, "commands": ["open(gen=2,start=-,play=true)"] } }
+    ]
+  },
+  {
+    "name": "a handoff to the same output only updates the route",
+    "steps": [
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "call": "handoff", "route": "cast", "name": "TV", "output": "cast:tv", "resume": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "expect": { "state": "playing", "routeName": "TV" } },
+      { "call": "handoff", "route": "cast", "name": "TV (renamed)", "output": "cast:tv", "resume": true },
+      { "expect": { "state": "playing", "routeName": "TV (renamed)", "commands": [] } }
+    ]
+  },
+  {
+    "name": "a pending load settles on the new output",
+    "steps": [
+      { "call": "load", "uri": "https://cdn.example/song.mp3", "autoplay": true },
+      { "expect": { "state": "loading", "loads": [], "commands": ["open(gen=1,start=-,play=true)"] } },
+      { "call": "handoff", "route": "cast", "name": "TV", "output": "cast:tv", "resume": true },
+      { "expect": { "state": "loading", "loads": [], "commands": ["unload", "switchOutput(cast:tv)", "volume(1.00)", "open(gen=2,start=-,play=true)"] } },
+      { "native": "ready", "gen": 1, "duration": 120, "seekable": true },
+      { "expect": { "state": "loading", "loads": [] } },
+      { "native": "ready", "duration": 120, "seekable": true },
+      { "expect": { "state": "buffering", "loads": ["1:ready"] } }
+    ]
+  },
+  {
+    "name": "an ended file re-opens on the new output at the next play",
+    "steps": [
+      { "call": "load", "uri": "https://cdn.example/song.mp3", "autoplay": true },
+      { "native": "ready", "duration": 30, "seekable": true },
+      { "native": "playing" },
+      { "native": "ended" },
+      { "expect": { "state": "ended", "ended": 1, "commands": ["open(gen=1,start=-,play=true)"] } },
+      { "call": "handoff", "route": "cast", "name": "TV", "output": "cast:tv", "resume": true },
+      { "expect": { "state": "ended", "commands": ["unload", "switchOutput(cast:tv)", "volume(1.00)"] } },
+      { "call": "play" },
+      { "expect": { "state": "loading", "playWhenReady": true, "commands": ["open(gen=3,start=0.0,play=true)"] } }
+    ]
+  },
+  {
+    "name": "a stopped stream resumes on the new output",
+    "steps": [
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "call": "stop" },
+      { "expect": { "state": "stopped", "commands": ["open(gen=1,start=-,play=true)", "release"] } },
+      { "call": "handoff", "route": "cast", "name": "TV", "output": "cast:tv", "resume": true },
+      { "expect": { "state": "stopped", "commands": ["unload", "switchOutput(cast:tv)", "volume(1.00)"] } },
+      { "call": "play" },
+      { "expect": { "state": "loading", "commands": ["open(gen=3,start=-,play=true)"] } }
+    ]
+  },
+  {
+    "name": "a paused stream whose connection was released stays released",
+    "steps": [
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "call": "pause" },
+      { "advance": 30000 },
+      { "expect": { "state": "paused", "commands": ["open(gen=1,start=-,play=true)", "pause", "release"] } },
+      { "call": "handoff", "route": "cast", "name": "TV", "output": "cast:tv", "resume": true },
+      { "expect": { "state": "paused", "commands": ["unload", "switchOutput(cast:tv)", "volume(1.00)"] } },
+      { "call": "play" },
+      { "expect": { "state": "loading", "commands": ["open(gen=3,start=-,play=true)"] } }
+    ]
+  },
+  {
+    "name": "a handoff during a reconnect resets the backoff",
+    "steps": [
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "native": "failed", "code": "NETWORK_ERROR", "recoverable": true },
+      { "expect": { "state": "reconnecting", "reconnectAttempt": 1, "errors": ["NETWORK_ERROR:recoverable"], "commands": ["open(gen=1,start=-,play=true)"] } },
+      { "call": "handoff", "route": "cast", "name": "TV", "output": "cast:tv", "resume": true },
+      { "expect": { "state": "loading", "reconnectAttempt": null, "playWhenReady": true, "commands": ["unload", "switchOutput(cast:tv)", "volume(1.00)", "open(gen=2,start=-,play=true)"] } }
+    ]
+  },
+  {
+    "name": "events from the previous output are dropped",
+    "steps": [
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "call": "handoff", "route": "cast", "name": "TV", "output": "cast:tv", "resume": true },
+      { "native": "playing", "gen": "prev" },
+      { "native": "failed", "gen": "prev", "code": "NETWORK_ERROR", "recoverable": true },
+      { "expect": { "state": "loading", "errors": [] } }
+    ]
+  },
+  {
+    "name": "while casting, a call does not pause and audio focus is not used",
+    "steps": [
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "call": "handoff", "route": "cast", "name": "TV", "output": "cast:tv", "resume": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "expect": { "state": "playing" } },
+      { "interruption": "began", "reason": "interruption", "resumable": true },
+      { "expect": { "state": "playing", "interruption": null, "needsAudioFocus": false, "commands": [] } },
+      { "focus": "denied" },
+      { "call": "pause" },
+      { "expect": { "state": "paused", "commands": ["pause"] } },
+      { "call": "play" },
+      { "expect": { "state": "buffering", "playWhenReady": true, "interruption": null, "commands": ["play"] } }
+    ]
+  },
+  {
+    "name": "the receiver pausing itself is accepted",
+    "steps": [
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "call": "handoff", "route": "cast", "name": "TV", "output": "cast:tv", "resume": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "native": "pausedExternally", "reason": "system" },
+      { "expect": { "state": "paused", "playWhenReady": false, "interruption": "system" } }
+    ]
+  },
+  {
+    "name": "ducking does not reach the receiver, and applies again back on the phone",
+    "steps": [
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "call": "handoff", "route": "cast", "name": "TV", "output": "cast:tv", "resume": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "expect": { "state": "playing" } },
+      { "call": "duck", "value": true },
+      { "expect": { "commands": [] } },
+      { "call": "handoff", "route": "speaker", "output": "local", "resume": false },
+      { "expect": { "playWhenReady": false, "commands": ["unload", "switchOutput(local)", "volume(0.20)", "open(gen=3,start=-,play=false)"] } }
+    ]
+  },
+  {
+    "name": "the phone going offline does not reload the receiver",
+    "steps": [
+      { "network": "online" },
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "call": "handoff", "route": "cast", "name": "TV", "output": "cast:tv", "resume": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "expect": { "state": "playing" } },
+      { "network": "offline" },
+      { "advance": 5000 },
+      { "network": "online" },
+      { "network": "online", "handoff": true },
+      { "call": "foreground" },
+      { "expect": { "state": "playing", "commands": [] } }
+    ]
+  },
+  {
+    "name": "a receiver failure recovers with the normal backoff on the same output",
+    "steps": [
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "call": "handoff", "route": "cast", "name": "TV", "output": "cast:tv", "resume": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "expect": { "state": "playing" } },
+      { "native": "failed", "code": "NETWORK_ERROR", "recoverable": true },
+      { "expect": { "state": "reconnecting", "reconnectAttempt": 1, "errors": ["NETWORK_ERROR:recoverable"] } },
+      { "advance": 1000 },
+      { "expect": { "state": "loading", "route": "cast", "commands": ["open(gen=3,start=-,play=true)"] } }
+    ]
+  },
+  {
+    "name": "a frozen receiver position is not a silent stall",
+    "steps": [
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "call": "handoff", "route": "cast", "name": "TV", "output": "cast:tv", "resume": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "driver": "frozen" },
+      { "expect": { "state": "playing" } },
+      { "advance": 20000 },
+      { "expect": { "state": "playing", "commands": [] } }
+    ]
+  },
+  {
+    "name": "a receiver that buffers too long is re-opened",
+    "steps": [
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "call": "handoff", "route": "cast", "name": "TV", "output": "cast:tv", "resume": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "expect": { "state": "playing" } },
+      { "native": "buffering" },
+      { "advance": 1000 },
+      { "expect": { "state": "buffering", "commands": [] } },
+      { "advance": 19000 },
+      { "expect": { "state": "loading", "reconnectAttempt": 1, "commands": ["open(gen=3,start=-,play=true)"] } }
+    ]
+  },
+  {
+    "name": "a route change while casting is ignored; the handoff back sets the local route",
+    "steps": [
+      { "route": "headphones" },
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "call": "handoff", "route": "cast", "name": "TV", "output": "cast:tv", "resume": true },
+      { "route": "speaker" },
+      { "expect": { "route": "cast", "routeName": "TV" } },
+      { "call": "handoff", "route": "speaker", "output": "local", "resume": false },
+      { "expect": { "route": "speaker", "routeName": null } }
+    ]
+  }
+]

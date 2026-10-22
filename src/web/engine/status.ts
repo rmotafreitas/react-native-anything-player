@@ -17,12 +17,18 @@ function sameFields(a: object | null, b: object | null): boolean {
 
 export function statusEquals(a: EngineStatus, b: EngineStatus | null): boolean {
   if (!b) return false;
-  const { interruption, reconnect, ...scalars } = a;
-  const { interruption: bInterruption, reconnect: bReconnect, ...bScalars } = b;
+  const { interruption, reconnect, route, ...scalars } = a;
+  const {
+    interruption: bInterruption,
+    reconnect: bReconnect,
+    route: bRoute,
+    ...bScalars
+  } = b;
   return (
     sameFields(scalars, bScalars) &&
     sameFields(interruption, bInterruption) &&
-    sameFields(reconnect, bReconnect)
+    sameFields(reconnect, bReconnect) &&
+    sameFields(route, bRoute)
   );
 }
 
