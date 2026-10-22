@@ -14,7 +14,7 @@ import {
   type PlaybackSample,
   type SourceDescriptor,
 } from '../engine/types';
-import type { CastService, CastSdk } from './CastService';
+import { castableUrl, type CastService, type CastSdk } from './CastService';
 import {
   browser,
   type RemotePlayerControllerLike,
@@ -42,23 +42,6 @@ const CONTENT_TYPES: Array<[RegExp, string]> = [
   [/\.flac$/, 'audio/flac'],
   [/\.wav$/, 'audio/wav'],
 ];
-
-/**
- * The absolute http(s) URL a receiver can fetch for `uri`, or `null` when it
- * cannot (`blob:`, `file:`, `data:`, anything else). A relative URL resolves
- * against the page.
- */
-export function castableUrl(uri: string): string | null {
-  const g = browser();
-  try {
-    const url = new g.URL(uri, g.location?.href);
-    return url.protocol === 'http:' || url.protocol === 'https:'
-      ? url.href
-      : null;
-  } catch {
-    return null;
-  }
-}
 
 function contentTypeOf(uri: string): string {
   const path = uri.split(/[?#]/)[0]!.toLowerCase();

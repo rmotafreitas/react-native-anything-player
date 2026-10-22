@@ -14,6 +14,9 @@ import {
   type ChromeCastLike,
 } from './dom';
 
+/** What only a page that casts needs, loaded with the SDK (see CastParts.ts). */
+type CastParts = typeof import('./CastParts');
+
 const SDK_URL =
   'https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1';
 /** The SDK neither loaded nor failed after this long: Cast is not coming. */
@@ -71,6 +74,23 @@ export function deviceOf(session: CastSessionLike | null): CastDevice | null {
   };
 }
 
+/**
+ * The absolute http(s) URL a receiver can fetch for `uri`, or `null` when it
+ * cannot (`blob:`, `file:`, `data:`, anything else). A relative URL resolves
+ * against the page.
+ */
+export function castableUrl(uri: string): string | null {
+  const g = browser();
+  try {
+    const url = new g.URL(uri, g.location?.href);
+    return url.protocol === 'http:' || url.protocol === 'https:'
+      ? url.href
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Whether this browser can load the Cast SDK at all (it is Chrome's). */
 function canLoadSdk(): boolean {
   const g = browser();
@@ -87,6 +107,8 @@ export class CastService {
   private context: CastContextLike | null = null;
   private receiver: string | undefined;
   private readonly endWaiters = new Set<() => void>();
+  /** The receiver driver and title reader; loaded before any session can start. */
+  parts: CastParts | null = null;
 
   /** Whether the SDK is loaded and Cast works (`showCastPicker` may be called). */
   get ready(): boolean {
@@ -117,10 +139,15 @@ export class CastService {
       return this.starting;
     }
     this.setState('initializing', null);
-    this.starting = this.load().then((loaded) => {
-      if (loaded && this.sdk()) this.initialize();
-      else this.setState('unavailable', null);
-    });
+    this.starting = this.load()
+      .then((loaded) =>
+        loaded && this.sdk() ? import('./CastParts').catch(() => null) : null
+      )
+      .then((parts) => {
+        this.parts = parts;
+        if (parts) this.initialize();
+        else this.setState('unavailable', null);
+      });
     return this.starting;
   }
 

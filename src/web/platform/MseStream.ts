@@ -34,7 +34,8 @@ import {
   type SourceBufferLike,
   type SourceElementLike,
 } from './dom';
-import { Fmp4Muxer, MP4_TYPES, type AudioCodec } from './Fmp4Muxer';
+import type { AudioCodec } from './AudioFrames';
+import type { Fmp4Muxer } from './Fmp4Muxer';
 import { isHlsType } from './HlsStream';
 
 export interface MseStreamListener {
@@ -85,6 +86,12 @@ const MSE_CODECS: Record<string, { codec: AudioCodec; type: string }> = {
   'audio/aac': { codec: 'aac', type: 'audio/aac' },
   'audio/aacp': { codec: 'aac', type: 'audio/aac' },
   'audio/x-aac': { codec: 'aac', type: 'audio/aac' },
+};
+
+/** The MSE type each codec takes inside MP4. */
+export const MP4_TYPES: Record<AudioCodec, string> = {
+  mp3: 'audio/mp4; codecs="mp3"',
+  aac: 'audio/mp4; codecs="mp4a.40.2"',
 };
 
 const ignore = () => undefined;
@@ -403,9 +410,14 @@ export class MseStream {
         reason = `addSourceBuffer: ${String(error)}`;
       }
     }
+    if (reason == null && format!.remux)
+      reason = await this.loadMuxer(format!.remux);
+    if (this.closed) {
+      discard(response);
+      return false;
+    }
     if (reason == null) {
-      if (format!.remux) {
-        this.mux = new Fmp4Muxer(format!.remux);
+      if (this.mux) {
         this.listener.onNote('remux', {
           from: contentType ?? '',
           to: format!.type,
@@ -416,6 +428,17 @@ export class MseStream {
     discard(response);
     this.listener.onFallback(reason, format == null ? contentType : null);
     return false;
+  }
+
+  /**
+   * Loads the MP4 muxer on first use (only browsers that need the remux
+   * download it); the reason to fall back when it cannot load.
+   */
+  private async loadMuxer(codec: AudioCodec): Promise<string | null> {
+    const muxer = await import('./Fmp4Muxer').catch(() => null);
+    if (!muxer) return 'the MP4 muxer did not load';
+    this.mux = new muxer.Fmp4Muxer(codec);
+    return null;
   }
 
   private async splice(): Promise<boolean> {

@@ -15,13 +15,10 @@ import {
   type Frame,
 } from './AudioFrames';
 
-export type { AudioCodec } from './AudioFrames';
+import { MP4_TYPES } from './MseStream';
 
-/** The MSE type each codec takes inside MP4. */
-export const MP4_TYPES: Record<AudioCodec, string> = {
-  mp3: 'audio/mp4; codecs="mp3"',
-  aac: 'audio/mp4; codecs="mp4a.40.2"',
-};
+export type { AudioCodec } from './AudioFrames';
+export { MP4_TYPES };
 
 export interface MuxOutput {
   /** The init segment, with the first segment (and again after `restart`). */

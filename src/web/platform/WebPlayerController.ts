@@ -22,7 +22,6 @@ import {
   type SourceDescriptor,
 } from '../engine/types';
 import { AudioSampler } from './AudioSampler';
-import { CastDriver } from './CastDriver';
 import type { CastService } from './CastService';
 import { browser, monotonicNow, type AudioElementLike } from './dom';
 import { ElementRoute } from './ElementRoute';
@@ -126,10 +125,12 @@ export class WebPlayerController implements EngineDelegate, DriverObserver {
     private readonly sink: EventSink
   ) {
     this.driver = new MediaElementDriver(this, options.titleFormat);
-    this.routing = new RoutingDriver(
-      this.driver,
-      new CastDriver(this, () => this.nowPlaying(), runtime.cast)
-    );
+    this.routing = new RoutingDriver(this.driver, () => {
+      const parts = runtime.cast.parts;
+      return parts
+        ? new parts.CastDriver(this, () => this.nowPlaying(), runtime.cast)
+        : null;
+    });
     this.engine = new PlaybackEngine(this.routing, webClock, options.engine);
     this.statusSnapshot = { status: this.engine.status, seq: 0 };
     this.engine.delegate = this;

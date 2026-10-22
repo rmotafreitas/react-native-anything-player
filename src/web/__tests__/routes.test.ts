@@ -342,7 +342,7 @@ describe('RoutingDriver', () => {
   it('commands the current output only, and carries the settings across', () => {
     const local = stub();
     const cast = stub();
-    const driver = new RoutingDriver(local as never, cast as never);
+    const driver = new RoutingDriver(local as never, () => cast as never);
     expect(driver.casting).toBe(false);
     driver.setVolume(0.5);
     driver.setRate(1.5);

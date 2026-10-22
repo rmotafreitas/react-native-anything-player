@@ -10,12 +10,14 @@ import type { MediaElementDriver, ProgressReading } from './MediaElementDriver';
 
 export class RoutingDriver implements EngineDriver {
   private target: MediaElementDriver | CastDriver;
+  /** Made on the first handoff to Cast (its code loads with the Cast SDK). */
+  private cast: CastDriver | null = null;
   private volume = 1;
   private rate = 1;
 
   constructor(
     readonly local: MediaElementDriver,
-    private readonly cast: CastDriver
+    private readonly makeCast: () => CastDriver | null
   ) {
     this.target = local;
   }
@@ -23,12 +25,12 @@ export class RoutingDriver implements EngineDriver {
   /** The player was released: free the element and stop observing the receiver. */
   destroy(): void {
     this.local.destroy();
-    this.cast.dispose();
+    this.cast?.dispose();
   }
 
   /** Whether the audio plays on the Cast receiver. */
   get casting(): boolean {
-    return this.target === this.cast;
+    return this.target !== this.local;
   }
 
   open(request: OpenRequest): void {
@@ -67,10 +69,17 @@ export class RoutingDriver implements EngineDriver {
 
   /** `'local'` or `'cast:<device>'`; the new output takes over the settings. */
   switchOutput(outputId: string): void {
-    this.target = outputId.startsWith('cast:') ? this.cast : this.local;
+    this.target = outputId.startsWith('cast:')
+      ? (this.castDriver() ?? this.local)
+      : this.local;
     this.target.setVolume(this.volume);
     // An element resets its rate when emptied; the receiver ignores it.
     if (this.rate !== 1) this.target.setRate(this.rate);
+  }
+
+  private castDriver(): CastDriver | null {
+    if (!this.cast) this.cast = this.makeCast();
+    return this.cast;
   }
 
   sample(): PlaybackSample {

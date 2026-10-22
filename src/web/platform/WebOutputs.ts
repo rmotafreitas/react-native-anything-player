@@ -6,9 +6,12 @@
 
 import { PlayerError } from '../../errors';
 import type { SourceDescriptor } from '../engine/types';
-import { castableUrl } from './CastDriver';
-import { CastTitles } from './CastTitles';
-import type { CastDevice, CastServiceDelegate } from './CastService';
+import type { CastTitles } from './CastTitles';
+import {
+  castableUrl,
+  type CastDevice,
+  type CastServiceDelegate,
+} from './CastService';
 import type { RuntimeListener, WebRuntime } from './WebRuntime';
 import type { WebPlayerController } from './WebPlayerController';
 
@@ -31,7 +34,7 @@ function unsupportedSource(uri: string): PlayerError {
 }
 
 export class WebOutputs implements CastServiceDelegate, RuntimeListener {
-  private readonly titles = new CastTitles();
+  private titleReaders: CastTitles | null = null;
   /** The player whose audio is on the receiver, and which output that is. */
   private casting: WebPlayerController | null = null;
   private castOutput = '';
@@ -49,6 +52,13 @@ export class WebOutputs implements CastServiceDelegate, RuntimeListener {
   ) {
     runtime.listener = this;
     runtime.cast.delegate = this;
+  }
+
+  /** The Cast title readers, once Cast has loaded (nothing is cast before). */
+  private titles(): CastTitles | null {
+    const parts = this.runtime.cast.parts;
+    if (parts) this.titleReaders ??= new parts.CastTitles();
+    return this.titleReaders;
   }
 
   // ── Output picker ──
@@ -143,13 +153,13 @@ export class WebOutputs implements CastServiceDelegate, RuntimeListener {
       this.castOutput,
       true
     );
-    this.titles.update(controller, true);
+    this.titles()?.update(controller, true);
   }
 
   /** Back to this device, paused: a hand-back never plays from the phone on its own. */
   private handBack(controller: WebPlayerController): void {
     if (this.casting === controller) this.casting = null;
-    this.titles.update(controller, false);
+    this.titles()?.update(controller, false);
     controller.engine.handoff(controller.currentLocalRoute, 'local', false);
   }
 
@@ -199,7 +209,7 @@ export class WebOutputs implements CastServiceDelegate, RuntimeListener {
   }
 
   onControllerStatus(controller: WebPlayerController): void {
-    this.titles.update(controller, controller === this.casting);
+    this.titles()?.update(controller, controller === this.casting);
     this.refreshAvailability();
   }
 
@@ -208,7 +218,7 @@ export class WebOutputs implements CastServiceDelegate, RuntimeListener {
   }
 
   onControllerRemoved(controller: WebPlayerController): void {
-    this.titles.stop(controller);
+    this.titles()?.stop(controller);
     if (this.casting === controller) this.casting = null;
     this.refreshAvailability();
   }

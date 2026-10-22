@@ -15,7 +15,7 @@ import {
   type StreamTitleFormat,
 } from '../engine/StreamMetadata';
 import type { EngineStatus, SourceDescriptor } from '../engine/types';
-import { castableUrl } from './CastDriver';
+import { castableUrl } from './CastService';
 import { browser, monotonicNow, type ResponseLike } from './dom';
 import { discard, stationFromHeaders } from './MseStream';
 import type { WebPlayerController } from './WebPlayerController';
