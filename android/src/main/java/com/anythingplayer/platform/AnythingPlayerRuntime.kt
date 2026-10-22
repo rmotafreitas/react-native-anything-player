@@ -139,6 +139,9 @@ internal object AnythingPlayerRuntime : FocusListener {
     refresh()
   }
 
+  /** A Cast output for [controller]'s routing driver; `null` where Cast is not built in. */
+  fun newRemoteOutput(controller: PlayerController): RemoteOutput? = null
+
   // ── Focus ──
 
   fun requestFocus(controller: PlayerController): FocusResult {

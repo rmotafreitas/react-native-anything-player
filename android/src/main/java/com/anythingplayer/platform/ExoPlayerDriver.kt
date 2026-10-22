@@ -88,7 +88,7 @@ internal class ExoPlayerDriver(
   private val speech: Boolean,
   private val titleFormat: StreamTitleFormat,
   private val observer: DriverObserver,
-) : EngineDriver {
+) : Output {
   private var player: ExoPlayer? = null
   /**
    * ExoPlayer invokes some listeners synchronously from inside commands
@@ -419,7 +419,7 @@ internal class ExoPlayerDriver(
   }
 
   override fun switchOutput(outputId: String) {
-    // The local player is one output; a routing driver will switch outputs.
+    // The local player is one output; the routing driver switches between outputs.
   }
 
   override fun sample(): PlaybackSample {
@@ -427,7 +427,7 @@ internal class ExoPlayerDriver(
     return PlaybackSample(p.currentPosition / 1000.0, p.bufferedPosition / 1000.0)
   }
 
-  fun progress(): ProgressReading {
+  override fun progress(): ProgressReading {
     val p = player ?: return ProgressReading(0.0, 0.0, null, null, false, rate.toDouble())
     val duration = p.duration.takeIf { it != C.TIME_UNSET && it > 0 }?.let { it / 1000.0 }
     val offset = p.currentLiveOffset.takeIf { it != C.TIME_UNSET && it >= 0 }?.let { it / 1000.0 }

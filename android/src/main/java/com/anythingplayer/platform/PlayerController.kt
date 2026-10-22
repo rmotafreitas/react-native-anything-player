@@ -63,7 +63,8 @@ internal class PlayerController(
   val appId: Boolean = false,
 ) : EngineDelegate, DriverObserver {
   private val handler = Handler(Looper.getMainLooper())
-  private val driver = ExoPlayerDriver(context, options.speech, options.titleFormat, this)
+  private val localDriver = ExoPlayerDriver(context, options.speech, options.titleFormat, this)
+  private val driver = RoutingDriver(localDriver) { runtime.newRemoteOutput(this) }
   val engine = PlaybackEngine(driver, AndroidClock, options.engine)
 
   private var eventSeq = 0L
@@ -133,7 +134,7 @@ internal class PlayerController(
   /** Main thread. Builds the native player once the main looper is idle. */
   fun prewarm() {
     Looper.myQueue().addIdleHandler {
-      if (!released) driver.prewarm()
+      if (!released) localDriver.prewarm()
       false
     }
   }
@@ -149,13 +150,14 @@ internal class PlayerController(
   fun release() {
     if (released) return
     released = true
-    driver.sampler.enabled = false
-    driver.sampler.onWindow = null
+    localDriver.sampler.enabled = false
+    localDriver.sampler.onWindow = null
     handler.removeCallbacks(wakeup)
     progressTicking = false
     handler.removeCallbacks(progressTick)
     engine.release()
-    driver.destroy()
+    driver.destroyRemote()
+    localDriver.destroy()
     pendingLoads.clear()
   }
 
@@ -219,7 +221,7 @@ internal class PlayerController(
    * sequence: a sample is a stream, never a state to order.
    */
   fun setAudioSampling(enabled: Boolean, points: Int) {
-    val sampler = driver.sampler
+    val sampler = localDriver.sampler
     sampler.points = points
     sampler.onWindow =
       if (!enabled) null
