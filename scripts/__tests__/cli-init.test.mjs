@@ -129,3 +129,21 @@ test('init with no input skips instead of hanging', (t) => {
   assert.match(result.stdout, /0 changes applied\./);
   assert.equal(result.status, 1);
 });
+
+test('init never writes through a symlink to a file outside the project', (t) => {
+  const root = withoutBackgroundAudio(t);
+  const outside = fs.mkdtempSync(
+    path.join(path.dirname(root), 'rnap-outside-')
+  );
+  t.after(() => fs.rmSync(outside, { recursive: true, force: true }));
+  const target = path.join(outside, 'Info.plist');
+  const plistFile = path.join(root, 'ios/App/Info.plist');
+  fs.renameSync(plistFile, target);
+  fs.symlinkSync(target, plistFile);
+  const before = fs.readFileSync(target, 'utf8');
+
+  runCli(['init', '--yes'], { cwd: root });
+
+  assert.equal(fs.readFileSync(target, 'utf8'), before);
+  assert.ok(fs.lstatSync(plistFile).isSymbolicLink());
+});

@@ -23,7 +23,8 @@ Node 20 or newer. The CLI has no dependencies and reads files only, except `--ur
 | Option | |
 |---|---|
 | `--cwd <dir>` | Project directory. Default: the current directory |
-| `--url <url>` | Stream URL to probe. Repeat for several. Also read from `rnap.urls` in package.json |
+| `--url <url>` | Stream URL to probe. Repeat for several |
+| `--package-urls` | Also probe the URLs listed in package.json `rnap.urls` (opt-in: a project's own files never make doctor send requests by themselves) |
 | `--json` | Machine-readable report ([schema](#json)) |
 | `--yes`, `-y` | `init`: apply every fix without asking |
 | `--no-color` | Plain text. Colours are off anyway when the output is not a terminal, or when `NO_COLOR` is set |
@@ -81,7 +82,7 @@ Exit codes:
 
 ### Streams
 
-`--url`, plus `rnap.urls` in package.json:
+`--url`, plus `rnap.urls` in package.json with `--package-urls`. Redirects are followed up to five times, only to `http(s)` URLs, and never from a public host to a private address (loopback, private ranges, link-local metadata endpoints):
 
 ```json
 {

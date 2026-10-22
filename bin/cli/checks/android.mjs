@@ -20,9 +20,10 @@ function androidPath(ctx, file) {
 }
 
 function mainActivityBlock(manifest) {
-  const match = /<activity\b[^>]*android:name="[^"]*\.?MainActivity"[^>]*>([\s\S]*?)<\/activity>/.exec(
-    String(manifest ?? '')
-  );
+  const match =
+    /<activity\b[^>]*android:name="[^"]*\.?MainActivity"[^>]*>([\s\S]*?)<\/activity>/.exec(
+      String(manifest ?? '')
+    );
   return match ? match[1] : null;
 }
 
@@ -86,10 +87,11 @@ function checkSdks(ctx, findings) {
 }
 
 function checkCast(ctx, findings) {
-  const enabled = parseProperties(ctx.android.gradlePropertiesText).rnapCast === 'true';
+  const enabled =
+    parseProperties(ctx.android.gradlePropertiesText).rnapCast === 'true';
   const iosWantsCast = Boolean(
     ctx.ios.podfileProperties?.['rnap.cast'] === 'true' ||
-      ctx.expo.options?.cast
+    ctx.expo.options?.cast
   );
   if (!iosWantsCast || enabled) return;
   findings.push(
@@ -99,7 +101,8 @@ function checkCast(ctx, findings) {
       'Cast is on for iOS (or the plugin), but `rnapCast` is not `true` here: Android builds without the Cast SDK, so the Cast button reports unavailable.',
       {
         file: 'android/gradle.properties',
-        change: 'add `rnapCast=true`, then rebuild the app (docs/routes-and-casting.md)',
+        change:
+          'add `rnapCast=true`, then rebuild the app (docs/routes-and-casting.md)',
       }
     )
   );
@@ -146,7 +149,8 @@ function checkAssistant(ctx, findings) {
 
   const missing = [];
   if (!filter) missing.push('the `MEDIA_PLAY_FROM_SEARCH` intent filter');
-  if (!handleIntent) missing.push('`AnythingPlayer.handleIntent` in onCreate and onNewIntent');
+  if (!handleIntent)
+    missing.push('`AnythingPlayer.handleIntent` in onCreate and onNewIntent');
   const file =
     (filter ? ctx.android.mainActivityFile : ctx.android.manifestFile) ??
     ctx.android.manifestFile;

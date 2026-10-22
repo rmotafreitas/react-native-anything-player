@@ -3,6 +3,54 @@
 // spot an https -> http downgrade).
 
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+
+function ipv4Private(host) {
+  const parts = host.split('.').map(Number);
+  if (
+    parts.length !== 4 ||
+    parts.some((p) => !Number.isInteger(p) || p < 0 || p > 255)
+  )
+    return false;
+  const [a, b] = parts;
+  return (
+    a === 0 ||
+    a === 10 ||
+    a === 127 ||
+    (a === 100 && b >= 64 && b <= 127) ||
+    (a === 169 && b === 254) ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168)
+  );
+}
+
+/**
+ * Loopback, private, link-local (cloud metadata) and unspecified addresses,
+ * and `localhost`, as written in a URL. A stream the user names may live
+ * there (a dev server); a redirect from a public host may not go there.
+ */
+export function isPrivateHost(hostname) {
+  const host = hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  if (host === 'localhost' || host.endsWith('.localhost')) return true;
+  if (ipv4Private(host)) return true;
+  if (!host.includes(':')) return false;
+  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(host);
+  if (mapped) return ipv4Private(mapped[1]);
+  return (
+    host === '::' ||
+    host === '::1' ||
+    /^f[cd][0-9a-f]{0,2}:/.test(host) ||
+    /^fe[89ab][0-9a-f]?:/.test(host)
+  );
+}
+
+/** Why a redirect may not be followed, or null. */
+function refusedRedirect(from, to) {
+  if (to.protocol !== 'http:' && to.protocol !== 'https:')
+    return `redirect to a ${to.protocol} URL refused`;
+  if (isPrivateHost(to.hostname) && !isPrivateHost(from.hostname))
+    return `redirect from ${from.hostname} to the private address ${to.hostname} refused`;
+  return null;
+}
 const MAX_REDIRECTS = 5;
 const BODY_BYTES = 4096;
 const BODY_DEADLINE_MS = 3000;
@@ -13,7 +61,10 @@ export function classify(contentType, url) {
   if (/mpegurl|m3u8/.test(type) || /\.m3u8(?:$|\?)/i.test(url)) return 'hls';
   if (/audio\/(mpeg|mp3)/.test(type) || /\.mp3(?:$|\?)/i.test(url))
     return 'mp3';
-  if (/audio\/(aac|aacp|x-aac|mp4)/.test(type) || /\.(aac|m4a)(?:$|\?)/i.test(url))
+  if (
+    /audio\/(aac|aacp|x-aac|mp4)/.test(type) ||
+    /\.(aac|m4a)(?:$|\?)/i.test(url)
+  )
     return 'aac';
   return 'other';
 }
@@ -22,7 +73,9 @@ function describe(error) {
   if (error?.name === 'AbortError' || error?.name === 'TimeoutError')
     return 'timed out';
   const cause = error?.cause?.code ?? error?.cause?.message;
-  return cause ? `${error.message} (${cause})` : (error?.message ?? String(error));
+  return cause
+    ? `${error.message} (${cause})`
+    : (error?.message ?? String(error));
 }
 
 async function readSome(response, controller) {
@@ -51,7 +104,10 @@ async function readSome(response, controller) {
  * @param {string} url http(s) URL
  * @returns {Promise<object>} headers/status/redirects, or `{ error }`
  */
-export async function probeStream(url, { timeoutMs = 10000, fetchImpl = fetch } = {}) {
+export async function probeStream(
+  url,
+  { timeoutMs = 10000, fetchImpl = fetch } = {}
+) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   timer.unref?.();
@@ -75,7 +131,10 @@ export async function probeStream(url, { timeoutMs = 10000, fetchImpl = fetch } 
             redirects,
           };
         }
-        const next = new URL(location, current).toString();
+        const target = new URL(location, current);
+        const refused = refusedRedirect(new URL(current), target);
+        if (refused) return { url, error: refused, redirects };
+        const next = target.toString();
         redirects.push({ from: current, to: next, status: response.status });
         current = next;
         continue;

@@ -36,7 +36,8 @@ function atsAllows(ats, parsed) {
 }
 
 function domainConfigAllows(xml, host) {
-  if (/<base-config\b[^>]*cleartextTrafficPermitted="true"/.test(xml)) return true;
+  if (/<base-config\b[^>]*cleartextTrafficPermitted="true"/.test(xml))
+    return true;
   const blocks = [
     ...String(xml).matchAll(
       /<domain-config\b[^>]*cleartextTrafficPermitted="true"[^>]*>([\s\S]*?)<\/domain-config>/g
@@ -60,7 +61,9 @@ function androidCleartext(ctx, host) {
   const policy = ctx.android.networkSecurityConfig;
   if (policy?.text && domainConfigAllows(policy.text, host))
     return { allowed: true };
-  const attribute = /android:usesCleartextTraffic="([^"]*)"/.exec(manifest)?.[1];
+  const attribute = /android:usesCleartextTraffic="([^"]*)"/.exec(
+    manifest
+  )?.[1];
   if (attribute === 'true') return { allowed: true };
   if (attribute === 'false') return { allowed: false };
   // `${usesCleartextTraffic}`: the RN Gradle plugin decides per build type.
@@ -143,7 +146,8 @@ function checkProbe(ctx, result, findings) {
         `Could not reach ${label}: ${result.error}.`,
         {
           file: '-',
-          change: 'check the URL, the host and the network (the probe times out after 10 s)',
+          change:
+            'check the URL, the host and the network (the probe times out after 10 s)',
         }
       )
     );
@@ -152,7 +156,10 @@ function checkProbe(ctx, result, findings) {
 
   const downgrade = result.redirects.some((hop) => {
     try {
-      return new URL(hop.from).protocol === 'https:' && new URL(hop.to).protocol === 'http:';
+      return (
+        new URL(hop.from).protocol === 'https:' &&
+        new URL(hop.to).protocol === 'http:'
+      );
     } catch {
       return false;
     }
@@ -186,7 +193,8 @@ function checkProbe(ctx, result, findings) {
         `${label} answered HTTP ${result.status}${result.statusText ? ` ${result.statusText}` : ''}.`,
         {
           file: '-',
-          change: 'fix the stream URL, or the server (it must answer 200 for a GET)',
+          change:
+            'fix the stream URL, or the server (it must answer 200 for a GET)',
         }
       )
     );
@@ -219,8 +227,8 @@ function checkProbe(ctx, result, findings) {
 
   const webTarget = Boolean(
     ctx.isExpo ||
-      ctx.dependencies['react-native-web'] ||
-      ctx.dependencies['react-dom']
+    ctx.dependencies['react-native-web'] ||
+    ctx.dependencies['react-dom']
   );
   const severity = webTarget ? 'warning' : 'info';
   const allowOrigin = result.headers['access-control-allow-origin'];
@@ -233,7 +241,8 @@ function checkProbe(ctx, result, findings) {
         `${label} sends no Access-Control-Allow-Origin: on the web, RNAP falls back to the <audio> element (no ICY titles, no liveOffset) (docs/web.md).`,
         {
           file: '-',
-          change: 'add `Access-Control-Allow-Origin` (and `Access-Control-Allow-Headers: Icy-MetaData`) to the stream server',
+          change:
+            'add `Access-Control-Allow-Origin` (and `Access-Control-Allow-Headers: Icy-MetaData`) to the stream server',
         }
       )
     );
@@ -245,7 +254,8 @@ function checkProbe(ctx, result, findings) {
         `${label} sends \`icy-metaint\` but does not expose it: on the web RNAP asks again without ICY, so the stream plays without titles (docs/web.md).`,
         {
           file: '-',
-          change: 'add `Access-Control-Expose-Headers: icy-metaint, icy-name, icy-genre` to the stream server',
+          change:
+            'add `Access-Control-Expose-Headers: icy-metaint, icy-name, icy-genre` to the stream server',
         }
       )
     );
@@ -255,18 +265,23 @@ function checkProbe(ctx, result, findings) {
 function parseUrl(value) {
   try {
     const parsed = new URL(value);
-    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:')
+      return null;
     return parsed;
   } catch {
     return null;
   }
 }
 
-/** URLs from `--url` plus `rnap.urls` in package.json. */
-export function collectUrls(ctx, fromCli) {
-  const fromPackage = Array.isArray(ctx.packageJson?.rnap?.urls)
-    ? ctx.packageJson.rnap.urls
-    : [];
+/**
+ * URLs from `--url`, plus `rnap.urls` in package.json with `--package-urls`
+ * (opt-in: a project's own file should not make doctor send requests).
+ */
+export function collectUrls(ctx, fromCli, packageUrls = false) {
+  const fromPackage =
+    packageUrls && Array.isArray(ctx.packageJson?.rnap?.urls)
+      ? ctx.packageJson.rnap.urls
+      : [];
   return [...new Set([...fromCli, ...fromPackage])];
 }
 
@@ -277,12 +292,10 @@ export async function urlChecks(ctx, urls, options = {}) {
     const parsed = parseUrl(url);
     if (!parsed) {
       findings.push(
-        finding(
-          'url-invalid',
-          'error',
-          `\`${url}\` is not an http(s) URL.`,
-          { file: '-', change: 'pass a URL that starts with http:// or https://' }
-        )
+        finding('url-invalid', 'error', `\`${url}\` is not an http(s) URL.`, {
+          file: '-',
+          change: 'pass a URL that starts with http:// or https://',
+        })
       );
       continue;
     }

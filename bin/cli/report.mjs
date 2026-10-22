@@ -69,9 +69,9 @@ export function formatDoctor(report, { version, paint }) {
     lines.push('');
     const { errors, warnings, infos } = report.summary;
     const parts = [];
-    if (errors) parts.push(paint(`${errors} error${errors === 1 ? '' : 's'}`, 'red'));
-    if (warnings)
-      parts.push(`${warnings} warning${warnings === 1 ? '' : 's'}`);
+    if (errors)
+      parts.push(paint(`${errors} error${errors === 1 ? '' : 's'}`, 'red'));
+    if (warnings) parts.push(`${warnings} warning${warnings === 1 ? '' : 's'}`);
     if (infos) parts.push(`${infos} info`);
     lines.push(parts.join(', '));
     if (errors > 0)

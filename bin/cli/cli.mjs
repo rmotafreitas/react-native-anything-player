@@ -8,13 +8,19 @@ import { runInit } from './init.mjs';
 import { createPainter, formatDoctor } from './report.mjs';
 import { isDirectory, readJson } from './util.mjs';
 
-const cliRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const cliRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '../..'
+);
 
 export function cliVersion() {
   return readJson(path.join(cliRoot, 'package.json'))?.version ?? '0.0.0';
 }
 
-export async function main(argv, { stdout = process.stdout, stderr = process.stderr } = {}) {
+export async function main(
+  argv,
+  { stdout = process.stdout, stderr = process.stderr } = {}
+) {
   const options = parseArgs(argv);
   if (options.error) {
     stderr.write(`rnap: ${options.error}\n\n${USAGE}`);
@@ -45,7 +51,11 @@ export async function main(argv, { stdout = process.stdout, stderr = process.std
   const version = cliVersion();
 
   if (options.command === 'doctor') {
-    const { report } = await runDoctor({ cwd, urls: options.urls });
+    const { report } = await runDoctor({
+      cwd,
+      urls: options.urls,
+      packageUrls: options.packageUrls,
+    });
     stdout.write(
       options.json
         ? `${JSON.stringify(report, null, 2)}\n`

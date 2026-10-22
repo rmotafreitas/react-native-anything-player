@@ -13,10 +13,26 @@ import { formatInitHeader } from './report.mjs';
 import { LIBRARY } from './project.mjs';
 import { runDoctor } from './doctor.mjs';
 
-function insideProject(cwd, file) {
-  const resolved = path.resolve(cwd, file);
-  const root = path.resolve(cwd);
-  return resolved === root || resolved.startsWith(`${root}${path.sep}`);
+function within(root, target) {
+  return target === root || target.startsWith(`${root}${path.sep}`);
+}
+
+/**
+ * The file `init` may write, or null: inside the project both as written and
+ * once every symlink is resolved, and not itself a symlink (writing through
+ * one could change a file outside the project).
+ */
+export function writableTarget(cwd, file) {
+  const absolute = path.resolve(cwd, file);
+  try {
+    const root = fs.realpathSync(path.resolve(cwd));
+    if (!within(path.resolve(cwd), absolute)) return null;
+    const stat = fs.lstatSync(absolute);
+    if (stat.isSymbolicLink() || !stat.isFile()) return null;
+    return within(root, fs.realpathSync(absolute)) ? absolute : null;
+  } catch {
+    return null;
+  }
 }
 
 function withEol(text, template) {
@@ -92,9 +108,9 @@ export function computeFixes(ctx, findings) {
     if (!FIXERS[finding.autofix] || !finding.fix?.file) continue;
     // app.json is not the source of truth when a JavaScript config exists.
     if (ctx.jsConfigFile && finding.autofix.startsWith('expo-')) continue;
-    if (!insideProject(ctx.cwd, finding.fix.file)) continue;
+    const file = writableTarget(ctx.cwd, finding.fix.file);
+    if (!file) continue;
 
-    const file = path.resolve(ctx.cwd, finding.fix.file);
     const before = working.get(file) ?? readText(file);
     if (before === null) continue;
 
@@ -113,6 +129,7 @@ export function computeFixes(ctx, findings) {
       finding: finding.id,
       file: display,
       absolute: file,
+      cwd: ctx.cwd,
       change: finding.fix.change,
       before,
       after,
@@ -123,6 +140,9 @@ export function computeFixes(ctx, findings) {
 }
 
 export function applyFix(fix) {
+  // Checked again: the tree may have changed while the user read the diff.
+  if (writableTarget(fix.cwd, fix.absolute) !== fix.absolute)
+    throw new Error(`${fix.file} is no longer a file inside the project`);
   fs.writeFileSync(fix.absolute, fix.after, 'utf8');
 }
 
@@ -179,7 +199,9 @@ function printFinding(finding, paint) {
   lines.push(`${paint(finding.severity, color)} ${paint(finding.id, 'bold')}`);
   lines.push(`  ${finding.message}`);
   if (finding.fix)
-    lines.push(paint(`  fix  ${finding.fix.file} — ${finding.fix.change}`, 'gray'));
+    lines.push(
+      paint(`  fix  ${finding.fix.file} — ${finding.fix.change}`, 'gray')
+    );
   return lines.join('\n');
 }
 

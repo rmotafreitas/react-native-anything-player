@@ -21,6 +21,7 @@ export function parseArgs(argv) {
     const arg = argv[index];
     if (arg === '--json') options.json = true;
     else if (arg === '--yes' || arg === '-y') options.yes = true;
+    else if (arg === '--package-urls') options.packageUrls = true;
     else if (arg === '--no-color') options.color = false;
     else if (arg === '--help' || arg === '-h') options.help = true;
     else if (arg === '--version' || arg === '-v') options.version = true;
@@ -64,6 +65,7 @@ Commands
 Options
   --cwd <dir>    project directory (default: current directory)
   --url <url>    stream URL to probe; repeatable
+  --package-urls also probe the URLs listed in package.json "rnap.urls"
   --json         machine-readable output
   --yes, -y      init: apply every fix without asking
   --no-color     plain text (also honours NO_COLOR)

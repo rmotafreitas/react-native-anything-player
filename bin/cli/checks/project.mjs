@@ -50,7 +50,8 @@ function checkExpoSdk(ctx, findings) {
         'This looks like an Expo project, but `expo` is not a dependency, so its SDK version is unknown.',
         {
           file: 'package.json',
-          change: 'add expo to `dependencies`, or remove app.json if this is a bare app',
+          change:
+            'add expo to `dependencies`, or remove app.json if this is a bare app',
         }
       )
     );
@@ -83,7 +84,8 @@ function checkLibrary(ctx, findings) {
         'react-native-anything-player is not installed in this project.',
         {
           file: 'package.json',
-          change: 'run `npm install react-native-anything-player`, then rebuild',
+          change:
+            'run `npm install react-native-anything-player`, then rebuild',
         }
       )
     );
@@ -111,7 +113,8 @@ function checkIosNewArch(ctx, findings) {
           'New Architecture is disabled (`newArchEnabled: false`). RNAP is a TurboModule and needs it (docs/getting-started.md).',
           {
             file: 'app.json',
-            change: 'set `expo.newArchEnabled` to `true` (or remove it: recent SDKs default to true)',
+            change:
+              'set `expo.newArchEnabled` to `true` (or remove it: recent SDKs default to true)',
           },
           'expo-new-arch'
         )
@@ -140,7 +143,8 @@ function checkIosNewArch(ctx, findings) {
       'New Architecture is disabled for iOS. RNAP is a TurboModule and the legacy architecture is not supported (docs/getting-started.md).',
       {
         file: 'ios/Podfile.properties.json',
-        change: 'set `"newArchEnabled": "true"`, remove the RCT_NEW_ARCH_ENABLED override from the Podfile, then run `pod install`',
+        change:
+          'set `"newArchEnabled": "true"`, remove the RCT_NEW_ARCH_ENABLED override from the Podfile, then run `pod install`',
       },
       properties ? 'ios-new-arch' : null
     )
@@ -178,7 +182,8 @@ function checkOptions(ctx, findings) {
   if (!ctx.expo.rnapPlugin) return;
   const fix = {
     file: 'app.json',
-    change: 'use `["react-native-anything-player", { … }]` with the documented options',
+    change:
+      'use `["react-native-anything-player", { … }]` with the documented options',
   };
 
   if (!isPlainObject(raw)) {
@@ -293,7 +298,8 @@ function checkExpoPlugin(ctx, findings) {
       'The RNAP config plugin is not listed, so the iOS audio background mode and the Assistant hook are never added (docs/getting-started.md).',
       {
         file: 'app.json',
-        change: 'add "react-native-anything-player" to `expo.plugins`, then rebuild or run `npx expo prebuild`',
+        change:
+          'add "react-native-anything-player" to `expo.plugins`, then rebuild or run `npx expo prebuild`',
       },
       'expo-plugin'
     )

@@ -9,6 +9,7 @@ import {
   runCliAsync,
   write,
 } from './cli-fixtures.mjs';
+import { isPrivateHost, probeStream } from '../../bin/cli/stream.mjs';
 
 const ICY = {
   'content-type': 'audio/mpeg',
@@ -188,16 +189,63 @@ test('the https scheme skips the cleartext checks', async (t) => {
   assert.ok(ids(result.json).includes('url-request'));
 });
 
-test('package.json rnap.urls is probed without --url', async (t) => {
+test('package.json rnap.urls is probed only with --package-urls', async (t) => {
   const port = await startServer(t);
   const root = expoHttpLocal(t);
   const config = JSON.parse(read(root, 'package.json'));
   config.rnap = { urls: [`http://127.0.0.1:${port}/stream.mp3`] };
   write(root, 'package.json', `${JSON.stringify(config, null, 2)}\n`);
 
-  const result = await doctor(root, []);
+  const quiet = await doctor(root, []);
+  assert.equal(quiet.json.urls.length, 0);
+  const result = await runCliAsync(
+    ['doctor', '--json', '--cwd', root, '--package-urls'],
+    { cwd: root }
+  );
   assert.equal(result.json.urls.length, 1);
   assert.equal(result.json.urls[0].status, 200);
+});
+
+test('redirects leave neither http(s) nor a public host for a private one', async () => {
+  const redirectTo = (location) => async () =>
+    new Response(null, { status: 302, headers: { location } });
+  const toFile = await probeStream('https://radio.example/live', {
+    fetchImpl: redirectTo('file:///etc/passwd'),
+  });
+  assert.match(toFile.error, /file: URL refused/);
+  const toMetadata = await probeStream('https://radio.example/live', {
+    fetchImpl: redirectTo('http://169.254.169.254/latest/meta-data'),
+  });
+  assert.match(toMetadata.error, /private address 169\.254\.169\.254 refused/);
+});
+
+test('private hosts as written in a URL', () => {
+  for (const host of [
+    'localhost',
+    'a.localhost',
+    '127.0.0.1',
+    '10.1.2.3',
+    '172.20.0.1',
+    '192.168.1.1',
+    '169.254.169.254',
+    '100.64.0.1',
+    '0.0.0.0',
+    '[::1]',
+    '::',
+    'fd00::1',
+    'fe80::1',
+    '::ffff:10.0.0.1',
+  ])
+    assert.equal(isPrivateHost(host), true, host);
+  for (const host of [
+    'radio.example',
+    '8.8.8.8',
+    '172.32.0.1',
+    '192.169.0.1',
+    '2001:db8::1',
+    'fcdn.example',
+  ])
+    assert.equal(isPrivateHost(host), false, host);
 });
 
 test('the probe closes an endless stream after a few KB', async (t) => {

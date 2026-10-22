@@ -35,11 +35,13 @@ function projectSummary(ctx) {
  * @param {object} options
  * @param {string} options.cwd absolute project directory
  * @param {string[]} [options.urls] extra stream URLs
+ * @param {boolean} [options.packageUrls] also probe `rnap.urls` from package.json
  * @param {boolean} [options.skipUrlChecks] `init` never touches the network
  */
 export async function runDoctor({
   cwd,
   urls = [],
+  packageUrls = false,
   skipUrlChecks = false,
   probeOptions,
 }) {
@@ -52,7 +54,7 @@ export async function runDoctor({
 
   let results = [];
   if (!skipUrlChecks) {
-    const targets = collectUrls(ctx, urls);
+    const targets = collectUrls(ctx, urls, packageUrls);
     if (targets.length > 0) {
       const checked = await urlChecks(ctx, targets, probeOptions);
       findings.push(...checked.findings);

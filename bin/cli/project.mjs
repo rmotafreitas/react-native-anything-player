@@ -74,9 +74,11 @@ export function podVersion(lock, pod) {
 
 /** iOS deployment targets declared in a project.pbxproj. */
 export function pbxDeploymentTargets(text) {
-  return [...String(text ?? '').matchAll(/IPHONEOS_DEPLOYMENT_TARGET\s*=\s*"?([0-9.]+)"?/g)].map(
-    (match) => match[1]
-  );
+  return [
+    ...String(text ?? '').matchAll(
+      /IPHONEOS_DEPLOYMENT_TARGET\s*=\s*"?([0-9.]+)"?/g
+    ),
+  ].map((match) => match[1]);
 }
 
 /** `platform :ios, '15.1'` of an iOS Podfile. */
@@ -103,7 +105,8 @@ function findAppEntitlements(iosDir) {
   for (const name of children(iosDir)) {
     if (['Pods', 'build', 'node_modules', 'Tests'].includes(name)) continue;
     const dir = path.join(iosDir, name);
-    if (isDirectory(dir)) files.push(...filesWithExtension(dir, ['.entitlements']));
+    if (isDirectory(dir))
+      files.push(...filesWithExtension(dir, ['.entitlements']));
   }
   return files;
 }
@@ -134,7 +137,9 @@ function findMainActivity(androidDir) {
 }
 
 function readManifest(androidDir) {
-  return readText(path.join(androidDir, 'app', 'src', 'main', 'AndroidManifest.xml'));
+  return readText(
+    path.join(androidDir, 'app', 'src', 'main', 'AndroidManifest.xml')
+  );
 }
 
 function readNetworkSecurityConfig(androidDir, manifestText) {
@@ -203,7 +208,11 @@ function findLibrary(cwd) {
   const local = path.join(cwd, 'node_modules', LIBRARY, 'package.json');
   const localPkg = readJson(local);
   if (localPkg)
-    return { installed: true, version: localPkg.version, path: path.dirname(local) };
+    return {
+      installed: true,
+      version: localPkg.version,
+      path: path.dirname(local),
+    };
 
   // Workspace/monorepo: the library is an ancestor (example/ -> repo root).
   let dir = cwd;
@@ -247,14 +256,17 @@ export function loadProject(cwd) {
   const library = findLibrary(cwd);
 
   const appJsonFile = path.join(cwd, 'app.json');
-  const jsConfigFile = ['app.config.js', 'app.config.ts', 'app.config.mjs', 'app.config.cjs']
+  const jsConfigFile = [
+    'app.config.js',
+    'app.config.ts',
+    'app.config.mjs',
+    'app.config.cjs',
+  ]
     .map((name) => path.join(cwd, name))
     .find(isFile);
   const appJson = readJson(appJsonFile);
   const expoConfig = appJson?.expo ?? null;
-  const isExpo = Boolean(
-    dependencies.expo || expoConfig || jsConfigFile
-  );
+  const isExpo = Boolean(dependencies.expo || expoConfig || jsConfigFile);
 
   const expoPlugins = expoConfig ? pluginEntries(expoConfig) : [];
   const rnapPlugin =
@@ -273,7 +285,10 @@ export function loadProject(cwd) {
   const podfileProperties = readJson(podfilePropertiesFile);
   const pbxprojFile = hasIos ? findPbxproj(iosDir) : null;
   const entitlements = hasIos
-    ? findAppEntitlements(iosDir).map((file) => ({ file, text: readText(file) }))
+    ? findAppEntitlements(iosDir).map((file) => ({
+        file,
+        text: readText(file),
+      }))
     : [];
 
   const androidDir = path.join(cwd, 'android');
@@ -318,7 +333,9 @@ export function loadProject(cwd) {
     android: {
       present: hasAndroid,
       gradlePropertiesFile: path.join(androidDir, 'gradle.properties'),
-      gradlePropertiesText: readText(path.join(androidDir, 'gradle.properties')),
+      gradlePropertiesText: readText(
+        path.join(androidDir, 'gradle.properties')
+      ),
       buildGradle: readText(path.join(androidDir, 'build.gradle')),
       appBuildGradle: readText(path.join(androidDir, 'app', 'build.gradle')),
       manifestFile,
@@ -346,4 +363,3 @@ export function loadProject(cwd) {
     },
   };
 }
-

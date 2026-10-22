@@ -52,10 +52,10 @@ function podCast(ctx) {
 function castEnabled(ctx, plist) {
   return Boolean(
     podCast(ctx) ||
-      gradleCast(ctx) ||
-      ctx.expo.options?.cast ||
-      plist?.RNAPCastReceiverId ||
-      (plist?.NSBonjourServices ?? []).includes('_googlecast._tcp')
+    gradleCast(ctx) ||
+    ctx.expo.options?.cast ||
+    plist?.RNAPCastReceiverId ||
+    (plist?.NSBonjourServices ?? []).includes('_googlecast._tcp')
   );
 }
 
@@ -225,9 +225,9 @@ function siriIntended(ctx, plist) {
   );
   return Boolean(
     /RNAPIntents/.test(ctx.ios.pbxproj ?? '') ||
-      plist?.NSSiriUsageDescription ||
-      entitlementsSiri ||
-      ctx.expo.options?.siri
+    plist?.NSSiriUsageDescription ||
+    entitlementsSiri ||
+    ctx.expo.options?.siri
   );
 }
 
@@ -241,8 +241,7 @@ function checkSiri(ctx, view, findings) {
   const missing = [];
   if (!/RNAPIntents/.test(ctx.ios.pbxproj ?? ''))
     missing.push('the RNAPIntents extension target');
-  if (!plist.NSSiriUsageDescription)
-    missing.push('NSSiriUsageDescription');
+  if (!plist.NSSiriUsageDescription) missing.push('NSSiriUsageDescription');
   if (!(plist.NSUserActivityTypes ?? []).includes('INPlayMediaIntent'))
     missing.push('INPlayMediaIntent in NSUserActivityTypes');
   if (
@@ -261,7 +260,7 @@ function checkSiri(ctx, view, findings) {
       {
         file: iosPath(ctx, view.file),
         change:
-          'add the Siri capability, `NSSiriUsageDescription`, `NSUserActivityTypes = [INPlayMediaIntent]`, and the RNAPIntents extension target (or use the plugin\'s `siri: true`)',
+          "add the Siri capability, `NSSiriUsageDescription`, `NSUserActivityTypes = [INPlayMediaIntent]`, and the RNAPIntents extension target (or use the plugin's `siri: true`)",
       }
     )
   );
