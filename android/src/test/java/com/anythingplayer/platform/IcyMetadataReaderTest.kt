@@ -106,10 +106,11 @@ class IcyMetadataReaderTest {
 
   @Test
   fun `a server without ICY ends the reader instead of retrying`() {
-    serve(ByteArray(64), headers = "content-type:audio/mpeg\r\n")
+    // A second connection would be served too: it must not happen.
+    serve(ByteArray(64), ByteArray(64), headers = "content-type:audio/mpeg\r\n")
     reader = IcyMetadataReader(SourceDescriptor("http://127.0.0.1:${server.localPort}/live"), "RNAP-test", StreamTitleFormat.ARTIST_TITLE) { }
     reader!!.start()
-    Thread.sleep(1_500)
+    Thread.sleep(2_500)
     assertEquals(1, connections.size)
   }
 }
