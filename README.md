@@ -97,6 +97,7 @@ function NowPlaying() {
 | [Why RNAP](docs/why.md) | Why this library exists, with sources |
 | [Getting started](docs/getting-started.md) | Installation (Expo, bare), first player, permissions |
 | [Comparison & benchmarks](docs/comparison.md) | RNAP against RNTP, expo-audio and the rest: capabilities, install size |
+| Migrating: [react-native-track-player](docs/migrating-from-track-player.md), [expo-audio](docs/migrating-from-expo-audio.md), [expo-av](docs/migrating-from-expo-av.md) | API mapping, lock-screen controls, and the recovery code you can delete |
 | [Playback](docs/playback.md) | Sources, commands, state model, progress, volume, seeking |
 | [Internet radio & ICY](docs/internet-radio.md) | Live streams, ICY metadata, live edge, recovery |
 | [Background & system](docs/background-and-system.md) | Background, lock screen, media sessions, interruptions, audio focus, artwork |

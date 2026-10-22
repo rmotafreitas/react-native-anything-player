@@ -12,6 +12,8 @@ RNAP is the only one of the four that recovers a stream without app code. The ot
 
 Where RNAP is behind today: queues, caching and preloading, CarPlay / Android Auto browsing, Cast, web, and a licence that is free for commercial apps. See the [roadmap](roadmap.md).
 
+Moving from one of them? See the migration guides for [react-native-track-player](migrating-from-track-player.md), [expo-audio](migrating-from-expo-audio.md) and [expo-av](migrating-from-expo-av.md).
+
 ## Install size
 
 ![Download size of each package's npm tarball](assets/charts/install-size.svg)

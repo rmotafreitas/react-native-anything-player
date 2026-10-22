@@ -44,6 +44,29 @@ export const SECTIONS: DocSection[] = [
     ],
   },
   {
+    text: 'Migrating',
+    items: [
+      {
+        link: '/docs/migrating-from-track-player',
+        text: 'From Track Player',
+        description:
+          'Move from react-native-track-player 4 or 5 to RNAP: API and event mapping, lock-screen controls, the queue gap and the reconnect code you can delete.',
+      },
+      {
+        link: '/docs/migrating-from-expo-audio',
+        text: 'From expo-audio',
+        description:
+          'Move from expo-audio to RNAP: player, status and lock-screen mapping, plugin changes, and the retry and NetInfo code you can delete.',
+      },
+      {
+        link: '/docs/migrating-from-expo-av',
+        text: 'From expo-av',
+        description:
+          'Move from expo-av Audio.Sound to RNAP: status and audio-mode mapping, background and lock-screen playback, and the reconnect code you can delete.',
+      },
+    ],
+  },
+  {
     text: 'Guides',
     items: [
       {
