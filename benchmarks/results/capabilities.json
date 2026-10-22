@@ -2,7 +2,7 @@
   "checkedAt": "2026-10-05",
   "method": "Read from each package's published npm tarball (TypeScript API + native sources). \"Your code\" means possible only if the app writes the logic itself (RNTP's retry() exists, but nothing calls it for you). Nothing here was measured on a device.",
   "libraries": [
-    { "id": "rnap", "label": "RNAP", "version": "1.1.0" },
+    { "id": "rnap", "label": "RNAP", "version": "1.1.1" },
     { "id": "rntp5", "label": "RNTP 5", "version": "5.12.1" },
     { "id": "rntp4", "label": "RNTP 4", "version": "4.1.2" },
     { "id": "expoAudio", "label": "expo-audio", "version": "57.0.5" }

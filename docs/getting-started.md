@@ -27,7 +27,7 @@ npm install react-native-anything-player
 > npm install https://github.com/rmotafreitas/react-native-anything-player/releases/latest/download/react-native-anything-player.tgz
 > ```
 >
-> To pin a version, use `releases/download/v1.1.0/react-native-anything-player.tgz`.
+> To pin a version, use `releases/download/v1.1.1/react-native-anything-player.tgz`.
 
 (`yarn add` / `pnpm add` work the same; the package has no JS dependencies.)
 

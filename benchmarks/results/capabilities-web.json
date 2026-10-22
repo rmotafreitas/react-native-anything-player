@@ -4,7 +4,7 @@
   "title": "On the web: what you get out of the box",
   "note": "Read from each package’s published source (its JavaScript and TypeScript API); not measured in a browser. Hover a row for its evidence.",
   "libraries": [
-    { "id": "rnap", "label": "RNAP", "version": "1.1.0" },
+    { "id": "rnap", "label": "RNAP", "version": "1.1.1" },
     { "id": "howler", "label": "howler.js", "version": "2.2.4" },
     { "id": "plyr", "label": "Plyr", "version": "3.8.5" },
     { "id": "vidstack", "label": "Vidstack", "version": "1.15.7" },

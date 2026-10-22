@@ -77,7 +77,7 @@ Built 2026-10-22 (`benchmarks/results/apk.json`); the code, native and resource 
 How to read it:
 
 - **R8 is where the size goes.** Media3 is large on disk and mostly unused by any one app: R8 removes two thirds of what the Media3-based players add. Turn it on for release builds; RNAP needs no rules of its own (see [Configuration](configuration.md#release-builds-and-r8)).
-- **RNAP is shaped for R8.** It builds ExoPlayer with only the audio and metadata renderers, so the video, subtitle and image code is removed, and Android compiles only its module's C++, not the iOS-only AirPlay button's. Release 1.1.0 added 1,400 KB with R8; this one adds 1,176 KB.
+- **RNAP is shaped for R8.** It builds ExoPlayer with only the audio and metadata renderers, so the video, subtitle and image code is removed, and Android compiles only its module's C++, not the iOS-only AirPlay button's. Release 1.1.0 added 1,400 KB with R8; 1.1.1 adds 1,176 KB.
 - **Same work, same size.** react-native-audio-pro is smaller with less to do (no HLS, no output picker, no recovery). With Cast in, RNAP and RNTP 5 land within 61 KB of each other: the Cast framework is most of it.
 - **Native code that R8 cannot touch:** react-native-audio-api ships FFmpeg and its audio engine as native libraries, and react-native-nitro-sound its C++ through Nitro.
 
@@ -93,7 +93,7 @@ How to read it:
 
 | Package | Version | Licence | Download | Unpacked | JS (min+gz) | Native code | Android artifacts | Required extras |
 |---|---|---|--:|--:|--:|--:|--:|---|
-| **RNAP** | 1.1.0 | PolyForm NC | 286 KB | 948 KB | 5.5 KB | 12,109 lines (+1,110 with Cast) | 5 (+2 with Cast) | — |
+| **RNAP** | 1.1.1 | PolyForm NC | 286 KB | 948 KB | 5.5 KB | 12,109 lines (+1,110 with Cast) | 5 (+2 with Cast) | — |
 | RNTP 5 (@rntp/player) | 5.12.1 | commercial | 253 KB | 1,211 KB | 2.4 KB | 13,232 lines | 7 | — |
 | RNTP 4 | 4.1.2 | Apache-2.0 | 83 KB | 378 KB | 3.5 KB | 3,500 lines | 5 | — |
 | expo-audio | 58.0.10 | MIT | 758 KB | 1,313 KB | 2.9 KB | 7,896 lines | 10 | `expo`, `expo-asset` |
@@ -150,8 +150,8 @@ RNAP's web entries are the same engine with no React Native: `react-native-anyth
 
 | Library | Version | Licence | On page load | Everything it can load | What it is |
 |---|---|---|--:|--:|---|
-| **RNAP `/web`** | 1.1.0 | PolyForm NC | 28.1 KB | 33.9 KB | A streaming player: recovery, radio titles, Media Session, Cast, AirPlay |
-| **RNAP `/react`** | 1.1.0 | PolyForm NC | 29.5 KB | 35.3 KB | The same, with hooks and the output and Cast buttons |
+| **RNAP `/web`** | 1.1.1 | PolyForm NC | 28.1 KB | 33.9 KB | A streaming player: recovery, radio titles, Media Session, Cast, AirPlay |
+| **RNAP `/react`** | 1.1.1 | PolyForm NC | 29.5 KB | 35.3 KB | The same, with hooks and the output and Cast buttons |
 | howler.js | 2.2.4 | MIT | 10.0 KB | 10.0 KB | Sound effects and short files over Web Audio: sprites, spatial audio |
 | use-sound | 5.0.0 | MIT | 0.9 KB | 10.6 KB | A React hook over howler.js, which it loads on first use |
 | Amplitude.js | 5.3.2 | MIT | 16.6 KB | 16.6 KB | Playlists and a bring-your-own-HTML player UI |

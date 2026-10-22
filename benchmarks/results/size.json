@@ -6,7 +6,7 @@
       "name": "react-native-anything-player",
       "label": "RNAP",
       "role": "player (this repo)",
-      "version": "1.1.0",
+      "version": "1.1.1",
       "license": "PolyForm-Noncommercial-1.0.0",
       "tarballBytes": 292922,
       "unpackedBytes": 971246,
@@ -307,7 +307,7 @@
         {
           "name": "react-native-anything-player",
           "label": "RNAP",
-          "version": "1.1.0",
+          "version": "1.1.1",
           "license": "PolyForm-Noncommercial-1.0.0",
           "initialMinBytes": 93466,
           "initialGzipBytes": 30189,
@@ -407,7 +407,7 @@
         {
           "name": "react-native-anything-player",
           "label": "RNAP /react",
-          "version": "1.1.0",
+          "version": "1.1.1",
           "license": "PolyForm-Noncommercial-1.0.0",
           "initialMinBytes": 93563,
           "initialGzipBytes": 30206,
@@ -473,7 +473,7 @@
         {
           "name": "react-native-anything-player",
           "label": "RNAP /web",
-          "version": "1.1.0",
+          "version": "1.1.1",
           "license": "PolyForm-Noncommercial-1.0.0",
           "initialMinBytes": 90105,
           "initialGzipBytes": 28810,
