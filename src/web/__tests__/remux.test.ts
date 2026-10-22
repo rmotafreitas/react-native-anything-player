@@ -145,6 +145,23 @@ describe('choosing the type', () => {
     expect(buffer().buffered.end(0)).toBeCloseTo((30 * 1024) / 44100, 3);
   });
 
+  it('plays AAC other than LC on the element', async () => {
+    const { id, element, body } = await openStream({
+      'content-type': 'audio/aacp',
+      'icy-metaint': '0',
+    });
+    body().push(
+      concat(
+        ...Array.from({ length: 4 }, (_, i) =>
+          adtsFrame({ fill: i + 1, payload: 100, profile: 0 })
+        )
+      )
+    );
+    await flush();
+    expect(diagnostics(id)).toContain('plain playback');
+    expect(element.src).toBe('https://radio.example/live');
+  });
+
   it('prefers the raw type where the browser takes it', async () => {
     uninstall();
     setup({ mediaTypes: [...RAW_AUDIO_TYPES, ...MP4_AUDIO_TYPES] });

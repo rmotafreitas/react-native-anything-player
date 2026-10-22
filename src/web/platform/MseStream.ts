@@ -547,7 +547,12 @@ export class MseStream {
   private async feed(audio: Uint8Array): Promise<boolean> {
     const mux = this.mux;
     if (!mux) return this.append(audio, audio.length);
-    const { init, fragment, changed } = mux.push(audio);
+    const { init, fragment, changed, unsupported } = mux.push(audio);
+    if (unsupported) {
+      this.halted = true;
+      this.listener.onFallback('AAC other than LC cannot be declared in MP4');
+      return false;
+    }
     if (fragment) {
       if (!(await this.append(joinBytes(init, fragment), audio.length)))
         return false;

@@ -35,6 +35,12 @@ export interface MuxOutput {
    * one, with an init segment of its own.
    */
   changed: boolean;
+  /**
+   * AAC other than LC (Main, SSR, LTP). The MSE type was chosen as
+   * `mp4a.40.2` before the first frame: the caller plays the stream on the
+   * element instead. (HE-AAC in ADTS signals LC, with implicit SBR.)
+   */
+  unsupported: boolean;
 }
 
 const TRACK_ID = 1;
@@ -279,6 +285,12 @@ export class Fmp4Muxer {
     let init: Uint8Array | null = null;
     let fragment: Uint8Array | null = null;
     this.config ??= scan.config;
+    if (
+      this.codec === 'aac' &&
+      this.config &&
+      !this.config.key.startsWith('aac/2/')
+    )
+      return { init, fragment, changed: false, unsupported: true };
     if (scan.frames.length > 0 && this.config) {
       if (this.initPending) init = initSegment(this.config);
       this.initPending = false;
@@ -287,7 +299,7 @@ export class Fmp4Muxer {
       for (const frame of scan.frames) this.decodeTime += frame.samples;
       this.frames += scan.frames.length;
     }
-    return { init, fragment, changed: scan.changed };
+    return { init, fragment, changed: scan.changed, unsupported: false };
   }
 
   /**
