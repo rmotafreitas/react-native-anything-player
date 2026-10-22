@@ -50,6 +50,14 @@ def includeCast = ["rnapCast"].any { name ->
   def value = project.hasProperty(name) ? project.property(name) : (rootProject.ext.has(name) ? rootProject.ext.get(name) : null)
   value != null && value.toString() == "true"
 }
+// The Sound API (`react-native-anything-player/sound`) is opt-in too: a
+// SoundPool per sound, no extra library. `rnapSound=true` in gradle.properties
+// (or -PrnapSound=true, or `rnapSound` in the root `ext`). Off, `src/nosound`
+// stubs report `unavailable` and `Sound.load()` rejects with SOUND_UNAVAILABLE.
+def includeSound = ["rnapSound"].any { name ->
+  def value = project.hasProperty(name) ? project.property(name) : (rootProject.ext.has(name) ? rootProject.ext.get(name) : null)
+  value != null && value.toString() == "true"
+}
 // HLS is on by default (many stations and podcasts are HLS-only). Apps that
 // only play progressive streams can drop it with `rnapHls=false` in
 // gradle.properties (64 KB in an R8-shrunk APK, 96 KB without R8).
@@ -72,6 +80,7 @@ android {
 
   sourceSets {
     main.java.srcDirs += includeCast ? "src/cast/java" : "src/nocast/java"
+    main.java.srcDirs += includeSound ? "src/sound/java" : "src/nosound/java"
     if (includeCast) {
       // The Cast options provider and the Output Switcher receiver are declared
       // only when Cast is built in: merged on top of the main manifest.
