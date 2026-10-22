@@ -120,8 +120,8 @@ The code paths are covered by the conformance scenarios (interruptions, focus, o
 
 The browse tree of cars and watches (`docs/cars-and-watches.md`) is checked in three layers:
 
-- `BrowseTreeTest` (`yarn test:android`) and `BrowseTreeTests` (`swift test`) build trees from `conformance/catalog/browse.json` and compare ids, titles, order, tab overflow, styles and folder artwork; `catalog.test.ts` runs the group helpers and the group-filtered search from the same file.
-- `BrowseTreeLibraryTest` is an instrumented test: it writes a grouped catalog, connects to `AnythingPlayerPlaybackService` the way Android Auto and Wear OS do (a media client), lists the root and the folders, reads the content-style hints, plays an item by its id and finds it in "Recently played". Run it on its own (the catalog is read once per process), with the stream files on the host:
+- `BrowseTreeTest` (`yarn test:android`) and `BrowseTreeTests` (`swift test`) build trees from `conformance/catalog/browse.json` and compare ids, titles, order, tab overflow, slices of long folders, reserved ids, styles and folder artwork; `catalog.test.ts` runs the group helpers and the group-filtered search from the same file.
+- `BrowseTreeLibraryTest` is an instrumented test: it writes a grouped catalog, connects to `AnythingPlayerPlaybackService` the way Android Auto and Wear OS do (a media client), lists the root and the folders, reads the content-style hints, lists a 250-item folder whole and by pages, plays an item by its id and finds it in "Recently played". Run it on its own (the catalog is read once per process), with the stream files on the host:
 
 ```sh
 python3 -m http.server 18765   # serving jazz.wav and news.wav
@@ -131,9 +131,9 @@ cd example/android && ./gradlew :app:connectedDebugAndroidTest \
 
 - The `catalog-groups` scenario checks `setCatalog` with groups, `setFavorites` and the group filter from JavaScript, natively and on the web.
 
-Checked on the Android 16 emulator: the 81 Kotlin unit tests pass; `BrowseTreeLibraryTest` passes 3 of 3 (a root of Favorites, Podcasts, Music and More in that order; Music holding the Jazz subfolder before its own item; grid hint on the station folders and list hint on the podcast folder; `playFromMediaId` starts the item and "Recently played" then opens the root); `VoiceLibraryTest` still passes 4 of 4. The R8-shrunk release build of the bare example (`-Pr8=true`, with `rnapCar=true`) passes all 24 scenarios, `catalog-groups` included. The merged manifest has the Android Auto meta-data with `rnapCar=true` (alone, or with `rnapCast=true`) and none without it.
+Checked on the Android 16 emulator: the 104 Kotlin unit tests pass; `BrowseTreeLibraryTest` passes 4 of 4 (a root of Favorites, Podcasts, Music, Zoo and More in that order; Music holding the Jazz subfolder before its own item; grid hint on the station folders and list hint on the podcast folder; a 250-item folder whole, and page 0 and page 2 of 100 when asked; `playFromMediaId` starts the item and "Recently played" then opens the root); `VoiceLibraryTest` still passes 4 of 4. The R8-shrunk release build of the bare example (`-Pr8=true`, with `rnapCar=true`) passes all 24 scenarios, `catalog-groups` included. The merged manifest has the Android Auto meta-data with `rnapCar=true` (alone, or with `rnapCast=true`) and none without it.
 
-It cannot be a real car: the instrumented client is not Android Auto, so the car-only rules (folders only at the root, four tabs) are held by the unit tests. A head unit, CarPlay, Android Automotive OS and a watch are on the hardware list below.
+It cannot be a real car: the instrumented client is not Android Auto, so the car-only rules (folders only at the root, four tabs, folders cut into slices of 100) are held by the unit tests. A head unit, CarPlay, Android Automotive OS and a watch are on the hardware list below.
 
 ## Soak
 

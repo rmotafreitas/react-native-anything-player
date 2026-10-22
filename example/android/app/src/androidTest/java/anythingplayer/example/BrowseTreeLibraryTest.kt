@@ -1,6 +1,7 @@
 package anythingplayer.example
 
 import android.content.ComponentName
+import android.os.Bundle
 import android.support.v4.media.MediaBrowserCompat
 import android.support.v4.media.session.MediaControllerCompat
 import android.support.v4.media.session.PlaybackStateCompat
@@ -34,6 +35,8 @@ import org.junit.runners.MethodSorters
 @FixMethodOrder(MethodSorters.NAME_ASCENDING)
 class BrowseTreeLibraryTest {
   companion object {
+    /** More than the 100 children a car browser gets in one folder: this client is not a car, so it sees them all (and may page). */
+    private const val BIG = 250
     private const val STYLE_PLAYABLE = "android.media.browse.CONTENT_STYLE_PLAYABLE_HINT"
     private const val STYLE_BROWSABLE = "android.media.browse.CONTENT_STYLE_BROWSABLE_HINT"
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
@@ -93,13 +96,13 @@ class BrowseTreeLibraryTest {
               item("rock", "Rock Radio", "station", "Music"),
               item("news", "World News", "podcast", "Podcasts"),
               item("loose", "Loose Station", "station", null),
-            )
+            ) + (1..BIG).map { item("z$it", "Zoo $it", "station", "Zoo") }
           ),
         )
         .toString()
   }
 
-  private fun children(parent: String): List<MediaBrowserCompat.MediaItem> {
+  private fun children(parent: String, options: Bundle? = null): List<MediaBrowserCompat.MediaItem> {
     val loaded = CountDownLatch(1)
     var listed = emptyList<MediaBrowserCompat.MediaItem>()
     val callback =
@@ -108,8 +111,11 @@ class BrowseTreeLibraryTest {
           listed = items
           loaded.countDown()
         }
+
+        // A subscription with options (a page) is answered here.
+        override fun onChildrenLoaded(parentId: String, items: MutableList<MediaBrowserCompat.MediaItem>, options: Bundle) = onChildrenLoaded(parentId, items)
       }
-    instrumentation.runOnMainSync { browser.subscribe(parent, callback) }
+    instrumentation.runOnMainSync { if (options == null) browser.subscribe(parent, callback) else browser.subscribe(parent, options, callback) }
     assertTrue("children of $parent", loaded.await(10, TimeUnit.SECONDS))
     instrumentation.runOnMainSync { browser.unsubscribe(parent) }
     return listed
@@ -119,9 +125,9 @@ class BrowseTreeLibraryTest {
   fun test1_rootFoldersFollowTheGroups() {
     assertNotNull("a library root", browser.root)
     val root = children(browser.root)
-    assertEquals(listOf("rnap:favorites", "rnap:group:Podcasts", "rnap:group:Music", "rnap:more"), root.map { it.mediaId })
+    assertEquals(listOf("rnap:favorites", "rnap:group:Podcasts", "rnap:group:Music", "rnap:group:Zoo", "rnap:more"), root.map { it.mediaId })
     assertTrue(root.all { it.isBrowsable && !it.isPlayable })
-    assertEquals(listOf("Favorites", "Podcasts", "Music", "More"), root.map { it.description.title.toString() })
+    assertEquals(listOf("Favorites", "Podcasts", "Music", "Zoo", "More"), root.map { it.description.title.toString() })
     assertEquals(true, browser.extras?.getBoolean("android.media.browse.CONTENT_STYLE_SUPPORTED"))
   }
 
@@ -148,7 +154,17 @@ class BrowseTreeLibraryTest {
   }
 
   @Test
-  fun test3_aPickedItemPlaysAndJoinsRecentlyPlayed() {
+  fun test3_aLongFolderIsWholeAndPagesOnRequest() {
+    // This client is neither Android Auto nor Automotive, so no slicing: everything, in catalog order, or the pages it asks for.
+    val all = children("rnap:group:Zoo")
+    assertEquals((1..BIG).map { "z$it" }, all.map { it.mediaId })
+    fun page(n: Int, size: Int) = children("rnap:group:Zoo", Bundle().apply { putInt(MediaBrowserCompat.EXTRA_PAGE, n); putInt(MediaBrowserCompat.EXTRA_PAGE_SIZE, size) })
+    assertEquals((1..100).map { "z$it" }, page(0, 100).map { it.mediaId })
+    assertEquals((201..BIG).map { "z$it" }, page(2, 100).map { it.mediaId })
+  }
+
+  @Test
+  fun test4_aPickedItemPlaysAndJoinsRecentlyPlayed() {
     instrumentation.runOnMainSync { controller.transportControls.playFromMediaId("jazz2", null) }
     val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(25)
     while (System.nanoTime() < deadline && controller.playbackState?.state !in listOf(PlaybackStateCompat.STATE_PLAYING, PlaybackStateCompat.STATE_BUFFERING)) {

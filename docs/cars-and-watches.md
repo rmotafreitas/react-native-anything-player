@@ -42,7 +42,14 @@ More                 Loose Station
 - **Favorites** is the ids in `browse.favorites`, in that order. Ids that are not in the catalog are ignored; an empty list hides the folder. `setFavorites(ids)` changes the list without sending the catalog again.
 - **Recently played** is the last N items played from the catalog, newest first: by a voice request, `playFromSearch()` or a pick in the car or on the watch. `browse.recent: true` keeps 10; a number keeps that many (up to 50). It is stored on the device and off by default.
 - `browse.titles` renames the three folders RNAP adds (`recent`, `favorites`, `more`). They are in English by default.
-- A car shows at most four tabs. When there are more groups, the fourth tab is **More** and holds the groups that did not fit, then the ungrouped items.
+- A car shows at most four tabs, or the number the browser asks for (Android Auto and Automotive OS can say so in their root hints). When there are more groups, the last tab is **More** and holds the groups that did not fit, then the ungrouped items.
+- Item ids must not start with `rnap:`; that prefix is for the tree's own folders (`rnap:group:Jazz`, `rnap:more`…), so an id names a folder or an item, never both. `setCatalog` rejects such an id.
+
+### Long folders
+
+- **Android Auto and Automotive OS** cannot page a list, so they get every child of a folder at once. A folder with more than 100 children is split, in order, into subfolders named by position: `1–100`, `101–200`… (a last one with a single item is just its number). More than 100 of those are split again (`1–10000`…). The groups, the order and the favorites are not changed, only how a long list is cut. The limit is RNAP's own: Android gives no hint for it.
+- **Wear OS**, the Assistant and other browsers page the folder as they ask; nothing is split.
+- **CarPlay** lists at most `CPListTemplate.maximumItemCount` rows, read at run time. A longer folder ends in a **More…** row (named after the *More* folder) that opens the next page, and so on.
 
 Stations and albums are shown as a grid on Android (Android Auto and Android Automotive OS honor it), when a folder directly holds only those; everything else is a list. CarPlay shows lists only.
 
