@@ -101,6 +101,7 @@ enum ErrorCode: String {
   case routePickerUnavailable = "ROUTE_PICKER_UNAVAILABLE"
   case castUnavailable = "CAST_UNAVAILABLE"
   case castUnsupportedSource = "CAST_UNSUPPORTED_SOURCE"
+  case soundUnavailable = "SOUND_UNAVAILABLE"
 }
 
 struct PlayerError: Error, Equatable {

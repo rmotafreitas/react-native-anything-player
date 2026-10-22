@@ -24,6 +24,27 @@ rnap_cast_enabled =
     end
   end
 
+# The Sound API is opt-in the same way (`RNAP_SOUND=1 pod install`, or
+# `"rnap.sound": "true"`; the Expo plugin's `sound` option): without it
+# ios/Sound compiles to a stub that reports `unavailable`.
+rnap_sound_enabled =
+  if ENV.key?("RNAP_SOUND")
+    %w[1 true yes].include?(ENV["RNAP_SOUND"].to_s.strip.downcase)
+  else
+    roots = []
+    roots << Pod::Config.instance.installation_root.to_s if defined?(Pod::Config)
+    roots << Dir.pwd
+    roots.uniq.any? do |root|
+      path = File.join(root, "Podfile.properties.json")
+      next false unless File.exist?(path)
+      begin
+        JSON.parse(File.read(path))["rnap.sound"].to_s == "true"
+      rescue JSON::ParserError
+        false
+      end
+    end
+  end
+
 Pod::Spec.new do |s|
   s.name         = "AnythingPlayer"
   s.version      = package["version"]
@@ -38,12 +59,13 @@ Pod::Spec.new do |s|
   # Core/ is platform-free (also unit-tested with `swift test`), Platform/ is
   # the AVFoundation/MediaPlayer layer, AnythingPlayerModule.mm the TurboModule
   # shim, RNAPRoutePickerView.mm the Fabric AirPlay button, Cast/ the optional
-  # Google Cast layer. IntentsExtension/ (the app's Siri extension target) and
-  # AppIntents/ (Siri shortcuts, compiled by the app target: iOS reads App
-  # Intents from the app's own code) are templates, never part of the pod.
-  sources = ["ios/Core/**/*.swift", "ios/Platform/**/*.swift", "ios/AnythingPlayerModule.{h,mm}", "ios/RNAPRoutePickerView.mm"]
+  # Google Cast layer, Sound/ and AnythingPlayerSoundModule.mm the Sound API.
+  # IntentsExtension/ (the app's Siri extension target) and AppIntents/ (Siri
+  # shortcuts, compiled by the app target: iOS reads App Intents from the app's
+  # own code) are templates, never part of the pod.
+  sources = ["ios/Core/**/*.swift", "ios/Platform/**/*.swift", "ios/AnythingPlayerModule.{h,mm}", "ios/RNAPRoutePickerView.mm", "ios/Sound/**/*.swift", "ios/AnythingPlayerSoundModule.{h,mm}"]
   s.exclude_files = ["ios/IntentsExtension/**", "ios/AppIntents/**"]
-  s.private_header_files = "ios/AnythingPlayerModule.h"
+  s.private_header_files = "ios/AnythingPlayerModule.h", "ios/AnythingPlayerSoundModule.h"
   s.frameworks = "AVFoundation", "AVKit", "AudioToolbox", "Intents", "MediaPlayer", "MediaToolbox", "Network", "UIKit"
   s.swift_version = "5.9"
 
@@ -52,7 +74,15 @@ Pod::Spec.new do |s|
     sources << "ios/Cast/**/*.swift"
     # 4.8.4 is the newest that supports iOS 15; CocoaPods picks the newest the app's platform allows.
     s.dependency "google-cast-sdk", ">= 4.8.4"
-    s.pod_target_xcconfig = { "SWIFT_ACTIVE_COMPILATION_CONDITIONS" => "$(inherited) RNAP_CAST" }
+  end
+  if rnap_sound_enabled
+    Pod::UI.puts "[AnythingPlayer] Sound API enabled".green
+  end
+  conditions = []
+  conditions << "RNAP_CAST" if rnap_cast_enabled
+  conditions << "RNAP_SOUND" if rnap_sound_enabled
+  unless conditions.empty?
+    s.pod_target_xcconfig = { "SWIFT_ACTIVE_COMPILATION_CONDITIONS" => "$(inherited) #{conditions.join(' ')}" }
   end
   s.source_files = sources
 
