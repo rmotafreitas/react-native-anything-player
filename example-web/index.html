@@ -23,6 +23,9 @@
       form { display: flex; gap: .4rem; margin: 0 0 .6rem; }
       input[type='search'] { flex: 1; font: inherit; padding: .35rem .6rem; border: 1px solid #c8613d; border-radius: .5rem; }
       [hidden] { display: none !important; }
+      #drop { display: block; margin: 0 0 .8rem; padding: .6rem .8rem; border: 2px dashed #c8613d; border-radius: .5rem; }
+      #drop[data-over='true'] { background: #fde7da; }
+      #file-name { display: block; font-size: 13px; color: #7a5a4e; }
       #log { max-height: 12rem; overflow: auto; font: 12px/1.4 ui-monospace, monospace; background: #fff; padding: .5rem; border-radius: .5rem; }
     </style>
   </head>
@@ -30,6 +33,11 @@
     <h1>React Native Anything Player, in a plain web page</h1>
     <p>Start the test radio (<code>node scripts/stream-server/server.mjs</code>), pick a source, then press Play.</p>
     <div id="stations"></div>
+    <label id="drop">
+      Drop an audio file here, or pick one:
+      <input id="file" type="file" accept="audio/*" />
+      <span id="file-name">–</span>
+    </label>
     <p>
       <button id="toggle">Play</button>
       <button id="stop">Stop</button>
@@ -58,6 +66,8 @@
     <canvas id="scope" width="600" height="64"></canvas>
     <h2>Events</h2>
     <pre id="log"></pre>
+    <!-- hls.js, for HLS outside Safari: the copy in node_modules (served by serve.mjs). -->
+    <script src="/vendor/hls.min.js"></script>
     <script type="module" src="./main.js"></script>
   </body>
 </html>

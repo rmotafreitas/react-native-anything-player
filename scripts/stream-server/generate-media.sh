@@ -15,6 +15,9 @@ for i in $(seq 0 11); do
 done
 ffmpeg -loglevel error -y "${inputs[@]}" -filter_complex "${filters}concat=n=12:v=0:a=1,volume=0.25,aformat=channel_layouts=stereo" \
   -c:a libmp3lame -b:a 128k -ar 44100 -write_xing 0 -id3v2_version 0 media/program.mp3
+# The same program as ADTS AAC (64 kbps), for /live.aac: browsers that take AAC
+# only inside MP4 are fed a remux of it.
+ffmpeg -loglevel error -y -i media/program.mp3 -c:a aac -b:a 64k -ar 44100 -ac 2 -f adts media/program.aac
 # 30 s file for VOD/seek tests and the bundled local asset.
 ffmpeg -loglevel error -y -f lavfi -i "sine=frequency=440:duration=30:sample_rate=44100" \
   -af "volume=0.25,aformat=channel_layouts=stereo" -c:a libmp3lame -b:a 96k media/file.mp3

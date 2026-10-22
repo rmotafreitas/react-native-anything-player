@@ -114,6 +114,7 @@
     "eslint-plugin-prettier": "^5.5.7",
     "eslint-plugin-sonarjs": "^4.2.1",
     "hermes-eslint": "0.37.0",
+    "hls.js": "^1.7.3",
     "jest": "^30",
     "jest-junit": "^17.0.0",
     "prettier": "^3.9.10",

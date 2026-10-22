@@ -8501,6 +8501,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"hls.js@npm:^1.7.3":
+  version: 1.7.3
+  resolution: "hls.js@npm:1.7.3"
+  checksum: 10c0/c44c0098b9f4b53cb0c2cc2301d4cad907a77c60f470fa344b8cfc5077da4ccab9590d47e5cf81100a958d4aa43d7dc7bcb6566197fd9ae170ec10cea8af3e8c
+  languageName: node
+  linkType: hard
+
 "hookable@npm:^5.5.3":
   version: 5.5.3
   resolution: "hookable@npm:5.5.3"
@@ -11821,6 +11828,7 @@ __metadata:
     eslint-plugin-prettier: "npm:^5.5.7"
     eslint-plugin-sonarjs: "npm:^4.2.1"
     hermes-eslint: "npm:0.37.0"
+    hls.js: "npm:^1.7.3"
     jest: "npm:^30"
     jest-junit: "npm:^17.0.0"
     prettier: "npm:^3.9.10"
