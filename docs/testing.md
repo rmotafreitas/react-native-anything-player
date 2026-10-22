@@ -105,7 +105,7 @@ Verified on the iOS 27 simulator:
 
 - AirPlay: pick a receiver from `<RoutePicker />` while a stream plays (`status.route.kind === 'airplay'`); lock the phone; pick the phone again.
 - Google Cast (Android, iOS, Chrome): cast a playing radio stream and a file mid-way; check position, titles (from the phone), lock-screen controls, volume, a receiver-side stop, Wi-Fi loss on the phone only, and stopping from the phone (returns paused).
-- Siri: "play ⟨station⟩ on ⟨app⟩" with the app in the foreground, backgrounded and force-quit; "play something on ⟨app⟩"; a name only the search handler knows.
+- Siri: "play ⟨station⟩ on ⟨app⟩" with the app in the foreground, backgrounded and force-quit; "play something on ⟨app⟩"; a name only the search handler knows. Check first that iOS delivers the extension's "handle in app" to `application(_:handle:completionHandler:)` on the iOS versions you support: Apple documents that path for media intents but lists the delegate method as iOS 11–14, and developers have reported it not being called on some versions.
 - Google Assistant and Gemini: the same requests, on a phone where each is the default assistant; and `adb shell am start -a android.media.action.MEDIA_PLAY_FROM_SEARCH -e query "⟨station⟩" ⟨package⟩`.
  The code paths are covered by the conformance scenarios (interruptions, focus, output-disconnect, handoff) and follow the platform APIs, but they should be exercised on hardware before a 1.0.
 

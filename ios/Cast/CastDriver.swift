@@ -231,8 +231,9 @@ class CastDriver: NSObject, RemoteOutputDriver {
     if mediaSessionId == nil {
       // The first status of this load: one still describing the previous item is stale.
       guard ours else { return }
-    } else if status.mediaSessionID != mediaSessionId && !ours {
-      // Another sender (or app) replaced this item on the receiver.
+    } else if status.mediaSessionID != 0 && status.mediaSessionID != mediaSessionId {
+      // Another sender (or app) replaced this item on the receiver, even with
+      // the same URL: a new media session is not ours.
       if playWanted {
         playWanted = false
         observer?.driverPausedExternally(generation: generation)
