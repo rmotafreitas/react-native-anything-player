@@ -11878,8 +11878,8 @@ __metadata:
     react-native:
       optional: true
   bin:
-    react-native-anything-player: bin/rnap.mjs
-    rnap: bin/rnap.mjs
+    react-native-anything-player: lib/cli/rnap.mjs
+    rnap: lib/cli/rnap.mjs
   languageName: unknown
   linkType: soft
 

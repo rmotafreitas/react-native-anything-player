@@ -38,13 +38,13 @@ beforeEach(() => {
 });
 
 describe('RoutePicker (DOM)', () => {
-  it('is a button with a masked icon in the idle or active colour', () => {
+  it('is a button with an SVG icon in the idle or active colour', () => {
     const idle = html(
       createElement(RoutePicker, { color: 'gray', className: 'x' })
     );
     expect(idle).toContain('<button type="button" class="x"');
     expect(idle).toContain('aria-label="Choose audio output"');
-    expect(idle).toContain('background-color:gray');
+    expect(idle).toContain('fill="gray"');
     mockHooks.elsewhere = true;
     expect(
       html(
@@ -54,7 +54,7 @@ describe('RoutePicker (DOM)', () => {
           size: 30,
         })
       )
-    ).toMatch(/aria-label="Out".*width:30px.*background-color:blue/);
+    ).toMatch(/aria-label="Out".*width="30".*fill="blue"/);
   });
 
   it('renders nothing without a picker', () => {
@@ -78,11 +78,11 @@ describe('CastButton (DOM)', () => {
     expect(html(createElement(CastButton))).toBe('');
     mockHooks.cast = { state: 'notConnected', device: null };
     expect(html(createElement(CastButton, { color: 'gray' }))).toMatch(
-      /aria-label="Cast".*aria-pressed="false".*background-color:gray/
+      /aria-label="Cast".*aria-pressed="false".*fill="gray"/
     );
     mockHooks.cast = { state: 'connected', device: 'Kitchen' };
     expect(html(createElement(CastButton, { activeColor: 'blue' }))).toMatch(
-      /aria-label="Casting to Kitchen".*aria-pressed="true".*background-color:blue/
+      /aria-label="Casting to Kitchen".*aria-pressed="true".*fill="blue"/
     );
     mockHooks.cast = { state: 'connecting', device: null };
     expect(html(createElement(CastButton, { label: 'TV' }))).toMatch(

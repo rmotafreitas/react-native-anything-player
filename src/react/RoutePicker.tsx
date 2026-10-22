@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react';
-import { OUTPUT_ICON } from '../components/icons';
+import { OUTPUT_PATH } from './icons';
 import { usePlaysElsewhere, useRoutePickerAvailable } from '../core/hooks';
 import type { Player } from '../core/Player';
 import { showRoutePicker } from '../core/system';
@@ -53,7 +53,7 @@ export function RoutePicker({
       }}
     >
       <Icon
-        src={OUTPUT_ICON}
+        path={OUTPUT_PATH}
         size={size}
         color={remote ? activeColor : color}
       />

@@ -5,8 +5,8 @@
   "main": "./lib/module/index.js",
   "types": "./lib/typescript/src/index.d.ts",
   "bin": {
-    "react-native-anything-player": "bin/rnap.mjs",
-    "rnap": "bin/rnap.mjs"
+    "react-native-anything-player": "lib/cli/rnap.mjs",
+    "rnap": "lib/cli/rnap.mjs"
   },
   "exports": {
     ".": {
@@ -27,9 +27,10 @@
     "./package.json": "./package.json"
   },
   "files": [
-    "src",
     "lib",
-    "bin",
+    "!lib/**/*.map",
+    "!lib/typescript/src/web/engine",
+    "!lib/typescript/src/web/platform",
     "android",
     "ios",
     "*.podspec",
@@ -59,7 +60,7 @@
     "docs:build": "yarn workspace react-native-anything-player-website build",
     "docs:api": "typedoc",
     "clean": "del-cli android/build example/android/build example/android/app/build example/ios/build lib",
-    "prepare": "bob build",
+    "prepare": "bob build && node scripts/check-lib.mjs && node scripts/build-cli.mjs",
     "typecheck": "tsc && tsc -p e2e && tsc -p example-react",
     "lint": "eslint \"**/*.{js,ts,tsx}\" --max-warnings 0",
     "test": "jest",
@@ -160,7 +161,9 @@
       [
         "module",
         {
-          "esm": true
+          "esm": true,
+          "configFile": true,
+          "sourceMaps": false
         }
       ],
       [

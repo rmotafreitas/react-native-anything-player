@@ -1,5 +1,5 @@
 import { useEffect, type CSSProperties } from 'react';
-import { CAST_CONNECTED_ICON, CAST_ICON } from '../components/icons';
+import { CAST_CONNECTED_PATH, CAST_PATH } from './icons';
 import { useCastStatus } from '../core/hooks';
 import { configureCast, showCastPicker } from '../core/system';
 import { BARE_BUTTON, Icon } from './Icon';
@@ -62,7 +62,7 @@ export function CastButton({
       }}
     >
       <Icon
-        src={connected ? CAST_CONNECTED_ICON : CAST_ICON}
+        path={connected ? CAST_CONNECTED_PATH : CAST_PATH}
         size={size}
         color={state === 'notConnected' ? color : activeColor}
       />

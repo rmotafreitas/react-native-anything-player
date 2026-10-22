@@ -69,9 +69,7 @@ export function CastButton({
       }}
     >
       <Image
-        source={{
-          uri: state === 'connected' ? CAST_CONNECTED_ICON : CAST_ICON,
-        }}
+        source={state === 'connected' ? CAST_CONNECTED_ICON : CAST_ICON}
         style={{
           width: size,
           height: size,

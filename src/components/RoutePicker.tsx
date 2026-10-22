@@ -59,7 +59,7 @@ export function RoutePicker({
       }}
     >
       <Image
-        source={{ uri: OUTPUT_ICON }}
+        source={OUTPUT_ICON}
         style={{
           width: size,
           height: size,

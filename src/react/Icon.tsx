@@ -1,25 +1,29 @@
 import type { CSSProperties } from 'react';
 
-/** A glyph from a white PNG, painted in `color` through a CSS mask. */
+const INLINE: CSSProperties = { display: 'inline-block' };
+
+/** A 24×24 glyph drawn as inline SVG in `color`. */
 export function Icon({
-  src,
+  path,
   size,
   color,
 }: {
-  src: string;
+  path: string;
   size: number;
   color: string;
 }) {
-  const mask = `url("${src}") center / contain no-repeat`;
-  const style: CSSProperties = {
-    display: 'inline-block',
-    width: size,
-    height: size,
-    backgroundColor: color,
-    mask,
-    WebkitMask: mask,
-  };
-  return <span aria-hidden="true" style={style} />;
+  return (
+    <svg
+      aria-hidden="true"
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill={color}
+      style={INLINE}
+    >
+      <path d={path} />
+    </svg>
+  );
 }
 
 /** A button that shows only its icon. */
