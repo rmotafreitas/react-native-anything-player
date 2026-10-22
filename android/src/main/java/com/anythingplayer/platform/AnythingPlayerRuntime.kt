@@ -153,6 +153,7 @@ internal object AnythingPlayerRuntime : FocusListener {
     network.start()
     routes =
       RouteMonitor(appContext) { route ->
+        Log.d(TAG, "output route: ${route.kind.wire}${route.name?.let { " ($it)" } ?: ""}")
         localRoute = route
         players.values.forEach { it.engine.routeChanged(route) }
       }
