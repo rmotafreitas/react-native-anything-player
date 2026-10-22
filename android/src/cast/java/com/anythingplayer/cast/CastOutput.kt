@@ -5,18 +5,20 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
+import androidx.annotation.OptIn
 import androidx.media3.cast.RemoteCastPlayer
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.util.UnstableApi
 import com.anythingplayer.core.ErrorCode
 import com.anythingplayer.core.OpenRequest
 import com.anythingplayer.core.PlaybackSample
 import com.anythingplayer.core.PlayerError
 import com.anythingplayer.platform.DriverObserver
+import com.anythingplayer.platform.IdleReason
 import com.anythingplayer.platform.NowPlaying
 import com.anythingplayer.platform.ProgressReading
-import com.anythingplayer.platform.IdleReason
 import com.anythingplayer.platform.ReceiverActions
 import com.anythingplayer.platform.ReceiverMapper
 import com.anythingplayer.platform.ReceiverState
@@ -39,6 +41,7 @@ private const val CONTENT_PREFIX = "anythingplayer:"
  * Commands go to Media3's remote player; the receiver's `MediaStatus` is the
  * truth for state. The output only reads while it owns the receiver's media.
  */
+@OptIn(UnstableApi::class)
 internal class CastOutput(
   private val hub: RealCastBackend,
   private val observer: DriverObserver,

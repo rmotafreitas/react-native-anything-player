@@ -85,6 +85,8 @@ jobs:
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
       - name: Android lint and Kotlin engine conformance + ICY tests
         run: cd example/android && ./gradlew :react-native-anything-player:lintDebug :react-native-anything-player:testDebugUnitTest --no-daemon --build-cache
+      - name: Android lint and tests with Cast built in
+        run: cd example/android && ./gradlew :react-native-anything-player:lintDebug :react-native-anything-player:testDebugUnitTest -PrnapCast=true --no-daemon --build-cache
 
   build-android:
     timeout-minutes: 45

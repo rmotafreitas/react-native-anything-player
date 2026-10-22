@@ -12,6 +12,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.LibraryResult
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
+import androidx.media3.session.SessionError
 import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
@@ -121,7 +122,7 @@ private class LibraryCallback(private val context: Context) : MediaLibraryServic
     pageSize: Int,
     params: MediaLibraryService.LibraryParams?,
   ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> {
-    if (parentId != MediaLibrary.ROOT_ID) return Futures.immediateFuture(LibraryResult.ofError(LibraryResult.RESULT_ERROR_BAD_VALUE))
+    if (parentId != MediaLibrary.ROOT_ID) return Futures.immediateFuture(LibraryResult.ofError(SessionError.ERROR_BAD_VALUE))
     return Futures.immediateFuture(LibraryResult.ofItemList(ImmutableList.copyOf(MediaLibrary.page(Voice.items(), page, pageSize)), params))
   }
 
@@ -131,7 +132,7 @@ private class LibraryCallback(private val context: Context) : MediaLibraryServic
     mediaId: String,
   ): ListenableFuture<LibraryResult<MediaItem>> {
     if (mediaId == MediaLibrary.ROOT_ID) return Futures.immediateFuture(LibraryResult.ofItem(MediaLibrary.root(context), null))
-    val entry = Voice.entry(mediaId) ?: return Futures.immediateFuture(LibraryResult.ofError(LibraryResult.RESULT_ERROR_BAD_VALUE))
+    val entry = Voice.entry(mediaId) ?: return Futures.immediateFuture(LibraryResult.ofError(SessionError.ERROR_BAD_VALUE))
     return Futures.immediateFuture(LibraryResult.ofItem(MediaLibrary.item(entry), null))
   }
 

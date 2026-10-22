@@ -5,11 +5,13 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import androidx.annotation.OptIn
 import androidx.core.content.ContextCompat
 import androidx.media3.cast.Cast
 import androidx.media3.cast.RemoteCastPlayer
 import androidx.media3.cast.SessionAvailabilityListener
 import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
 import androidx.mediarouter.app.MediaRouteChooserDialog
 import androidx.mediarouter.app.MediaRouteControllerDialog
 import androidx.mediarouter.media.MediaRouteSelector
@@ -25,9 +27,9 @@ import com.anythingplayer.platform.RemoteOutput
 import com.google.android.gms.cast.MediaError
 import com.google.android.gms.cast.framework.CastContext
 import com.google.android.gms.cast.framework.CastSession
+import com.google.android.gms.cast.framework.CastState as GmsCastState
 import com.google.android.gms.cast.framework.SessionManagerListener
 import com.google.android.gms.cast.framework.media.RemoteMediaClient
-import com.google.android.gms.cast.framework.CastState as GmsCastState
 
 private const val TAG = "RNAP"
 
@@ -44,6 +46,7 @@ private const val TAG = "RNAP"
  * One Cast session and one remote player exist for the app; the output of
  * the player the session follows (see `CastCoordinator`) owns them. Main thread.
  */
+@OptIn(UnstableApi::class)
 internal class RealCastBackend(context: Context, private val host: CastHost) : CastBackend {
   private val app = context.applicationContext
   private val main = Handler(Looper.getMainLooper())
