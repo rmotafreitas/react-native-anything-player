@@ -230,12 +230,15 @@ export const SCENARIOS: Scenario[] = [
         );
         await p.play();
         await waitFor(p, (s) => s.state === 'playing', 5_000, 'playing');
+        // Measure from the first audible sample: an output device (Bluetooth,
+        // a CI audio server) can take a second to start consuming audio.
+        const started = Date.now();
+        while (p.getProgress().position < 0.05 && Date.now() - started < 5_000)
+          await sleep(50);
+        const from = p.getProgress().position;
         await sleep(1_500);
-        const progress = p.getProgress();
-        expect(
-          progress.position > 0.8,
-          `position should advance, got ${progress.position}`
-        );
+        const advanced = p.getProgress().position - from;
+        expect(advanced > 0.8, `position should advance, advanced ${advanced}`);
         await p.seekTo(27);
         await sleep(300);
         expect(
