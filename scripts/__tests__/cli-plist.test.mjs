@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { addPlistArrayItem, parsePlist } from '../../bin/lib/plist.mjs';
-import { unifiedDiff } from '../../bin/lib/diff.mjs';
+import { addPlistArrayItem, parsePlist } from '../../bin/cli/plist.mjs';
+import { unifiedDiff } from '../../bin/cli/diff.mjs';
 
 const SAMPLE = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
