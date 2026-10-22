@@ -2,10 +2,13 @@ import Foundation
 
 @testable import AnythingPlayerCore
 
+/// The fake wall clock reads this at monotonic 0.
+let wallBase: Int64 = 1_700_000_000_000
+
 /// Deterministic clock: time only moves when a test advances it.
 final class FakeClock: EngineClock {
   var monotonicMs: Int64 = 0
-  var wallMs: Int64 { 1_700_000_000_000 + monotonicMs }
+  var wallMs: Int64 { wallBase + monotonicMs }
 }
 
 /// Records every driver call and simulates a playhead.
@@ -99,6 +102,10 @@ final class Recorder: EngineDelegate {
   var loads: [String] = []
   var errors: [String] = []
   var ended = 0
+  /// Sleep timers that fired.
+  var sleeps = 0
+  /// `fadeTo` calls that settled.
+  var fades = 0
   var diagnostics: [DiagnosticEntry] = []
   var wakeupAt: Int64?
   /// Ordering invariant breaches (an event delivered before its status).
@@ -121,6 +128,10 @@ final class Recorder: EngineDelegate {
   func engineDidEnd() {
     if statuses.last?.state != .ended { violations.append("ended before ended status") }
     ended += 1
+  }
+  func engineSleepFired() {
+    if statuses.last?.sleepAt != nil { violations.append("sleep event before its status") }
+    sleeps += 1
   }
   func engine(diagnostic: DiagnosticEntry) { diagnostics.append(diagnostic) }
   func engine(wakeupAt: Int64?) { self.wakeupAt = wakeupAt }

@@ -59,6 +59,9 @@ enum RecoveryPolicy {
   /// AVPlayer for ~110s measured) audio that resuming will never play — the
   /// resume re-opens at the live edge. The connection is released after this.
   static let pausedStreamReleaseMs: Int64 = 30_000
+
+  /// How often a fade (play, pause, stop, `fadeTo`, the sleep timer) updates the volume.
+  static let fadeTickMs: Int64 = 50
 }
 
 /// App-configurable recovery knobs (`PlayerOptions` in TS).
@@ -72,6 +75,10 @@ struct EngineOptions: Equatable {
   /// A live stream that has fallen this far behind the live edge (pauses +
   /// stalls since it was opened) is re-opened at the live edge on resume.
   var liveMaxDriftMs: Int64 = 5_000
+  /// Fade-in when playback starts (`0` = none). Starts when the audio does.
+  var fadeInMs: Int64 = 0
+  /// Fade-out before a pause or a stop, and the sleep timer's default (`0` = none).
+  var fadeOutMs: Int64 = 0
 }
 
 /// Deterministic exponential backoff with injectable jitter.

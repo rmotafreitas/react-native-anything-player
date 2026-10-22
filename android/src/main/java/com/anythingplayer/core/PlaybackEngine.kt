@@ -27,7 +27,7 @@ interface EngineDriver {
   fun releaseConnection()
   /** Remove the current item entirely. */
   fun unload()
-  /** Effective output volume (volume × mute × duck), 0..1. */
+  /** Effective output volume (volume × mute × duck × fades), 0..1. */
   fun setVolume(effective: Double)
   fun setRate(rate: Double)
   /**
@@ -58,6 +58,8 @@ interface EngineDelegate {
   fun engineLoadSettled(loadId: Int, outcome: LoadOutcome)
   fun engineError(error: PlayerError, fatal: Boolean)
   fun engineDidEnd()
+  /** The sleep timer paused the player (`sleep` event). */
+  fun engineSleepFired()
   fun engineDiagnostic(entry: DiagnosticEntry)
   /** The engine wants `onWakeup()` at this monotonic instant (`null` = none). */
   fun engineWakeupAt(at: Long?)
@@ -137,6 +139,31 @@ class PlaybackEngine(
   /** Discrete events wait until the status they imply was published. */
   private val pendingEvents = mutableListOf<() -> Unit>()
 
+  // ── Fades & sleep timer (monotonic ms) ──
+  // The output volume is volume × duck × gain × sleep attenuation (or 0 when
+  // muted): fades never touch the app's `volume` except `fadeTo`, whose
+  // target is the new volume.
+  /** `volume` still on its way to a `fadeTo` target. */
+  private var levelRamp: Ramp? = null
+  private var fadeToDone: (() -> Unit)? = null
+  /** The play/pause/stop fade, 0…1 (`gainRamp` while it moves). */
+  private var gain = 1.0
+  private var gainRamp: Ramp? = null
+  /** A fade-out under way: the intent is already off; at silence it pauses or stops. */
+  private var fadeOutThen: FadeOutEnd? = null
+  /** Playback was asked for with a fade-in: it starts when the audio does. */
+  private var fadeInPending = false
+  private var fadeTickAt: Long? = null
+  /** What the driver was last given. */
+  private var appliedVolume = 1.0
+  private var sleepAt: Long? = null
+  /** The sleep timer's fade-out: the last `sleepFadeMs` before `sleepAt`. */
+  private var sleepFadeMs = 0L
+  private var sleepWallAt: Long? = null
+
+  /** What a fade-out leads to when it reaches silence. */
+  private enum class FadeOutEnd { PAUSE, STOP }
+
   private val now: Long
     get() = clock.monotonicMs
 
@@ -166,6 +193,7 @@ class PlaybackEngine(
         muted = muted,
         rate = rate,
         route = route,
+        sleepAt = sleepWallAt,
       )
     }
 
@@ -179,7 +207,7 @@ class PlaybackEngine(
   val needsAudioFocus: Boolean
     get() {
       if (remote) return false
-      return playWhenReady || (interruption?.resumable ?: false)
+      return playWhenReady || fadeOutThen != null || (interruption?.resumable ?: false)
     }
 
   /** Native observations for any other generation are stale and must be dropped. */
@@ -189,6 +217,9 @@ class PlaybackEngine(
 
   fun load(newSource: SourceDescriptor, autoplay: Boolean?, startPosition: Double?) {
     ensureAlive()
+    // A fade-out ends with the item it was fading.
+    cancelFadeOut()
+    val flowing = playWhenReady && state == PlaybackState.PLAYING
     val wanted = autoplay ?: (playWhenReady && continuesIntent(state))
     pendingLoadId?.let {
       pendingLoadId = null
@@ -206,6 +237,7 @@ class PlaybackEngine(
     resumePosition = startPosition
     playWhenReady = wanted
     if (wanted) applyFocus(requestFocus())
+    if (playWhenReady) startFadeIn(flowing)
     log("load", mapOf("uri" to newSource.uri, "autoplay" to "$playWhenReady"))
     open(startPosition, "load")
     commit()
@@ -244,6 +276,12 @@ class PlaybackEngine(
 
   fun pause() {
     ensureAlive()
+    if (fadeOutThen != null) {
+      // A pause during a fade-out: silence now.
+      completeFadeOut()
+      commit()
+      return
+    }
     val hadInterruption = interruption != null
     interruption = null
     if (!playWhenReady) {
@@ -252,14 +290,28 @@ class PlaybackEngine(
       return
     }
     playWhenReady = false
-    pauseIntent("pause")
+    if (!beginFadeOut(FadeOutEnd.PAUSE)) pauseIntent("pause")
     commit()
   }
 
   fun stop() {
     ensureAlive()
     if (source == null) return
+    if (fadeOutThen != null) {
+      // A stop during a fade-out: stop now.
+      completeFadeOut(FadeOutEnd.STOP)
+    } else if (playWhenReady && beginFadeOut(FadeOutEnd.STOP)) {
+      playWhenReady = false
+      interruption = null
+    } else {
+      stopNow()
+    }
+    commit()
+  }
+
+  private fun stopNow() {
     settlePendingLoad(LoadOutcome.Superseded)
+    holdGain()
     playWhenReady = false
     interruption = null
     resetRecovery()
@@ -270,11 +322,11 @@ class PlaybackEngine(
     connectionReleased = true
     resumePosition = if (isLive) null else 0.0
     setState(PlaybackState.STOPPED, "stop")
-    commit()
   }
 
   fun reset() {
     ensureAlive()
+    cancelFadeOut()
     settlePendingLoad(LoadOutcome.Superseded)
     generation += 1
     source = null
@@ -315,8 +367,70 @@ class PlaybackEngine(
   fun setVolume(value: Double) {
     ensureAlive()
     if (!value.isFinite()) throw PlayerError(ErrorCode.INVALID_ARGUMENT, "Volume must be a finite number.", false)
+    cancelFadeTo()
     volume = value.coerceIn(0.0, 1.0)
     applyVolume()
+    commit()
+  }
+
+  /**
+   * Moves the volume to `value` over `durationMs`; `done` runs when it gets
+   * there, or when `setVolume`, another `fadeTo` or `release` replaces it.
+   * `volume` is the target from the start. Instant on a remote output.
+   */
+  fun fadeTo(value: Double, durationMs: Double, done: () -> Unit) {
+    ensureAlive()
+    if (!value.isFinite()) throw PlayerError(ErrorCode.INVALID_ARGUMENT, "Volume must be a finite number.", false)
+    if (!durationMs.isFinite() || durationMs < 0) throw invalidDuration("A fade duration")
+    val t = now
+    val from = levelAt(t)
+    cancelFadeTo()
+    volume = value.coerceIn(0.0, 1.0)
+    fadeToDone = done
+    val ms = Math.round(durationMs)
+    if (ms > 0 && !remote && from != volume) {
+      levelRamp = Ramp(from, volume, t, t + ms)
+      log("fade", mapOf("to" to "$volume", "ms" to "$ms"))
+    } else {
+      applyVolume()
+      settleFadeTo()
+    }
+    commit()
+  }
+
+  /**
+   * Pauses after `afterMs` of wall time (counting while paused too), fading
+   * out over its last `fadeOutMs` (default `options.fadeOutMs`). `null`
+   * cancels; a new timer replaces the previous one.
+   */
+  fun sleep(afterMs: Double?, fadeOutMs: Double?) {
+    ensureAlive()
+    if (afterMs != null) {
+      if (!afterMs.isFinite() || afterMs < 0) throw invalidDuration("The sleep delay")
+      if (fadeOutMs != null && (!fadeOutMs.isFinite() || fadeOutMs < 0)) throw invalidDuration("The sleep fade-out")
+    }
+    endSleep()
+    if (afterMs == null) {
+      log("sleep timer", mapOf("note" to "cancelled"))
+    } else {
+      val after = Math.round(afterMs)
+      sleepAt = now + after
+      sleepWallAt = clock.wallMs + after
+      sleepFadeMs = min(if (fadeOutMs != null) Math.round(fadeOutMs) else options.fadeOutMs, after)
+      log("sleep timer", mapOf("afterMs" to "$after", "fadeOutMs" to "$sleepFadeMs"))
+    }
+    commit()
+  }
+
+  /**
+   * The fades of play (in) and of pause and stop (out), in ms; `0` = none.
+   * A fade under way keeps its course.
+   */
+  fun setFades(inMs: Double, outMs: Double) {
+    ensureAlive()
+    if (!inMs.isFinite() || inMs < 0) throw invalidDuration("A fade-in")
+    if (!outMs.isFinite() || outMs < 0) throw invalidDuration("A fade-out")
+    options = options.copy(fadeInMs = Math.round(inMs), fadeOutMs = Math.round(outMs))
     commit()
   }
 
@@ -347,6 +461,10 @@ class PlaybackEngine(
   fun release() {
     if (released) return
     settlePendingLoad(LoadOutcome.Failed(PlayerError(ErrorCode.PLAYER_RELEASED, "The player was released.", false)))
+    cancelFadeOut()
+    cancelFadeTo()
+    sleepAt = null
+    sleepWallAt = null
     playWhenReady = false
     interruption = null
     resetRecovery()
@@ -385,6 +503,8 @@ class PlaybackEngine(
       commit()
       return
     }
+    // A fade-out lands first: the pause belongs to the old output.
+    completeFadeOut()
     val position = handoffPosition()
     // A paused stream whose connection was released stays released.
     val active =
@@ -395,6 +515,7 @@ class PlaybackEngine(
     route = next
     remote = next.kind == AudioRouteKind.CAST
     log("handoff", mapOf("to" to outputId, "resume" to "$resume"))
+    settleFades()
     applyVolume()
     if (active) {
       playWhenReady = resume && playWhenReady
@@ -437,6 +558,8 @@ class PlaybackEngine(
   fun onPlaying(generation: Int) {
     if (!accepts(generation)) return logStale("playing", generation)
     if (!playWhenReady) {
+      // Fading out: the audio keeps going until the fade ends.
+      if (fadeOutThen != null) return commit()
       log("native playing without intent", emptyMap())
       driver.pause()
       commit()
@@ -458,6 +581,10 @@ class PlaybackEngine(
     lastPosition = driver.sample().position
     lastPositionAdvanceAt = t
     playingSince = t
+    if (fadeInPending) {
+      fadeInPending = false
+      rampGain(1.0, options.fadeInMs)
+    }
     // Drift is only enforced at moments that are silent anyway (resuming from a
     // pause, or during a published stall), never by cutting audio that resumed.
     setState(PlaybackState.PLAYING, "audio flowing")
@@ -467,6 +594,8 @@ class PlaybackEngine(
   /** Playback wanted, waiting for data. */
   fun onBuffering(generation: Int) {
     if (!accepts(generation)) return logStale("buffering", generation)
+    // Nothing left to fade.
+    completeFadeOut()
     if (state == PlaybackState.PLAYING && stallPublishAt == null) {
       stallStartedAt = now
       stallPublishAt = now + RecoveryPolicy.STALL_DEBOUNCE_MS
@@ -477,12 +606,14 @@ class PlaybackEngine(
 
   fun onFailed(generation: Int, error: PlayerError) {
     if (!accepts(generation)) return logStale("failed", generation)
+    completeFadeOut()
     handleFailure(error)
     commit()
   }
 
   fun onEnded(generation: Int) {
     if (!accepts(generation)) return logStale("ended", generation)
+    completeFadeOut()
     if (isLive || duration == null) {
       handleFailure(PlayerError(ErrorCode.STREAM_ENDED, "The stream closed the connection.", true))
     } else {
@@ -498,6 +629,10 @@ class PlaybackEngine(
   /** The platform paused the player without being asked to. */
   fun onPausedExternally(generation: Int, reason: InterruptionReason) {
     if (!accepts(generation)) return logStale("paused externally", generation)
+    if (fadeOutThen != null) {
+      completeFadeOut()
+      return commit()
+    }
     if (!playWhenReady) return
     systemPause(reason, false)
   }
@@ -516,6 +651,8 @@ class PlaybackEngine(
 
   /** Shared by the system inputs and the externally-paused observation. */
   private fun systemPause(reason: InterruptionReason, resumable: Boolean) {
+    // A user's fade-out stops at once; the pause stays the user's.
+    completeFadeOut()
     if (!playWhenReady) {
       val current = interruption
       if (current != null && current.resumable && !resumable) {
@@ -590,6 +727,7 @@ class PlaybackEngine(
   fun platformReset() {
     if (released || remote || source == null || state == PlaybackState.IDLE) return
     log("platform reset", emptyMap())
+    completeFadeOut()
     if (state == PlaybackState.STOPPED || state == PlaybackState.ENDED || state == PlaybackState.ERROR) {
       connectionReleased = true
       commit()
@@ -613,6 +751,8 @@ class PlaybackEngine(
         attemptReconnect("backoff elapsed")
       }
     }
+    fireSleepIfDue(t)
+    stepFades(t)
     if (playWhenReady && t - lastHeartbeatAt >= RecoveryPolicy.HEARTBEAT_MS - 50) {
       lastHeartbeatAt = t
       heartbeat(t)
@@ -683,6 +823,13 @@ class PlaybackEngine(
   }
 
   private fun startPlayback(cause: String) {
+    if (fadeOutThen != null) {
+      // Playing again during a fade-out: the audio never stopped.
+      fadeOutThen = null
+      playingSince = now
+      log("fade-out cancelled", mapOf("cause" to cause))
+    }
+    startFadeIn(state == PlaybackState.PLAYING)
     playWhenReady = true
     pauseReleaseAt = null
     if (state == PlaybackState.ERROR) lastError = null
@@ -724,6 +871,7 @@ class PlaybackEngine(
   }
 
   private fun pauseIntent(cause: String) {
+    holdGain()
     resetRecovery()
     stallStartedAt = null
     playingSince = null
@@ -997,8 +1145,217 @@ class PlaybackEngine(
   }
 
   private fun applyVolume() {
+    val value = outputVolume(now)
+    appliedVolume = value
+    driver.setVolume(value)
+  }
+
+  /** Sends the output volume only when it changed (fade steps). */
+  private fun refreshVolume() {
+    if (outputVolume(now) != appliedVolume) applyVolume()
+  }
+
+  private fun outputVolume(t: Long): Double {
+    if (muted) return 0.0
     val duck = if (remote) 1.0 else duckFactor
-    driver.setVolume(if (muted) 0.0 else volume * duck)
+    return levelAt(t) * duck * gainAt(t) * sleepGainAt(t)
+  }
+
+  // ── Fades & sleep timer ──
+
+  private fun invalidDuration(what: String) =
+    PlayerError(ErrorCode.INVALID_ARGUMENT, "$what must be a finite number ≥ 0.", false)
+
+  private fun levelAt(t: Long): Double = levelRamp?.valueAt(t) ?: volume
+
+  private fun gainAt(t: Long): Double = gainRamp?.valueAt(t) ?: gain
+
+  /** In the sleep timer's last `sleepFadeMs`: the fade-out (local output only). */
+  private fun sleepFading(t: Long): Boolean {
+    val at = sleepAt ?: return false
+    return sleepFadeMs > 0 && !remote && t >= at - sleepFadeMs
+  }
+
+  private fun sleepGainAt(t: Long): Double {
+    val at = sleepAt
+    if (at == null || !sleepFading(t)) return 1.0
+    return min(1.0, max(0.0, (at - t).toDouble() / sleepFadeMs.toDouble()))
+  }
+
+  private fun setGain(value: Double) {
+    gainRamp = null
+    gain = value
+    refreshVolume()
+  }
+
+  /** Stops the gain where it is. */
+  private fun freezeGain() {
+    gain = gainAt(now)
+    gainRamp = null
+  }
+
+  /** The audio stops: a pending fade-in is dropped, the gain stays where it is. */
+  private fun holdGain() {
+    fadeInPending = false
+    freezeGain()
+  }
+
+  /** Moves the gain to `to` at `fullScaleMs` per 0…1 (instant when `0`). */
+  private fun rampGain(to: Double, fullScaleMs: Long) {
+    val t = now
+    val from = gainAt(t)
+    val ms = Math.round(fullScaleMs * Math.abs(to - from))
+    if (ms <= 0) {
+      setGain(to)
+      return
+    }
+    gain = from
+    gainRamp = Ramp(from, to, t, t + ms)
+  }
+
+  /** The intent turns on: from silence when a fade-in is set, else full. */
+  private fun startFadeIn(flowing: Boolean) {
+    fadeInPending = false
+    val ms = if (remote) 0L else options.fadeInMs
+    if (ms > 0 && !flowing) {
+      // Silent until the audio flows, then `onPlaying` starts the ramp.
+      fadeInPending = true
+      setGain(0.0)
+    } else {
+      rampGain(1.0, ms)
+    }
+  }
+
+  /** Starts the fade-out of a pause or a stop; `false` when there is nothing to fade. */
+  private fun beginFadeOut(then: FadeOutEnd): Boolean {
+    val ms = if (remote) 0L else options.fadeOutMs
+    if (ms <= 0 || state != PlaybackState.PLAYING || stallPublishAt != null) return false
+    fadeInPending = false
+    rampGain(0.0, ms)
+    val ramp = gainRamp ?: return false
+    fadeOutThen = then
+    resetRecovery()
+    playingSince = null
+    log("fade-out", mapOf("then" to then.name.lowercase(), "ms" to "${ramp.endAt - ramp.startAt}"))
+    return true
+  }
+
+  /** Lands a fade-out now (`override` changes what it ends in): silence, then the pause or the stop. */
+  private fun completeFadeOut(override: FadeOutEnd? = null) {
+    val pending = fadeOutThen ?: return
+    val then = override ?: pending
+    fadeOutThen = null
+    setGain(0.0)
+    if (then == FadeOutEnd.STOP) stopNow() else pauseIntent("pause: faded out")
+  }
+
+  private fun cancelFadeOut() {
+    fadeOutThen = null
+    fadeInPending = false
+    freezeGain()
+  }
+
+  private fun cancelFadeTo() {
+    if (levelRamp == null) return
+    levelRamp = null
+    settleFadeTo()
+  }
+
+  private fun settleFadeTo() {
+    val done = fadeToDone
+    fadeToDone = null
+    if (done != null) pendingEvents.add(done)
+  }
+
+  /** Fades belong to the output: a handoff lands them where they were going. */
+  private fun settleFades() {
+    fadeInPending = false
+    gainRamp = null
+    gain = 1.0
+    cancelFadeTo()
+  }
+
+  /**
+   * Clears the sleep timer. Its fade-out, if under way, becomes the gain: it
+   * climbs back at the speed it went down (or keeps falling into a pause).
+   */
+  private fun endSleep() {
+    if (sleepAt == null) return
+    val t = now
+    val attenuation = sleepGainAt(t)
+    val fadeMs = sleepFadeMs
+    sleepAt = null
+    sleepWallAt = null
+    sleepFadeMs = 0L
+    if (attenuation >= 1) return
+    val combined = gainAt(t) * attenuation
+    val ramp = gainRamp
+    if (fadeOutThen != null && ramp != null) {
+      gainRamp = Ramp(combined, 0.0, t, ramp.endAt)
+      return
+    }
+    gain = combined
+    gainRamp = null
+    if (playWhenReady && !fadeInPending) rampGain(1.0, fadeMs)
+  }
+
+  private fun fireSleepIfDue(t: Long) {
+    val due = sleepAt ?: return
+    if (due > t) return
+    val attenuation = sleepGainAt(t)
+    sleepAt = null
+    sleepWallAt = null
+    sleepFadeMs = 0L
+    log("sleep timer", mapOf("note" to "fired"))
+    // Like a user pause: a pending system resume is cancelled too.
+    interruption = null
+    if (fadeOutThen != null) {
+      completeFadeOut()
+    } else if (playWhenReady) {
+      gain = gainAt(t) * attenuation
+      gainRamp = null
+      refreshVolume()
+      playWhenReady = false
+      pauseIntent("sleep timer")
+    }
+    pendingEvents.add { delegate?.engineSleepFired() }
+  }
+
+  private fun stepFades(t: Long) {
+    fadeTickAt?.let { if (it <= t) fadeTickAt = null }
+    levelRamp?.let {
+      if (t >= it.endAt) {
+        levelRamp = null
+        settleFadeTo()
+      }
+    }
+    gainRamp?.let {
+      if (t >= it.endAt) {
+        gain = it.to
+        gainRamp = null
+      }
+    }
+    refreshVolume()
+    if (fadeOutThen != null && gainRamp == null) completeFadeOut()
+  }
+
+  private val fading: Boolean
+    get() = levelRamp != null || gainRamp != null || (playWhenReady && sleepFading(now))
+
+  private fun fadeWakeups(candidates: MutableList<Long>) {
+    if (fading) {
+      val tick = fadeTickAt ?: (now + RecoveryPolicy.FADE_TICK_MS)
+      fadeTickAt = tick
+      candidates.add(tick)
+    } else {
+      fadeTickAt = null
+    }
+    levelRamp?.let { candidates.add(it.endAt) }
+    gainRamp?.let { candidates.add(it.endAt) }
+    val at = sleepAt ?: return
+    candidates.add(at)
+    val fadeFrom = at - sleepFadeMs
+    if (sleepFadeMs > 0 && fadeFrom > now) candidates.add(fadeFrom)
   }
 
   private fun settlePendingLoad(outcome: LoadOutcome) {
@@ -1043,6 +1400,7 @@ class PlaybackEngine(
     stallPublishAt?.let { candidates.add(it) }
     if (state == PlaybackState.RECONNECTING) nextAttemptAt?.let { candidates.add(it) }
     if (playWhenReady) candidates.add(lastHeartbeatAt + RecoveryPolicy.HEARTBEAT_MS)
+    fadeWakeups(candidates)
     return candidates.minOrNull()
   }
 }

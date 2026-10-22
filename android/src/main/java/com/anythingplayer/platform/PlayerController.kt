@@ -370,6 +370,16 @@ internal class PlayerController(
     emit("ended", Arguments.createMap())
   }
 
+  override fun engineSleepFired() {
+    emit(
+      "sleep",
+      Arguments.createMap().apply {
+        putString("reason", "fired")
+        putDouble("timestamp", AndroidClock.wallMs.toDouble())
+      },
+    )
+  }
+
   override fun engineDiagnostic(entry: DiagnosticEntry) {
     synchronized(diagnostics) {
       diagnostics.addLast(entry)

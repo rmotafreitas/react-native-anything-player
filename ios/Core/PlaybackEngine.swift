@@ -25,7 +25,7 @@ protocol EngineDriver: AnyObject {
   func releaseConnection()
   /// Remove the current item entirely.
   func unload()
-  /// Effective output volume (volume × mute × duck), 0...1.
+  /// Effective output volume (volume × mute × duck × fades), 0...1.
   func setVolume(_ effective: Double)
   func setRate(_ rate: Double)
   /// Send what follows to another output (`"local"`, `"cast:<device>"`). Only
@@ -55,6 +55,8 @@ protocol EngineDelegate: AnyObject {
   func engine(loadSettled loadId: Int, outcome: LoadOutcome)
   func engine(error: PlayerError, fatal: Bool)
   func engineDidEnd()
+  /// The sleep timer paused the player (`sleep` event).
+  func engineSleepFired()
   func engine(diagnostic: DiagnosticEntry)
   /// The engine wants `onWakeup()` at this monotonic instant (`nil` = none).
   func engine(wakeupAt: Int64?)
@@ -132,6 +134,30 @@ final class PlaybackEngine {
   /// listener never sees `ended`/`error` while the status still says playing.
   private var pendingEvents: [() -> Void] = []
 
+  // ── Fades & sleep timer (monotonic ms) ──
+  // The output volume is volume × duck × gain × sleep attenuation (or 0 when
+  // muted): fades never touch the app's `volume` except `fadeTo`, whose
+  // target is the new volume.
+  /// What a fade-out leads to when it reaches silence.
+  private enum FadeOutEnd: String { case pause, stop }
+  /// `volume` still on its way to a `fadeTo` target.
+  private var levelRamp: Ramp?
+  private var fadeToDone: (() -> Void)?
+  /// The play/pause/stop fade, 0…1 (`gainRamp` while it moves).
+  private var gain: Double = 1
+  private var gainRamp: Ramp?
+  /// A fade-out under way: the intent is already off; at silence it pauses or stops.
+  private var fadeOutThen: FadeOutEnd?
+  /// Playback was asked for with a fade-in: it starts when the audio does.
+  private var fadeInPending = false
+  private var fadeTickAt: Int64?
+  /// What the driver was last given.
+  private var appliedVolume: Double = 1
+  private var sleepAt: Int64?
+  /// The sleep timer's fade-out: the last `sleepFadeMs` before `sleepAt`.
+  private var sleepFadeMs: Int64 = 0
+  private var sleepWallAt: Int64?
+
   init(
     driver: EngineDriver, clock: EngineClock, options: EngineOptions = EngineOptions(),
     random: @escaping () -> Double = { Double.random(in: 0..<1) }
@@ -166,6 +192,7 @@ final class PlaybackEngine {
     s.muted = muted
     s.rate = rate
     s.route = route
+    s.sleepAt = sleepWallAt
     return s
   }
 
@@ -180,7 +207,7 @@ final class PlaybackEngine {
   /// output always has it.
   var needsAudioFocus: Bool {
     if remote { return false }
-    return playWhenReady || (interruption?.resumable ?? false)
+    return playWhenReady || fadeOutThen != nil || (interruption?.resumable ?? false)
   }
 
   /// Native observations for any other generation are stale and must be dropped.
@@ -192,6 +219,9 @@ final class PlaybackEngine {
 
   func load(_ newSource: SourceDescriptor, autoplay: Bool?, startPosition: Double?) throws {
     try ensureAlive()
+    // A fade-out ends with the item it was fading.
+    cancelFadeOut()
+    let flowing = playWhenReady && state == .playing
     let wanted = autoplay ?? (playWhenReady && Self.continuesIntent(state))
     if let previous = pendingLoadId {
       pendingLoadId = nil
@@ -209,6 +239,7 @@ final class PlaybackEngine {
     resumePosition = startPosition
     playWhenReady = wanted
     if wanted { applyFocus(requestFocus()) }
+    if playWhenReady { startFadeIn(flowing: flowing) }
     log("load", ["uri": newSource.uri, "autoplay": "\(playWhenReady)"])
     open(startPosition: startPosition, reason: "load")
     commit()
@@ -245,6 +276,12 @@ final class PlaybackEngine {
 
   func pause() throws {
     try ensureAlive()
+    if fadeOutThen != nil {
+      // A pause during a fade-out: silence now.
+      completeFadeOut()
+      commit()
+      return
+    }
     let hadInterruption = interruption != nil
     interruption = nil
     guard playWhenReady else {
@@ -255,14 +292,28 @@ final class PlaybackEngine {
       return
     }
     playWhenReady = false
-    pauseIntent(cause: "pause")
+    if !beginFadeOut(then: .pause) { pauseIntent(cause: "pause") }
     commit()
   }
 
   func stop() throws {
     try ensureAlive()
     guard source != nil else { return }
+    if fadeOutThen != nil {
+      // A stop during a fade-out: stop now.
+      completeFadeOut(override: .stop)
+    } else if playWhenReady && beginFadeOut(then: .stop) {
+      playWhenReady = false
+      interruption = nil
+    } else {
+      stopNow()
+    }
+    commit()
+  }
+
+  private func stopNow() {
     settlePendingLoad(.superseded)
+    holdGain()
     playWhenReady = false
     interruption = nil
     resetRecovery()
@@ -273,11 +324,11 @@ final class PlaybackEngine {
     connectionReleased = true
     resumePosition = isLive ? nil : 0
     setState(.stopped, cause: "stop")
-    commit()
   }
 
   func reset() throws {
     try ensureAlive()
+    cancelFadeOut()
     settlePendingLoad(.superseded)
     generation += 1
     source = nil
@@ -323,8 +374,69 @@ final class PlaybackEngine {
     guard value.isFinite else {
       throw PlayerError.code(.invalidArgument, "Volume must be a finite number.", recoverable: false)
     }
+    cancelFadeTo()
     volume = min(max(value, 0), 1)
     applyVolume()
+    commit()
+  }
+
+  /// Moves the volume to `value` over `durationMs`; `done` runs when it gets
+  /// there, or when `setVolume`, another `fadeTo` or `release` replaces it.
+  /// `volume` is the target from the start. Instant on a remote output.
+  func fadeTo(_ value: Double, durationMs: Double, done: @escaping () -> Void) throws {
+    try ensureAlive()
+    guard value.isFinite else {
+      throw PlayerError.code(.invalidArgument, "Volume must be a finite number.", recoverable: false)
+    }
+    guard durationMs.isFinite, durationMs >= 0 else { throw Self.invalidDuration("A fade duration") }
+    let t = now
+    let from = levelAt(t)
+    cancelFadeTo()
+    volume = min(max(value, 0), 1)
+    fadeToDone = done
+    let ms = Int64(durationMs.rounded())
+    if ms > 0 && !remote && from != volume {
+      levelRamp = Ramp(from: from, to: volume, startAt: t, endAt: t + ms)
+      log("fade", ["to": "\(volume)", "ms": "\(ms)"])
+    } else {
+      applyVolume()
+      settleFadeTo()
+    }
+    commit()
+  }
+
+  /// Pauses after `afterMs` of wall time (counting while paused too), fading
+  /// out over its last `fadeOutMs` (default `options.fadeOutMs`). `nil`
+  /// cancels; a new timer replaces the previous one.
+  func sleep(afterMs: Double?, fadeOutMs: Double?) throws {
+    try ensureAlive()
+    if let afterMs {
+      guard afterMs.isFinite, afterMs >= 0 else { throw Self.invalidDuration("The sleep delay") }
+      if let fadeOutMs, !fadeOutMs.isFinite || fadeOutMs < 0 {
+        throw Self.invalidDuration("The sleep fade-out")
+      }
+    }
+    endSleep()
+    if let afterMs {
+      let after = Int64(afterMs.rounded())
+      sleepAt = now + after
+      sleepWallAt = clock.wallMs + after
+      sleepFadeMs = min(fadeOutMs.map { Int64($0.rounded()) } ?? options.fadeOutMs, after)
+      log("sleep timer", ["afterMs": "\(after)", "fadeOutMs": "\(sleepFadeMs)"])
+    } else {
+      log("sleep timer", ["note": "cancelled"])
+    }
+    commit()
+  }
+
+  /// The fades of play (in) and of pause and stop (out), in ms; `0` = none.
+  /// A fade under way keeps its course.
+  func setFades(inMs: Double, outMs: Double) throws {
+    try ensureAlive()
+    guard inMs.isFinite, inMs >= 0 else { throw Self.invalidDuration("A fade-in") }
+    guard outMs.isFinite, outMs >= 0 else { throw Self.invalidDuration("A fade-out") }
+    options.fadeInMs = Int64(inMs.rounded())
+    options.fadeOutMs = Int64(outMs.rounded())
     commit()
   }
 
@@ -356,6 +468,10 @@ final class PlaybackEngine {
   func release() {
     guard !released else { return }
     settlePendingLoad(.failed(.code(.playerReleased, "The player was released.", recoverable: false)))
+    cancelFadeOut()
+    cancelFadeTo()
+    sleepAt = nil
+    sleepWallAt = nil
     playWhenReady = false
     interruption = nil
     resetRecovery()
@@ -393,6 +509,8 @@ final class PlaybackEngine {
   func onPlaying(generation gen: Int) {
     guard accepts(gen) else { return logStale("playing", gen) }
     guard playWhenReady else {
+      // Fading out: the audio keeps going until the fade ends.
+      if fadeOutThen != nil { return commit() }
       // A straggler from before a pause (or a self-resume the user overrode).
       log("native playing without intent", [:])
       driver.pause()
@@ -416,6 +534,10 @@ final class PlaybackEngine {
     lastPosition = sample.position
     lastPositionAdvanceAt = t
     playingSince = t
+    if fadeInPending {
+      fadeInPending = false
+      rampGain(to: 1, fullScaleMs: options.fadeInMs)
+    }
     // Drift is only enforced at moments that are silent anyway (resuming from
     // a pause, or during a published stall): cutting audio that has just
     // resumed to jump to the live edge would add a gap for no audible gain.
@@ -426,6 +548,8 @@ final class PlaybackEngine {
   /// Playback wanted, waiting for data.
   func onBuffering(generation gen: Int) {
     guard accepts(gen) else { return logStale("buffering", gen) }
+    // Nothing left to fade.
+    completeFadeOut()
     if state == .playing && stallPublishAt == nil {
       stallStartedAt = now
       stallPublishAt = now + RecoveryPolicy.stallDebounceMs
@@ -436,12 +560,14 @@ final class PlaybackEngine {
 
   func onFailed(generation gen: Int, error: PlayerError) {
     guard accepts(gen) else { return logStale("failed", gen) }
+    completeFadeOut()
     handleFailure(error)
     commit()
   }
 
   func onEnded(generation gen: Int) {
     guard accepts(gen) else { return logStale("ended", gen) }
+    completeFadeOut()
     if isLive || duration == nil {
       handleFailure(.code(.streamEnded, "The stream closed the connection.", recoverable: true))
     } else {
@@ -457,6 +583,10 @@ final class PlaybackEngine {
   /// The platform paused the player without being asked to.
   func onPausedExternally(generation gen: Int, reason: InterruptionReason) {
     guard accepts(gen) else { return logStale("paused externally", gen) }
+    if fadeOutThen != nil {
+      completeFadeOut()
+      return commit()
+    }
     guard playWhenReady else { return }
     systemPause(reason: reason, resumable: false)
   }
@@ -486,6 +616,8 @@ final class PlaybackEngine {
       commit()
       return
     }
+    // A fade-out lands first: the pause belongs to the old output.
+    completeFadeOut()
     let position = handoffPosition()
     // A paused stream whose connection was released stays released.
     let active =
@@ -497,6 +629,7 @@ final class PlaybackEngine {
     self.route = route
     remote = route.kind == .cast
     log("handoff", ["to": outputId, "resume": "\(resume)"])
+    settleFades()
     applyVolume()
     if active {
       playWhenReady = resume && playWhenReady
@@ -590,6 +723,7 @@ final class PlaybackEngine {
   func platformReset() {
     guard !released, !remote, source != nil, state != .idle else { return }
     log("platform reset", [:])
+    completeFadeOut()
     if state == .stopped || state == .ended || state == .error {
       connectionReleased = true
       commit()
@@ -625,6 +759,8 @@ final class PlaybackEngine {
       nextAttemptAt = nil
       attemptReconnect(reason: "backoff elapsed")
     }
+    fireSleepIfDue(t)
+    stepFades(t)
     if playWhenReady && t - lastHeartbeatAt >= RecoveryPolicy.heartbeatMs - 50 {
       lastHeartbeatAt = t
       heartbeat(t)
@@ -668,6 +804,8 @@ final class PlaybackEngine {
   /// A system pause (interruptions and the driver share it). `playWhenReady`
   /// may already be false when the OS refuses to start playback.
   private func systemPause(reason: InterruptionReason, resumable: Bool) {
+    // A user's fade-out stops at once; the pause stays the user's.
+    completeFadeOut()
     guard playWhenReady else {
       // Nothing to pause. A permanent loss while paused cancels a pending resume.
       if let current = interruption, current.resumable, !resumable {
@@ -684,6 +822,13 @@ final class PlaybackEngine {
 
   /// Turns the intent on from any state (focus already granted).
   private func startPlayback(cause: String) {
+    if fadeOutThen != nil {
+      // Playing again during a fade-out: the audio never stopped.
+      fadeOutThen = nil
+      playingSince = now
+      log("fade-out cancelled", ["cause": cause])
+    }
+    startFadeIn(flowing: state == .playing)
     playWhenReady = true
     pauseReleaseAt = nil
     if state == .error { lastError = nil }
@@ -731,6 +876,7 @@ final class PlaybackEngine {
 
   /// Turns the intent off (user or system). `playWhenReady` already false.
   private func pauseIntent(cause: String) {
+    holdGain()
     resetRecovery()
     stallStartedAt = nil
     playingSince = nil
@@ -999,8 +1145,211 @@ final class PlaybackEngine {
   }
 
   private func applyVolume() {
+    let value = outputVolume(now)
+    appliedVolume = value
+    driver.setVolume(value)
+  }
+
+  /// Sends the output volume only when it changed (fade steps).
+  private func refreshVolume() {
+    if outputVolume(now) != appliedVolume { applyVolume() }
+  }
+
+  private func outputVolume(_ t: Int64) -> Double {
+    if muted { return 0 }
     let duck = remote ? 1 : duckFactor
-    driver.setVolume(muted ? 0 : volume * duck)
+    return levelAt(t) * duck * gainAt(t) * sleepGainAt(t)
+  }
+
+  // MARK: - Fades & sleep timer
+
+  private static func invalidDuration(_ what: String) -> PlayerError {
+    .code(.invalidArgument, "\(what) must be a finite number ≥ 0.", recoverable: false)
+  }
+
+  private func levelAt(_ t: Int64) -> Double { levelRamp?.value(at: t) ?? volume }
+
+  private func gainAt(_ t: Int64) -> Double { gainRamp?.value(at: t) ?? gain }
+
+  /// In the sleep timer's last `sleepFadeMs`: the fade-out (local output only).
+  private func sleepFading(_ t: Int64) -> Bool {
+    guard let at = sleepAt else { return false }
+    return sleepFadeMs > 0 && !remote && t >= at - sleepFadeMs
+  }
+
+  private func sleepGainAt(_ t: Int64) -> Double {
+    guard let at = sleepAt, sleepFading(t) else { return 1 }
+    return min(1, max(0, Double(at - t) / Double(sleepFadeMs)))
+  }
+
+  private func setGain(_ value: Double) {
+    gainRamp = nil
+    gain = value
+    refreshVolume()
+  }
+
+  /// Stops the gain where it is.
+  private func freezeGain() {
+    gain = gainAt(now)
+    gainRamp = nil
+  }
+
+  /// The audio stops: a pending fade-in is dropped, the gain stays where it is.
+  private func holdGain() {
+    fadeInPending = false
+    freezeGain()
+  }
+
+  /// Moves the gain to `to` at `fullScaleMs` per 0…1 (instant when `0`).
+  private func rampGain(to: Double, fullScaleMs: Int64) {
+    let t = now
+    let from = gainAt(t)
+    let ms = Int64((Double(fullScaleMs) * abs(to - from)).rounded())
+    if ms <= 0 {
+      setGain(to)
+      return
+    }
+    gain = from
+    gainRamp = Ramp(from: from, to: to, startAt: t, endAt: t + ms)
+  }
+
+  /// The intent turns on: from silence when a fade-in is set, else full.
+  private func startFadeIn(flowing: Bool) {
+    fadeInPending = false
+    let ms = remote ? 0 : options.fadeInMs
+    if ms > 0 && !flowing {
+      // Silent until the audio flows, then `onPlaying` starts the ramp.
+      fadeInPending = true
+      setGain(0)
+    } else {
+      rampGain(to: 1, fullScaleMs: ms)
+    }
+  }
+
+  /// Starts the fade-out of a pause or a stop; `false` when there is nothing to fade.
+  private func beginFadeOut(then: FadeOutEnd) -> Bool {
+    let ms = remote ? 0 : options.fadeOutMs
+    guard ms > 0, state == .playing, stallPublishAt == nil else { return false }
+    fadeInPending = false
+    rampGain(to: 0, fullScaleMs: ms)
+    guard let ramp = gainRamp else { return false }
+    fadeOutThen = then
+    resetRecovery()
+    playingSince = nil
+    log("fade-out", ["then": then.rawValue, "ms": "\(ramp.endAt - ramp.startAt)"])
+    return true
+  }
+
+  /// Lands a fade-out now (`override` changes what it ends in): silence, then
+  /// the pause or the stop.
+  private func completeFadeOut(override: FadeOutEnd? = nil) {
+    guard let pending = fadeOutThen else { return }
+    let then = override ?? pending
+    fadeOutThen = nil
+    setGain(0)
+    if then == .stop { stopNow() } else { pauseIntent(cause: "pause: faded out") }
+  }
+
+  private func cancelFadeOut() {
+    fadeOutThen = nil
+    fadeInPending = false
+    freezeGain()
+  }
+
+  private func cancelFadeTo() {
+    guard levelRamp != nil else { return }
+    levelRamp = nil
+    settleFadeTo()
+  }
+
+  private func settleFadeTo() {
+    guard let done = fadeToDone else { return }
+    fadeToDone = nil
+    pendingEvents.append(done)
+  }
+
+  /// Fades belong to the output: a handoff lands them where they were going.
+  private func settleFades() {
+    fadeInPending = false
+    gainRamp = nil
+    gain = 1
+    cancelFadeTo()
+  }
+
+  /// Clears the sleep timer. Its fade-out, if under way, becomes the gain: it
+  /// climbs back at the speed it went down (or keeps falling into a pause).
+  private func endSleep() {
+    guard sleepAt != nil else { return }
+    let t = now
+    let attenuation = sleepGainAt(t)
+    let fadeMs = sleepFadeMs
+    sleepAt = nil
+    sleepWallAt = nil
+    sleepFadeMs = 0
+    guard attenuation < 1 else { return }
+    let combined = gainAt(t) * attenuation
+    if fadeOutThen != nil, let ramp = gainRamp {
+      gainRamp = Ramp(from: combined, to: 0, startAt: t, endAt: ramp.endAt)
+      return
+    }
+    gain = combined
+    gainRamp = nil
+    if playWhenReady && !fadeInPending { rampGain(to: 1, fullScaleMs: fadeMs) }
+  }
+
+  private func fireSleepIfDue(_ t: Int64) {
+    guard let due = sleepAt, due <= t else { return }
+    let attenuation = sleepGainAt(t)
+    sleepAt = nil
+    sleepWallAt = nil
+    sleepFadeMs = 0
+    log("sleep timer", ["note": "fired"])
+    // Like a user pause: a pending system resume is cancelled too.
+    interruption = nil
+    if fadeOutThen != nil {
+      completeFadeOut()
+    } else if playWhenReady {
+      gain = gainAt(t) * attenuation
+      gainRamp = nil
+      refreshVolume()
+      playWhenReady = false
+      pauseIntent(cause: "sleep timer")
+    }
+    pendingEvents.append { [weak self] in self?.delegate?.engineSleepFired() }
+  }
+
+  private func stepFades(_ t: Int64) {
+    if let tick = fadeTickAt, tick <= t { fadeTickAt = nil }
+    if let level = levelRamp, t >= level.endAt {
+      levelRamp = nil
+      settleFadeTo()
+    }
+    if let ramp = gainRamp, t >= ramp.endAt {
+      gain = ramp.to
+      gainRamp = nil
+    }
+    refreshVolume()
+    if fadeOutThen != nil && gainRamp == nil { completeFadeOut() }
+  }
+
+  private var fading: Bool {
+    levelRamp != nil || gainRamp != nil || (playWhenReady && sleepFading(now))
+  }
+
+  private func fadeWakeups(_ candidates: inout [Int64]) {
+    if fading {
+      let tick = fadeTickAt ?? now + RecoveryPolicy.fadeTickMs
+      fadeTickAt = tick
+      candidates.append(tick)
+    } else {
+      fadeTickAt = nil
+    }
+    if let level = levelRamp { candidates.append(level.endAt) }
+    if let ramp = gainRamp { candidates.append(ramp.endAt) }
+    guard let at = sleepAt else { return }
+    candidates.append(at)
+    let fadeFrom = at - sleepFadeMs
+    if sleepFadeMs > 0 && fadeFrom > now { candidates.append(fadeFrom) }
   }
 
   private func settlePendingLoad(_ outcome: LoadOutcome) {
@@ -1048,6 +1397,7 @@ final class PlaybackEngine {
     if let p = stallPublishAt { candidates.append(p) }
     if state == .reconnecting, let a = nextAttemptAt { candidates.append(a) }
     if playWhenReady { candidates.append(lastHeartbeatAt + RecoveryPolicy.heartbeatMs) }
+    fadeWakeups(&candidates)
     return candidates.min()
   }
 }

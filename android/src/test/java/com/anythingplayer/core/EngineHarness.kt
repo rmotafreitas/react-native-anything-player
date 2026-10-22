@@ -2,11 +2,14 @@ package com.anythingplayer.core
 
 import java.util.Locale
 
+/** The fake wall clock reads this at monotonic 0. */
+const val WALL_BASE = 1_700_000_000_000L
+
 /** Deterministic clock: time only moves when a test advances it. */
 class FakeClock : EngineClock {
   override var monotonicMs: Long = 0
   override val wallMs: Long
-    get() = 1_700_000_000_000L + monotonicMs
+    get() = WALL_BASE + monotonicMs
 }
 
 /** Records every driver call and simulates a playhead. */
@@ -95,6 +98,10 @@ class Recorder : EngineDelegate {
   val loads = mutableListOf<String>()
   val errors = mutableListOf<String>()
   var ended = 0
+  /** Sleep timers that fired. */
+  var sleeps = 0
+  /** `fadeTo` calls that settled. */
+  var fades = 0
   val diagnostics = mutableListOf<DiagnosticEntry>()
   var wakeupAt: Long? = null
   /** Ordering invariant breaches (an event delivered before its status). */
@@ -119,6 +126,10 @@ class Recorder : EngineDelegate {
   override fun engineDidEnd() {
     if (statuses.lastOrNull()?.state != PlaybackState.ENDED) violations.add("ended before ended status")
     ended += 1
+  }
+  override fun engineSleepFired() {
+    if (statuses.lastOrNull()?.sleepAt != null) violations.add("sleep event before its status")
+    sleeps += 1
   }
   override fun engineDiagnostic(entry: DiagnosticEntry) { diagnostics.add(entry) }
   override fun engineWakeupAt(at: Long?) { wakeupAt = at }

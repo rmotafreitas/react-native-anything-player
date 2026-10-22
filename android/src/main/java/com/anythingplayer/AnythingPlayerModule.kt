@@ -18,6 +18,7 @@ import com.anythingplayer.platform.PlayerController
 import com.anythingplayer.platform.SearchRequest
 import com.anythingplayer.platform.Voice
 import com.anythingplayer.platform.errorToMap
+import com.anythingplayer.platform.fadeMs
 import com.anythingplayer.platform.optBoolean
 import com.anythingplayer.platform.optDouble
 import com.anythingplayer.platform.optMap
@@ -131,6 +132,34 @@ class AnythingPlayerModule(reactContext: ReactApplicationContext) : NativeAnythi
   override fun setVolume(playerId: String, volume: Double, promise: Promise) = command(playerId, promise) { it.engine.setVolume(volume) }
   override fun setMuted(playerId: String, muted: Boolean, promise: Promise) = command(playerId, promise) { it.engine.setMuted(muted) }
   override fun setRate(playerId: String, rate: Double, promise: Promise) = command(playerId, promise) { it.engine.setRate(rate) }
+
+  override fun fadeTo(playerId: String, volume: Double, seconds: Double, promise: Promise) {
+    main.post {
+      val controller = AnythingPlayerRuntime.players[playerId]
+      if (controller == null) {
+        reject(promise, PlayerError(ErrorCode.PLAYER_RELEASED, "The player was released.", false))
+        return@post
+      }
+      try {
+        // Resolves when the volume got there (after the status it implies).
+        controller.engine.fadeTo(volume, seconds * 1000) { main.post { promise.resolve(controller.statusMap()) } }
+      } catch (error: PlayerError) {
+        reject(promise, error)
+      }
+    }
+  }
+
+  override fun sleep(playerId: String, timer: ReadableMap, promise: Promise) {
+    val after = timer.optDouble("after")?.let { it * 1000 }
+    val fadeOut = timer.optDouble("fadeOut")?.let { it * 1000 }
+    command(playerId, promise) { it.engine.sleep(after, fadeOut) }
+  }
+
+  override fun setFade(playerId: String, fade: ReadableMap, promise: Promise) {
+    val inMs = fadeMs(fade, "in").toDouble()
+    val outMs = fadeMs(fade, "out").toDouble()
+    command(playerId, promise) { it.engine.setFades(inMs, outMs) }
+  }
 
   override fun updateNowPlaying(playerId: String, metadata: ReadableMap, promise: Promise) {
     val fields = parseNowPlaying(metadata)

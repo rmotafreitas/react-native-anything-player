@@ -39,6 +39,8 @@ final class ConformanceTests: XCTestCase {
       if let v = o["reconnect"] as? Bool { options.reconnect = v }
       if let v = o["autoResumeAfterInterruption"] as? Bool { options.autoResumeAfterInterruption = v }
       if let v = o["liveMaxDriftMs"] as? NSNumber { options.liveMaxDriftMs = v.int64Value }
+      if let v = o["fadeInMs"] as? NSNumber { options.fadeInMs = v.int64Value }
+      if let v = o["fadeOutMs"] as? NSNumber { options.fadeOutMs = v.int64Value }
     }
     let h = EngineHarness(options: options)
     let steps = try XCTUnwrap(scenario["steps"] as? [[String: Any]], name)
@@ -149,6 +151,15 @@ final class ConformanceTests: XCTestCase {
     case "rate": try h.engine.setRate(value)
     case "duck": h.engine.setDucked(step["value"] as? Bool ?? false)
     case "foreground": h.engine.appForegrounded()
+    case "fadeTo":
+      let recorder = h.recorder
+      try h.engine.fadeTo(value, durationMs: (step["ms"] as? NSNumber)?.doubleValue ?? 0) {
+        recorder.fades += 1
+      }
+    case "sleep":
+      try h.engine.sleep(
+        afterMs: (step["after"] as? NSNumber)?.doubleValue,
+        fadeOutMs: (step["fadeOut"] as? NSNumber)?.doubleValue)
     case "handoff":
       h.engine.handoff(
         route: AudioRoute(
@@ -187,6 +198,12 @@ final class ConformanceTests: XCTestCase {
         XCTAssertEqual(h.engine.wantsKeepalive, value as? Bool, "\(at): wantsKeepalive")
       case "needsAudioFocus":
         XCTAssertEqual(h.engine.needsAudioFocus, value as? Bool, "\(at): needsAudioFocus")
+      case "volume": XCTAssertEqual(s.volume, (value as? NSNumber)?.doubleValue, "\(at): volume")
+      case "sleepAt":
+        XCTAssertEqual(
+          s.sleepAt.map { $0 - wallBase }, (value as? NSNumber)?.int64Value, "\(at): sleepAt")
+      case "sleeps": XCTAssertEqual(h.recorder.sleeps, (value as? NSNumber)?.intValue, "\(at): sleeps")
+      case "fades": XCTAssertEqual(h.recorder.fades, (value as? NSNumber)?.intValue, "\(at): fades")
       default: XCTFail("\(at): unknown expectation \(key)")
       }
     }
@@ -194,5 +211,7 @@ final class ConformanceTests: XCTestCase {
     h.recorder.loads.removeAll()
     h.recorder.errors.removeAll()
     h.recorder.ended = 0
+    h.recorder.sleeps = 0
+    h.recorder.fades = 0
   }
 }

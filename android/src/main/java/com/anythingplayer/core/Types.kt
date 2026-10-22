@@ -182,7 +182,20 @@ data class Status(
   val rate: Double = 1.0,
   /** The output the audio goes to (speaker, AirPods, a Cast receiver). */
   val route: AudioRoute = AudioRoute.UNKNOWN,
+  /** Wall-clock epoch ms when the sleep timer pauses the player, `null` when off. */
+  val sleepAt: Long? = null,
 )
+
+/** A linear move from `from` to `to` between two monotonic instants (ms). */
+data class Ramp(val from: Double, val to: Double, val startAt: Long, val endAt: Long) {
+  /** The value at `t`: `from` before it starts, `to` once it ends. */
+  fun valueAt(t: Long): Double =
+    when {
+      t >= endAt -> to
+      t <= startAt -> from
+      else -> from + (to - from) * ((t - startAt).toDouble() / (endAt - startAt).toDouble())
+    }
+}
 
 /** One structured diagnostic line (ring-buffered natively, optionally streamed). */
 data class DiagnosticEntry(
