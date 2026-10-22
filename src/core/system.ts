@@ -275,6 +275,21 @@ export async function setCatalog(
   await run(() => native().setCatalog(serialized, nativeOptions));
 }
 
+/**
+ * Replaces the Favorites folder of the car and watch browse tree with these
+ * catalog ids, in this order, without sending the catalog again (the same as
+ * `setCatalog(items, { browse: { favorites } })`). Ids that are not in the
+ * catalog are ignored; `[]` hides the folder.
+ */
+export async function setFavorites(ids: readonly string[]): Promise<void> {
+  if (!Array.isArray(ids))
+    throw invalid('setFavorites expects an array of ids.');
+  const unique = [
+    ...new Set(ids.filter((id) => typeof id === 'string' && id !== '')),
+  ];
+  await run(() => native().setFavorites(unique));
+}
+
 /** Searches the catalog as a voice request would; best match first. */
 export async function searchCatalog(
   request: SearchInput

@@ -36,6 +36,7 @@ export interface PlayerModule {
   showCastPicker(): Promise<void>;
   stopCasting(): Promise<void>;
   setCatalog(items: object[], options: object): Promise<void>;
+  setFavorites(ids: string[]): Promise<void>;
   searchCatalog(request: object): Promise<object[]>;
   playFromSearch(request: object, playerId: string | null): Promise<object>;
   setSearchHandlerEnabled(enabled: boolean): void;

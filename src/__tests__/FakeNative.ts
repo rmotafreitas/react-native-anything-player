@@ -190,6 +190,7 @@ export class FakeNative {
   stopCasting = () => this.global('stopCasting', undefined);
   setCatalog = (items: object[], options: object) =>
     this.global('setCatalog', undefined, items, options);
+  setFavorites = (ids: string[]) => this.global('setFavorites', undefined, ids);
   searchCatalog = (request: object) =>
     this.global('searchCatalog', this.catalogResults, request);
   playFromSearch = (request: object, playerId: string | null) =>

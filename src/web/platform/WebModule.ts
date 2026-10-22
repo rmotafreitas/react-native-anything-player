@@ -259,6 +259,12 @@ export class WebModule implements PlayerModule {
     this.catalog.set(items, options);
   }
 
+  async setFavorites(ids: string[]): Promise<void> {
+    this.catalog.favoriteIds = ids.filter((id) =>
+      this.catalog.items.some((item) => item.id === id)
+    );
+  }
+
   async searchCatalog(request: object): Promise<object[]> {
     return this.catalog.search(request as { query: string });
   }

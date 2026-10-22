@@ -90,6 +90,8 @@ export interface Spec extends TurboModule {
     items: CodegenTypes.UnsafeObject[],
     options: CodegenTypes.UnsafeObject
   ): Promise<void>;
+  /** Replaces the ids in the browse tree's Favorites folder, without touching the catalog. */
+  setFavorites(ids: string[]): Promise<void>;
   /** Ranked matches, best first. */
   searchCatalog(
     request: CodegenTypes.UnsafeObject

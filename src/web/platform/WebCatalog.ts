@@ -30,9 +30,8 @@ export class WebCatalog {
   playerOptions: Record<string, unknown> = {};
   /** Whether the app answers what the catalog does not have. */
   handlerEnabled = false;
-  /** Ids of the last items played, newest first (kept when `browse.recent` is set). */
-  recentIds: string[] = [];
-  private recentLimit = 0;
+  /** The ids of the favorites (`browse.favorites`, `setFavorites`); the web has no browse surface, it only keeps them. */
+  favoriteIds: string[] = [];
   private lastPlayedId: string | null = null;
   private readonly pending = new Map<
     string,
@@ -45,13 +44,12 @@ export class WebCatalog {
     const o = options as {
       playerId?: unknown;
       playerOptions?: unknown;
-      browse?: { recent?: unknown };
+      browse?: { favorites?: unknown };
     };
-    const recent = o.browse?.recent;
-    this.recentLimit = typeof recent === 'number' ? recent : 0;
-    this.recentIds = this.recentIds
-      .filter((id) => items.some((item) => (item as StoredItem).id === id))
-      .slice(0, this.recentLimit);
+    if (Array.isArray(o.browse?.favorites))
+      this.favoriteIds = o.browse.favorites.filter(
+        (id): id is string => typeof id === 'string'
+      );
     this.playerId = typeof o.playerId === 'string' ? o.playerId : 'default';
     this.playerOptions =
       o.playerOptions && typeof o.playerOptions === 'object'
@@ -80,11 +78,6 @@ export class WebCatalog {
 
   played(item: StoredItem): void {
     this.lastPlayedId = item.id;
-    if (this.recentLimit > 0)
-      this.recentIds = [
-        item.id,
-        ...this.recentIds.filter((id) => id !== item.id),
-      ].slice(0, this.recentLimit);
   }
 
   /** Asks the app's search handler (a `searchRequest` event) and waits for its answer. */

@@ -46,6 +46,7 @@ export {
   playFromSearch,
   searchCatalog,
   setCatalog,
+  setFavorites,
   setSearchHandler,
   showCastPicker,
   showRoutePicker,
