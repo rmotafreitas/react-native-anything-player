@@ -4,24 +4,25 @@ package = JSON.parse(File.read(File.join(__dir__, "package.json")))
 
 # Google Cast is opt-in (the SDK adds several megabytes): `RNAP_CAST=1 pod install`,
 # or `"rnap.cast": "true"` in ios/Podfile.properties.json (the Expo plugin's
-# `cast` option). An explicit RNAP_CAST wins over the file.
-def rnap_cast_enabled?
+# `cast` option). An explicit RNAP_CAST wins over the file. (A local, not a
+# method: CocoaPods evaluates podspecs inside its own module.)
+rnap_cast_enabled =
   if ENV.key?("RNAP_CAST")
-    return %w[1 true yes].include?(ENV["RNAP_CAST"].to_s.strip.downcase)
-  end
-  roots = []
-  roots << Pod::Config.instance.installation_root.to_s if defined?(Pod::Config)
-  roots << Dir.pwd
-  roots.uniq.any? do |root|
-    path = File.join(root, "Podfile.properties.json")
-    next false unless File.exist?(path)
-    begin
-      JSON.parse(File.read(path))["rnap.cast"].to_s == "true"
-    rescue JSON::ParserError
-      false
+    %w[1 true yes].include?(ENV["RNAP_CAST"].to_s.strip.downcase)
+  else
+    roots = []
+    roots << Pod::Config.instance.installation_root.to_s if defined?(Pod::Config)
+    roots << Dir.pwd
+    roots.uniq.any? do |root|
+      path = File.join(root, "Podfile.properties.json")
+      next false unless File.exist?(path)
+      begin
+        JSON.parse(File.read(path))["rnap.cast"].to_s == "true"
+      rescue JSON::ParserError
+        false
+      end
     end
   end
-end
 
 Pod::Spec.new do |s|
   s.name         = "AnythingPlayer"
@@ -45,7 +46,7 @@ Pod::Spec.new do |s|
   s.frameworks = "AVFoundation", "AVKit", "AudioToolbox", "Intents", "MediaPlayer", "MediaToolbox", "Network", "UIKit"
   s.swift_version = "5.9"
 
-  if rnap_cast_enabled?
+  if rnap_cast_enabled
     Pod::UI.puts "[AnythingPlayer] Google Cast enabled".green
     sources << "ios/Cast/**/*.swift"
     # 4.8.4 is the newest that supports iOS 15; CocoaPods picks the newest the app's platform allows.

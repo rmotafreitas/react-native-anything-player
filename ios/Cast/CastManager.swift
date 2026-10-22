@@ -41,11 +41,9 @@ class CastManager: NSObject {
       GCKCastContext.setSharedInstanceWith(options)
     }
     ready = true
-    CastListeners.adopt(CastManager.self, "GCKSessionManagerListener")
+    CastObjC.adopt(CastManager.self, "GCKSessionManagerListener")
     let context = GCKCastContext.sharedInstance()
-    if let listener = (self as AnyObject) as? GCKSessionManagerListener {
-      context.sessionManager.add(listener)
-    }
+    CastObjC.send(context.sessionManager, "addListener:", self)
     NotificationCenter.default.addObserver(
       self, selector: #selector(castStateDidChange), name: NSNotification.Name(kGCKCastStateDidChangeNotification),
       object: nil)
@@ -109,7 +107,7 @@ class CastManager: NSObject {
     AnythingPlayerRuntime.shared.castSessionEnded()
   }
 
-  // MARK: - GCKSessionManagerListener (by selector, see `CastListeners`)
+  // MARK: - GCKSessionManagerListener (by selector, see `CastObjC`)
 
   @objc(sessionManager:didStartCastSession:)
   func castSessionDidStart(_ manager: GCKSessionManager, session: GCKCastSession) {
@@ -127,12 +125,15 @@ class CastManager: NSObject {
   }
 }
 
-/// The SDK's listener protocols are Objective-C protocols made of optional
-/// methods. RNAP implements their methods by Objective-C selector, exactly as
-/// the SDK headers declare them, and adds the conformance at run time: a
-/// static conformance would make Swift match those methods by the
-/// importer-generated Swift names instead.
-enum CastListeners {
+/// Where the Swift name of a Google Cast method depends on the importer's
+/// word-pruning rules (`addListener:`, `addImage:`, `loadMediaWith…:`), RNAP
+/// uses the Objective-C selector, exactly as the SDK headers declare it.
+///
+/// The listener protocols are Objective-C protocols made of optional methods:
+/// RNAP implements them by selector too (`@objc(…)`) and adds the conformance
+/// at run time — a static conformance would make Swift match the methods by
+/// the importer-generated names instead.
+enum CastObjC {
   private static var adopted = Set<String>()
 
   static func adopt(_ cls: AnyClass, _ protocolNames: String...) {
@@ -142,5 +143,23 @@ enum CastListeners {
       adopted.insert(key)
       class_addProtocol(cls, proto)
     }
+  }
+
+  /// Sends a message whose result is ignored (void, or an object not needed).
+  static func send(_ target: NSObject, _ selectorName: String, _ first: Any, _ second: Any? = nil) {
+    let selector = NSSelectorFromString(selectorName)
+    guard target.responds(to: selector) else { return }
+    if second != nil {
+      _ = target.perform(selector, with: first, with: second)
+    } else {
+      _ = target.perform(selector, with: first)
+    }
+  }
+
+  /// Sends a one-argument message that returns an object.
+  static func call(_ target: NSObject, _ selectorName: String, _ argument: Any) -> AnyObject? {
+    let selector = NSSelectorFromString(selectorName)
+    guard target.responds(to: selector) else { return nil }
+    return target.perform(selector, with: argument)?.takeUnretainedValue()
   }
 }

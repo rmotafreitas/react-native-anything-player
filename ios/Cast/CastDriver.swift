@@ -44,7 +44,7 @@ class CastDriver: NSObject, RemoteOutputDriver {
   init(outputId: String) {
     self.outputId = outputId
     super.init()
-    CastListeners.adopt(CastDriver.self, "GCKRemoteMediaClientListener", "GCKRequestDelegate")
+    CastObjC.adopt(CastDriver.self, "GCKRemoteMediaClientListener", "GCKRequestDelegate")
     CastManager.shared.register(self)
     bind(CastManager.shared.client)
   }
@@ -52,15 +52,11 @@ class CastDriver: NSObject, RemoteOutputDriver {
   /// The session's media client changed (session started, resumed, ended).
   func bind(_ client: GCKRemoteMediaClient?) {
     guard client !== self.client else { return }
-    if let old = self.client, let listener = asListener { old.remove(listener) }
+    if let old = self.client { CastObjC.send(old, "removeListener:", self) }
     self.client = client
     guard let client else { return }
-    if let listener = asListener { client.add(listener) }
+    CastObjC.send(client, "addListener:", self)
     if loaded { mediaStatusUpdated(client.mediaStatus) }
-  }
-
-  private var asListener: GCKRemoteMediaClientListener? {
-    (self as AnyObject) as? GCKRemoteMediaClientListener
   }
 
   // MARK: - EngineDriver
@@ -84,7 +80,10 @@ class CastDriver: NSObject, RemoteOutputDriver {
     builder.mediaInformation = mediaInformation(url, request.source)
     builder.autoplay = NSNumber(value: request.playWhenReady)
     if let start = request.startPosition, start > 0, !isLive { builder.startTime = start }
-    let pending = client.loadMedia(with: builder.build())
+    guard let pending = CastObjC.call(client, "loadMediaWithLoadRequestData:", builder.build()) as? GCKRequest
+    else {
+      return failSoon(gen, castError("The Cast SDK did not accept the load.", nil))
+    }
     pending.delegate = (self as AnyObject) as? GCKRequestDelegate
     loadRequest = pending
   }
@@ -105,7 +104,7 @@ class CastDriver: NSObject, RemoteOutputDriver {
     let options = GCKMediaSeekOptions()
     options.interval = seconds
     options.resumeState = .unchanged
-    client?.seek(with: options)
+    if let client { CastObjC.send(client, "seekWithOptions:", options) }
   }
 
   func releaseConnection() {
@@ -146,7 +145,7 @@ class CastDriver: NSObject, RemoteOutputDriver {
 
   func destroy() {
     resetItem()
-    if let client, let listener = asListener { client.remove(listener) }
+    if let client { CastObjC.send(client, "removeListener:", self) }
     client = nil
   }
 
@@ -194,13 +193,17 @@ class CastDriver: NSObject, RemoteOutputDriver {
   private func mediaInformation(_ url: URL, _ source: SourceDescriptor) -> GCKMediaInformation {
     let info = describe?() ?? NowPlayingInfo()
     let metadata = GCKMediaMetadata(metadataType: .musicTrack)
-    if let title = info.title { metadata.setString(title, forKey: kGCKMetadataKeyTitle) }
-    if let artist = info.artist { metadata.setString(artist, forKey: kGCKMetadataKeyArtist) }
-    if let album = info.album { metadata.setString(album, forKey: kGCKMetadataKeyAlbumTitle) }
+    let fields = [
+      (info.title, kGCKMetadataKeyTitle), (info.artist, kGCKMetadataKeyArtist),
+      (info.album, kGCKMetadataKeyAlbumTitle),
+    ]
+    for case let (value?, key) in fields {
+      CastObjC.send(metadata, "setString:forKey:", value, key)
+    }
     if let artwork = info.artwork, let image = URL(string: artwork),
       ["http", "https"].contains(image.scheme?.lowercased() ?? "")
     {
-      metadata.addImage(GCKImage(url: image, width: 512, height: 512))
+      CastObjC.send(metadata, "addImage:", GCKImage(url: image, width: 512, height: 512))
     }
     let builder = GCKMediaInformationBuilder(contentURL: url)
     builder.contentID = source.uri
@@ -285,7 +288,7 @@ class CastDriver: NSObject, RemoteOutputDriver {
     }
   }
 
-  // MARK: - GCKRemoteMediaClientListener / GCKRequestDelegate (by selector, see `CastListeners`)
+  // MARK: - GCKRemoteMediaClientListener / GCKRequestDelegate (by selector, see `CastObjC`)
 
   @objc(remoteMediaClient:didUpdateMediaStatus:)
   func remoteMediaStatusDidUpdate(_ client: GCKRemoteMediaClient, status: GCKMediaStatus?) {
