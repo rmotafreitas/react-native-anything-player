@@ -46,6 +46,22 @@ class CatalogStoreTest {
   }
 
   @Test
+  fun `a failed write keeps the previous catalog, in memory and on disk`() {
+    val store = CatalogStore(file())
+    store.replace(listOf(item("jazz", "Jazz FM")), "main", null)
+    val dir = file().parentFile!!
+    assertTrue(dir.setWritable(false))
+    try {
+      assertTrue(runCatching { store.replace(listOf(item("news", "World News")), "other", null) }.isFailure)
+      assertEquals(listOf("jazz"), store.snapshot().items.map { it.id })
+      assertEquals("main", store.snapshot().playerId)
+    } finally {
+      dir.setWritable(true)
+    }
+    assertEquals(listOf("jazz"), CatalogStore(file()).snapshot().items.map { it.id })
+  }
+
+  @Test
   fun `a missing file is an empty catalog with the default player`() {
     val snapshot = CatalogStore(file()).snapshot()
     assertTrue(snapshot.items.isEmpty())

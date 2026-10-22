@@ -4,6 +4,7 @@ import com.anythingplayer.core.CatalogQuery
 import com.anythingplayer.core.SearchableItem
 import java.io.File
 import java.io.FileOutputStream
+import java.io.IOException
 import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
@@ -79,11 +80,15 @@ internal class CatalogStore(private val file: File) {
   @Synchronized
   fun replace(newItems: List<JSONObject>, newPlayerId: String, newPlayerOptions: JSONObject?) {
     ensureLoaded()
-    items = newItems.mapNotNull { runCatching { CatalogEntry(it) }.getOrNull() }
-    playerId = newPlayerId.ifEmpty { DEFAULT_PLAYER_ID }
+    val entries = newItems.mapNotNull { runCatching { CatalogEntry(it) }.getOrNull() }
+    val id = newPlayerId.ifEmpty { DEFAULT_PLAYER_ID }
+    val last = lastPlayedId?.takeIf { played -> entries.any { it.id == played } }
+    // Saved first: a failed write rejects setCatalog and keeps the previous catalog.
+    write(id, newPlayerOptions, last, entries)
+    items = entries
+    playerId = id
     playerOptions = newPlayerOptions
-    if (items.none { it.id == lastPlayedId }) lastPlayedId = null
-    write()
+    lastPlayedId = last
   }
 
   /** Remembers what played last: an empty request ("play something") plays it again. */
@@ -92,7 +97,8 @@ internal class CatalogStore(private val file: File) {
     ensureLoaded()
     if (lastPlayedId == id || items.none { it.id == id }) return
     lastPlayedId = id
-    write()
+    // Best effort: losing "what played last" only changes an empty request.
+    runCatching { write(playerId, playerOptions, id, items) }
   }
 
   private fun ensureLoaded() {
@@ -113,7 +119,7 @@ internal class CatalogStore(private val file: File) {
     }
   }
 
-  private fun write() {
+  private fun write(playerId: String, playerOptions: JSONObject?, lastPlayedId: String?, items: List<CatalogEntry>) {
     val root =
       JSONObject()
         .put("version", VERSION)
@@ -127,10 +133,11 @@ internal class CatalogStore(private val file: File) {
       it.write(root.toString().toByteArray(Charsets.UTF_8))
       it.fd.sync()
     }
-    // A rename replaces the old file in one step on the platform's file systems.
+    // rename(2) replaces the old file in one step. Never delete it first: a
+    // failure then would leave no catalog at all.
     if (!temp.renameTo(file)) {
-      file.delete()
-      temp.renameTo(file)
+      temp.delete()
+      throw IOException("Could not save the catalog to ${file.path}.")
     }
   }
 

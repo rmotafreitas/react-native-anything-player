@@ -43,8 +43,6 @@ internal object Voice {
   private val adhoc = object : LinkedHashMap<String, CatalogEntry>() {
     override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, CatalogEntry>?) = size > ADHOC_CAPACITY
   }
-  /** The request an assistant's media items were resolved from: what `searchPlay` reports. */
-  private var resolvedRequest: SearchRequest? = null
 
   /** Idempotent; any thread. */
   @Synchronized
@@ -210,14 +208,6 @@ internal object Voice {
     }
   }
 
-  /** Remembered between an assistant's request being resolved and its items being set on the player. */
-  @Synchronized
-  fun resolvedFrom(request: SearchRequest?) {
-    resolvedRequest = request
-  }
-
-  @Synchronized
-  fun takeResolvedRequest(): SearchRequest? = resolvedRequest.also { resolvedRequest = null }
 }
 
 /** A request as the `searchRequest` and `searchPlay` events carry it. */

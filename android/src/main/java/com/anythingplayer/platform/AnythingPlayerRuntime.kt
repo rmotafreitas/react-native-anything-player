@@ -434,8 +434,9 @@ internal object AnythingPlayerRuntime : FocusListener {
 
   /** A command from the system media controls (lock screen, headset, car, Bluetooth). */
   fun remote(command: String, position: Double? = null) {
-    // An assistant's bare "play" with nothing loaded: the catalog has something.
-    if (command == "play" && Voice.nothingLoaded() && Voice.playDefault(autoplay = true)) return
+    // A bare "play" with nothing loaded goes to the app when JS runs (it
+    // decides what to load); with no JS, the catalog's last item plays.
+    if (command == "play" && !hasJs && Voice.nothingLoaded() && Voice.playDefault(autoplay = true)) return
     val target = active ?: return
     var nothingLoaded = false
     try {

@@ -46,7 +46,8 @@ internal interface ReceiverActions {
  *   interrupted (another sender took over) → paused externally.
  *
  * Each change is reported once. Only the content this open loaded is read: the
- * receiver may still report the previous item.
+ * receiver may still report the previous item. Other content once ours has
+ * started means it was replaced (another sender) → paused externally.
  */
 internal class ReceiverMapper(
   private val observer: DriverObserver,
@@ -112,7 +113,10 @@ internal class ReceiverMapper(
   }
 
   fun evaluate(status: ReceiverStatus) {
-    if (status.contentId != contentId) return
+    if (status.contentId != contentId) {
+      replacedBy(status)
+      return
+    }
     when (status.state) {
       ReceiverState.LOADING, ReceiverState.BUFFERING -> if (last != Report.NONE) report(Report.BUFFERING) { observer.onBuffering(generation) }
       ReceiverState.PLAYING -> {
@@ -126,6 +130,19 @@ internal class ReceiverMapper(
       }
       ReceiverState.IDLE -> onIdle(status.idle)
       ReceiverState.UNKNOWN -> Unit
+    }
+  }
+
+  /**
+   * Before our item started, another content id is the previous item still
+   * reported. After, it is someone else's media (another sender, the TV's own
+   * UI) replacing ours: the engine must not stay `playing`.
+   */
+  private fun replacedBy(status: ReceiverStatus) {
+    if (ready == null || last == Report.TERMINAL || status.contentId == null) return
+    if (status.state == ReceiverState.IDLE || status.state == ReceiverState.UNKNOWN) return
+    report(Report.TERMINAL) {
+      if (wantsPlay) observer.onPausedExternally(generation, InterruptionReason.INTERRUPTION)
     }
   }
 

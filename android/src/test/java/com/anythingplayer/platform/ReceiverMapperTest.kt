@@ -54,6 +54,22 @@ class ReceiverMapperTest {
   }
 
   @Test
+  fun `another sender's media replacing ours pauses the player once`() {
+    open(liveHint = true)
+    // Before ours starts, other content is the previous item still reported.
+    mapper.evaluate(status(ReceiverState.PLAYING, id = "anythingplayer:1"))
+    assertEquals(emptyList<String>(), log)
+    mapper.evaluate(status(ReceiverState.PLAYING, live = true))
+    mapper.evaluate(status(ReceiverState.IDLE, id = "https://other.example/x"))
+    mapper.evaluate(status(ReceiverState.PLAYING, id = "https://other.example/x"))
+    mapper.evaluate(status(ReceiverState.BUFFERING, id = "https://other.example/y"))
+    assertEquals(
+      listOf("ready(2,null,live=true,seek=false)", "playing(2)", "paused-externally(2,interruption)"),
+      log,
+    )
+  }
+
+  @Test
   fun `a file reports its duration and seekability`() {
     open()
     mapper.evaluate(status(ReceiverState.PLAYING, duration = 215.5, seekable = true))

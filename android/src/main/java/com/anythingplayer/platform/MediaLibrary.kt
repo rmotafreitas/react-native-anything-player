@@ -100,11 +100,12 @@ internal object MediaLibrary {
       val item = requested[index]
       val request = requestOf(item)
       val done = { entry: CatalogEntry? ->
-        entry?.let { resolved += item(it) }
+        // The request travels with its item, so concurrent searches cannot
+        // swap what `searchPlay` reports.
+        entry?.let { resolved += item(it).buildUpon().setRequestMetadata(item.requestMetadata).build() }
         next(index + 1)
       }
       if (request != null) {
-        Voice.resolvedFrom(request)
         Voice.resolveOrAsk(request, done)
       } else {
         done(Voice.entry(item.mediaId))

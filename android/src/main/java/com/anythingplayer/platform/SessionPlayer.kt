@@ -218,7 +218,7 @@ internal class SessionPlayer : SimpleBasePlayer(Looper.getMainLooper()) {
 
   /** With nothing loaded, an assistant's `prepare()` stages what "play" would play. */
   override fun handlePrepare(): ListenableFuture<*> {
-    if (Voice.nothingLoaded()) Voice.playDefault(autoplay = false)
+    if (!AnythingPlayerRuntime.hasJs && Voice.nothingLoaded()) Voice.playDefault(autoplay = false)
     return Futures.immediateVoidFuture()
   }
 
@@ -233,7 +233,7 @@ internal class SessionPlayer : SimpleBasePlayer(Looper.getMainLooper()) {
       Log.w("RNAP", "assistant set an item that is not in the catalog: ${chosen?.mediaId}")
       return Futures.immediateVoidFuture()
     }
-    val request = Voice.takeResolvedRequest() ?: SearchRequest(entry.title, origin = "assistant")
+    val request = MediaLibrary.requestOf(chosen) ?: SearchRequest(entry.title, origin = "assistant")
     try {
       val start = if (startPositionMs != C.TIME_UNSET && startPositionMs > 0) startPositionMs / 1000.0 else null
       Voice.load(Voice.voicePlayer(null), entry, request, autoplay = false, startSeconds = start, completion = null)
