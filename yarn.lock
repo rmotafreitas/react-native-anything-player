@@ -11850,6 +11850,9 @@ __metadata:
   peerDependenciesMeta:
     expo:
       optional: true
+  bin:
+    react-native-anything-player: bin/rnap.mjs
+    rnap: bin/rnap.mjs
   languageName: unknown
   linkType: soft
 

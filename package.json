@@ -5,8 +5,8 @@
   "main": "./lib/module/index.js",
   "types": "./lib/typescript/src/index.d.ts",
   "bin": {
-    "rnap": "bin/rnap.mjs",
-    "react-native-anything-player": "bin/rnap.mjs"
+    "react-native-anything-player": "bin/rnap.mjs",
+    "rnap": "bin/rnap.mjs"
   },
   "exports": {
     ".": {
