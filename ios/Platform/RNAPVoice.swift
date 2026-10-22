@@ -68,8 +68,10 @@ public final class RNAPVoice: NSObject {
     }
   }
 
-  @objc public static func item(withId id: String) -> RNAPCatalogItem? {
-    onMain { AnythingPlayerRuntime.shared.voice.catalog.item(id: id).flatMap(RNAPCatalogItem.init) }
+  @objc public static func item(withId identifier: String) -> RNAPCatalogItem? {
+    onMain {
+      AnythingPlayerRuntime.shared.voice.catalog.item(id: identifier).flatMap(RNAPCatalogItem.init)
+    }
   }
 
   /// Plays the catalog item `itemId`; completes once audio starts (≤ 8 s).
