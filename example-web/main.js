@@ -1,7 +1,19 @@
 /* global location */
 // The plain-web example: the same Player API as React Native, in a page with
 // no framework. `window.rnap` exposes the player to the end-to-end tests.
-import { Player } from 'react-native-anything-player/web';
+import {
+  Player,
+  addCastStateListener,
+  addRoutePickerAvailabilityListener,
+  configureCast,
+  getCastStatus,
+  isRoutePickerAvailable,
+  playFromSearch,
+  setCatalog,
+  showCastPicker,
+  showRoutePicker,
+  stopCasting,
+} from 'react-native-anything-player/web';
 
 const params = new URLSearchParams(location.search);
 /** The test radio (scripts/stream-server); `?stream=` overrides it. */
@@ -40,12 +52,38 @@ const STATIONS = [
   },
 ];
 
+/** What a search box (or a microphone) can ask for. */
+const CATALOG = [
+  {
+    id: 'radio',
+    title: 'Test radio',
+    genre: 'Test Tones',
+    keywords: ['RNAP radio', 'test station'],
+    source: STATIONS[0].source,
+  },
+  {
+    id: 'tone',
+    title: 'Remote tone',
+    artist: 'RNAP',
+    kind: 'song',
+    keywords: ['a tone', 'test tone'],
+    source: STATIONS[2].source,
+  },
+  {
+    id: 'animu',
+    title: 'Rádio Animu',
+    genre: 'Anime',
+    keywords: ['animu', 'anime radio'],
+    source: STATIONS[3].source,
+  },
+];
+
 const player = new Player({
   mediaSession: { commands: ['next', 'previous'] },
   progressInterval: 500,
 });
 const events = [];
-window.rnap = { player, events, stations: STATIONS };
+window.rnap = { player, events, stations: STATIONS, stopCasting };
 
 const $ = (id) => document.getElementById(id);
 const log = (line) => {
@@ -154,6 +192,93 @@ player.on('audioSample', (sample) => {
       1
     );
 });
+
+// ── Outputs: the browser's picker (AirPlay in Safari, Remote Playback in
+// Chrome) and Google Cast ──
+player.on('routeChange', (route, previous) => {
+  $('output').textContent = route.name
+    ? `${route.kind} (${route.name})`
+    : route.kind;
+  record('routeChange', { route, previous });
+  log(`route ${previous.kind} → ${route.kind}`);
+});
+
+const showRoute = () => {
+  $('route').hidden = !isRoutePickerAvailable();
+};
+$('route').addEventListener('click', () => {
+  showRoutePicker(player).catch((error) => log(`picker: ${error.code}`));
+});
+addRoutePickerAvailabilityListener((available) => {
+  record('routePickerAvailability', { available });
+  showRoute();
+});
+showRoute();
+
+const CAST_LABELS = {
+  notConnected: () => 'Cast',
+  connecting: () => 'Connecting…',
+  connected: (device) => `Casting to ${device ?? 'a receiver'}`,
+};
+function showCast({ state, device }) {
+  $('cast-state').textContent = device ? `${state} (${device})` : state;
+  const label = CAST_LABELS[state];
+  // As the library's Cast button: only where there is something to cast to.
+  $('cast').hidden = !label;
+  if (label) $('cast').textContent = label(device);
+}
+addCastStateListener((status) => {
+  record('castState', status);
+  showCast(status);
+});
+showCast(getCastStatus());
+$('cast').addEventListener('click', () => {
+  // A click: the browser lets the Cast dialog open from it.
+  showCastPicker().catch((error) => log(`cast: ${error.code}`));
+});
+// Loads the Cast SDK (Chrome only; elsewhere the state stays `unavailable`).
+configureCast({ receiverApplicationId: params.get('receiver') ?? undefined });
+
+// ── Voice: the same search a voice assistant runs, from a box or a microphone ──
+setCatalog(CATALOG).catch((error) => log(`catalog: ${error.message}`));
+player.on('searchPlay', ({ request, item }) => {
+  record('searchPlay', { request, item });
+  log(`search “${request.query}” → ${item.title}`);
+});
+
+async function search(query) {
+  $('search-result').textContent = `“${query}”…`;
+  try {
+    const item = await playFromSearch(query, player);
+    $('search-result').textContent = item
+      ? `“${query}” → ${item.title}`
+      : `“${query}” → nothing found`;
+  } catch (error) {
+    $('search-result').textContent = `${error.code}: ${error.message}`;
+  }
+}
+$('search').addEventListener('submit', (event) => {
+  event.preventDefault();
+  // Submitting is a click or Enter: a gesture, so the audio may start.
+  search($('query').value.trim());
+});
+
+// Web Speech (Chrome, Safari): speech to text, then the same search.
+const Recognition = window.SpeechRecognition ?? window.webkitSpeechRecognition;
+if (Recognition) {
+  $('mic').hidden = false;
+  $('mic').addEventListener('click', () => {
+    const recognition = new Recognition();
+    recognition.lang = navigator.language;
+    recognition.onresult = (event) => {
+      const said = event.results[0][0].transcript;
+      $('query').value = said;
+      search(said);
+    };
+    recognition.onerror = (event) => log(`speech: ${event.error}`);
+    recognition.start();
+  });
+}
 
 // `?autoplay=MS`: start the radio MS after load, with no tap. Browsers refuse
 // that (autoplay policy): `play()` rejects with AUTOPLAY_BLOCKED and the

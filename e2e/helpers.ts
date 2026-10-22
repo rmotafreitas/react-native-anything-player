@@ -10,7 +10,11 @@ export interface Recorded {
 export {};
 declare global {
   interface Window {
-    rnap: { player: Player; events: Recorded[] };
+    rnap: {
+      player: Player;
+      events: Recorded[];
+      stopCasting: () => Promise<void>;
+    };
   }
 }
 

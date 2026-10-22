@@ -27,8 +27,10 @@ import {
   type MediaSourceConstructor,
   type MediaSourceLike,
   type ReaderLike,
+  type HeadersLike,
   type ResponseLike,
   type SourceBufferLike,
+  type SourceElementLike,
 } from './dom';
 
 export interface MseStreamListener {
@@ -114,8 +116,31 @@ function httpError(status: number): PlayerError {
   );
 }
 
+/** Station info (`icy-name`, `icy-genre`) from response headers; `null` when there is none. */
+export function stationFromHeaders(
+  headers: HeadersLike,
+  format: StreamTitleFormat
+): StreamMetadata | null {
+  const fields: Record<string, string> = {};
+  const name = headers.get('icy-name');
+  const genre = headers.get('icy-genre');
+  if (name) fields['icy-name'] = name;
+  if (genre) fields['icy-genre'] = genre;
+  return Object.keys(fields).length === 0
+    ? null
+    : IcyParser.metadataFromFields(fields, format);
+}
+
+/** The MIME type a URL's extension implies, for an AirPlay alternative `<source>`. */
+function typeOfUri(uri: string): string | null {
+  const path = uri.split(/[?#]/)[0]!.toLowerCase();
+  if (path.endsWith('.mp3')) return 'audio/mpeg';
+  if (path.endsWith('.aac')) return 'audio/aac';
+  return null;
+}
+
 /** Drops a response body we will not read. */
-function discard(response: ResponseLike): void {
+export function discard(response: ResponseLike): void {
   response.body?.getReader().cancel().catch(ignore);
 }
 
@@ -133,6 +158,8 @@ export class MseStream {
   private anchor = { byte: 0, time: 0 };
   private previousAnchor = { byte: 0, time: 0 };
   private station: string | null = null;
+  /** `<source>` children attached for a managed media source (removed on close). */
+  private sources: SourceElementLike[] = [];
 
   constructor(
     private readonly element: AudioElementLike,
@@ -154,15 +181,38 @@ export class MseStream {
     const mediaSource = new this.media.ctor();
     this.mediaSource = mediaSource;
     this.objectUrl = g.URL.createObjectURL(mediaSource);
-    // ManagedMediaSource plays only without AirPlay (or with an alternative source).
-    if (this.media.managed) this.element.disableRemotePlayback = true;
     let opened = false;
     mediaSource.addEventListener('sourceopen', () => {
       if (opened || this.closed) return;
       opened = true;
       this.connect(true);
     });
-    this.element.src = this.objectUrl;
+    if (this.media.managed) this.attachManaged(this.objectUrl);
+    else this.element.src = this.objectUrl;
+  }
+
+  /**
+   * A ManagedMediaSource plays only with AirPlay off, or with an alternative:
+   * the media source goes in a `<source>` child, followed by one with the
+   * stream's own URL, which is what an AirPlay receiver fetches (WebKit:
+   * "How to use Media Source Extensions with AirPlay"). Headers cannot reach
+   * a receiver, so a stream that needs them stays off AirPlay.
+   */
+  private attachManaged(objectUrl: string): void {
+    const document = browser().document!;
+    const primary = document.createElement('source');
+    primary.src = objectUrl;
+    this.sources = [primary];
+    if (Object.keys(this.source.headers).length === 0) {
+      const alternative = document.createElement('source');
+      alternative.src = this.source.uri;
+      const type = typeOfUri(this.source.uri);
+      if (type) alternative.type = type;
+      this.sources.push(alternative);
+    } else {
+      this.element.disableRemotePlayback = true;
+    }
+    for (const node of this.sources) this.element.appendChild(node);
   }
 
   /** Closes the connection at once and frees the media source. */
@@ -171,6 +221,8 @@ export class MseStream {
     this.closed = true;
     this.abort?.();
     this.abort = null;
+    for (const node of this.sources) this.element.removeChild(node);
+    this.sources = [];
     if (this.objectUrl) browser().URL.revokeObjectURL(this.objectUrl);
     this.objectUrl = null;
   }
@@ -328,15 +380,11 @@ export class MseStream {
   }
 
   private announceStation(response: ResponseLike): void {
-    const name = response.headers.get('icy-name');
-    const genre = response.headers.get('icy-genre');
-    const fields: Record<string, string> = {};
-    if (name) fields['icy-name'] = name;
-    if (genre) fields['icy-genre'] = genre;
-    const key = `${name ?? ''}|${genre ?? ''}`;
-    if (Object.keys(fields).length === 0 || key === this.station) return;
+    const station = stationFromHeaders(response.headers, this.format);
+    const key = `${station?.station ?? ''}|${station?.genre ?? ''}`;
+    if (!station || key === this.station) return;
     this.station = key;
-    this.listener.onStation(IcyParser.metadataFromFields(fields, this.format));
+    this.listener.onStation(station);
   }
 
   /**

@@ -124,6 +124,9 @@ export class MediaElementDriver implements EngineDriver {
 
   open(request: OpenRequest): void {
     this.teardownItem();
+    // A previous stream that needed headers kept this element off AirPlay.
+    if (this._element.disableRemotePlayback)
+      this._element.disableRemotePlayback = false;
     this.generation = request.generation;
     if (this.source?.uri !== request.source.uri) {
       this.sourcePlayed = false;
