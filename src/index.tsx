@@ -1,3 +1,9 @@
+/**
+ * The Player, its hooks, errors, events and types:
+ * `import { Player } from 'react-native-anything-player'`.
+ *
+ * @module player
+ */
 export { Player } from './Player';
 export { PlayerError, isPlayerError } from './errors';
 export { configureHls } from './core/hls';

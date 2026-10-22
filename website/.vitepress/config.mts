@@ -27,19 +27,22 @@ const url = (p: string) => `${SITE}${BASE}${p.replace(/^\//, '')}`;
 
 // The API reference is generated from src/ by TypeDoc (`yarn docs:api`, run
 // before every dev and build) into docs/api/, which is not committed. Its
-// sidebar lists each kind alphabetically; members keep their source order.
+// sidebar has a section per entry point (the Player, the Sound API), each
+// listing its kinds; symbols are sorted alphabetically, members keep their
+// source order.
 interface SidebarItem {
   text: string;
   link?: string;
   collapsed?: boolean;
   items?: SidebarItem[];
 }
+const sortedSidebar = (items: SidebarItem[]): SidebarItem[] =>
+  [...items]
+    .sort((a, b) => a.text.localeCompare(b.text))
+    .map((item) => (item.items ? { ...item, items: sortedSidebar(item.items) } : item));
 const API_SIDEBAR = path.resolve(HERE, '../../docs/api/typedoc-sidebar.json');
 const apiGroups: SidebarItem[] = fs.existsSync(API_SIDEBAR)
-  ? (JSON.parse(fs.readFileSync(API_SIDEBAR, 'utf8')) as SidebarItem[]).map((group) => ({
-      ...group,
-      items: [...(group.items ?? [])].sort((a, b) => a.text.localeCompare(b.text)),
-    }))
+  ? sortedSidebar(JSON.parse(fs.readFileSync(API_SIDEBAR, 'utf8')) as SidebarItem[])
   : [];
 
 const NAME = 'React Native Anything Player';

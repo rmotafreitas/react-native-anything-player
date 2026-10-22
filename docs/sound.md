@@ -24,7 +24,7 @@ It works on iOS, Android, Expo web, React Native Web, React DOM and plain pages,
 | Source | a file or stream, played as it loads | decoded into memory by `load()` |
 | Copies at once | one source per player | up to `voices` per sound |
 | Media session, lock screen, audio focus | yes | none |
-| Other apps' audio | per player (`mixWithOthers`) | always mixed |
+| Other apps' audio | per player (`mixWithOthers`) | mixed (on iOS it follows the audio session in place, see below) |
 
 ## Loading
 
@@ -38,7 +38,7 @@ It works on iOS, Android, Expo web, React Native Web, React DOM and plain pages,
 | `content://…` | Android only |
 | a `Blob` or `File` | the web only |
 
-`options.voices` (1–32, default 4) is how many copies of this sound can play at once. When all are busy, the next `play()` stops the one that started first and takes its voice, so the newest sound always plays.
+`options.voices` (1–32, default 4) is how many copies of this sound can play at once. When all are busy, the next `play()` stops the one that started first and takes its voice, so the newest sound always plays. On Android all sounds share one pool of 32 voices (the most `voices` a sound can ask for): when the pool is full, the next `play()` stops the voice that started first among all sounds, whichever sound it belongs to. Stopped voices free their slot at once; a voice that ended on its own frees it by its length, so a sound of unknown length (and any `loop`) counts as busy until it is stopped.
 
 The whole decoded sound stays in memory until `unload()`: use it for effects of a few seconds, not for songs (iOS rejects a sound over 48 MB decoded with `INVALID_SOURCE`; Android documents about 1 MB per sound, so keep them to a few seconds).
 
@@ -63,12 +63,12 @@ The handle has `stop()`, `setVolume()`, `setRate()` and `setPan()`, and the curr
 
 ## How it mixes with other audio
 
-Sounds mix with whatever else plays: your `Player`, another app's music, a call's audio. They take no audio focus, create no media session and show nothing on the lock screen, so they never pause or duck anything.
+Sounds always mix with your own `Player`s. Next to other apps' audio (their music, a call) they mix on Android and the web, and on iOS they follow the audio session in place (see the table). They take no audio focus, create no media session and show nothing on the lock screen, so they never pause or duck anything.
 
 | | What happens |
 |---|---|
-| iOS | An `AVAudioEngine` with a pool of player nodes per sound. The audio session is set to `.playback` with `mixWithOthers` on the first `play()`, only if the app still has iOS's default category. If `Player` (or you) already set a category, it is used as is and never changed or deactivated by `Sound`. The engine stops 10 s after the last sound ended and starts again on the next one; it survives interruptions, route changes and media services resets |
-| Android | A `SoundPool` per sound, with `USAGE_GAME` audio attributes and no focus request |
+| iOS | An `AVAudioEngine` with a pool of player nodes per sound. The audio session is set to `.playback` with `mixWithOthers` on the first `play()`, only if the app still has iOS's default category. If `Player` (or you) already set a category, it is used as is and never changed or deactivated by `Sound`: once a `Player` has set up its session, the sounds play in it: with `audio: { mixWithOthers: true }` they mix with other apps' audio too, without it (the default) they mix with that `Player` but not with other apps The engine stops 10 s after the last sound ended and starts again on the next one; it survives interruptions, route changes and media services resets |
+| Android | One `SoundPool` shared by every sound, with `USAGE_GAME` audio attributes and no focus request. At most 32 voices play at once over all sounds (see below) |
 | Web | Web Audio: one shared `AudioContext`, each voice a source node through a gain and a stereo panner |
 
 ### The silent switch (iOS)
