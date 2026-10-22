@@ -85,6 +85,12 @@ final class FakeDriver: EngineDriver {
   func unload() { commands.append("unload") }
   func setVolume(_ effective: Double) { commands.append("volume(\(String(format: "%.2f", effective)))") }
   func setRate(_ rate: Double) { commands.append("rate(\(String(format: "%.2f", rate)))") }
+  func switchOutput(_ outputId: String) {
+    commands.append("switchOutput(\(outputId))")
+    // The new output starts from its own playhead: like the TS twin, freeze
+    // without re-anchoring (the engine re-opens with an explicit position).
+    motion = .frozen
+  }
 }
 
 /// Collects everything the engine reports.

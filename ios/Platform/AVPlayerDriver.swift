@@ -271,6 +271,9 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
     releaseConnection()
   }
 
+  /// The local player is one output; a routing driver is what switches outputs.
+  func switchOutput(_ outputId: String) {}
+
   func setVolume(_ effective: Double) {
     volume = Float(min(max(effective, 0), 1))
     player.volume = volume
