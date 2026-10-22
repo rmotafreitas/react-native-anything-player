@@ -13,6 +13,7 @@ import {
   usePlayerEvent,
   usePlayerStatus,
   useProgress,
+  useSleepTimer,
   useStreamMetadata,
 } from '../hooks';
 
@@ -116,5 +117,35 @@ describe('hooks', () => {
     expect(screen.getByTestId('out').props.children.join('')).toBe(
       'idle|idle|-|0'
     );
+  });
+
+  it('useSleepTimer counts the seconds down while a timer is set', async () => {
+    jest.useFakeTimers();
+    const player = new Player();
+    function SleepProbe() {
+      const { sleepAt, remaining } = useSleepTimer(player);
+      return (
+        <Text testID="sleep">
+          {String(sleepAt != null)}|{String(remaining)}
+        </Text>
+      );
+    }
+    const read = () => screen.getByTestId('sleep').props.children.join('');
+    const { unmount } = await render(<SleepProbe />);
+    expect(read()).toBe('false|null');
+    await act(async () =>
+      fake.emitStatus(player.id, { seq: 1, sleepAt: Date.now() + 5000 })
+    );
+    expect(read()).toBe('true|5');
+    await act(async () => jest.advanceTimersByTime(2000));
+    expect(read()).toBe('true|3');
+    await act(async () =>
+      fake.emitStatus(player.id, { seq: 2, sleepAt: null })
+    );
+    expect(read()).toBe('false|null');
+    await unmount();
+    expect(player.listenerCount()).toBe(0);
+    jest.useRealTimers();
+    await player.release();
   });
 });

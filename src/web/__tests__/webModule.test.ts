@@ -23,6 +23,7 @@ interface Snapshot {
   interruption: { reason: string; resumable: boolean } | null;
   error: { code: string; platform: string } | null;
   reconnect: { attempt: number } | null;
+  sleepAt: number | null;
 }
 
 type Event = Record<string, unknown> & { type: string; seq?: number };
@@ -344,6 +345,97 @@ describe('plain element', () => {
     await module.pause(id);
     await jest.advanceTimersByTimeAsync(1_000);
     expect(ofType('progress')).toHaveLength(2);
+  });
+});
+
+describe('sleep timer and fades', () => {
+  async function playFile(id: string) {
+    const element = await loadFile(id);
+    const playing = module.play(id);
+    element.startPlaying();
+    await flush();
+    await playing;
+    return element;
+  }
+
+  it('fades in on play and out on pause, on the element volume', async () => {
+    const id = module.createPlayer({ fade: { in: 0.2, out: 0.2 } });
+    const element = await loadFile(id);
+    const playing = module.play(id);
+    expect(element.volume).toBe(0);
+    element.startPlaying();
+    await flush();
+    await playing;
+    await jest.advanceTimersByTimeAsync(100);
+    expect(element.volume).toBeCloseTo(0.5);
+    await jest.advanceTimersByTimeAsync(100);
+    expect(element.volume).toBe(1);
+
+    await module.pause(id);
+    expect(status(id)).toMatchObject({
+      state: 'playing',
+      playWhenReady: false,
+    });
+    await jest.advanceTimersByTimeAsync(100);
+    expect(element.paused).toBe(false);
+    expect(element.volume).toBeCloseTo(0.5);
+    await jest.advanceTimersByTimeAsync(100);
+    expect(element.paused).toBe(true);
+    expect(status(id).state).toBe('paused');
+
+    // Turned off later: pause is immediate again.
+    await module.setFade(id, {});
+    const again = module.play(id);
+    element.startPlaying();
+    await flush();
+    await again;
+    expect(element.volume).toBe(1);
+    await module.pause(id);
+    expect(element.paused).toBe(true);
+  });
+
+  it('fadeTo resolves once the volume got there', async () => {
+    const id = module.createPlayer({});
+    const element = await playFile(id);
+    let settled = false;
+    const fading = module.fadeTo(id, 0.2, 1).then((s) => {
+      settled = true;
+      return s as Snapshot & { volume: number };
+    });
+    await jest.advanceTimersByTimeAsync(500);
+    expect(element.volume).toBeCloseTo(0.6);
+    expect(settled).toBe(false);
+    // (A zero-delay timer set during a fake-timer tick runs 1 ms later.)
+    await jest.advanceTimersByTimeAsync(501);
+    expect(settled).toBe(true);
+    expect((await fading).volume).toBe(0.2);
+    expect(element.volume).toBeCloseTo(0.2);
+    await expect(module.fadeTo(id, 0.5, -1)).rejects.toMatchObject({
+      code: 'INVALID_ARGUMENT',
+    });
+  });
+
+  it('the sleep timer fades out, pauses and emits sleep', async () => {
+    const id = module.createPlayer({});
+    const element = await playFile(id);
+    const set = (await module.sleep(id, { after: 2, fadeOut: 1 })) as {
+      sleepAt: number | null;
+    };
+    expect(set.sleepAt).toBe(Date.now() + 2000);
+    await jest.advanceTimersByTimeAsync(1500);
+    expect(element.volume).toBeCloseTo(0.5);
+    expect(element.paused).toBe(false);
+    await jest.advanceTimersByTimeAsync(500);
+    await flush();
+    expect(element.paused).toBe(true);
+    expect(status(id)).toMatchObject({ state: 'paused', sleepAt: null });
+    expect(ofType('sleep')).toEqual([
+      expect.objectContaining({ playerId: id, reason: 'fired' }),
+    ]);
+
+    await module.sleep(id, { after: 60 });
+    await module.sleep(id, { after: null });
+    expect(status(id)).toMatchObject({ sleepAt: null });
   });
 });
 

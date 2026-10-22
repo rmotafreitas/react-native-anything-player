@@ -465,6 +465,68 @@ describe('commands', () => {
   });
 });
 
+describe('sleep timer and fades', () => {
+  it('passes the fade option, sleep, fadeTo and setFade through in seconds', async () => {
+    fake.calls = [];
+    const p = new Player({ fade: { in: 1.5, out: 2 } });
+    expect(fake.calls[0]).toEqual([
+      'createPlayer',
+      { fade: { in: 1.5, out: 2 } },
+    ]);
+    fake.calls = [];
+    await p.sleep({ after: 900, fadeOut: 30 });
+    await p.sleep({ after: 60 });
+    await p.sleep(null);
+    await p.fadeTo(0.4, 3);
+    await p.setFade({ out: 1 });
+    await p.setFade(null);
+    expect(fake.calls).toEqual([
+      ['sleep', p.id, { after: 900, fadeOut: 30 }],
+      ['sleep', p.id, { after: 60 }],
+      ['sleep', p.id, { after: null }],
+      ['fadeTo', p.id, 0.4, 3],
+      ['setFade', p.id, { out: 1 }],
+      ['setFade', p.id, {}],
+    ]);
+    await p.release();
+  });
+
+  it('rejects invalid durations before reaching native', async () => {
+    const p = new Player();
+    fake.calls = [];
+    const invalid = { code: 'INVALID_ARGUMENT' };
+    await expect(p.sleep({ after: -1 })).rejects.toMatchObject(invalid);
+    await expect(
+      p.sleep({ after: 10, fadeOut: Number.NaN })
+    ).rejects.toMatchObject(invalid);
+    await expect(p.fadeTo(0.5, -1)).rejects.toMatchObject(invalid);
+    await expect(p.fadeTo(Number.NaN, 1)).rejects.toMatchObject(invalid);
+    await expect(p.setFade({ in: -2 })).rejects.toMatchObject(invalid);
+    expect(fake.calls).toEqual([]);
+    expect(() => new Player({ fade: { out: Infinity } })).toThrow(PlayerError);
+    await p.release();
+  });
+
+  it('maps sleep events and mirrors status.sleepAt', async () => {
+    const p = new Player();
+    const sleeps: unknown[] = [];
+    p.on('sleep', (e) => sleeps.push(e));
+    fake.emitStatus(p.id, { seq: 1, sleepAt: 1_700_000_060_000 });
+    expect(p.status.sleepAt).toBe(1_700_000_060_000);
+    fake.emitStatus(p.id, { seq: 2, state: 'paused', sleepAt: null });
+    fake.emit({
+      playerId: p.id,
+      seq: 3,
+      type: 'sleep',
+      reason: 'fired',
+      timestamp: 5,
+    });
+    expect(p.status.sleepAt).toBeNull();
+    expect(sleeps).toEqual([{ reason: 'fired', timestamp: 5 }]);
+    await p.release();
+  });
+});
+
 describe('source normalization', () => {
   it('accepts strings, objects, absolute paths and resource names', () => {
     expect(normalizeSource('https://a.example/x.mp3')).toEqual({

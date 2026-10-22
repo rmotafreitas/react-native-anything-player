@@ -29,6 +29,7 @@ export const baseStatus = (
   muted: false,
   rate: 1,
   route: { kind: 'speaker', name: null },
+  sleepAt: null,
   ...overrides,
 });
 
@@ -114,6 +115,10 @@ export class FakeNative {
   setVolume = (id: string, v: number) => this.command('setVolume', id, v);
   setMuted = (id: string, m: boolean) => this.command('setMuted', id, m);
   setRate = (id: string, r: number) => this.command('setRate', id, r);
+  fadeTo = (id: string, v: number, s: number) =>
+    this.command('fadeTo', id, v, s);
+  sleep = (id: string, timer: object) => this.command('sleep', id, timer);
+  setFade = (id: string, fade: object) => this.command('setFade', id, fade);
   updateNowPlaying = (id: string, m: object) => {
     this.calls.push(['updateNowPlaying', id, m]);
     if (this.rejectNext) {
