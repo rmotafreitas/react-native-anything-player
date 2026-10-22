@@ -8,9 +8,17 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
+import { deriveSizeData } from '../bin/cli/size-data.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = path.join(ROOT, 'lib/cli/rnap.mjs');
+
+const readJson = (file) =>
+  JSON.parse(fs.readFileSync(path.join(ROOT, file), 'utf8'));
+const sizeData = deriveSizeData(
+  readJson('benchmarks/results/apk.json'),
+  readJson('benchmarks/results/size.json')
+);
 
 await build({
   entryPoints: [path.join(ROOT, 'bin/rnap.mjs')],
@@ -22,6 +30,7 @@ await build({
   target: 'node20',
   legalComments: 'none',
   logLevel: 'warning',
+  define: { __RNAP_SIZE_DATA__: JSON.stringify(sizeData) },
 });
 fs.chmodSync(OUT, 0o755);
 

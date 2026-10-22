@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// react-native-anything-player's project check: `rnap doctor` / `rnap init`.
+// `rnap`: project checks, build modules, size, info and the migration codemod.
 // Installed as both `rnap` and `react-native-anything-player` (package.json).
 
 import { main } from './cli/cli.mjs';

@@ -1,6 +1,8 @@
 // Human-readable output. `--json` bypasses this module entirely, so nothing
 // here can change the machine-readable schema.
 
+import { formatBytes } from './size.mjs';
+
 const STYLES = {
   red: [31, 39],
   yellow: [33, 39],
@@ -89,3 +91,191 @@ export function formatDoctor(report, { version, paint }) {
 export function formatInitHeader(cwd, version, paint) {
   return `${paint(`RNAP init ${version}`, 'bold')}\n${cwd}\n`;
 }
+
+const SOURCE_LABELS = {
+  'app.json': 'app.json',
+  'android/gradle.properties': 'gradle.properties',
+  'ios/Podfile.properties.json': 'Podfile.properties.json',
+  'Info.plist': 'Info.plist',
+  manual: 'by hand',
+  default: 'default',
+};
+
+function costText(item) {
+  if (!item.size) return item.sizeNote ?? 'not measured in the APK';
+  const r8 = formatBytes(item.size.r8);
+  return item.defaultOn
+    ? `${r8} of the default build`
+    : `adds ${r8} with R8`;
+}
+
+export function formatModules(report, { version, paint, project }) {
+  const lines = [];
+  lines.push(paint(`RNAP modules ${version}`, 'bold'));
+  lines.push(`${report.cwd}  ${paint(`(${project})`, 'gray')}`);
+  lines.push(
+    paint(`${report.summary.on} of ${report.summary.total} on`, 'gray')
+  );
+  lines.push('');
+  for (const item of report.modules) {
+    const state = item.effective ? 'on ' : 'off';
+    const source = SOURCE_LABELS[item.source] ?? item.source ?? 'default';
+    const label = item.effective ? paint(state, 'bold') : paint(state, 'gray');
+    lines.push(
+      `  ${label} ${String(item.id).padEnd(17)}${source.padEnd(23)}${item.description}`
+    );
+    lines.push(
+      paint(
+        `      ${''.padEnd(17)}${''.padEnd(23)}${costText(item)}`,
+        'gray'
+      )
+    );
+  }
+  lines.push('');
+  lines.push('Turn one on:   npx rnap add <module>');
+  lines.push('Turn one off:  npx rnap remove <module>');
+  lines.push('What they cost: npx rnap size');
+  return `${lines.join('\n')}\n`;
+}
+
+export function formatToggleHeader({ action, version, cwd, project, paint }) {
+  return `${paint(`RNAP ${action} ${version}`, 'bold')}\n${cwd}  ${paint(`(${project})`, 'gray')}\n`;
+}
+
+export function formatMigrateHeader({ cwd, version, paint }) {
+  return `${paint(`RNAP migrate ${version}`, 'bold')}\n${cwd}\n`;
+}
+
+export function formatModuleChanges({
+  action,
+  applied,
+  skipped,
+  dryRun,
+  manual,
+  nextSteps,
+  paint,
+}) {
+  const lines = [];
+  const total = applied.length + skipped.length;
+  lines.push('');
+  if (total === 0) {
+    lines.push(
+      manual.length > 0
+        ? 'No file changes: the steps below are by hand.'
+        : 'Nothing to change: this project is already in that state.'
+    );
+  } else if (dryRun) {
+    lines.push(
+      `Dry run: ${total} file${total === 1 ? '' : 's'} would change, nothing written.`
+    );
+  } else {
+    lines.push(
+      `${applied.length} file${applied.length === 1 ? '' : 's'} changed${
+        skipped.length > 0 ? `, ${skipped.length} not applied` : ''
+      }.`
+    );
+  }
+
+  if (manual.length > 0) {
+    lines.push('');
+    lines.push(paint('By hand', 'bold'));
+    for (const item of manual) lines.push(`  ${item.module}: ${item.step}`);
+  }
+
+  if (nextSteps.length > 0) {
+    lines.push('');
+    lines.push(paint('Next', 'bold'));
+    for (const step of nextSteps) lines.push(`  ${step}`);
+  } else if (
+    manual.length === 0 &&
+    (action === 'add' || action === 'remove')
+  ) {
+    lines.push('');
+    lines.push(paint('Nothing to rebuild: no build file changed.', 'gray'));
+  }
+  return `${lines.join('\n')}\n`;
+}
+
+function row(label, value) {
+  return `  ${String(label).padEnd(18)}${value}`;
+}
+
+export function formatInfo(report, { paint }) {
+  const lines = [];
+  lines.push(paint(`RNAP info ${report.cli.version}`, 'bold'));
+  lines.push(`${report.cwd}  ${paint(report.collectedAt, 'gray')}`);
+  lines.push('');
+  lines.push(paint('Environment', 'bold'));
+  lines.push(row('OS', report.environment.os));
+  lines.push(row('Node', report.environment.node));
+  lines.push(row('npm', report.environment.npm ?? 'not found'));
+  lines.push(row('yarn', report.environment.yarn ?? 'not found'));
+  lines.push('');
+  lines.push(paint('Project', 'bold'));
+  lines.push(row('Project kind', report.project.kind));
+  if (report.project.library)
+    lines.push(
+      row(
+        'RNAP',
+        `${report.project.library.version}${report.project.library.installed ? '' : ' (workspace, not node_modules)'}`
+      ),
+      row('RNAP path', report.project.library.path)
+    );
+  lines.push(row('React Native', report.project.reactNative ?? 'not a dependency'));
+  if (report.project.expo)
+    lines.push(
+      row(
+        'Expo SDK',
+        `${report.project.expo.sdk ?? 'unknown'} (${report.project.expo.configFile})`
+      )
+    );
+  lines.push(row('Media3', report.project.media3Version ?? 'unknown'));
+  lines.push(row('New Architecture', newArchText(report.project.newArchitecture)));
+  if (report.project.ios)
+    lines.push(row('iOS target', report.project.ios.deploymentTarget ?? 'unknown'));
+  if (report.project.android)
+    lines.push(
+      row(
+        'Android SDK',
+        `min ${report.project.android.minSdk ?? '?'}, compile ${report.project.android.compileSdk ?? '?'}, target ${report.project.android.targetSdk ?? '?'}`
+      )
+    );
+  lines.push(
+    row(
+      'Modules on',
+      report.project.modules.on.length > 0
+        ? report.project.modules.on.join(', ')
+        : 'none'
+    )
+  );
+  lines.push(
+    row(
+      'Modules off',
+      report.project.modules.off.length > 0
+        ? report.project.modules.off.join(', ')
+        : 'none'
+    )
+  );
+  lines.push('');
+  lines.push(paint('Doctor', 'bold'));
+  const { errors, warnings, infos } = report.doctor.summary;
+  lines.push(
+    row(
+      'Findings',
+      `${errors} error${errors === 1 ? '' : 's'}, ${warnings} warning${warnings === 1 ? '' : 's'}, ${infos} info`
+    )
+  );
+  for (const finding of report.doctor.findings) {
+    lines.push(
+      `  ${finding.severity.padEnd(8)}${finding.id}  ${paint(finding.message, 'gray')}`
+    );
+  }
+  return `${lines.join('\n')}\n`;
+}
+
+function newArchText(value) {
+  if (value === true) return 'on';
+  if (value === false) return 'off';
+  return 'unknown';
+}
+

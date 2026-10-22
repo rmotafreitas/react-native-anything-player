@@ -62,3 +62,16 @@ export function filesWithExtension(dir, extensions) {
 export function relative(cwd, file) {
   return path.relative(cwd, file).split(path.sep).join('/') || '.';
 }
+
+/**
+ * What a command prints when it needs an app and there is no package.json:
+ * the same sentence and exit code everywhere, text or JSON.
+ */
+export function missingProject(command, cwd, json) {
+  const message =
+    'No package.json here: run the CLI from the app directory, or pass `--cwd <dir>`.';
+  const text = json
+    ? `${JSON.stringify({ schemaVersion: 1, command, cwd, ok: false, error: message }, null, 2)}\n`
+    : `rnap: ${message}\n`;
+  return { status: 1, text };
+}
