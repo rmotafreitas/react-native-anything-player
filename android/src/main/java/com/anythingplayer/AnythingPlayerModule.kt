@@ -51,6 +51,7 @@ class AnythingPlayerModule(reactContext: ReactApplicationContext) : NativeAnythi
   override fun initialize() {
     super.initialize()
     AnythingPlayerRuntime.attachModule(sink)
+    main.post { AnythingPlayerRuntime.initialize(reactApplicationContext) }
   }
 
   override fun createPlayer(options: ReadableMap): String {
@@ -167,10 +168,18 @@ class AnythingPlayerModule(reactContext: ReactApplicationContext) : NativeAnythi
   // native routing, Cast and catalog glue is its own commit and lands here.
 
   override fun showRoutePicker(playerId: String?, promise: Promise) {
-    promise.reject("NOT_IMPLEMENTED", "Outputs are not implemented on Android yet.", null)
+    main.post {
+      try {
+        AnythingPlayerRuntime.showRoutePicker()
+        promise.resolve(null)
+      } catch (error: PlayerError) {
+        reject(promise, error)
+      }
+    }
   }
 
-  override fun isRoutePickerAvailable(): Boolean = false
+  /** The Output Switcher, a dialog or the Bluetooth settings: there is always something to try. */
+  override fun isRoutePickerAvailable(): Boolean = true
 
   override fun getCastState(): WritableMap =
     Arguments.createMap().apply {

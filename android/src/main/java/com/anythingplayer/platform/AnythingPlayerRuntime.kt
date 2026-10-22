@@ -16,12 +16,14 @@ import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.facebook.react.bridge.WritableMap
 import com.google.common.util.concurrent.ListenableFuture
+import com.anythingplayer.core.AudioRoute
 import com.anythingplayer.core.ErrorCode
 import com.anythingplayer.core.FocusResult
 import com.anythingplayer.core.InterruptionReason
 import com.anythingplayer.core.NetworkState
 import com.anythingplayer.core.PlaybackState
 import com.anythingplayer.core.PlayerError
+import java.lang.ref.WeakReference
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -53,9 +55,23 @@ internal object AnythingPlayerRuntime : FocusListener {
 
   private lateinit var focus: AudioFocusCoordinator
   private lateinit var network: NetworkMonitor
+  private lateinit var routes: RouteMonitor
   private var wakeLock: PowerManager.WakeLock? = null
   private var wifiLock: WifiManager.WifiLock? = null
   private var startedActivities = 0
+  private var resumedActivity: WeakReference<Activity>? = null
+
+  /**
+   * Where the audio goes when it plays on this device (speaker, headphones,
+   * Bluetooth…). Kept apart from the players' route: while casting, theirs is
+   * the receiver, and this is where a handoff back lands.
+   */
+  var localRoute: AudioRoute = AudioRoute.UNKNOWN
+    private set
+
+  /** The activity in the foreground, if any (dialogs need one). */
+  val foregroundActivity: Activity?
+    get() = resumedActivity?.get()
 
   /** The player the system media controls show and control. */
   @Volatile var active: PlayerController? = null
@@ -123,12 +139,19 @@ internal object AnythingPlayerRuntime : FocusListener {
     focus = AudioFocusCoordinator(appContext, this)
     network = NetworkMonitor(appContext) { state, changed -> players.values.forEach { it.engine.networkChanged(state, changed) } }
     network.start()
+    routes =
+      RouteMonitor(appContext) { route ->
+        localRoute = route
+        players.values.forEach { it.engine.routeChanged(route) }
+      }
+    routes.start()
     (appContext as? Application)?.registerActivityLifecycleCallbacks(foregroundTracker)
   }
 
   fun register(controller: PlayerController) {
     players[controller.id] = controller
     controller.engine.networkChanged(network.state, false)
+    controller.engine.routeChanged(localRoute)
     controller.prewarm()
   }
 
@@ -141,6 +164,14 @@ internal object AnythingPlayerRuntime : FocusListener {
 
   /** A Cast output for [controller]'s routing driver; `null` where Cast is not built in. */
   fun newRemoteOutput(controller: PlayerController): RemoteOutput? = null
+
+  // ── Outputs ──
+
+  /** Main thread. Opens the system output picker; throws `ROUTE_PICKER_UNAVAILABLE` if none could open. */
+  fun showRoutePicker() {
+    val via = OutputPicker.show(appContext, foregroundActivity)
+    Log.d(TAG, "output picker via ${via.name}")
+  }
 
   // ── Focus ──
 
@@ -200,6 +231,8 @@ internal object AnythingPlayerRuntime : FocusListener {
     val status = controller.status
     if (controller.options.mediaSession && status.playWhenReady) active = controller
     if (active == null && controller.options.mediaSession && status.state != PlaybackState.IDLE) active = controller
+    // Playing is when the output matters: read it now, then keep an eye on it.
+    if (status.state == PlaybackState.PLAYING) routes.refresh()
     refresh()
   }
 
@@ -214,6 +247,7 @@ internal object AnythingPlayerRuntime : FocusListener {
       focus.abandon()
     }
     updateRecoveryLocks()
+    routes.setPolling(players.values.any { it.status.state == PlaybackState.PLAYING })
     updateService()
     sessionPlayer?.refresh()
   }
@@ -345,8 +379,12 @@ internal object AnythingPlayerRuntime : FocusListener {
         startedActivities = (startedActivities - 1).coerceAtLeast(0)
       }
       override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) = Unit
-      override fun onActivityResumed(activity: Activity) = Unit
-      override fun onActivityPaused(activity: Activity) = Unit
+      override fun onActivityResumed(activity: Activity) {
+        resumedActivity = WeakReference(activity)
+      }
+      override fun onActivityPaused(activity: Activity) {
+        if (resumedActivity?.get() === activity) resumedActivity = null
+      }
       override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
       override fun onActivityDestroyed(activity: Activity) = Unit
     }

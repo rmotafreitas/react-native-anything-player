@@ -7,6 +7,8 @@ buildscript {
     // `rnapMedia3Version` in their root `ext` (e.g. to share a version with
     // another library).
     media3Version: "1.11.1",
+    // The system Output Switcher dialog for Android 11–13 (a few hundred KB).
+    mediaRouterVersion: "1.8.1",
   ]
 
   ext.getExtOrDefault = { prop ->
@@ -37,6 +39,7 @@ if (project.extensions.findByName("kotlin") == null) {
 apply plugin: "com.facebook.react"
 
 def media3Version = rootProject.ext.has("rnapMedia3Version") ? rootProject.ext.get("rnapMedia3Version") : AnythingPlayer.media3Version
+def mediaRouterVersion = AnythingPlayer.mediaRouterVersion
 // HLS is on by default (many stations and podcasts are HLS-only). Apps that
 // only play progressive streams can drop ~300 KB with `rnapHls=false` in
 // gradle.properties.
@@ -75,6 +78,9 @@ dependencies {
   // HTTP through OkHttp (already in every React Native app): a call can be
   // cancelled from any thread, which closes even a socket blocked in a read.
   implementation "androidx.media3:media3-datasource-okhttp:$media3Version"
+  // The output picker: SystemOutputSwitcherDialogController where MediaRouter2's
+  // own switcher (Android 14+) is not there.
+  implementation "androidx.mediarouter:mediarouter:$mediaRouterVersion"
   if (includeHls) {
     implementation "androidx.media3:media3-exoplayer-hls:$media3Version"
   }
