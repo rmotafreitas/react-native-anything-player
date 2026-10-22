@@ -266,13 +266,14 @@ async function answer(
   request: SearchRequest
 ): Promise<void> {
   let item: Record<string, unknown> | null = null;
+  let timer: ReturnType<typeof setTimeout> | null = null;
   try {
     const found = searchHandler
       ? await Promise.race([
           Promise.resolve(searchHandler(request)),
-          new Promise<null>((resolve) =>
-            setTimeout(() => resolve(null), SEARCH_HANDLER_TIMEOUT_MS)
-          ),
+          new Promise<null>((resolve) => {
+            timer = setTimeout(() => resolve(null), SEARCH_HANDLER_TIMEOUT_MS);
+          }),
         ])
       : null;
     item = found ? serializeItem(found) : null;
@@ -281,6 +282,8 @@ async function answer(
     setTimeout(() => {
       throw error;
     }, 0);
+  } finally {
+    if (timer != null) clearTimeout(timer);
   }
   native().resolveSearchRequest(requestId, { item });
 }

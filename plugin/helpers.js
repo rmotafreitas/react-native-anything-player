@@ -39,7 +39,8 @@ function resolveOptions(options = {}) {
 
 function union(list, values) {
   const out = Array.isArray(list) ? [...list] : [];
-  for (const value of values) if (!out.includes(value)) out.push(value);
+  const present = new Set(out);
+  for (const value of values) if (!present.has(value)) out.push(value);
   return out;
 }
 
