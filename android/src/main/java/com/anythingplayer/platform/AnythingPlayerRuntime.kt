@@ -150,13 +150,16 @@ internal object AnythingPlayerRuntime : FocusListener {
     Voice.attach(appContext)
     focus = AudioFocusCoordinator(appContext, this)
     network = NetworkMonitor(appContext) { state, changed -> players.values.forEach { it.engine.networkChanged(state, changed) } }
-    network.start()
     routes =
       RouteMonitor(appContext) { route ->
         Log.d(TAG, "output route: ${route.kind.wire}${route.name?.let { " ($it)" } ?: ""}")
         localRoute = route
         players.values.forEach { it.engine.routeChanged(route) }
       }
+    // Every monitor exists before any starts: a start reports the current
+    // state at once, and a player already registered reacts with a status
+    // change that reaches refresh(), which reads them all.
+    network.start()
     routes.start()
     castBackend = CastBackends.create(appContext, castHost)
     (appContext as? Application)?.registerActivityLifecycleCallbacks(foregroundTracker)
