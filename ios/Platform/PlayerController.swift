@@ -38,6 +38,9 @@ struct PlayerOptions {
       }
       if let v = recovery["liveMaxDriftMs"] as? NSNumber { engine.liveMaxDriftMs = v.int64Value }
     }
+    let fade = Self.fadeMs(dict["fade"] as? NSDictionary)
+    engine.fadeInMs = fade.inMs
+    engine.fadeOutMs = fade.outMs
     if let v = (dict["interruptions"] as? NSDictionary)?["autoResume"] as? Bool {
       engine.autoResumeAfterInterruption = v
     }
@@ -53,6 +56,19 @@ struct PlayerOptions {
       titleFormat = StreamTitleFormat(rawValue: metadata["streamTitleFormat"] as? String ?? "") ?? .artistTitle
       useStreamMetadata = metadata["useStreamMetadataForNowPlaying"] as? Bool ?? true
     }
+  }
+}
+
+extension PlayerOptions {
+  /// `{ in?, out? }` in seconds (`PlayerOptions.fade`, `setFade`) → ms; absent or ≤ 0 = no fade.
+  static func fadeMs(_ fade: NSDictionary?) -> (inMs: Int64, outMs: Int64) {
+    func ms(_ key: String) -> Int64 {
+      guard let seconds = (fade?[key] as? NSNumber)?.doubleValue, seconds.isFinite, seconds > 0 else {
+        return 0
+      }
+      return Int64((seconds * 1000).rounded())
+    }
+    return (ms("in"), ms("out"))
   }
 }
 
@@ -436,6 +452,10 @@ final class PlayerController: EngineDelegate, DriverObserver {
     emit("ended", [:])
   }
 
+  func engineSleepFired() {
+    emit("sleep", ["reason": "fired", "timestamp": SystemClock.shared.wallMs])
+  }
+
   func engine(diagnostic: DiagnosticEntry) {
     let enabled = lock.sync { () -> Bool in
       diagnostics.append(diagnostic)
@@ -521,6 +541,7 @@ enum Serialization {
       "muted": s.muted,
       "rate": s.rate,
       "route": ["kind": s.route.kind.rawValue, "name": optional(s.route.name)],
+      "sleepAt": optional(s.sleepAt),
     ]
     if let i = s.interruption {
       dict["interruption"] = ["reason": i.reason.rawValue, "resumable": i.resumable, "since": i.since]

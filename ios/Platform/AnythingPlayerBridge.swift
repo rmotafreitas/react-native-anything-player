@@ -124,6 +124,68 @@ public final class AnythingPlayerBridge: NSObject {
     }
   }
 
+  /// Resolves when the volume got there (after the status it implies).
+  @objc public func fadeTo(
+    _ id: String, volume: Double, seconds: Double,
+    resolve: @escaping (Any?) -> Void, reject: @escaping (String, String, NSError?) -> Void
+  ) {
+    DispatchQueue.main.async { [weak self] in
+      guard let controller = self?.runtime.player(id) else {
+        return Self.reject(reject, PlayerError.code(.playerReleased, "The player was released.", recoverable: false))
+      }
+      do {
+        try controller.engine.fadeTo(volume, durationMs: seconds * 1000) { [weak controller] in
+          DispatchQueue.main.async { resolve(controller?.statusDictionary()) }
+        }
+      } catch let error as PlayerError {
+        Self.reject(reject, error)
+      } catch {
+        Self.reject(reject, PlayerError.code(.internalError, "\(error)", recoverable: false))
+      }
+    }
+  }
+
+  /// `{ after: seconds, fadeOut?: seconds }`; `{ after: null }` cancels.
+  @objc public func sleepTimer(
+    _ id: String, timer: NSDictionary,
+    resolve: @escaping (Any?) -> Void, reject: @escaping (String, String, NSError?) -> Void
+  ) {
+    let after = (timer["after"] as? NSNumber).map { $0.doubleValue * 1000 }
+    let fadeOut = (timer["fadeOut"] as? NSNumber).map { $0.doubleValue * 1000 }
+    engineCommand(id, resolve: resolve, reject: reject) { try $0.sleep(afterMs: after, fadeOutMs: fadeOut) }
+  }
+
+  /// `{ in?: seconds, out?: seconds }` replaces the play/pause/stop fades.
+  @objc public func setFade(
+    _ id: String, fade: NSDictionary,
+    resolve: @escaping (Any?) -> Void, reject: @escaping (String, String, NSError?) -> Void
+  ) {
+    let ms = PlayerOptions.fadeMs(fade)
+    engineCommand(id, resolve: resolve, reject: reject) {
+      try $0.setFades(inMs: Double(ms.inMs), outMs: Double(ms.outMs))
+    }
+  }
+
+  /// Runs `block` on the player's engine (main thread), then resolves with the status.
+  private func engineCommand(
+    _ id: String, resolve: @escaping (Any?) -> Void, reject: @escaping (String, String, NSError?) -> Void,
+    _ block: @escaping (PlaybackEngine) throws -> Void
+  ) {
+    DispatchQueue.main.async { [weak self] in
+      guard let controller = self?.runtime.player(id) else {
+        return Self.reject(reject, PlayerError.code(.playerReleased, "The player was released.", recoverable: false))
+      }
+      do {
+        try block(controller.engine)
+        resolve(controller.statusDictionary())
+      } catch let error as PlayerError {
+        Self.reject(reject, error)
+      } catch {
+        Self.reject(reject, PlayerError.code(.internalError, "\(error)", recoverable: false))
+      }
+    }
+  }
+
   @objc public func updateNowPlaying(
     _ id: String, metadata: NSDictionary,
     resolve: @escaping (Any?) -> Void, reject: @escaping (String, String, NSError?) -> Void
