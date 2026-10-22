@@ -10,13 +10,37 @@ import Intents
 ///   `application(_:handle:completionHandler:)`, which the module installs on
 ///   the delegate's class and forwards `INPlayMediaIntent`s here. (In-app
 ///   intent handlers need multiple-scene support, which React Native apps lack.)
+/// - App Intents (iOS 16+): the app target compiles
+///   `ios/AppIntents/RNAPAppIntents.swift`, which plays through `RNAPVoice`.
+///   Its `RNAPAppShortcuts` class (found by name: the pod cannot link against
+///   the app) refreshes the App Shortcuts' phrases at launch and whenever the
+///   catalog changes.
 @objc(AnythingPlayerSystem)
 public final class AnythingPlayerSystem: NSObject {
+  /// The app-target class `ios/AppIntents/RNAPAppIntents.swift` defines.
+  private static let appShortcutsClass = "RNAPAppShortcuts"
+
   /// Main thread.
   @objc public static func applicationDidFinishLaunching() {
     #if RNAP_CAST
     CastManager.shared.setUp()
     #endif
+    // Off the launch path: an app updated to include the App Intents has a
+    // catalog stored before they existed.
+    DispatchQueue.main.async { refreshAppShortcuts() }
+  }
+
+  /// Main thread: after `setCatalog`.
+  static func catalogDidChange() {
+    NotificationCenter.default.post(name: RNAPVoice.catalogDidChangeNotification, object: nil)
+    refreshAppShortcuts()
+  }
+
+  private static func refreshAppShortcuts() {
+    guard let hook = NSClassFromString(appShortcutsClass) else { return }
+    let selector = NSSelectorFromString("catalogDidChange")
+    guard (hook as AnyObject).responds(to: selector) else { return }
+    _ = (hook as AnyObject).perform(selector)
   }
 
   /// Plays the request on the voice player. Completes `.success` once audio
@@ -27,9 +51,7 @@ public final class AnythingPlayerSystem: NSObject {
   ) {
     let request = searchRequest(from: intent)
     DispatchQueue.main.async {
-      let runtime = AnythingPlayerRuntime.shared
-      runtime.startIfNeeded()
-      runtime.voice.handleSiri(request) { outcome in
+      voice().handleSiri(request) { outcome in
         let code: INPlayMediaIntentResponseCode
         switch outcome {
         case .playing: code = .success
@@ -39,6 +61,14 @@ public final class AnythingPlayerSystem: NSObject {
         completion(INPlayMediaIntentResponse(code: code, userActivity: nil))
       }
     }
+  }
+
+  /// Main thread: voice search, with the runtime started (the app may have
+  /// been launched in the background for the request, before any JS).
+  static func voice() -> VoiceSearch {
+    let runtime = AnythingPlayerRuntime.shared
+    runtime.startIfNeeded()
+    return runtime.voice
   }
 
   /// `INMediaSearch` → `SearchRequest` (without `origin`).

@@ -72,6 +72,39 @@ iOS starts a media request in a small **Intents extension**, which hands it to t
 
 Siri learns the catalog's titles and keywords as vocabulary. Say the app's name ("…on MyRadio"): Siri sends requests without it to Apple Music.
 
+## Siri shortcuts (App Intents)
+
+On iOS 16 and later the catalog also becomes **App Shortcuts**: things people can say with no setup, which also show in Spotlight and the Shortcuts app, and which they can put on the Action button or in their own shortcuts.
+
+- "Play Jazz FM in MyRadio", "Play Jazz FM on MyRadio", "Listen to Jazz FM on MyRadio", "Put on Jazz FM in MyRadio": an item, by its title.
+- "Play MyRadio", "Play something on MyRadio", "Listen to MyRadio", "Start MyRadio": the last item played, else the first.
+
+They play the way a Siri request does: natively, even when the app is not running, on the lock-screen player or else the catalog's player, and the player emits `searchPlay` with `origin: 'siri'`. Siri learns phrases for the first 50 items of the catalog; the *Play* action in the Shortcuts app searches all of them, with the same search. iOS relearns the phrases whenever `setCatalog` changes the catalog.
+
+iOS reads App Intents from the app's own code, not from a library, so RNAP ships them as a file the app compiles: [`ios/AppIntents/RNAPAppIntents.swift`](../ios/AppIntents/RNAPAppIntents.swift). It needs no Siri capability, permission or `Info.plist` key, and the app can still support iOS 15 (the file is iOS 16+ only).
+
+**Expo**: `"siri": true` adds it to the app target. To leave it out: `["react-native-anything-player", { "siri": { "appIntents": false } }]` (then `expo prebuild --clean`).
+
+**React Native without Expo**: in Xcode, add `node_modules/react-native-anything-player/ios/AppIntents/RNAPAppIntents.swift` to the app target (*File → Add Files*, target membership: the app). Copy the file instead of referencing it to change its phrases. An Objective-C app gets Xcode's offer of a bridging header: accept it.
+
+An app has one App Shortcuts provider. If yours already has one, move the two `AppShortcut`s from the file into it and delete `RNAPShortcuts`.
+
+Both Siri paths stay on, and play the same item the same way: the App Shortcuts answer catalog titles, the extension any request the search finds (and the search handler). App Shortcuts also work in apps that adopt the scene life cycle; the extension's hand-off to the app relies on an app delegate method Apple lists for iOS 11–14 (see the [hardware checklist](testing.md)).
+
+Native code in the app (the file above, the app's own intents, a CarPlay template) reaches the catalog through `RNAPVoice`, from Swift or Objective-C, with no JavaScript running:
+
+```swift
+import AnythingPlayer
+
+let items = RNAPVoice.catalogItems() // [RNAPCatalogItem]: id, title, artist, album, genre, kind, keywords, artwork
+let matches = RNAPVoice.search("jazz") // best first
+let item = RNAPVoice.item(withId: "jazz")
+let outcome = await RNAPVoice.play(itemId: "jazz") // .playing once audio starts (≤ 8 s), .failed or .noMatch
+_ = await RNAPVoice.play(query: "") // the last item played, else the first
+// Posted after setCatalog changes the catalog:
+NotificationCenter.default.addObserver(forName: RNAPVoice.catalogDidChangeNotification, object: nil, queue: .main) { _ in }
+```
+
 ## Google Assistant & Gemini
 
 Android's assistants, Google Assistant and Gemini, reach media apps two ways, and RNAP answers both:

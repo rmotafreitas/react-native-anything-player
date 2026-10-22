@@ -31,6 +31,7 @@ function resolveOptions(options = {}) {
           usageDescription:
             siriOptions.usageDescription ||
             'Lets you ask Siri to play stations and episodes.',
+          appIntents: siriOptions.appIntents !== false,
         }
       : null,
     assistant: options.assistant !== false,

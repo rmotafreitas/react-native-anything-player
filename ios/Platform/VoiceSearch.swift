@@ -42,6 +42,7 @@ final class VoiceSearch {
   func setCatalog(items: [[String: Any]], playerId: String, playerOptions: [String: Any]) {
     catalog.set(items: items, playerId: playerId, playerOptions: playerOptions)
     AnythingPlayerSystem.updateVocabulary(catalog.vocabulary)
+    AnythingPlayerSystem.catalogDidChange()
   }
 
   func search(_ request: [String: Any]) -> [[String: Any]] {
@@ -78,20 +79,16 @@ final class VoiceSearch {
     resolveItem(asked) { [weak self] item in
       guard let self else { return }
       guard let item else { return completion(.noMatch) }
-      self.voicePlayer(nil) { controller in
-        guard let controller else { return completion(.failed) }
-        var settled = false
-        let finish: (Bool) -> Void = { started in
-          guard !settled else { return }
-          settled = true
-          completion(started ? .playing : .failed)
-        }
-        self.waitForStart(of: controller, done: finish)
-        self.play(item, on: controller, request: asked) { result in
-          if case .failure = result { finish(false) }
-        }
-      }
+      self.playForSiri(item, request: asked, completion: completion)
     }
+  }
+
+  /// A catalog item picked by id (an App Intent's entity), played like a Siri
+  /// request.
+  func handleSiri(itemId: String, completion: @escaping (SiriOutcome) -> Void) {
+    guard let item = catalog.item(id: itemId) else { return completion(.noMatch) }
+    let request: [String: Any] = ["query": item["title"] as? String ?? "", "origin": "siri"]
+    playForSiri(item, request: request, completion: completion)
   }
 
   /// Answers a `searchRequest` event.
@@ -177,6 +174,25 @@ final class VoiceSearch {
     }
     catalog.played(item)
     controller.emitSearchPlay(request: request, item: item)
+  }
+
+  /// Plays on the voice player, then reports whether audio started within 8 s.
+  private func playForSiri(
+    _ item: [String: Any], request: [String: Any], completion: @escaping (SiriOutcome) -> Void
+  ) {
+    voicePlayer(nil) { [weak self] controller in
+      guard let self, let controller else { return completion(.failed) }
+      var settled = false
+      let finish: (Bool) -> Void = { started in
+        guard !settled else { return }
+        settled = true
+        completion(started ? .playing : .failed)
+      }
+      self.waitForStart(of: controller, done: finish)
+      self.play(item, on: controller, request: request) { result in
+        if case .failure = result { finish(false) }
+      }
+    }
   }
 
   private func waitForStart(of controller: PlayerController, done: @escaping (Bool) -> Void) {

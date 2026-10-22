@@ -7,8 +7,10 @@
 // - `cast` (true or `{ receiverApplicationId, localNetworkUsageDescription }`):
 //   builds Google Cast in (Gradle property `rnapCast`, Podfile property
 //   `rnap.cast`) and adds iOS's local network keys. See docs/routes-and-casting.md.
-// - `siri` (true or `{ usageDescription }`): the Siri capability and the
-//   Intents extension that hands requests to the app. See docs/voice.md.
+// - `siri` (true or `{ usageDescription, appIntents }`): the Siri capability,
+//   the Intents extension that hands requests to the app, and (unless
+//   `appIntents` is false) the App Intents of Siri shortcuts, Spotlight and the
+//   Shortcuts app (iOS 16+), compiled by the app target. See docs/voice.md.
 // - `assistant` (default true): Google Assistant and Gemini requests to the
 //   main activity (`MEDIA_PLAY_FROM_SEARCH` → `AnythingPlayer.handleIntent`).
 const fs = require('fs');
@@ -28,6 +30,7 @@ const {
 const pkg = require('./package.json');
 const helpers = require('./plugin/helpers');
 const extension = require('./plugin/intentsExtension');
+const appIntents = require('./plugin/appIntents');
 
 const RECEIVER_META = 'com.anythingplayer.CAST_RECEIVER_ID';
 
@@ -56,6 +59,15 @@ function withIos(config, resolved) {
       fs.mkdirSync(to, { recursive: true });
       for (const file of extension.FILES)
         fs.copyFileSync(path.join(from, file), path.join(to, file));
+      if (resolved.siri.appIntents)
+        fs.copyFileSync(
+          path.join(__dirname, 'ios', 'AppIntents', appIntents.FILE),
+          path.join(
+            cfg.modRequest.platformProjectRoot,
+            cfg.modRequest.projectName,
+            appIntents.FILE
+          )
+        );
       return cfg;
     },
   ]);
@@ -66,6 +78,10 @@ function withIos(config, resolved) {
         'react-native-anything-player: `siri` needs `ios.bundleIdentifier` in app.json.'
       );
     extension.addIntentsExtension(cfg.modResults, { bundleIdentifier });
+    if (resolved.siri.appIntents)
+      appIntents.addAppIntentsSource(cfg.modResults, {
+        projectName: cfg.modRequest.projectName,
+      });
     return cfg;
   });
   // EAS Build signs the extension too.

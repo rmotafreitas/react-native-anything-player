@@ -38,10 +38,11 @@ Pod::Spec.new do |s|
   # Core/ is platform-free (also unit-tested with `swift test`), Platform/ is
   # the AVFoundation/MediaPlayer layer, AnythingPlayerModule.mm the TurboModule
   # shim, RNAPRoutePickerView.mm the Fabric AirPlay button, Cast/ the optional
-  # Google Cast layer. IntentsExtension/ is a template for the app's Siri
-  # extension target, never part of the pod.
+  # Google Cast layer. IntentsExtension/ (the app's Siri extension target) and
+  # AppIntents/ (Siri shortcuts, compiled by the app target: iOS reads App
+  # Intents from the app's own code) are templates, never part of the pod.
   sources = ["ios/Core/**/*.swift", "ios/Platform/**/*.swift", "ios/AnythingPlayerModule.{h,mm}", "ios/RNAPRoutePickerView.mm"]
-  s.exclude_files = "ios/IntentsExtension/**"
+  s.exclude_files = ["ios/IntentsExtension/**", "ios/AppIntents/**"]
   s.private_header_files = "ios/AnythingPlayerModule.h"
   s.frameworks = "AVFoundation", "AVKit", "AudioToolbox", "Intents", "MediaPlayer", "MediaToolbox", "Network", "UIKit"
   s.swift_version = "5.9"
