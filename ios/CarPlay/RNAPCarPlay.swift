@@ -11,16 +11,20 @@ import UIKit
 /// option). The app also needs the `com.apple.developer.carplay-audio`
 /// entitlement and a CarPlay scene named `RNAPCarPlaySceneDelegate` in its scene
 /// manifest; see docs/cars-and-watches.md. Main thread only.
+///
+/// Internal on purpose: iOS finds it by its Objective-C name, and a public
+/// class would land in the generated `AnythingPlayer-Swift.h`, which the
+/// module's Objective-C++ files import without CarPlay's headers.
 @objc(RNAPCarPlaySceneDelegate)
-public final class RNAPCarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
-  public func templateApplicationScene(
+final class RNAPCarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
+  func templateApplicationScene(
     _ templateApplicationScene: CPTemplateApplicationScene,
     didConnect interfaceController: CPInterfaceController
   ) {
     RNAPCarPlay.shared.connect(interfaceController)
   }
 
-  public func templateApplicationScene(
+  func templateApplicationScene(
     _ templateApplicationScene: CPTemplateApplicationScene,
     didDisconnectInterfaceController interfaceController: CPInterfaceController
   ) {

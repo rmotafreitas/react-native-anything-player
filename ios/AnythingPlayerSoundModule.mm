@@ -1,5 +1,8 @@
 #import "AnythingPlayerSoundModule.h"
 
+// The generated Swift header can name CarPlay types (with RNAP_CAR).
+#import <CarPlay/CarPlay.h>
+
 #if __has_include("AnythingPlayer/AnythingPlayer-Swift.h")
 #import "AnythingPlayer/AnythingPlayer-Swift.h"
 #else
