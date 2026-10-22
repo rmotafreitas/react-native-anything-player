@@ -307,12 +307,6 @@ function playerName(ast) {
 const isIdentifier = (node, name) =>
   node?.type === 'Identifier' && (name === undefined || node.name === name);
 
-const isMemberOf = (node, objectName, propertyName) =>
-  node?.type === 'MemberExpression' &&
-  isIdentifier(node.object, objectName) &&
-  (propertyName === undefined ||
-    (!node.computed && node.property.name === propertyName));
-
 /* ------------------------------------------------------------------- tables */
 
 const COMMANDS = {
@@ -933,7 +927,7 @@ function expoAudioPass(code, ast, { notes, guide }) {
         'useAudioPlayer() creates a player tied to a component: create one `new Player()` at module scope and keep playing across screens.',
         guide
       );
-    for (const node of creators)
+    if (creators.length > 0)
       addNote(
         notes,
         '#the-mental-model-changes',
