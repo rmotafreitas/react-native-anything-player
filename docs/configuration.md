@@ -45,9 +45,9 @@ App-wide settings live outside `Player`: the voice catalog and its browse tree (
 
 ## Modules
 
-Some parts of RNAP are chosen at build time, not at runtime: HLS, Cast, Siri, Assistant and the iOS background mode. `npx rnap modules` prints each one with the state of this project, `npx rnap add` and `npx rnap remove` write the switch, and [CLI](cli.md#modules) has the table with the platforms and the defaults.
+Some parts of RNAP are chosen at build time, not at runtime: HLS, Cast, Siri, Assistant, the iOS background mode, the Sound API and the car integrations. `npx rnap modules` prints each one with the state of this project, `npx rnap add` and `npx rnap remove` write the switch, and [CLI](cli.md#modules) has the table with the platforms and the defaults.
 
-The switch is a native file — `android/gradle.properties`, `ios/Podfile.properties.json`, the app's `Info.plist` — or an option of the Expo config plugin, described in [Build-time options](#build-time-options). Sound and car browsing are planned for a later version: they have no switch yet, and the CLI says so instead of writing one.
+The switch is a native file — `android/gradle.properties`, `ios/Podfile.properties.json`, the app's `Info.plist` — or an option of the Expo config plugin, described in [Build-time options](#build-time-options). `rnap add sound` and `rnap add car` write the Sound API and Android Auto / CarPlay switches ([Sound](sound.md#enabling-it), [Cars & watches](cars-and-watches.md)); CarPlay's entitlement and scene stay with the app, and the CLI prints them.
 
 ## Build-time options
 

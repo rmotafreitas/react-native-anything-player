@@ -108,8 +108,8 @@ the app's Info.plist for a bare app; the Expo plugin options in app.json for
 an Expo app. app.config.js/ts is never edited: the exact snippet is printed.
 
 Exit codes: 0 changed, already on, or nothing accepted (a \`no\` answer, or the
-picker closed), 1 no package.json here or the project cannot be changed
-safely, 2 bad usage (including an unknown module name).
+picker closed), 1 no package.json here, the project cannot be changed
+safely, or a file changed after the diff was shown, 2 bad usage (including an unknown module name).
 
 Examples
   npx rnap add cast
@@ -135,8 +135,8 @@ Options
   --help, -h   this text
 
 Exit codes: 0 changed, already off, or nothing accepted (a \`no\` answer, or the
-picker closed), 1 no package.json here or the project cannot be changed
-safely, 2 bad usage (including an unknown module name).
+picker closed), 1 no package.json here, the project cannot be changed
+safely, or a file changed after the diff was shown, 2 bad usage (including an unknown module name).
 
 Examples
   npx rnap remove cast
@@ -213,8 +213,9 @@ Options
   --no-color        plain text (also honours NO_COLOR)
   --help, -h        this text
 
-Exit codes: 0 rewrote or found nothing, 1 a file could not be parsed,
-2 bad usage (an unknown \`--from\`, or a path that does not exist or is outside
+Exit codes: 0 rewrote or found nothing, 1 a file could not be parsed, a file
+changed after the diff was shown, or @babel/parser is not installed in the
+project (migrate loads the project's own copy), 2 bad usage (an unknown \`--from\`, or a path that does not exist or is outside
 the project).
 
 Examples
@@ -263,8 +264,9 @@ Exit codes
   0  no errors (doctor, init), changed, already so, or nothing accepted
      (add, remove, migrate), a report (modules, size, info)
   1  at least one error (doctor, init), no package.json here (modules, add,
-     remove, size), cannot change safely (add, remove), a file could not be
-     parsed (migrate), no measured data (size)
+     remove, size), cannot change safely (init, add, remove, migrate), a file
+     could not be parsed or @babel/parser is missing (migrate), no measured
+     data (size)
   2  bad usage: unknown command, unknown option, unknown module, no command,
      or a --cwd that does not exist
 

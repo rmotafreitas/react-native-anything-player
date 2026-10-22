@@ -65,7 +65,7 @@ Command options:
 | Code | |
 |---|---|
 | 0 | No errors (`doctor`, `init`), changed, already so, or nothing accepted (`add`, `remove`, `migrate`), a report (`modules`, `size`, `info`) |
-| 1 | At least one error (`doctor`, `init`), no package.json here (`modules`, `add`, `remove`, `size`), cannot change the project safely (`add`, `remove`), a file could not be parsed (`migrate`), no measured data (`size`) |
+| 1 | At least one error (`doctor`, `init`), no package.json here (`modules`, `add`, `remove`, `size`), cannot change the project safely (`init`, `add`, `remove`, `migrate`: a file changed after the diff was shown), a file could not be parsed or `@babel/parser` is not installed (`migrate`), no measured data (`size`) |
 | 2 | Bad usage: unknown command, unknown option, unknown module, no command, or a `--cwd` that does not exist |
 
 `info` always exits 0: it is the report you send when something is wrong.
@@ -90,8 +90,10 @@ The middle column is where the state comes from: `default`, `android/gradle.prop
 | `siri` | iOS | off | by hand: an Intents extension, the entitlement and `NSSiriUsageDescription`, or the Expo plugin's `siri` |
 | `assistant` | Android | on | by hand: the search intent filter and `AnythingPlayer.handleIntent`, or the Expo plugin's `assistant` |
 | `background-audio` | iOS | on | `audio` in `UIBackgroundModes`, or the Expo plugin's `backgroundAudio` |
-| `sound` | Android, iOS | off | not in this version yet ([roadmap](roadmap.md)) |
-| `car` | Android, iOS | off | not in this version yet ([roadmap](roadmap.md)) |
+| `sound` | Android, iOS | off | `rnapSound` (Android), `rnap.sound` in `ios/Podfile.properties.json` ([Sound](sound.md#enabling-it)); the Expo plugin's `sound` |
+| `car` | Android, iOS | off | `rnapCar` (Android Auto), `rnap.car` in `ios/Podfile.properties.json` (CarPlay); the Expo plugin's `car` ([Cars & watches](cars-and-watches.md)) |
+
+Sound and Car have no size in the table above yet: `rnap modules` and `rnap size` report them as "not measured in the APK" until the benchmark has a build with each switch on.
 
 The defaults describe the Expo plugin and the measured release build. A bare app reads its native files: `rnapHls=false` is off even though HLS is on by default.
 
@@ -101,13 +103,16 @@ The defaults describe the Expo plugin and the measured release build. A bare app
 - **Expo app:** one option in the `react-native-anything-player` entry of `expo.plugins` in app.json. Run `npx expo prebuild` afterwards.
 - **app.config.js/ts:** never edited. The exact snippet is printed.
 - **Manual modules:** Siri and Assistant print the steps. Turning one off prints a generic "reverse the setup" note; the CLI does not guess what to delete.
-- **Planned modules:** Sound and Cars change nothing. `add` says they are not in this version yet; `remove` reports that they are already off.
+- **Cars on a bare app:** `add car` writes the Android Auto and CarPlay build switches, then prints what stays yours — Apple's CarPlay audio entitlement and the `RNAP CarPlay` scene in `UIApplicationSceneManifest` ([Cars & watches](cars-and-watches.md#carplay)). `remove car` prints what to take out. The Expo plugin's `car` option adds both for you.
+- **Background audio on a bare app:** `remove background-audio` takes `audio` out of `UIBackgroundModes` and writes `"rnap.backgroundAudio": "false"` to `ios/Podfile.properties.json`. Nothing builds from that key: it only tells the doctor the missing mode is on purpose, so `ios-background-audio` is reported as `info` instead of an error. `add background-audio` puts the mode back and sets the marker to `"true"`. Expo apps use the plugin's `backgroundAudio` option instead.
+- **Layout:** edits patch only the keys they touch, so a hand-formatted app.json or Podfile.properties.json keeps its formatting. A structure that cannot be patched in place (a removed key, a shortened array) is rewritten in full, and the change line says so.
+- **Safe writes:** each file is checked against the text the diff was computed from just before it is written, and written through a temporary file in the same directory (mode kept). A file that changed after the diff was shown is left alone with a "changed since the diff was shown" message, the other files go on, and the command exits 1; run it again.
 
 With no module names and a terminal, `rnap add` opens a picker: space toggles, Enter applies, `q` quits. Outside a terminal it asks for a name and exits 2.
 
-`add` and `remove` exit 1 when there is no package.json or a file cannot be changed safely (a symlink pointing out of the project, an unparsable plist, an unparsable JSON file). The unsafe edit becomes a printed instruction instead.
+`add` and `remove` exit 1 when there is no package.json or a file cannot be changed safely (a symlink pointing out of the project, an unparsable plist, an unparsable JSON file, a file that changed after the diff was shown). The unsafe edit becomes a printed instruction instead.
 
-The doctor reports a `module-conflict` warning when the Expo plugin and a native switch disagree. `expo prebuild` rewrites the native files from app.json, so one of the two would win by accident.
+The doctor reports a `module-conflict` warning when the Expo plugin and a native switch disagree (`cast`, `sound` and `car` all have both). `expo prebuild` rewrites the native files from app.json, so one of the two would win by accident.
 
 ## Doctor
 
@@ -122,7 +127,7 @@ The doctor reports a `module-conflict` warning when the Expo plugin and a native
 | `expo-sdk` | error / warning | Expo SDK 54 or newer (the first with RN 0.80), and that `expo` is a dependency | Upgrade Expo |
 | `library-installed` | error / info | `react-native-anything-player` resolves, in `node_modules` or in a workspace | `npm install react-native-anything-player` |
 | `expo-plugin` | error | The plugin is in `expo.plugins` | Add it, then rebuild or `npx expo prebuild` |
-| `expo-plugin-options` | error / warning | The options are the ones the registry knows: `backgroundAudio`, `cast`, `siri`, `assistant`. Cast takes `receiverApplicationId` and `localNetworkUsageDescription`; Siri takes `usageDescription` and `appIntents` | Fix the plugin entry in app.json |
+| `expo-plugin-options` | error / warning | The options are the ones the registry knows: `backgroundAudio`, `cast`, `siri`, `assistant`, `sound`, `car`. Cast takes `receiverApplicationId` and `localNetworkUsageDescription`; Siri takes `usageDescription` and `appIntents` | Fix the plugin entry in app.json |
 | `expo-config-js` | info | app.config.js/ts cannot be evaluated. Expo checks then read app.json only | Verify by hand |
 | `new-arch-ios` | error | New Architecture is not switched off (`Podfile.properties.json`, `RCT_NEW_ARCH_ENABLED`, `newArchEnabled` in app.json) | Enable it, then `pod install` |
 | `new-arch-android` | error | `newArchEnabled=true` in `android/gradle.properties` | Enable it, then rebuild |
@@ -133,7 +138,7 @@ The doctor reports a `module-conflict` warning when the Expo plugin and a native
 | Id | Severity | What it checks | Fix |
 |---|---|---|---|
 | `ios-info-plist` | error / warning | The app's `Info.plist` exists and parses | Create or repair it |
-| `ios-background-audio` | error | `UIBackgroundModes` contains `audio`. Expo: app.json plus the plugin's `backgroundAudio` | Add the mode, or remove `backgroundAudio: false` |
+| `ios-background-audio` | error / info | `UIBackgroundModes` contains `audio`. Expo: app.json plus the plugin's `backgroundAudio`. Info, not an error, when it is off on purpose: `backgroundAudio: false`, or `"rnap.backgroundAudio": "false"` in `ios/Podfile.properties.json` (written by `rnap remove background-audio`) | Add the mode, or remove `backgroundAudio: false` |
 | `ios-scene-lifecycle` | warning | `UIApplicationSceneManifest` is present. iOS 27 traps at launch without the scene life cycle | Move window creation to a `UIWindowSceneDelegate` |
 | `ios-cast-discovery` | error | With Cast on: `NSLocalNetworkUsageDescription` and `NSBonjourServices` with `_googlecast._tcp` and `_<receiverId>._googlecast._tcp` | Add the keys, or use `cast: true` |
 | `ios-cast-pod` | warning | `ios/Podfile.properties.json` sets `rnap.cast` when Cast is configured | Set it, then `pod install` |
@@ -190,7 +195,9 @@ It works in any directory and always exits 0. Without a package.json, the report
 
 ## Migrate
 
-`rnap migrate` rewrites the mechanical part of a migration from Track Player, expo-audio or expo-av. It parses each file and replaces exact source ranges, so the rest of the formatting survives.
+`rnap migrate` rewrites the mechanical part of a migration from Track Player, expo-audio or expo-av. It parses each file and replaces exact source ranges, so the rest of the formatting survives (including the file's line endings: a CRLF file stays CRLF, notes included).
+
+The parser is `@babel/parser`, which the CLI does not ship: it loads the copy in your project's `node_modules` (React Native's Metro and Babel already depend on it). Without one, `migrate` exits 1 and says how to install it: `npm install --save-dev @babel/parser`.
 
 ```sh
 npx rnap migrate --dry-run
@@ -202,15 +209,16 @@ Paths are files or directories. The default is the whole project, skipping `node
 What moves:
 
 - **Imports:** the old package's import is rewritten. Names with an RNAP equivalent move to `react-native-anything-player`; names without one stay in the old import. An import with nothing left is removed.
-- **Track Player:** `TrackPlayer.play()` and the other one-to-one commands become `player.play()`; `seekBy(n)`, `getVolume()`, `getState()` and the hooks get the equivalents the [guide](migrating-from-track-player.md) describes; `State.Playing` becomes `'playing'`.
+- **Track Player:** `TrackPlayer.play()` and the other one-to-one commands become `player.play()`; `seekBy(n)`, `getVolume()` and the hooks get the equivalents the [guide](migrating-from-track-player.md) describes; `getState()` becomes `player.state` and `getPlaybackState()` becomes `{ state: player.state }`; `State.Playing` becomes `'playing'`. `import * as TrackPlayer from …` is migrated member by member (commands, hooks, `State`) under the same rule.
 - **expo-audio:** `createAudioPlayer()` becomes `const player = new Player()` plus `player.load(source)`; `volume = …` and `muted = …` become `setVolume()` and `setMuted()`; `replace`, `seekTo`, `setPlaybackRate` and `useAudioPlayerStatus` are renamed.
 - **expo-av:** `Audio.Sound.createAsync()` becomes `await player.load(source)`, the `sound.*Async()` calls become player calls, and `Audio.setAudioModeAsync()` is deleted (the constructor options cover it).
 
 What stops the rewrite:
 
 - Track Player: one command without a mechanical mapping (`setupPlayer`, `addEventListener`, the queue calls) keeps `TrackPlayer` where it is, and only the hooks and state constants move.
-- expo-audio: a `useAudioPlayer()` hook in the file is left alone (it creates a player tied to a component).
-- expo-av: anything except `const { sound } = await Audio.Sound.createAsync(…)` in a single-variable declaration is left alone.
+- Track Player: a namespace import is migrated as a whole or not at all: one member without a mapping, or `TrackPlayer` used as a value, keeps the import and every call through it, with a note.
+- expo-audio: a `useAudioPlayer()` hook in the file is left alone (it creates a player tied to a component). A namespace import (`import * as Audio from 'expo-audio'`) stays with its calls, and a note says so.
+- expo-av: anything except `const { sound } = await Audio.Sound.createAsync(…)` in a single-variable declaration is left alone. `sound.setOnPlaybackStatusUpdate(fn)` is never rewritten: RNAP's `status` event delivers a `PlayerStatus`, not an `AVPlaybackStatus`, so the handler needs porting by hand (the note points to the [guide](migrating-from-expo-av.md#status-and-events)).
 
 A file with something left to do gets a header that names the guide sections:
 
@@ -222,7 +230,7 @@ A file with something left to do gets a header that names the guide sections:
 
 A second run changes nothing: the header is merged, not repeated.
 
-Exit codes: 0 rewrote or found nothing, 1 at least one file could not be parsed, 2 an unknown `--from`, a path that does not exist, or a path outside the project. A parse failure is listed by file and does not stop the other files.
+Exit codes: 0 rewrote or found nothing, 1 at least one file could not be parsed, a file changed after the diff was shown, or `@babel/parser` is not installed, 2 an unknown `--from`, a path that does not exist, or a path outside the project. A parse failure is listed by file and does not stop the other files.
 
 ## Init
 
