@@ -9,7 +9,6 @@ import androidx.media3.cast.RemoteCastPlayer
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
-import androidx.media3.common.MimeTypes
 import com.anythingplayer.core.ErrorCode
 import com.anythingplayer.core.InterruptionReason
 import com.anythingplayer.core.OpenRequest
@@ -20,6 +19,7 @@ import com.anythingplayer.platform.DriverObserver
 import com.anythingplayer.platform.NowPlaying
 import com.anythingplayer.platform.ProgressReading
 import com.anythingplayer.platform.RemoteOutput
+import com.anythingplayer.platform.receiverMimeType
 import com.google.android.gms.cast.MediaError
 import com.google.android.gms.cast.MediaInfo
 import com.google.android.gms.cast.MediaStatus
@@ -291,30 +291,10 @@ internal class CastOutput(
       MediaItem.Builder()
         .setMediaId(contentId)
         .setUri(request.source.uri)
-        .setMimeType(mimeType(request.source.uri))
+        .setMimeType(receiverMimeType(request.source.uri))
         .setMediaMetadata(metadata.build())
     // An explicit live configuration is how Media3 marks a stream as live for the receiver.
     if (request.source.liveHint == true) builder.setLiveConfiguration(MediaItem.LiveConfiguration.Builder().build())
     return builder.build()
-  }
-
-  companion object {
-    /**
-     * What a receiver needs to pick a decoder: from the URL's extension, else
-     * `audio/mpeg` (most radio streams are MP3 and receivers sniff the rest).
-     */
-    internal fun mimeType(uri: String): String {
-      val path = uri.substringBefore('#').substringBefore('?').lowercase()
-      return when {
-        path.endsWith(".m3u8") -> MimeTypes.APPLICATION_M3U8
-        path.endsWith(".mpd") -> MimeTypes.APPLICATION_MPD
-        path.endsWith(".aac") -> "audio/aac"
-        path.endsWith(".m4a") || path.endsWith(".mp4") -> "audio/mp4"
-        path.endsWith(".ogg") || path.endsWith(".oga") || path.endsWith(".opus") -> "audio/ogg"
-        path.endsWith(".flac") -> "audio/flac"
-        path.endsWith(".wav") -> "audio/wav"
-        else -> MimeTypes.AUDIO_MPEG
-      }
-    }
   }
 }

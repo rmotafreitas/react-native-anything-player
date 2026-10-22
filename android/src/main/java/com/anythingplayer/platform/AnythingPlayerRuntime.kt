@@ -36,9 +36,12 @@ private const val FOCUS_RETRY_ATTEMPTS = 8
 
 /**
  * Process-wide coordination shared by every player: audio focus (one per app),
- * connectivity, app foreground state, the recovery wake lock, and the Media3
- * session service. Everything mutating runs on the main thread; [players] is
- * also read from the JS thread by the synchronous getters.
+ * connectivity, app foreground state, the recovery wake lock, the Media3
+ * session service, where the audio goes (the output route, the Cast session)
+ * and the JS instance events go to, if any. Players outlive that instance, so
+ * all of it works with no JS: a voice request can create and start a player.
+ * Everything mutating runs on the main thread; [players] is also read from the
+ * JS thread by the synchronous getters.
  */
 @OptIn(UnstableApi::class)
 internal object AnythingPlayerRuntime : FocusListener {
