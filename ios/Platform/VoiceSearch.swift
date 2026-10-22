@@ -39,10 +39,24 @@ final class VoiceSearch {
     self.runtime = runtime
   }
 
-  func setCatalog(items: [[String: Any]], playerId: String, playerOptions: [String: Any]) {
-    catalog.set(items: items, playerId: playerId, playerOptions: playerOptions)
+  func setCatalog(items: [[String: Any]], playerId: String, playerOptions: [String: Any], browse: [String: Any] = [:]) {
+    catalog.set(items: items, playerId: playerId, playerOptions: playerOptions, browse: browse)
     AnythingPlayerSystem.updateVocabulary(catalog.vocabulary)
     AnythingPlayerSystem.catalogDidChange()
+  }
+
+  func setFavorites(_ ids: [String]) {
+    catalog.setFavorites(ids)
+    AnythingPlayerSystem.catalogDidChange()
+  }
+
+  /// A person picked a catalog item in the car or on a watch: plays it on the
+  /// voice player and reports `searchPlay` with `origin: 'browse'`. Completes
+  /// once audio starts (≤ 8 s).
+  func handleBrowse(itemId: String, completion: @escaping (SiriOutcome) -> Void) {
+    guard let item = catalog.item(id: itemId) else { return completion(.noMatch) }
+    let request: [String: Any] = ["query": item["title"] as? String ?? "", "origin": "browse"]
+    playForSiri(item, request: request, completion: completion)
   }
 
   func search(_ request: [String: Any]) -> [[String: Any]] {
@@ -116,7 +130,8 @@ final class VoiceSearch {
     CatalogQuery(
       query: request["query"] as? String ?? "", title: request["title"] as? String,
       artist: request["artist"] as? String, album: request["album"] as? String,
-      genre: request["genre"] as? String, focus: request["focus"] as? String)
+      genre: request["genre"] as? String, focus: request["focus"] as? String,
+      group: request["group"] as? String)
   }
 
   private func resolveItem(_ request: [String: Any], completion: @escaping ([String: Any]?) -> Void) {

@@ -31,6 +31,8 @@ struct SearchableItem: Equatable {
   var genre: String? = nil
   var keywords: [String]? = nil
   var kind: String? = nil
+  /// The browse group; only filtered by `CatalogQuery.group`, never matched by text.
+  var group: String? = nil
 }
 
 /// A search request (`query` may be empty when structured fields are given).
@@ -41,6 +43,8 @@ struct CatalogQuery: Equatable {
   var album: String? = nil
   var genre: String? = nil
   var focus: String? = nil
+  /// Only items in this group or its subgroups are searched (`BrowseTree.isInGroup`).
+  var group: String? = nil
 }
 
 /// The outcome of a search.
@@ -111,7 +115,9 @@ enum CatalogSearch {
       !structured.title.isEmpty || !structured.artist.isEmpty
       || !structured.album.isEmpty || !structured.genre.isEmpty
     var scored: [(index: Int, score: Int)] = []
+    let scoped = !BrowseTree.groupSegments(request.group).isEmpty
     for (index, raw) in items.enumerated() {
+      if scoped && !BrowseTree.isInGroup(raw.group, request.group) { continue }
       let item = tokenizeItem(raw)
       let extra = structuredScores(structured, item)
       let score: Int

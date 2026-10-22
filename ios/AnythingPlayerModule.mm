@@ -289,6 +289,11 @@ static void RNAPInstallIntentHandler(void)
   [_bridge setCatalog:items options:options resolve:resolve reject:reject];
 }
 
+- (void)setFavorites:(NSArray *)ids resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject
+{
+  [_bridge setFavorites:ids resolve:resolve reject:reject];
+}
+
 - (void)searchCatalog:(NSDictionary *)request resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject
 {
   [_bridge searchCatalog:request resolve:resolve reject:reject];

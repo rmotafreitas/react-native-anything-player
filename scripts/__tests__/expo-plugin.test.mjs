@@ -34,6 +34,7 @@ test('defaults: background audio and the assistant, no Cast, no Siri', () => {
     siri: null,
     sound: false,
     assistant: true,
+    car: false,
   });
   assert.equal(
     helpers.resolveOptions({ backgroundAudio: false }).backgroundAudio,
@@ -348,5 +349,77 @@ test('App Intents: the app target named after the project, or none when ambiguou
   assert.throws(
     () => appIntents.addAppIntentsSource(project, { projectName: 'MyApp' }),
     /several app targets/
+  );
+});
+
+test('car: CarPlay audio entitlement, scene, and the build flags', () => {
+  const on = helpers.resolveOptions({ car: true });
+  const off = helpers.resolveOptions({});
+  assert.equal(on.car, true);
+  assert.deepEqual(helpers.applyEntitlements({ a: 1 }, on), {
+    'a': 1,
+    'com.apple.developer.carplay-audio': true,
+  });
+  assert.deepEqual(
+    helpers.applyEntitlements(
+      {},
+      helpers.resolveOptions({ car: true, siri: true })
+    ),
+    {
+      'com.apple.developer.siri': true,
+      'com.apple.developer.carplay-audio': true,
+    }
+  );
+  assert.deepEqual(helpers.applyPodfileProperties({}, on), {
+    'rnap.car': 'true',
+  });
+  assert.deepEqual(
+    helpers.applyPodfileProperties({ 'rnap.car': 'true' }, off),
+    {}
+  );
+  const gradle = helpers.applyGradleProperties([], on);
+  assert.deepEqual(gradle, [
+    { type: 'property', key: 'rnapCar', value: 'true' },
+  ]);
+  assert.deepEqual(helpers.applyGradleProperties(gradle, off), []);
+});
+
+test("car: CarPlay's scene joins the manifest, keeping the phone's, once", () => {
+  const window = {
+    UISceneConfigurationName: 'Default Configuration',
+    UISceneDelegateClassName: '$(PRODUCT_MODULE_NAME).SceneDelegate',
+  };
+  const plist = {
+    UIApplicationSceneManifest: {
+      UIApplicationSupportsMultipleScenes: false,
+      UISceneConfigurations: { UIWindowSceneSessionRoleApplication: [window] },
+    },
+  };
+  assert.equal(helpers.hasWindowScene(plist), true);
+  assert.equal(helpers.hasWindowScene({}), false);
+  const resolved = helpers.resolveOptions({ car: true });
+  const once = helpers.applyInfoPlist(plist, resolved);
+  const manifest = once.UIApplicationSceneManifest;
+  assert.equal(manifest.UIApplicationSupportsMultipleScenes, true);
+  assert.deepEqual(
+    manifest.UISceneConfigurations.UIWindowSceneSessionRoleApplication,
+    [window]
+  );
+  assert.deepEqual(
+    manifest.UISceneConfigurations
+      .CPTemplateApplicationSceneSessionRoleApplication,
+    [
+      {
+        UISceneClassName: 'CPTemplateApplicationScene',
+        UISceneConfigurationName: 'RNAP CarPlay',
+        UISceneDelegateClassName: 'RNAPCarPlaySceneDelegate',
+      },
+    ]
+  );
+  assert.deepEqual(helpers.applyInfoPlist(once, resolved), once);
+  assert.equal(
+    helpers.applyInfoPlist({}, helpers.resolveOptions({}))
+      .UIApplicationSceneManifest,
+    undefined
   );
 });

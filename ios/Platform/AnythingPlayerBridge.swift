@@ -304,9 +304,22 @@ public final class AnythingPlayerBridge: NSObject {
     let parsed = items.compactMap { $0 as? [String: Any] }
     let playerId = (options["playerId"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "default"
     let playerOptions = options["playerOptions"] as? [String: Any] ?? [:]
+    let browse = options["browse"] as? [String: Any] ?? [:]
     let runtime = self.runtime
     DispatchQueue.main.async {
-      runtime.voice.setCatalog(items: parsed, playerId: playerId, playerOptions: playerOptions)
+      runtime.voice.setCatalog(items: parsed, playerId: playerId, playerOptions: playerOptions, browse: browse)
+      resolve(nil)
+    }
+  }
+
+  @objc(setFavorites:resolve:reject:)
+  public func setFavorites(
+    _ ids: NSArray, resolve: @escaping (Any?) -> Void, reject: @escaping (String, String, NSError?) -> Void
+  ) {
+    let parsed = ids.compactMap { $0 as? String }
+    let runtime = self.runtime
+    DispatchQueue.main.async {
+      runtime.voice.setFavorites(parsed)
       resolve(nil)
     }
   }
