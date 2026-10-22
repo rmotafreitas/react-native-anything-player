@@ -112,6 +112,7 @@ final class BrowseTreeTests: XCTestCase {
       more: titles["more"] ?? BrowseTitles().more)
     options.rootLimit = raw["rootLimit"] as? Int ?? BrowseTree.defaultRootLimit
     options.foldersOnly = raw["foldersOnly"] as? Bool ?? false
+    options.folderLimit = raw["folderLimit"] as? Int ?? 0
     return BrowseTree(items, options: options, recentIds: testCase["recent"] as? [String] ?? [])
   }
 }

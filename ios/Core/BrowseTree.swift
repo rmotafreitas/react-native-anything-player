@@ -24,8 +24,19 @@ import Foundation
 // items (catalog order). "Recently played" is newest first, "Favorites" in
 // the app's order; both only hold items still in the catalog.
 //
-// Ids. Folders are `rnap:root`, `rnap:recent`, `rnap:favorites`, `rnap:more`
-// and `rnap:group:<path>`; an item's id is its catalog id (folders win a clash).
+// Long folders. A browser that cannot page (Android Auto, Android Automotive)
+// sets `folderLimit`: a folder with more children than that is split, in
+// order, into subfolders titled by position ("1–100", "101–200"…), each
+// holding at most `folderLimit` children; more than `folderLimit` of those
+// are split again ("1–10000"…). 0 never splits. The root's tab bar is never
+// split; a flat root (not `foldersOnly`) is. (CarPlay pages its lists itself.)
+//
+// Ids. Folders are `rnap:root`, `rnap:recent`, `rnap:favorites`, `rnap:more`,
+// `rnap:group:<path>` and `rnap:part:<from>-<to>:<folder id>` (a slice of a
+// long folder); an item's id is its catalog id. The prefix `rnap:` is
+// reserved for folders: `setCatalog` rejects catalog ids that start with it,
+// and the tree leaves out such an item (a catalog saved before that rule).
+// So a media id is a folder or an item, never both.
 //
 // Style. A folder's items are shown as a grid when it directly holds items
 // and all of them are stations or albums, else as a list.
@@ -59,6 +70,8 @@ struct BrowseOptions: Equatable {
   var rootLimit = BrowseTree.defaultRootLimit
   /// The browser lists only folders in the root.
   var foldersOnly = false
+  /// The most children a folder shows before it is split into slices (0: never; a browser that cannot page).
+  var folderLimit = 0
 }
 
 /// A folder or an item in the tree. `itemId` is set for items.
@@ -84,9 +97,15 @@ struct BrowseTree {
   static let favoritesId = "rnap:favorites"
   static let moreId = "rnap:more"
   static let groupPrefix = "rnap:group:"
+  static let partPrefix = "rnap:part:"
+  /// Folder ids start with this; catalog ids must not.
+  static let reservedPrefix = "rnap:"
+  /// The most children RNAP shows in one folder of a browser that cannot page (Android Auto, Automotive).
+  static let defaultFolderLimit = 100
   /// Android Auto's and CarPlay audio's tab limit.
   static let defaultRootLimit = 4
   private static let minRootLimit = 2
+  private static let minFolderLimit = 2
   private static let maxDepth = 8
 
   private struct Entry {
@@ -106,6 +125,7 @@ struct BrowseTree {
   }
 
   private let options: BrowseOptions
+  private let folderLimit: Int
   private let entries: [Entry]
   private var byId: [String: Entry] = [:]
   private var folders: [String: Folder] = [:]
@@ -113,7 +133,9 @@ struct BrowseTree {
 
   init(_ items: [BrowseItem], options: BrowseOptions = BrowseOptions(), recentIds: [String] = []) {
     self.options = options
-    entries = items.map { Entry(item: $0, segments: BrowseTree.groupSegments($0.group)) }
+    folderLimit = options.folderLimit > 0 ? max(options.folderLimit, Self.minFolderLimit) : 0
+    entries = items.filter { !$0.id.hasPrefix(Self.reservedPrefix) }
+      .map { Entry(item: $0, segments: BrowseTree.groupSegments($0.group)) }
     for entry in entries where byId[entry.item.id] == nil { byId[entry.item.id] = entry }
 
     let limit = max(options.rootLimit, Self.minRootLimit)
@@ -134,7 +156,7 @@ struct BrowseTree {
     for name in orderedTopLevel() { tabs.append(addGroupFolder([name])) }
 
     if tabs.isEmpty && !options.foldersOnly {
-      rootChildren = ungrouped.map { Child.leaf($0) }
+      rootChildren = fit(Self.rootId, ungrouped.map { Child.leaf($0) }, offset: 0)
     } else {
       let fits = tabs.count + (ungrouped.isEmpty ? 0 : 1) <= limit
       let kept = fits ? tabs : Array(tabs.prefix(limit - 1))
@@ -203,10 +225,27 @@ struct BrowseTree {
     return ids.filter { seen.insert($0).inserted }
   }
 
-  private mutating func addFolder(_ id: String, _ title: String, _ children: [Child]) -> Folder {
-    let folder = Folder(id: id, title: title, children: children)
+  private mutating func addFolder(_ id: String, _ title: String, _ children: [Child], offset: Int = 0) -> Folder {
+    let folder = Folder(id: id, title: title, children: fit(id, children, offset: offset))
     folders[id] = folder
     return folder
+  }
+
+  /// `children` as they are shown in folder `parentId`: all of them, or slices of `folderLimit` (the first child is number `offset` + 1).
+  private mutating func fit(_ parentId: String, _ children: [Child], offset: Int) -> [Child] {
+    if folderLimit == 0 || children.count <= folderLimit { return children }
+    var size = folderLimit
+    while (children.count + size - 1) / size > folderLimit { size *= folderLimit }
+    var slices: [Child] = []
+    var index = 0
+    while index < children.count {
+      let part = Array(children[index..<min(index + size, children.count)])
+      let from = offset + index + 1
+      let to = from + part.count - 1
+      slices.append(.sub(addFolder("\(Self.partPrefix)\(from)-\(to):\(parentId)", from == to ? "\(from)" : "\(from)–\(to)", part, offset: from - 1).id))
+      index += size
+    }
+    return slices
   }
 
   private func orderedTopLevel() -> [String] {

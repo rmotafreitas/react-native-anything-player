@@ -252,9 +252,109 @@
       }
     },
     {
-      "name": "an item may be listed under a folder-like id",
-      "items": [{ "id": "rnap:group:Jazz", "title": "Impostor", "group": "Jazz" }],
-      "children": { "rnap:group:Jazz": [["item", "rnap:group:Jazz", "Impostor"]] }
+      "name": "a catalog id that starts with rnap: is left out, so a media id is never a folder and an item",
+      "items": [
+        { "id": "rnap:group:Jazz", "title": "Impostor", "group": "Jazz" },
+        { "id": "rnap:more", "title": "Lookalike" },
+        { "id": "ok", "title": "Fine", "group": "Jazz" }
+      ],
+      "children": { "rnap:group:Jazz": [["item", "ok", "Fine"]], "rnap:root": [["folder", "rnap:group:Jazz", "Jazz"]] },
+      "missing": ["rnap:more"]
+    },
+    {
+      "name": "a folder with more children than the limit is split into slices, and a long slice again",
+      "items": [
+        { "id": "g0", "title": "G0", "group": "G" },
+        { "id": "g1", "title": "G1", "group": "G" },
+        { "id": "g2", "title": "G2", "group": "G" },
+        { "id": "g3", "title": "G3", "group": "G" },
+        { "id": "g4", "title": "G4", "group": "G" }
+      ],
+      "options": { "folderLimit": 2 },
+      "children": {
+        "rnap:root": [["folder", "rnap:group:G", "G"]],
+        "rnap:group:G": [["folder", "rnap:part:1-4:rnap:group:G", "1–4"], ["folder", "rnap:part:5-5:rnap:group:G", "5"]],
+        "rnap:part:1-4:rnap:group:G": [["folder", "rnap:part:1-2:rnap:part:1-4:rnap:group:G", "1–2"], ["folder", "rnap:part:3-4:rnap:part:1-4:rnap:group:G", "3–4"]],
+        "rnap:part:1-2:rnap:part:1-4:rnap:group:G": [["item", "g0", "G0"], ["item", "g1", "G1"]],
+        "rnap:part:3-4:rnap:part:1-4:rnap:group:G": [["item", "g2", "G2"], ["item", "g3", "G3"]],
+        "rnap:part:5-5:rnap:group:G": [["item", "g4", "G4"]]
+      },
+      "styles": { "rnap:part:1-2:rnap:part:1-4:rnap:group:G": "grid", "rnap:part:1-4:rnap:group:G": "list" }
+    },
+    {
+      "name": "slices are numbered by position in the whole folder, at every depth",
+      "items": [
+        { "id": "h0", "title": "H0", "group": "H" },
+        { "id": "h1", "title": "H1", "group": "H" },
+        { "id": "h2", "title": "H2", "group": "H" },
+        { "id": "h3", "title": "H3", "group": "H" },
+        { "id": "h4", "title": "H4", "group": "H" },
+        { "id": "h5", "title": "H5", "group": "H" },
+        { "id": "h6", "title": "H6", "group": "H" },
+        { "id": "h7", "title": "H7", "group": "H" },
+        { "id": "h8", "title": "H8", "group": "H" }
+      ],
+      "options": { "folderLimit": 2 },
+      "children": {
+        "rnap:group:H": [["folder", "rnap:part:1-8:rnap:group:H", "1–8"], ["folder", "rnap:part:9-9:rnap:group:H", "9"]],
+        "rnap:part:1-8:rnap:group:H": [["folder", "rnap:part:1-4:rnap:part:1-8:rnap:group:H", "1–4"], ["folder", "rnap:part:5-8:rnap:part:1-8:rnap:group:H", "5–8"]],
+        "rnap:part:5-8:rnap:part:1-8:rnap:group:H": [["folder", "rnap:part:5-6:rnap:part:5-8:rnap:part:1-8:rnap:group:H", "5–6"], ["folder", "rnap:part:7-8:rnap:part:5-8:rnap:part:1-8:rnap:group:H", "7–8"]],
+        "rnap:part:7-8:rnap:part:5-8:rnap:part:1-8:rnap:group:H": [["item", "h6", "H6"], ["item", "h7", "H7"]]
+      }
+    },
+    {
+      "name": "a folder with exactly the limit is not split; the tab bar is never split",
+      "items": [
+        { "id": "a", "title": "A", "group": "One" },
+        { "id": "b", "title": "B", "group": "One" },
+        { "id": "c", "title": "C", "group": "One" },
+        { "id": "d", "title": "D", "group": "Two" },
+        { "id": "e", "title": "E", "group": "Three" }
+      ],
+      "options": { "folderLimit": 3, "rootLimit": 2, "foldersOnly": true },
+      "children": {
+        "rnap:root": [["folder", "rnap:group:One", "One"], ["folder", "rnap:more", "More"]],
+        "rnap:group:One": [["item", "a", "A"], ["item", "b", "B"], ["item", "c", "C"]],
+        "rnap:more": [["folder", "rnap:group:Two", "Two"], ["folder", "rnap:group:Three", "Three"]]
+      }
+    },
+    {
+      "name": "a flat root (a browser not limited to folders) is split too",
+      "items": [
+        { "id": "a", "title": "A" },
+        { "id": "b", "title": "B" },
+        { "id": "c", "title": "C" }
+      ],
+      "options": { "folderLimit": 2 },
+      "children": {
+        "rnap:root": [["folder", "rnap:part:1-2:rnap:root", "1–2"], ["folder", "rnap:part:3-3:rnap:root", "3"]],
+        "rnap:part:1-2:rnap:root": [["item", "a", "A"], ["item", "b", "B"]],
+        "rnap:part:3-3:rnap:root": [["item", "c", "C"]]
+      }
+    },
+    {
+      "name": "a folder holding subfolders and items is split by position, subfolders first",
+      "items": [
+        { "id": "x", "title": "X", "group": "P/Q" },
+        { "id": "y", "title": "Y", "group": "P/R" },
+        { "id": "z", "title": "Z", "group": "P" }
+      ],
+      "options": { "folderLimit": 2 },
+      "children": {
+        "rnap:group:P": [["folder", "rnap:part:1-2:rnap:group:P", "1–2"], ["folder", "rnap:part:3-3:rnap:group:P", "3"]],
+        "rnap:part:1-2:rnap:group:P": [["folder", "rnap:group:P/Q", "Q"], ["folder", "rnap:group:P/R", "R"]],
+        "rnap:part:3-3:rnap:group:P": [["item", "z", "Z"]]
+      }
+    },
+    {
+      "name": "no limit never splits",
+      "items": [
+        { "id": "a", "title": "A", "group": "G" },
+        { "id": "b", "title": "B", "group": "G" },
+        { "id": "c", "title": "C", "group": "G" }
+      ],
+      "children": { "rnap:group:G": [["item", "a", "A"], ["item", "b", "B"], ["item", "c", "C"]] },
+      "missing": ["rnap:part:1-2:rnap:group:G"]
     }
   ]
 }

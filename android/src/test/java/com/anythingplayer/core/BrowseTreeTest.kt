@@ -117,6 +117,7 @@ class BrowseTreeTest {
         titles = BrowseTitles(titles.optString("recent", defaults.recent), titles.optString("favorites", defaults.favorites), titles.optString("more", defaults.more)),
         rootLimit = o.optInt("rootLimit", BrowseTree.DEFAULT_ROOT_LIMIT),
         foldersOnly = o.optBoolean("foldersOnly", false),
+        folderLimit = o.optInt("folderLimit", 0),
       )
     return BrowseTree(items, options, c.optJSONArray("recent")?.strings() ?: emptyList())
   }

@@ -24,8 +24,19 @@ package com.anythingplayer.core
 // items (catalog order). "Recently played" is newest first, "Favorites" in
 // the app's order; both only hold items still in the catalog.
 //
-// Ids. Folders are `rnap:root`, `rnap:recent`, `rnap:favorites`, `rnap:more`
-// and `rnap:group:<path>`; an item's id is its catalog id (folders win a clash).
+// Long folders. A browser that cannot page (Android Auto, Android Automotive)
+// sets `folderLimit`: a folder with more children than that is split, in
+// order, into subfolders titled by position ("1–100", "101–200"…), each
+// holding at most `folderLimit` children; more than `folderLimit` of those
+// are split again ("1–10000"…). 0 never splits. The root's tab bar is never
+// split; a flat root (not `foldersOnly`) is.
+//
+// Ids. Folders are `rnap:root`, `rnap:recent`, `rnap:favorites`, `rnap:more`,
+// `rnap:group:<path>` and `rnap:part:<from>-<to>:<folder id>` (a slice of a
+// long folder); an item's id is its catalog id. The prefix `rnap:` is
+// reserved for folders: `setCatalog` rejects catalog ids that start with it,
+// and the tree leaves out such an item (a catalog saved before that rule).
+// So a media id is a folder or an item, never both.
 //
 // Style. A folder's items are shown as a grid when it directly holds items
 // and all of them are stations or albums, else as a list.
@@ -59,6 +70,8 @@ data class BrowseOptions(
   val rootLimit: Int = BrowseTree.DEFAULT_ROOT_LIMIT,
   /** The browser lists only folders in the root. */
   val foldersOnly: Boolean = false,
+  /** The most children a folder shows before it is split into slices (0: never; a browser that cannot page). */
+  val folderLimit: Int = 0,
 )
 
 /** A folder or an item in the tree. [itemId] is set for items. */
@@ -85,10 +98,11 @@ class BrowseTree(items: List<BrowseItem>, private val options: BrowseOptions = B
     class Leaf(val entry: Entry) : Child()
   }
 
-  private val entries = items.map { Entry(it, groupSegments(it.group)) }
+  private val entries = items.filterNot { it.id.startsWith(RESERVED_PREFIX) }.map { Entry(it, groupSegments(it.group)) }
   private val byId = HashMap<String, Entry>().also { map -> entries.forEach { map.putIfAbsent(it.item.id, it) } }
   private val folders = LinkedHashMap<String, Folder>()
   private val rootChildren: List<Child>
+  private val folderLimit = if (options.folderLimit > 0) options.folderLimit.coerceAtLeast(MIN_FOLDER_LIMIT) else 0
 
   init {
     val limit = options.rootLimit.coerceAtLeast(MIN_ROOT_LIMIT)
@@ -107,7 +121,7 @@ class BrowseTree(items: List<BrowseItem>, private val options: BrowseOptions = B
     for (name in tops) tabs += groupFolder(listOf(name))
     rootChildren =
       if (tabs.isEmpty() && !options.foldersOnly) {
-        ungrouped.map { Child.Leaf(it) }
+        fit(ROOT_ID, ungrouped.map { Child.Leaf(it) }, 0)
       } else {
         val fits = tabs.size + (if (ungrouped.isEmpty()) 0 else 1) <= limit
         val kept = if (fits) tabs else tabs.take(limit - 1)
@@ -122,7 +136,20 @@ class BrowseTree(items: List<BrowseItem>, private val options: BrowseOptions = B
       }
   }
 
-  private fun folder(id: String, title: String, children: List<Child>): Folder = Folder(id, title, children).also { folders[id] = it }
+  private fun folder(id: String, title: String, children: List<Child>, offset: Int = 0): Folder =
+    Folder(id, title, fit(id, children, offset)).also { folders[id] = it }
+
+  /** [children] as they are shown in folder [parentId]: all of them, or slices of [folderLimit] (the first child is number [offset] + 1). */
+  private fun fit(parentId: String, children: List<Child>, offset: Int): List<Child> {
+    if (folderLimit == 0 || children.size <= folderLimit) return children
+    var size = folderLimit.toLong()
+    while ((children.size + size - 1) / size > folderLimit) size *= folderLimit
+    return children.chunked(size.toInt()).mapIndexed { index, part ->
+      val from = offset + index * size.toInt() + 1
+      val to = from + part.size - 1
+      Child.Sub(folder("$PART_PREFIX$from-$to:$parentId", if (from == to) "$from" else "$from–$to", part, from - 1).id)
+    }
+  }
 
   private fun orderedTopLevel(): List<String> {
     val present = LinkedHashSet<String>()
@@ -198,9 +225,15 @@ class BrowseTree(items: List<BrowseItem>, private val options: BrowseOptions = B
     const val FAVORITES_ID = "rnap:favorites"
     const val MORE_ID = "rnap:more"
     const val GROUP_PREFIX = "rnap:group:"
+    const val PART_PREFIX = "rnap:part:"
+    /** Folder ids start with this; catalog ids must not. */
+    const val RESERVED_PREFIX = "rnap:"
+    /** The most children RNAP shows in one folder of a browser that cannot page (Android Auto, Automotive). */
+    const val DEFAULT_FOLDER_LIMIT = 100
     /** Android Auto's and CarPlay audio's tab limit. */
     const val DEFAULT_ROOT_LIMIT = 4
     private const val MIN_ROOT_LIMIT = 2
+    private const val MIN_FOLDER_LIMIT = 2
     private const val MAX_DEPTH = 8
 
     /** `"Podcasts/Daily"` → `["Podcasts", "Daily"]`; blank segments are dropped. */
