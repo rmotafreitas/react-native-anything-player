@@ -102,6 +102,12 @@ export const SECTIONS: DocSection[] = [
           'Google Cast, AirPlay and the system output picker in React Native and on the web: where the audio goes, the Cast button, and what casting keeps working.',
       },
       {
+        link: '/docs/sound',
+        text: 'Sound effects',
+        description:
+          'Play short effects with low latency in React Native and on the web: many copies at once, volume, rate and pan, mixed with other audio, no media session.',
+      },
+      {
         link: '/docs/voice',
         text: 'Voice assistants',
         description:

@@ -120,6 +120,24 @@ One engine on every column, held to [the same conformance suite](../conformance/
 6. Files and streams; not HLS.
 7. Streams RNAP reads and local files.
 
+## Sound effects
+
+`Sound` ([guide](sound.md)): short effects decoded into memory, played with low latency, many at once.
+
+| | iOS | Android | Chromium | Firefox | Safari | iPhone, iPad |
+|---|---|---|---|---|---|---|
+| `Sound.load()`, `play()` with volume, rate, pan and loop | ✓ ¹ | ✓ ¹ | ✓ | ✓ | ✓ | ✓ |
+| Several copies at once, the oldest stopped when all are busy | ✓ ¹ | ✓ ¹ | ✓ | ✓ | ✓ | ✓ |
+| Mixes with other audio, no media session or audio focus | ✓ ¹ | ✓ ¹ | ✓ | ✓ | ✓ | ✓ |
+| `respectSilentSwitch` | ✓ ¹ | – | – | – | – | – ² |
+| Needs a user gesture (`AUTOPLAY_BLOCKED`) | – | – | ✓ | ✓ | ✓ | ✓ |
+| Loads a `Blob` or `File` | – | – | ✓ | ✓ | ✓ | ✓ |
+| Loads a `require()`d asset | ✓ ¹ | ✓ ¹ | ◐ ³ | ◐ ³ | ◐ ³ | ◐ ³ |
+
+1. Opt-in: a build option (`sound` in the Expo plugin), so apps that play no effects do not ship it. Built and unit-tested; not yet exercised on a device †.
+2. The browser decides: iPhone Safari silences Web Audio with the ringer switch.
+3. In Expo web and React Native Web, through the bundler's asset URL; not in plain pages (pass a URL).
+
 ## Outputs and casting
 
 | | iOS | Android | Chromium | Firefox | Safari | iPhone, iPad |

@@ -185,6 +185,10 @@ player.play().catch((error) => {
 });
 ```
 
+## Sound effects
+
+`Sound` plays short effects through Web Audio, with no build step and no Player: `import { Sound } from 'react-native-anything-player/sound'` (or from `/web` or `/react`). The audio context starts on the first tap, click or key press, and `play()` before one throws `AUTOPLAY_BLOCKED`. The [Sound guide](sound.md) has the API.
+
 ## Lock screen and media keys
 
 The browser's Media Session shows the active player (title, artist, album, artwork, position) on the lock screen, in the notification shade on Android, and on media keys and headsets. The rules are those of the [native lock screen](background-and-system.md#lock-screen-notification-and-hardware-controls): play, pause, stop and seek are handled by the engine; `next`, `previous`, `skipForward` and `skipBackward` are forwarded as `remoteCommand` when listed in `mediaSession.commands`; and a Play with nothing loaded is forwarded so the app can choose what to load.

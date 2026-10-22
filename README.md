@@ -115,6 +115,7 @@ function NowPlaying() {
 | [Events](docs/events.md) | Status, events, ordering and threading guarantees |
 | [Feature matrix](docs/features.md) | What works where: iOS, Android and the web, feature by feature |
 | [Web](docs/web.md) | Expo web, React Native Web, React (Vite, Next.js), plain pages: setup, CORS, autoplay, browser support |
+| [Sound effects](docs/sound.md) | `Sound`: short effects with low latency, many at once, mixed with other audio, on iOS, Android and the web |
 | [Visualizer](docs/visualizer.md) | Decoded-audio windows for oscilloscopes and meters (iOS streams included) |
 | [Errors](docs/errors.md) | Normalized error codes |
 | [Configuration](docs/configuration.md) | Every `PlayerOptions` field |

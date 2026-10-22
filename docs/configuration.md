@@ -50,8 +50,10 @@ App-wide settings live outside `Player`: the voice catalog (`setCatalog`, [Voice
 | `AndroidManifest.xml` `<application>` | `<meta-data android:name="com.anythingplayer.CAST_RECEIVER_ID" android:value="…"/>` | your own Cast receiver (default: the Default Media Receiver) |
 | `pod install` | `RNAP_CAST=1` (or `"rnap.cast": "true"` in `ios/Podfile.properties.json`) | build Google Cast in on iOS |
 | `Info.plist` | `RNAPCastReceiverId` | your own Cast receiver on iOS |
+| `android/gradle.properties` | `rnapSound=true` | build the [Sound API](sound.md) in (a `SoundPool`: no extra library) |
+| `pod install` | `RNAP_SOUND=1` (or `"rnap.sound": "true"` in `ios/Podfile.properties.json`) | build the Sound API in on iOS |
 | Expo config plugin | `["react-native-anything-player", { "backgroundAudio": false }]` | do not add the iOS `audio` background mode |
-| Expo config plugin | `cast`, `siri`, `assistant` | Google Cast, Siri (extension and shortcuts), Google Assistant / Gemini: see [Getting started](getting-started.md#expo) |
+| Expo config plugin | `cast`, `siri`, `assistant`, `sound` | Google Cast, Siri (extension and shortcuts), Google Assistant / Gemini, the Sound API: see [Getting started](getting-started.md#expo) |
 
 The recovery timings that are *not* configurable are fixed on purpose; [recovery.md](recovery.md) explains each.
 

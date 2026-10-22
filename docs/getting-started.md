@@ -51,6 +51,7 @@ The plugin adds the iOS `audio` background mode and lets Google Assistant and Ge
 |---|---|---|
 | `backgroundAudio` | `true` | iOS `audio` background mode. `false` if you only play in the foreground |
 | `cast` | off | `true` (or `{ "receiverApplicationId": "…" }`) builds Google Cast in ([Casting & AirPlay](routes-and-casting.md#google-cast)) |
+| `sound` | off | `true` builds the [Sound API](sound.md#enabling-it) in (short effects with low latency) |
 | `siri` | off | `true` adds the Siri capability and the extension that hands "play X on MyApp" to the app ([Voice assistants](voice.md#siri)) |
 | `assistant` | `true` | the Android intent filter and `MainActivity` hook for Google Assistant and Gemini ([Voice assistants](voice.md#google-assistant-gemini)) |
 

@@ -85,8 +85,8 @@ jobs:
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
       - name: Android lint and Kotlin engine conformance + ICY tests
         run: cd example/android && ./gradlew :react-native-anything-player:lintDebug :react-native-anything-player:testDebugUnitTest --no-daemon --build-cache
-      - name: Android lint and tests with Cast built in
-        run: cd example/android && ./gradlew :react-native-anything-player:lintDebug :react-native-anything-player:testDebugUnitTest -PrnapCast=true --no-daemon --build-cache
+      - name: Android lint and tests with Cast and Sound built in
+        run: cd example/android && ./gradlew :react-native-anything-player:lintDebug :react-native-anything-player:testDebugUnitTest -PrnapCast=true -PrnapSound=true --no-daemon --build-cache
 
   build-android:
     timeout-minutes: 45
@@ -144,13 +144,13 @@ jobs:
       # The Cast SDKs are opt-in (`rnapCast`): build with them linked too, so
       # neither configuration breaks. Skipped when turbo already proved the
       # sources unchanged.
-      - name: Build example for Android with Google Cast
+      - name: Build example for Android with Google Cast and Sound
         if: env.turbo_cache_hit != 1
         working-directory: example/android
         env:
           JAVA_OPTS: "-XX:MaxHeapSize=6g"
         run: |
-          ./gradlew assembleDebug -PrnapCast=true -PreactNativeArchitectures=arm64-v8a --no-daemon --console=plain
+          ./gradlew assembleDebug -PrnapCast=true -PrnapSound=true -PreactNativeArchitectures=arm64-v8a --no-daemon --console=plain
 
   build-ios:
     timeout-minutes: 60
@@ -167,6 +167,8 @@ jobs:
       XCODE_VERSION: 26
       TURBO_CACHE_DIR: .turbo/ios-cast-${{ matrix.cast }}
       RNAP_CAST: ${{ matrix.cast == 'on' && '1' || '0' }}
+      # The Sound API is opt-in too: built in the same leg as Cast.
+      RNAP_SOUND: ${{ matrix.cast == 'on' && '1' || '0' }}
       RCT_USE_RN_DEP: 1
       RCT_USE_PREBUILT_RNCORE: 1
 
