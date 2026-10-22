@@ -5,7 +5,7 @@ RNAP's goal is to be the audio library React Native developers pick first: **lig
 ## Where RNAP already wins
 
 - **Bulletproof streaming.** It is the only library that recovers a stream on its own: dead-socket and silent-stall detection, backoff, offline probing, Wi-Fi ↔ cellular handoff, and live-edge re-open. All of it is native, so it keeps working while JS is frozen. RNTP 5, RNTP 4 and expo-audio leave every one of these to app code ([matrix](comparison.md#what-you-get-out-of-the-box)).
-- **Correctness under races.** Generations, sequence-numbered snapshots and ordered events, checked by 59 shared conformance scenarios run against both engines.
+- **Correctness under races.** Generations, sequence-numbered snapshots and ordered events, checked by 80 shared conformance scenarios run against all three engines (Swift, Kotlin, TypeScript).
 - **Radio.** ICY metadata timed to when it is *heard*, charset repair, one connection per stream, paused-stream release, song progress on the lock screen, and a visualizer for iOS live streams (no one else has one).
 - **Lean.** Media3 only on Android, no framework requirement, zero runtime JS dependencies.
 
