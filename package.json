@@ -31,6 +31,7 @@
     "!lib/**/*.map",
     "!lib/typescript/src/web/engine",
     "!lib/typescript/src/web/platform",
+    "src/native",
     "android",
     "ios",
     "*.podspec",
