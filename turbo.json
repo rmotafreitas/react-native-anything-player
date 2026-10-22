@@ -36,6 +36,7 @@
         "RCT_REMOVE_LEGACY_ARCH",
         "RCT_USE_RN_DEP",
         "RCT_USE_PREBUILT_RNCORE",
+        "RNAP_CAST",
         "CI_NATIVE_TOOLCHAIN",
         "ImageVersion"
       ],

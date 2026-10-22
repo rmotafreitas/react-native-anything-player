@@ -3,22 +3,12 @@ import Foundation
 /// The Objective-C–visible surface the TurboModule shim (`AnythingPlayerModule.mm`)
 /// calls. Commands hop to the main thread in call order; getters read the
 /// controllers' lock-protected snapshots on the calling (JS) thread.
+///
+/// One bridge per TurboModule instance (a JS reload makes a new one). The
+/// players live in the runtime: the bridge remembers which ones its JS
+/// created or attached to, for `invalidate()`.
 @objc(AnythingPlayerBridge)
 public final class AnythingPlayerBridge: NSObject {
-  /// Set to nil (synchronously) when the module is invalidated; events after
-  /// that are dropped instead of reaching a torn-down emitter.
-  @objc public var eventSink: ((NSDictionary) -> Void)? {
-    get { sinkLock.sync { _eventSink } }
-    set { sinkLock.sync { _eventSink = newValue } }
-  }
-  private var _eventSink: ((NSDictionary) -> Void)?
-  private let sinkLock = NSLock()
-
-  /// Emits under the lock, so once `eventSink` is cleared no emission is in flight.
-  private func send(_ event: NSDictionary) {
-    sinkLock.sync { _eventSink?(event) }
-  }
-
   private let lock = NSLock()
   private var owned = Set<String>()
   private static let counterLock = NSLock()
@@ -26,24 +16,39 @@ public final class AnythingPlayerBridge: NSObject {
 
   private var runtime: AnythingPlayerRuntime { AnythingPlayerRuntime.shared }
 
+  /// Routes every event (players and app-global) to `sink` until `invalidate()`.
+  @objc public func attachEvents(_ sink: @escaping (NSDictionary) -> Void) {
+    runtime.attachEvents(owner: self) { event in sink(event as NSDictionary) }
+  }
+
+  /// `options.id` names the player: if a native player already has it (Siri
+  /// started it, or JS reloaded), this attaches to it — options ignored, the
+  /// first creator wins — and JS mirrors its status (`getStatus`).
   @objc public func createPlayer(_ options: NSDictionary) -> String {
-    let n = Self.counterLock.sync { () -> Int in
-      Self.counter += 1
-      return Self.counter
-    }
-    let id = "ios-\(n)-\(String(UInt64(Date().timeIntervalSince1970 * 1000), radix: 36))"
     let parsed = PlayerOptions(options)
-    lock.sync { _ = owned.insert(id) }
-    DispatchQueue.main.async { [weak self] in
-      guard let self else { return }
-      let runtime = self.runtime
-      runtime.startIfNeeded()
-      let controller = PlayerController(id: id, options: parsed, runtime: runtime) { [weak self] event in
-        self?.send(event as NSDictionary)
+    let id: String
+    let detachable: Bool
+    if let requested = options["id"] as? String, !requested.isEmpty {
+      guard runtime.claim(requested) else {
+        lock.sync { _ = owned.insert(requested) }
+        let runtime = self.runtime
+        DispatchQueue.main.async { runtime.player(requested)?.note("attach", ["note": "options ignored"]) }
+        return requested
       }
-      runtime.register(controller)
-      controller.engine.networkChanged(runtime.networkState, interfaceChanged: false)
+      id = requested
+      detachable = true
+    } else {
+      let n = Self.counterLock.sync { () -> Int in
+        Self.counter += 1
+        return Self.counter
+      }
+      id = "ios-\(n)-\(String(UInt64(Date().timeIntervalSince1970 * 1000), radix: 36))"
+      _ = runtime.claim(id)
+      detachable = false
     }
+    lock.sync { _ = owned.insert(id) }
+    let runtime = self.runtime
+    DispatchQueue.main.async { runtime.createPlayer(id: id, options: parsed, detachable: detachable) }
     return id
   }
 
@@ -51,10 +56,12 @@ public final class AnythingPlayerBridge: NSObject {
     _ id: String, resolve: @escaping (Any?) -> Void, reject: @escaping (String, String, NSError?) -> Void
   ) {
     lock.sync { _ = owned.remove(id) }
-    DispatchQueue.main.async { [weak self] in
-      if let controller = self?.runtime.player(id) {
+    let runtime = self.runtime
+    runtime.willRelease(id)
+    DispatchQueue.main.async {
+      if let controller = runtime.player(id) {
         controller.release()
-        self?.runtime.unregister(controller)
+        runtime.unregister(controller)
       }
       resolve(nil)
     }
@@ -64,13 +71,7 @@ public final class AnythingPlayerBridge: NSObject {
     _ id: String, source: NSDictionary, options: NSDictionary,
     resolve: @escaping (Any?) -> Void, reject: @escaping (String, String, NSError?) -> Void
   ) {
-    var headers: [String: String] = [:]
-    (source["headers"] as? NSDictionary)?.forEach { key, value in
-      if let k = key as? String, let v = value as? String { headers[k] = v }
-    }
-    let descriptor = SourceDescriptor(
-      uri: source["uri"] as? String ?? "", headers: headers, liveHint: source["live"] as? Bool)
-    let fields = NowPlayingFields(source["metadata"] as? NSDictionary)
+    let (descriptor, fields) = SourceDescriptor.parse(source)
     let autoplay = options["autoplay"] as? Bool
     let start = (options["startPosition"] as? NSNumber)?.doubleValue
     DispatchQueue.main.async { [weak self] in
@@ -78,7 +79,12 @@ public final class AnythingPlayerBridge: NSObject {
         return Self.reject(reject, PlayerError.code(.playerReleased, "The player was released.", recoverable: false))
       }
       do {
-        try controller.load(descriptor, fields: fields, autoplay: autoplay, start: start, resolve: resolve, reject: reject)
+        try controller.load(descriptor, fields: fields, autoplay: autoplay, start: start) { result in
+          switch result {
+          case .success(let status): resolve(status)
+          case .failure(let error): Self.reject(reject, error)
+          }
+        }
       } catch let error as PlayerError {
         Self.reject(reject, error)
       } catch {
@@ -161,17 +167,143 @@ public final class AnythingPlayerBridge: NSObject {
     return AudioTap.isSupported
   }
 
-  /// JS reload / bridge teardown: no JS can control these players any more.
+  // MARK: - Outputs
+
+  @objc(showRoutePicker:resolve:reject:)
+  public func showRoutePicker(
+    _ playerId: String?, resolve: @escaping (Any?) -> Void, reject: @escaping (String, String, NSError?) -> Void
+  ) {
+    DispatchQueue.main.async {
+      guard RoutePickerTrigger.show() else {
+        return Self.reject(
+          reject,
+          PlayerError.code(
+            .routePickerUnavailable, "The output picker could not be opened; render <RoutePicker /> instead.",
+            recoverable: false))
+      }
+      resolve(nil)
+    }
+  }
+
+  @objc public func isRoutePickerAvailable() -> Bool { true }
+
+  // MARK: - Google Cast
+
+  @objc public func castState() -> NSDictionary {
+    #if RNAP_CAST
+    // Someone is showing Cast UI: start looking for devices.
+    DispatchQueue.main.async { CastManager.shared.startDiscovery() }
+    #endif
+    return runtime.castStatusDictionary as NSDictionary
+  }
+
+  /// Native reads the receiver id at build time (Info.plist `RNAPCastReceiverId`).
+  @objc(configureCast:reject:)
+  public func configureCast(resolve: @escaping (Any?) -> Void, reject: @escaping (String, String, NSError?) -> Void) {
+    DispatchQueue.main.async {
+      #if RNAP_CAST
+      CastManager.shared.startDiscovery()
+      #endif
+      resolve(nil)
+    }
+  }
+
+  @objc(showCastPicker:reject:)
+  public func showCastPicker(resolve: @escaping (Any?) -> Void, reject: @escaping (String, String, NSError?) -> Void) {
+    DispatchQueue.main.async {
+      #if RNAP_CAST
+      if CastManager.shared.presentDialog() { return resolve(nil) }
+      #endif
+      Self.reject(reject, Self.castUnavailable)
+    }
+  }
+
+  @objc(stopCasting:reject:)
+  public func stopCasting(resolve: @escaping (Any?) -> Void, reject: @escaping (String, String, NSError?) -> Void) {
+    DispatchQueue.main.async {
+      #if RNAP_CAST
+      CastManager.shared.stopCasting()
+      #endif
+      resolve(nil)
+    }
+  }
+
+  private static let castUnavailable = PlayerError.code(
+    .castUnavailable, "Google Cast is not available: install the pods with RNAP_CAST=1 (or the Expo plugin's `cast` option).",
+    recoverable: false)
+
+  // MARK: - Catalog & voice
+
+  @objc(setCatalog:options:resolve:reject:)
+  public func setCatalog(
+    _ items: NSArray, options: NSDictionary,
+    resolve: @escaping (Any?) -> Void, reject: @escaping (String, String, NSError?) -> Void
+  ) {
+    let parsed = items.compactMap { $0 as? [String: Any] }
+    let playerId = (options["playerId"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "default"
+    let playerOptions = options["playerOptions"] as? [String: Any] ?? [:]
+    let runtime = self.runtime
+    DispatchQueue.main.async {
+      runtime.voice.setCatalog(items: parsed, playerId: playerId, playerOptions: playerOptions)
+      resolve(nil)
+    }
+  }
+
+  @objc(searchCatalog:resolve:reject:)
+  public func searchCatalog(
+    _ request: NSDictionary, resolve: @escaping (Any?) -> Void, reject: @escaping (String, String, NSError?) -> Void
+  ) {
+    let parsed = request as? [String: Any] ?? [:]
+    let runtime = self.runtime
+    DispatchQueue.main.async { resolve(runtime.voice.search(parsed)) }
+  }
+
+  @objc(playFromSearch:playerId:resolve:reject:)
+  public func playFromSearch(
+    _ request: NSDictionary, playerId: String?,
+    resolve: @escaping (Any?) -> Void, reject: @escaping (String, String, NSError?) -> Void
+  ) {
+    let parsed = request as? [String: Any] ?? [:]
+    let runtime = self.runtime
+    DispatchQueue.main.async {
+      runtime.voice.playFromSearch(parsed, playerId: playerId) { result in
+        switch result {
+        case .success(let item): resolve(["item": item.map { $0 as Any } ?? NSNull()])
+        case .failure(let error): Self.reject(reject, error)
+        }
+      }
+    }
+  }
+
+  @objc public func setSearchHandlerEnabled(_ enabled: Bool) {
+    let runtime = self.runtime
+    DispatchQueue.main.async { runtime.voice.handlerEnabled = enabled }
+  }
+
+  @objc(resolveSearchRequest:result:)
+  public func resolveSearchRequest(_ requestId: String, result: NSDictionary) {
+    let parsed = result as? [String: Any] ?? [:]
+    let runtime = self.runtime
+    DispatchQueue.main.async { runtime.voice.answer(requestId, result: parsed) }
+  }
+
+  // MARK: - Lifetime
+
+  /// JS reload / bridge teardown: events stop at once. Players with an
+  /// app-chosen id are detached (they keep playing; the next JS attaches);
+  /// the others can no longer be controlled and are released.
   @objc public func invalidate() {
+    runtime.detachEvents(owner: self)
     let ids = lock.sync { () -> [String] in
       let ids = Array(owned)
       owned.removeAll()
       return ids
     }
-    DispatchQueue.main.async { [weak self] in
-      guard let runtime = self?.runtime else { return }
+    let runtime = self.runtime
+    DispatchQueue.main.async {
+      runtime.voice.handlerEnabled = false
       for id in ids {
-        if let controller = runtime.player(id) {
+        if let controller = runtime.player(id), !controller.detachable {
           controller.release()
           runtime.unregister(controller)
         }

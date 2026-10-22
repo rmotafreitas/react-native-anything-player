@@ -1,13 +1,16 @@
 import AVFoundation
 import Foundation
 
-/// What the AVPlayer adapter reports, always tagged with its generation.
+/// What a driver (the AVPlayer adapter, a Cast receiver) reports, always
+/// tagged with its generation.
 protocol DriverObserver: AnyObject {
   func driverReady(generation: Int, info: ReadyInfo)
   func driverPlaying(generation: Int)
   func driverBuffering(generation: Int)
   func driverEnded(generation: Int)
   func driverFailed(generation: Int, error: PlayerError)
+  /// The output paused on its own (a Cast receiver paused by another sender).
+  func driverPausedExternally(generation: Int)
   func driverMetadata(generation: Int, metadata: StreamMetadata)
   /// A position change the progress snapshot must pick up (seek completed).
   func driverPositionChanged()

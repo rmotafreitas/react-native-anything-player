@@ -13,16 +13,28 @@ extension NSLock {
 }
 
 /// Process-wide coordination shared by every player: the audio session, Now
-/// Playing + remote commands, connectivity, app lifecycle and the background
-/// keepalive. Mutations happen on the main thread; `players` is also read by
-/// the synchronous JS getters, hence the lock.
+/// Playing + remote commands, connectivity, app lifecycle, the background
+/// keepalive, the output route, Google Cast and voice search. Mutations
+/// happen on the main thread; `players` is also read by the synchronous JS
+/// getters, hence the lock.
+///
+/// Players belong to the runtime, not to the TurboModule: events go to a
+/// replaceable sink the module sets while JS is attached, and a player with
+/// an app-chosen id keeps playing across a JS reload (see the bridge).
 final class AnythingPlayerRuntime: AudioSessionListener, RemoteCommandTarget {
   static let shared = AnythingPlayerRuntime()
 
   private let lock = NSLock()
   private var registry: [String: PlayerController] = [:]
   private var order: [String] = []
+  /// Ids handed out whose controller is still being created on main.
+  private var reserved = Set<String>()
+  /// Ids JS released whose controller is still being released on main.
+  private var releasing = Set<String>()
   private var started = false
+
+  private let sinkLock = NSLock()
+  private var sink: (owner: ObjectIdentifier, send: ([String: Any]) -> Void)?
 
   private let session = AudioSessionCoordinator()
   private let nowPlaying = NowPlayingController()
@@ -36,11 +48,84 @@ final class AnythingPlayerRuntime: AudioSessionListener, RemoteCommandTarget {
   /// The player the system media controls show and control.
   private(set) weak var active: PlayerController?
 
+  /// The device's own output: what players report, and what a player returns
+  /// to when casting ends.
+  private(set) var localRoute: AudioRoute = .unknown
+
+  /// Search requests and the persisted catalog. Main thread.
+  private(set) lazy var voice = VoiceSearch(runtime: self)
+
+  #if RNAP_CAST
+  /// The connected Cast receiver's output id (`cast:<device>`) and route.
+  private var castOutput: (id: String, route: AudioRoute)?
+  private var castFollowScheduled = false
+  private var castStatus: (state: String, device: String?) = ("initializing", nil)
+  #else
+  private var castStatus: (state: String, device: String?) = ("unavailable", nil)
+  #endif
+
   var networkState: NetworkState { network.state }
 
   private var all: [PlayerController] { lock.sync { order.compactMap { registry[$0] } } }
 
   func player(_ id: String) -> PlayerController? { lock.sync { registry[id] } }
+
+  // MARK: - JS events (any thread)
+
+  /// Events go to `send` until `detachEvents(owner:)` (module invalidation).
+  func attachEvents(owner: AnyObject, _ send: @escaping ([String: Any]) -> Void) {
+    sinkLock.sync { sink = (ObjectIdentifier(owner), send) }
+  }
+
+  /// Only the current owner detaches: a reloaded module may attach before
+  /// the previous one is invalidated.
+  func detachEvents(owner: AnyObject) {
+    sinkLock.sync {
+      if sink?.owner == ObjectIdentifier(owner) { sink = nil }
+    }
+  }
+
+  /// Whether JS is running and listening.
+  var jsAttached: Bool { sinkLock.sync { sink != nil } }
+
+  /// Emits under the lock, so once the sink is detached no emission is in flight.
+  func emit(_ event: [String: Any]) {
+    sinkLock.sync { sink?.send(event) }
+  }
+
+  // MARK: - Players
+
+  /// Any thread. Claims `id` for a new player: false when a player has it
+  /// (or is being created with it). A released id is free at once (React
+  /// may re-create a player right after releasing it): the main queue runs
+  /// the release before the creation.
+  func claim(_ id: String) -> Bool {
+    lock.sync {
+      guard registry[id] == nil || releasing.contains(id), !reserved.contains(id) else { return false }
+      reserved.insert(id)
+      return true
+    }
+  }
+
+  /// Any thread: JS released `id` (the controller goes on main).
+  func willRelease(_ id: String) {
+    lock.sync { _ = releasing.insert(id) }
+  }
+
+  /// Main thread. Creates a claimed id's player: from JS, or natively for a
+  /// voice request (`detachable`: it outlives JS).
+  @discardableResult
+  func createPlayer(id: String, options: PlayerOptions, detachable: Bool) -> PlayerController {
+    startIfNeeded()
+    let controller = PlayerController(id: id, options: options, detachable: detachable, runtime: self)
+    #if RNAP_CAST
+    controller.routing.makeRemote = { outputId in CastDriver(outputId: outputId) }
+    #endif
+    register(controller)
+    controller.engine.networkChanged(networkState, interfaceChanged: false)
+    controller.engine.routeChanged(localRoute)
+    return controller
+  }
 
   /// Main thread.
   func startIfNeeded() {
@@ -49,6 +134,7 @@ final class AnythingPlayerRuntime: AudioSessionListener, RemoteCommandTarget {
     session.listener = self
     nowPlaying.target = self
     network.start()
+    localRoute = AudioRoute.current()
     inBackground = UIApplication.shared.applicationState == .background
     let center = NotificationCenter.default
     lifecycleObservers = [
@@ -63,7 +149,7 @@ final class AnythingPlayerRuntime: AudioSessionListener, RemoteCommandTarget {
         self.inBackground = false
         // A suspension may have reclaimed the stream proxy's socket.
         StreamProxy.shared.revalidate()
-        self.all.forEach { $0.engine.appForegrounded() }
+        self.all.forEach { $0.appForegrounded() }
         self.keepaliveCheck()
       },
     ]
@@ -72,7 +158,11 @@ final class AnythingPlayerRuntime: AudioSessionListener, RemoteCommandTarget {
   /// Main thread.
   func register(_ controller: PlayerController) {
     lock.sync {
+      reserved.remove(controller.id)
+      // A release of this id (queued before this creation) has already run.
+      releasing.remove(controller.id)
       registry[controller.id] = controller
+      order.removeAll { $0 == controller.id }
       order.append(controller.id)
     }
     // Answer the system controls from the start (see `publishNowPlaying`).
@@ -82,6 +172,8 @@ final class AnythingPlayerRuntime: AudioSessionListener, RemoteCommandTarget {
   /// Main thread.
   func unregister(_ controller: PlayerController) {
     lock.sync {
+      releasing.remove(controller.id)
+      guard registry[controller.id] === controller else { return }
       registry.removeValue(forKey: controller.id)
       order.removeAll { $0 == controller.id }
     }
@@ -109,6 +201,14 @@ final class AnythingPlayerRuntime: AudioSessionListener, RemoteCommandTarget {
     all.forEach { $0.engine.interruptionBegan(reason: .outputDisconnected, resumable: false) }
   }
 
+  func sessionRouteChanged() {
+    let route = AudioRoute.current()
+    guard route != localRoute else { return }
+    localRoute = route
+    // Engines on a Cast receiver ignore it (the cast route wins).
+    all.forEach { $0.engine.routeChanged(route) }
+  }
+
   func sessionMediaServicesReset() {
     // Every AVPlayer is dead and the session forgot its configuration.
     let wanted = all.contains { $0.engine.needsAudioFocus }
@@ -125,6 +225,10 @@ final class AnythingPlayerRuntime: AudioSessionListener, RemoteCommandTarget {
     let status = controller.status
     if controller.options.mediaSession && status.playWhenReady { active = controller }
     if active == nil && controller.options.mediaSession && status.state != .idle { active = controller }
+    voice.statusChanged(controller)
+    #if RNAP_CAST
+    scheduleCastFollow()
+    #endif
     refresh()
   }
 
@@ -134,13 +238,15 @@ final class AnythingPlayerRuntime: AudioSessionListener, RemoteCommandTarget {
 
   private func refresh() {
     // Keep the session while anything is loaded or wanted; deactivate (and
-    // let interrupted apps resume) once everything is stopped/idle.
-    let holdsSession = all.contains {
+    // let interrupted apps resume) once everything is stopped/idle. A player
+    // on a Cast receiver plays nothing here: it holds nothing.
+    let local = all.filter { !$0.isRemote }
+    let holdsSession = local.contains {
       !$0.options.mixWithOthers
         && ($0.engine.needsAudioFocus
           || [.loading, .buffering, .playing, .paused, .reconnecting].contains($0.status.state))
     }
-    if !holdsSession && session.active && !all.contains(where: { $0.engine.playWhenReady }) {
+    if !holdsSession && session.active && !local.contains(where: { $0.engine.playWhenReady }) {
       session.deactivate()
     }
     keepaliveCheck()
@@ -174,13 +280,82 @@ final class AnythingPlayerRuntime: AudioSessionListener, RemoteCommandTarget {
   /// Runs the keepalive while backgrounded and some player wants audio it is
   /// not getting (see `BackgroundKeepalive`).
   func keepaliveCheck() {
-    let wanted = inBackground && all.contains { $0.engine.wantsKeepalive }
+    // Never for a Cast receiver's buffering: the phone has nothing to keep alive.
+    let wanted = inBackground && all.contains { !$0.isRemote && $0.engine.wantsKeepalive }
     if wanted && !keepalive.running {
       keepalive.start()
     } else if !wanted && keepalive.running {
       keepalive.stop()
     }
   }
+
+  // MARK: - Google Cast (main)
+
+  /// `{ state, device }` for the synchronous `getCastState()`; any thread.
+  var castStatusDictionary: [String: Any] {
+    let status = lock.sync { castStatus }
+    return ["state": status.state, "device": status.device ?? NSNull()]
+  }
+
+  /// The Cast state changed (`unavailable` without the Cast SDK).
+  func castStateChanged(_ state: String, device: String?) {
+    let changed = lock.sync { () -> Bool in
+      guard castStatus.state != state || castStatus.device != device else { return false }
+      castStatus = (state, device)
+      return true
+    }
+    if changed { emit(["type": "castState", "state": state, "device": device ?? NSNull()]) }
+  }
+
+  #if RNAP_CAST
+  /// A Cast session started or resumed: the active player moves to the
+  /// receiver (same device: nothing reloads).
+  func castSessionStarted(deviceId: String, name: String?) {
+    castOutput = ("cast:" + deviceId, AudioRoute(kind: .cast, name: name))
+    followCast()
+  }
+
+  /// The session ended: every player on the receiver returns to the device,
+  /// paused (it never suddenly plays from the phone's speaker).
+  func castSessionEnded() {
+    castOutput = nil
+    for controller in all where controller.isRemote {
+      controller.engine.handoff(route: localRoute, outputId: RoutingDriver.localOutput, resume: false)
+    }
+  }
+
+  /// Status changes arrive from inside engine transitions: follow afterwards.
+  private func scheduleCastFollow() {
+    guard castOutput != nil, !castFollowScheduled else { return }
+    castFollowScheduled = true
+    DispatchQueue.main.async { [weak self] in
+      self?.castFollowScheduled = false
+      self?.followCast()
+    }
+  }
+
+  /// Cast follows the active player: any other player on the receiver comes
+  /// back (paused), the active one goes over keeping its intent — unless the
+  /// receiver cannot fetch its source, which then plays here (reported once).
+  private func followCast() {
+    guard let cast = castOutput else { return }
+    let target = active
+    for controller in all where controller !== target && controller.isRemote {
+      controller.engine.handoff(route: localRoute, outputId: RoutingDriver.localOutput, resume: false)
+    }
+    guard let target else { return }
+    if let source = target.engine.source, !source.isCastable {
+      if target.isRemote {
+        target.engine.handoff(route: localRoute, outputId: RoutingDriver.localOutput, resume: true)
+      }
+      target.reportUncastable()
+      return
+    }
+    if target.routing.outputId != cast.id {
+      target.engine.handoff(route: cast.route, outputId: cast.id, resume: true)
+    }
+  }
+  #endif
 
   // MARK: - Remote commands (lock screen, Control Center, headphones, CarPlay)
 

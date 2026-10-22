@@ -98,6 +98,9 @@ enum ErrorCode: String {
   case invalidArgument = "INVALID_ARGUMENT"
   case nativePlayerError = "NATIVE_PLAYER_ERROR"
   case internalError = "INTERNAL_ERROR"
+  case routePickerUnavailable = "ROUTE_PICKER_UNAVAILABLE"
+  case castUnavailable = "CAST_UNAVAILABLE"
+  case castUnsupportedSource = "CAST_UNSUPPORTED_SOURCE"
 }
 
 struct PlayerError: Error, Equatable {
