@@ -1,6 +1,7 @@
 // The entry points: `react-native-anything-player/web` (plain pages) and the
 // React Native Web module, plus option parsing.
 
+import { FakeCast } from './FakeCast';
 import { install, uninstall, type FakeWorld } from './FakeBrowser';
 import {
   parseNowPlaying,
@@ -12,7 +13,7 @@ let world: FakeWorld;
 
 beforeEach(() => {
   jest.useFakeTimers({ doNotFake: ['queueMicrotask', 'nextTick'] });
-  world = install();
+  world = install({ airplay: true });
 });
 
 afterEach(() => {
@@ -68,6 +69,53 @@ describe('react-native-anything-player/web', () => {
         })
       )
     ).toBe(true);
+  });
+
+  it('reaches outputs and Cast without React or React Native', async () => {
+    let web!: typeof import('../index');
+    jest.isolateModules(() => {
+      jest.doMock('react', () => {
+        throw new Error('react was imported');
+      });
+      jest.doMock('react-native', () => {
+        throw new Error('react-native was imported');
+      });
+      web = require('../index');
+    });
+    const cast = new FakeCast();
+    cast.install();
+    cast.setDevicesAvailable(true);
+    expect(web.getCastStatus()).toEqual({ state: 'unavailable', device: null });
+    const states: string[] = [];
+    web.addCastStateListener((status) => states.push(status.state));
+    const availability: boolean[] = [];
+    web.addRoutePickerAvailabilityListener((a) => availability.push(a));
+    await web.configureCast({ receiverApplicationId: 'ABCD1234' });
+    expect(web.getCastStatus().state).toBe('notConnected');
+    expect(cast.options.receiverApplicationId).toBe('ABCD1234');
+
+    const player = new web.Player();
+    world.element().setAirplayTargets(true);
+    await flush();
+    expect(web.isRoutePickerAvailable()).toBe(true);
+    await web.showRoutePicker(player);
+    expect(world.element().airplayPickers).toBe(1);
+    await web.showCastPicker();
+    expect(cast.requests).toBe(1);
+    cast.connect();
+    await flush();
+    expect(states).toEqual([
+      'initializing',
+      'notConnected',
+      'connecting',
+      'connected',
+    ]);
+    await web.stopCasting();
+    expect(web.getCastStatus().state).toBe('notConnected');
+    expect(availability).toEqual([true]);
+    await player.release();
+    jest.dontMock('react');
+    jest.dontMock('react-native');
   });
 
   it('serves the browser engine to React Native Web', () => {
