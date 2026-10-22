@@ -7,8 +7,8 @@
 // comment that names the section of the guide.
 
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
 import path from 'node:path';
-import { parse } from '@babel/parser';
 import { buildChange, reviewChanges } from './edits.mjs';
 import { formatMigrateHeader } from './report.mjs';
 import { readText, relative } from './util.mjs';
@@ -64,9 +64,48 @@ function attachParents(node, parent = null) {
   }
 }
 
+/**
+ * @babel/parser is not bundled into the CLI: every React Native project already
+ * has it (Metro and Babel need it), so `migrate` loads the project's own copy.
+ * Without a project root (the tests, development) the CLI's own resolution is
+ * the fallback.
+ */
+let babelParse = null;
+let parserRoot = null;
+
+export class ParserNotFoundError extends Error {
+  constructor() {
+    super(
+      '`rnap migrate` needs @babel/parser, which this project does not have. Install it with `npm install --save-dev @babel/parser` (React Native projects normally have it already), then run the command again.'
+    );
+    this.name = 'ParserNotFoundError';
+  }
+}
+
+/** Loads @babel/parser from the project being migrated; throws when missing. */
+export function loadParser(projectRoot = null) {
+  if (babelParse && parserRoot === projectRoot) return babelParse;
+  const resolvers = [];
+  if (projectRoot)
+    resolvers.push(createRequire(path.join(projectRoot, 'package.json')));
+  resolvers.push(createRequire(import.meta.url));
+  for (const resolve of resolvers) {
+    try {
+      const { parse } = resolve('@babel/parser');
+      if (typeof parse !== 'function') continue;
+      babelParse = parse;
+      parserRoot = projectRoot;
+      return parse;
+    } catch {
+      // try the next place
+    }
+  }
+  throw new ParserNotFoundError();
+}
+
 function parseFile(code, file) {
   const typescript = /\.(ts|tsx)$/.test(file);
-  const ast = parse(code, {
+  const ast = (babelParse ?? loadParser())(code, {
     sourceType: 'unambiguous',
     allowReturnOutsideFunction: true,
     plugins: typescript ? ['jsx', 'typescript'] : ['jsx', 'flow'],
@@ -1344,6 +1383,13 @@ export async function runMigrate({
       stdout.write(`rnap: outside the project: ${target}\n`);
       return 2;
     }
+  }
+
+  try {
+    loadParser(cwd);
+  } catch (error) {
+    stdout.write(`rnap: ${error.message}\n`);
+    return 1;
   }
 
   const files = [...new Set(collectFiles(cwd, targets))];

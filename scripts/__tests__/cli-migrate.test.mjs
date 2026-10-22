@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { makeDir, read, runCli, write } from './cli-fixtures.mjs';
+import fs from 'node:fs';
+import path from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { CLI, makeDir, read, runCli, write } from './cli-fixtures.mjs';
 import { detectSource, migrateCode } from '../../bin/cli/migrate.mjs';
 
 const EXPO_AUDIO = `import { createAudioPlayer, useAudioPlayerStatus, AudioSource } from 'expo-audio';
@@ -267,4 +270,44 @@ test('--from limits the migration to one library', (t) => {
   assert.equal(result.status, 0);
   assert.match(result.stdout, /Nothing to rewrite/);
   assert.match(read(root, 'src/audio.ts'), /^import \{ createAudioPlayer,/m);
+});
+
+test('migrate loads @babel/parser from the project being migrated', (t) => {
+  const root = makeDir(t);
+  write(root, 'package.json', JSON.stringify({ name: 'app' }));
+  write(root, 'src/audio.ts', EXPO_AUDIO);
+  // The project's copy wins over the CLI's own: a stub proves which one ran.
+  write(
+    root,
+    'node_modules/@babel/parser/index.js',
+    "exports.parse = () => { throw new Error('project parser'); };\n"
+  );
+  const result = runCli(['migrate', '--dry-run'], { cwd: root });
+  assert.equal(result.status, 1);
+  assert.match(result.stdout, /src\/audio\.ts: could not parse: project parser/);
+});
+
+test('migrate says how to install @babel/parser when nothing provides it', (t) => {
+  // A copy of the CLI outside the repository has no node_modules to fall back
+  // on, like the published package in a project without @babel/parser.
+  const home = makeDir(t, 'rnap-cli-home-');
+  fs.cpSync(path.dirname(CLI), path.join(home, 'bin'), { recursive: true });
+  fs.copyFileSync(
+    path.resolve(path.dirname(CLI), '../package.json'),
+    path.join(home, 'package.json')
+  );
+  const root = makeDir(t);
+  write(root, 'package.json', JSON.stringify({ name: 'app' }));
+  write(root, 'src/audio.ts', EXPO_AUDIO);
+  const before = read(root, 'src/audio.ts');
+
+  const result = spawnSync(
+    process.execPath,
+    [path.join(home, 'bin/rnap.mjs'), 'migrate', '--yes', '--no-color'],
+    { cwd: root, encoding: 'utf8' }
+  );
+  assert.equal(result.status, 1);
+  assert.match(result.stdout, /needs @babel\/parser/);
+  assert.match(result.stdout, /npm install --save-dev @babel\/parser/);
+  assert.equal(read(root, 'src/audio.ts'), before);
 });

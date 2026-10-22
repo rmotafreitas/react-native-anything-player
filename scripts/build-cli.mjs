@@ -29,6 +29,8 @@ await build({
   format: 'esm',
   target: 'node20',
   legalComments: 'none',
+  // Loaded from the app at run time (`rnap migrate`), not shipped: it is 300+ KB.
+  external: ['@babel/parser'],
   logLevel: 'warning',
   define: { __RNAP_SIZE_DATA__: JSON.stringify(sizeData) },
 });
