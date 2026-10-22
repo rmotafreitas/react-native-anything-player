@@ -122,6 +122,9 @@ export default defineConfig({
   transformPageData(pageData) {
     const page = PAGES.find((p) => `${p.link.slice(1)}.md` === pageData.relativePath);
     if (page && !pageData.frontmatter.description) pageData.description = page.description;
+    // The feature matrix's tables have a column per OS and browser engine:
+    // the page takes the outline's width.
+    if (pageData.relativePath === 'docs/features.md') pageData.frontmatter.aside = false;
     // Generated pages: edit the TSDoc in src/ instead, and git has no dates.
     if (pageData.relativePath.startsWith('docs/api/')) {
       pageData.frontmatter.editLink = false;

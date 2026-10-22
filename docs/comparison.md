@@ -2,6 +2,7 @@
 
 How RNAP compares with the other audio libraries, from what each one actually ships. Each library is compared with its own kind:
 
+- **[Where each library runs](#where-each-library-runs)**: iOS, Android and the kinds of web app; the browser engines are in the [feature matrix](features.md#browser-engines).
 - **[iOS and Android](#ios-and-android)**: RNAP against the other React Native audio libraries.
 - **[Expo web and React Native Web](#expo-web-and-react-native-web)**: the same React Native packages, bundled for the browser.
 - **[React and plain web pages](#react-and-plain-web-pages)**: RNAP's `/react` and `/web` entries against the web audio libraries: React components and hooks, and plain JavaScript.
@@ -17,6 +18,28 @@ Every number here comes from a script in [`benchmarks/`](../benchmarks/README.md
 | iOS, Android | RNTP 4 and 5, expo-audio, expo-av, react-native-video, and four more | Recovers a stream with no app code; follows the network; radio titles; a visualizer for iOS live streams; several players; adds 1.2 MB to a release APK with R8, against 2.7 MB for RNTP 5 (which always includes Cast; RNAP with Cast: 2.6 MB); no extras to install | Queues, caching, CarPlay / Android Auto browsing, a sleep timer; JS size (5.5 KB, the others 2–7 KB); the licence |
 | Expo web, React Native Web | the same packages, on the web | The only one that recovers a stream or reads radio titles in the browser; Cast and AirPlay; nothing to fetch before it plays (RNTP 4 fetches 367 KB of shaka-player) | Page weight (29.5 KB against 4–15 KB): it carries a streaming engine, the others wrap `<audio>` |
 | React, plain web pages | howler.js, Plyr, Vidstack, react-player, icecast-metadata-player and others | Recovery, radio titles, Media Session, Cast and AirPlay together, in one library; the same player as on the phone | No player UI, video or sound-effect features; heavier than howler.js (10 KB) |
+
+## Where each library runs
+
+Where a library gives you its API: in a React Native app on iOS and Android, in that app's web build (React Native Web, Expo web), in a React DOM app, or on any page. On the web, what works then depends on the browser's engine: RNAP's is in the [feature matrix](features.md#browser-engines), engine by engine (Chromium, Firefox, Safari, and iPhone and iPad, where every browser is WebKit).
+
+| Library | iOS | Android | React Native Web, Expo web | React DOM | Any web page |
+|---|---|---|---|---|---|
+| **RNAP** | ✓ | ✓ | ✓ | ✓ (`/react`) | ✓ (`/web`) |
+| RNTP 5 | ✓ | ✓ | ✓ (shaka-player for HLS and DASH) | – | – |
+| RNTP 4 | ✓ | ✓ | ✓ (shaka-player for everything) | – | – |
+| expo-audio | ✓ | ✓ | ✓ | – | – |
+| expo-av (deprecated) | ✓ | ✓ | ✓ | – | – |
+| react-native-video | ✓ | ✓ | ✓ | – | – |
+| react-native-audio-api | ✓ | ✓ | ✓ | – | – |
+| react-native-nitro-sound | ✓ | ✓ | ✓ | – | – |
+| react-native-audio-pro | ✓ | ✓ | – | – | – |
+| react-native-sound | ✓ | ✓ | – | – | – |
+| howler.js, Amplitude.js, Plyr, icecast-metadata-player | – | – | – | ✓ (through your own code) | ✓ |
+| use-sound, react-h5-audio-player, react-audio-player, react-player | – | – | – | ✓ | – |
+| Vidstack | – | – | – | ✓ (`@vidstack/react`) | ✓ (`vidstack`, web components) |
+
+Read from each package's sources (its `.web` files and entry points). RNTP 4.1.2 does not compile against React Native 0.86 ([release APK](#added-to-a-release-apk)).
 
 ## iOS and Android
 

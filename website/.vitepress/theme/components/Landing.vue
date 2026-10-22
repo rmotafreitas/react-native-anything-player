@@ -285,7 +285,14 @@ const stats = [
         <li>React (Vite, Next.js)</li>
         <li>Any web page</li>
       </ul>
-      <p class="sub small"><a :href="withBase('/docs/features')">What works where: the feature matrix →</a></p>
+      <p class="sub">In the browser, by engine: Chromium, Firefox and Safari are tested on every change.</p>
+      <ul class="platforms">
+        <li>Chromium (Chrome, Edge)</li>
+        <li>Firefox</li>
+        <li>Safari</li>
+        <li>iPhone and iPad browsers</li>
+      </ul>
+      <p class="sub small"><a :href="withBase('/docs/features')">What works where, by OS and by browser engine: the feature matrix →</a></p>
     </section>
 
     <section class="block">

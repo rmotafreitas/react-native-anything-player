@@ -107,17 +107,19 @@ If `icy-metaint` is not exposed, RNAP asks again without ICY (a hidden metadata 
 
 ### Browser support
 
-Tested end to end with Playwright on every change:
+What matters is the browser's engine. Chromium, Firefox and Safari's WebKit are tested end to end with Playwright on every change; on iPhone and iPad every browser is WebKit, with the limits of iOS. The [feature matrix](features.md#browser-engines) has every feature per engine.
 
-| | Chromium (Chrome, Edge, Android) | WebKit (Safari, iOS 17.1+) | Firefox |
-|---|---|---|---|
-| Playback, files, seeking, recovery | ✓ | ✓ | ✓ |
-| ICY metadata, splices, `liveOffset` | ✓ | ✓ (ManagedMediaSource on iPhone) | ✓ (the stream is wrapped in MP4) |
-| Visualizer | ✓ | ✓ | ✓ |
-| HLS | hls.js | native | hls.js |
-| Local files (`File`, `Blob`) | ✓ | ✓ | ✓ |
-| Lock screen / media keys (Media Session) | ✓ | ✓ | ✓ |
-| Network handoff detection | ✓ (Network Information API) | – | – |
+| | Chromium (Chrome, Edge, Android browsers) | Firefox | Safari (Mac) | iPhone, iPad (every browser) |
+|---|---|---|---|---|
+| Playback, files, seeking, recovery | ✓ | ✓ | ✓ | ✓ |
+| ICY metadata, splices, `liveOffset` | ✓ | ✓ (the stream is wrapped in MP4) | ✓ | ✓ iOS 17.1+ (Managed Media Source) |
+| Visualizer | ✓ | ✓ | ✓ | ✓ streams from iOS 17.1 |
+| HLS | the browser's own where it has one, else hls.js | hls.js | native | native |
+| Local files (`File`, `Blob`) | ✓ | ✓ | ✓ | ✓ |
+| Lock screen / media keys (Media Session) | ✓ | ✓ | ✓ | ✓ |
+| Output picker, casting | Remote Playback, Google Cast (Chrome) | – | AirPlay | AirPlay |
+| Network handoff detection | ✓ (Network Information API) | – | – | – |
+| Volume | ✓ | ✓ | ✓ | fixed by the system (`setMuted` works) |
 
 ## HLS
 
