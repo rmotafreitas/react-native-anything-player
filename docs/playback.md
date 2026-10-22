@@ -15,13 +15,14 @@ await player.load({
 });
 ```
 
-| URI | iOS | Android |
-|---|---|---|
-| `https://…`, `http://…` | ✓ (cleartext needs an ATS exception) | ✓ (cleartext needs a network-security config) |
-| `file:///…` and absolute paths | ✓ | ✓ |
-| `content://…` | – | ✓ |
-| `require('./a.mp3')` | ✓ debug (Metro) and release (bundle) | ✓ debug (Metro) and release (raw resource) |
-| HLS (`.m3u8`) | ✓ | ✓ (disable with `rnapHls=false` in `gradle.properties` to save ~300 KB) |
+| URI | iOS | Android | Web |
+|---|---|---|---|
+| `https://…`, `http://…` | ✓ (cleartext needs an ATS exception) | ✓ (cleartext needs a network-security config) | ✓ (an `http` stream on an `https` page is blocked as mixed content) |
+| `file:///…` and absolute paths | ✓ | ✓ | – |
+| `content://…` | – | ✓ | – |
+| `require('./a.mp3')` | ✓ debug (Metro) and release (bundle) | ✓ debug (Metro) and release (raw resource) | – (pass a URL) |
+| A `File` / `Blob`, `blob:` and `data:` URLs | – | – | ✓ ([Web](web.md#local-files)) |
+| HLS (`.m3u8`) | ✓ | ✓ (disable with `rnapHls=false` in `gradle.properties` to save ~300 KB) | ✓ Safari natively; other browsers through [hls.js](web.md#hls) (`configureHls`) |
 
 Formats are whatever the platform decodes: MP3, AAC/AAC+ (ADTS), M4A/MP4, WAV, FLAC (Android; iOS 11+), Opus/Vorbis (Android).
 
