@@ -1,6 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { addPlistArrayItem, parsePlist } from '../../bin/cli/plist.mjs';
+import {
+  addPlistArrayItem,
+  parsePlist,
+  removePlistArrayItem,
+  setPlistString,
+} from '../../bin/cli/plist.mjs';
 import { unifiedDiff } from '../../bin/cli/diff.mjs';
 
 const SAMPLE = `<?xml version="1.0" encoding="UTF-8"?>
@@ -99,6 +104,66 @@ test('refuses to replace a scalar with an array', () => {
   const before =
     '<plist><dict><key>Modes</key><string>audio</string></dict></plist>';
   assert.throws(() => addPlistArrayItem(before, 'Modes', 'audio'));
+});
+
+test('removes one array item and keeps the rest of the array', () => {
+  const after = removePlistArrayItem(SAMPLE, 'Modes', 'fetch');
+  assert.match(
+    after,
+    /<key>Modes<\/key>\n {2}<array>\n {4}<string>audio<\/string>\n {2}<\/array>/
+  );
+  assert.deepEqual(parsePlist(after).Modes, ['audio']);
+  assert.equal(parsePlist(after).CFBundleName, 'Tom & Jerry');
+});
+
+test('removing the last array item drops the key and the empty array', () => {
+  const before = `<?xml version="1.0"?>
+<plist version="1.0">
+<dict>
+\t<key>A</key>
+\t<true/>
+\t<key>UIBackgroundModes</key>
+\t<array>
+\t\t<string>audio</string>
+\t</array>
+</dict>
+</plist>
+`;
+  const after = removePlistArrayItem(before, 'UIBackgroundModes', 'audio');
+  assert.equal(parsePlist(after).UIBackgroundModes, undefined);
+  assert.equal(parsePlist(after).A, true);
+  assert.doesNotMatch(after, /UIBackgroundModes/);
+});
+
+test('removing an item that is not there changes nothing', () => {
+  assert.equal(removePlistArrayItem(SAMPLE, 'Modes', 'location'), null);
+  assert.equal(removePlistArrayItem(SAMPLE, 'Missing', 'audio'), null);
+  assert.equal(removePlistArrayItem(SAMPLE, 'Count', 3), null);
+});
+
+test('sets a string, escaping what XML cannot hold', () => {
+  const after = setPlistString(SAMPLE, 'CFBundleName', 'Tom & Jerry <3');
+  assert.equal(parsePlist(after).CFBundleName, 'Tom & Jerry <3');
+  assert.match(after, /Tom &amp; Jerry &lt;3/);
+  assert.equal(setPlistString(SAMPLE, 'CFBundleName', 'Tom & Jerry'), null);
+});
+
+test('adds a missing string key before the root close', () => {
+  const before = `<?xml version="1.0"?>
+<plist version="1.0">
+<dict>
+\t<key>A</key>
+\t<true/>
+</dict>
+</plist>
+`;
+  const after = setPlistString(before, 'NSLocalNetworkUsageDescription', 'Find');
+  assert.equal(parsePlist(after).NSLocalNetworkUsageDescription, 'Find');
+  assert.match(
+    after,
+    /\t<key>NSLocalNetworkUsageDescription<\/key>\n\t<string>Find<\/string>\n<\/dict>/
+  );
+  assert.throws(() => setPlistString(SAMPLE, 'Count', 'many'));
 });
 
 test('unified diff shows changed lines with context and correct headers', () => {
