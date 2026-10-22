@@ -208,4 +208,4 @@ See [Voice assistants](voice.md).
 | `npx rnap doctor` / `init` | ✓ | ✓ | ◐ stream URL checks (CORS, ICY) |
 | TypeScript types | ✓ | ✓ | ✓ |
 | Zero runtime JS dependencies | ✓ | ✓ | ✓ (hls.js is optional and yours to add) |
-| Size in a release build | not measured yet | about 1.2 MB of a release APK, with R8 ([measured](comparison.md#added-to-a-release-apk)) | about 28 KB of JS on page load ([measured](comparison.md#react-and-plain-web-pages)) |
+| Size in a release build | not measured yet | about 1.2 MB of a release APK, with R8 ([measured](comparison.md#added-to-a-release-apk)) | about 30 KB of JS on page load ([measured](comparison.md#react-and-plain-web-pages)) |

@@ -4,7 +4,7 @@
   "title": "On the web: what you get out of the box",
   "note": "Read from each package’s published source (its JavaScript and TypeScript API); not measured in a browser. Hover a row for its evidence.",
   "libraries": [
-    { "id": "rnap", "label": "RNAP", "version": "1.1.1" },
+    { "id": "rnap", "label": "RNAP", "version": "1.2.0" },
     { "id": "howler", "label": "howler.js", "version": "2.2.4" },
     { "id": "plyr", "label": "Plyr", "version": "3.8.5" },
     { "id": "vidstack", "label": "Vidstack", "version": "1.15.7" },
@@ -77,8 +77,8 @@
         },
         {
           "label": "Sound effects: sprites, spatial audio",
-          "evidence": "howler.js: sprites and the spatial plugin over Web Audio.",
-          "values": { "rnap": "no", "howler": "yes", "plyr": "no", "vidstack": "no", "reactPlayer": "no", "icecast": "no" }
+          "evidence": "howler.js: sprites and the spatial plugin over Web Audio. RNAP's Sound API (`/sound`): short sounds preloaded into Web Audio with polyphony, rate and pan, but no sprites or spatial audio.",
+          "values": { "rnap": "partial", "howler": "yes", "plyr": "no", "vidstack": "no", "reactPlayer": "no", "icecast": "no" }
         },
         {
           "label": "Free for commercial apps",

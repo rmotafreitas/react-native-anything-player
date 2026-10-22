@@ -81,4 +81,4 @@ The recovery timings that are *not* configurable are fixed on purpose; [recovery
 
 Nothing to add to your R8 (ProGuard) rules: RNAP's own are applied to the app automatically. Turn R8 on for release builds (`minifyEnabled true` and `shrinkResources true` in `android/app/build.gradle`) and it removes most of what RNAP's libraries ship and RNAP does not use. RNAP builds ExoPlayer with only the audio and metadata renderers, so the video, subtitle and image code goes, and Android compiles only the C++ of RNAP's module, not that of the iOS-only AirPlay button.
 
-Measured in a React Native 0.86 release APK (arm64-v8a), RNAP adds 1,176 KB with R8 and 3,758 KB without it. [Comparison & benchmarks](comparison.md#added-to-a-release-apk) has the other libraries.
+Measured in a React Native 0.86 release APK (arm64-v8a), RNAP adds 1,192 KB with R8 and 3,790 KB without it. [Comparison & benchmarks](comparison.md#added-to-a-release-apk) has the other libraries.
