@@ -139,6 +139,17 @@ jobs:
         run: |
           yarn turbo run build:android --cache-dir="${{ env.TURBO_CACHE_DIR }}"
 
+      # The Cast SDKs are opt-in (`rnapCast`): build with them linked too, so
+      # neither configuration breaks. Skipped when turbo already proved the
+      # sources unchanged.
+      - name: Build example for Android with Google Cast
+        if: env.turbo_cache_hit != 1
+        working-directory: example/android
+        env:
+          JAVA_OPTS: "-XX:MaxHeapSize=6g"
+        run: |
+          ./gradlew assembleDebug -PrnapCast=true -PreactNativeArchitectures=arm64-v8a --no-daemon --console=plain
+
   build-ios:
     timeout-minutes: 60
     runs-on: macos-latest

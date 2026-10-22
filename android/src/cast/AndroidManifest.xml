@@ -1,0 +1,12 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <application>
+    <!-- Which receiver app casts open, and no Cast notification of their own (RNAP's media session is the only one). -->
+    <meta-data
+      android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME"
+      android:value="com.anythingplayer.cast.RnapCastOptionsProvider" />
+    <!-- Lists Cast devices in the system Output Switcher (Android 11+). -->
+    <receiver
+      android:name="androidx.mediarouter.media.MediaTransferReceiver"
+      android:exported="true" />
+  </application>
+</manifest>

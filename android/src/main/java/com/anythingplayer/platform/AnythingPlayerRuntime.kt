@@ -14,14 +14,20 @@ import androidx.annotation.OptIn
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
+import com.facebook.react.bridge.Arguments
+import com.facebook.react.bridge.WritableMap
 import com.google.common.util.concurrent.ListenableFuture
+import com.anythingplayer.core.AudioRoute
+import com.anythingplayer.core.AudioRouteKind
 import com.anythingplayer.core.ErrorCode
 import com.anythingplayer.core.FocusResult
 import com.anythingplayer.core.InterruptionReason
 import com.anythingplayer.core.NetworkState
 import com.anythingplayer.core.PlaybackState
 import com.anythingplayer.core.PlayerError
+import java.lang.ref.WeakReference
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
 
 private const val TAG = "RNAP"
 private const val RECOVERY_WAKE_LOCK_MS = 10 * 60 * 1000L
@@ -30,9 +36,12 @@ private const val FOCUS_RETRY_ATTEMPTS = 8
 
 /**
  * Process-wide coordination shared by every player: audio focus (one per app),
- * connectivity, app foreground state, the recovery wake lock, and the Media3
- * session service. Everything mutating runs on the main thread; [players] is
- * also read from the JS thread by the synchronous getters.
+ * connectivity, app foreground state, the recovery wake lock, the Media3
+ * session service, where the audio goes (the output route, the Cast session)
+ * and the JS instance events go to, if any. Players outlive that instance, so
+ * all of it works with no JS: a voice request can create and start a player.
+ * Everything mutating runs on the main thread; [players] is also read from the
+ * JS thread by the synchronous getters.
  */
 @OptIn(UnstableApi::class)
 internal object AnythingPlayerRuntime : FocusListener {
@@ -40,13 +49,40 @@ internal object AnythingPlayerRuntime : FocusListener {
   private lateinit var appContext: Context
   private var initialized = false
 
+  /** The application context; valid once [initialize] ran. */
+  val context: Context
+    get() = appContext
+
   val players = ConcurrentHashMap<String, PlayerController>()
+  private val counter = AtomicInteger(0)
+
+  /**
+   * Where events go while a JS instance is attached; dropped otherwise (JS
+   * reads `getStatus` when it attaches and drops what its snapshot covers).
+   */
+  @Volatile private var eventSink: EventSink? = null
 
   private lateinit var focus: AudioFocusCoordinator
   private lateinit var network: NetworkMonitor
+  private lateinit var routes: RouteMonitor
+  private var castBackend: CastBackend? = null
+  private val cast = CastCoordinator { localRoute }
   private var wakeLock: PowerManager.WakeLock? = null
   private var wifiLock: WifiManager.WifiLock? = null
   private var startedActivities = 0
+  private var resumedActivity: WeakReference<Activity>? = null
+
+  /**
+   * Where the audio goes when it plays on this device (speaker, headphones,
+   * Bluetooth…). Kept apart from the players' route: while casting, theirs is
+   * the receiver, and this is where a handoff back lands.
+   */
+  var localRoute: AudioRoute = AudioRoute.UNKNOWN
+    private set
+
+  /** The activity in the foreground, if any (dialogs need one). */
+  val foregroundActivity: Activity?
+    get() = resumedActivity?.get()
 
   /** The player the system media controls show and control. */
   @Volatile var active: PlayerController? = null
@@ -59,28 +95,162 @@ internal object AnythingPlayerRuntime : FocusListener {
   val networkState: NetworkState
     get() = if (initialized) network.state else NetworkState.UNKNOWN
 
+  // ── JS attachment ──
+
+  /** The TurboModule initialized: its emitter receives every event from now on. */
+  fun attachModule(sink: EventSink) {
+    eventSink = sink
+  }
+
+  /** The module is going away (JS reload / teardown): only that module's sink is cleared. */
+  fun detachModule(sink: EventSink) {
+    if (eventSink === sink) eventSink = null
+  }
+
+  /** Whether a JS instance is attached (the search handler can be asked). */
+  val hasJs: Boolean
+    get() = eventSink != null
+
+  /** Any thread. */
+  fun emit(event: WritableMap) {
+    eventSink?.emit(event)
+  }
+
+  // ── Players ──
+
+  /** A player and whether it already existed (an `id` that was attached to). */
+  data class Obtained(val controller: PlayerController, val attached: Boolean)
+
+  /**
+   * Creates a player, or — for an app-chosen [id] that is already running —
+   * returns that one (first creator wins; [options] are ignored). Any thread:
+   * the engine is built here, registered on the main thread.
+   */
+  fun obtain(context: Context, id: String?, options: PlayerOptions): Obtained {
+    val controller: PlayerController
+    synchronized(players) {
+      val existing = id?.let { players[it] }
+      if (existing != null && !existing.isReleased) return Obtained(existing, true)
+      val playerId = id ?: "android-${counter.incrementAndGet()}-${System.nanoTime().toString(36)}"
+      controller = PlayerController(playerId, context.applicationContext, options, this, appId = id != null)
+      players[playerId] = controller
+    }
+    post {
+      initialize(context)
+      register(controller)
+    }
+    return Obtained(controller, false)
+  }
+
   /** Main thread. Idempotent. */
   fun initialize(context: Context) {
     if (initialized) return
     initialized = true
     appContext = context.applicationContext
+    Voice.attach(appContext)
     focus = AudioFocusCoordinator(appContext, this)
     network = NetworkMonitor(appContext) { state, changed -> players.values.forEach { it.engine.networkChanged(state, changed) } }
     network.start()
+    routes =
+      RouteMonitor(appContext) { route ->
+        Log.d(TAG, "output route: ${route.kind.wire}${route.name?.let { " ($it)" } ?: ""}")
+        localRoute = route
+        players.values.forEach { it.engine.routeChanged(route) }
+      }
+    routes.start()
+    castBackend = CastBackends.create(appContext, castHost)
     (appContext as? Application)?.registerActivityLifecycleCallbacks(foregroundTracker)
   }
 
   fun register(controller: PlayerController) {
     players[controller.id] = controller
     controller.engine.networkChanged(network.state, false)
+    controller.engine.routeChanged(localRoute)
     controller.prewarm()
   }
 
   /** Main thread. */
   fun unregister(controller: PlayerController) {
     players.remove(controller.id)
+    cast.released(controller)
     if (active === controller) active = players.values.lastOrNull { it.options.mediaSession && it.status.state != PlaybackState.IDLE }
+    cast.activeChanged(active)
     refresh()
+  }
+
+  /** A Cast output for [controller]'s routing driver; `null` where Cast is not built in. */
+  fun newRemoteOutput(controller: PlayerController): RemoteOutput? = castBackend?.newOutput(controller, controller::nowPlaying)
+
+  // ── Voice ──
+
+  /** An assistant's request made [controller] the player to control: show it on the lock screen. Main thread. */
+  fun activate(controller: PlayerController) {
+    if (controller.options.mediaSession) active = controller
+    cast.activeChanged(active)
+    refresh()
+  }
+
+  /** The catalog changed: the media library the assistants browse and the session's commands follow. Main thread. */
+  fun catalogChanged() {
+    sessionPlayer?.refresh()
+    service?.notifyCatalogChanged()
+  }
+
+  // ── Outputs ──
+
+  /** Main thread. Opens the system output picker; throws `ROUTE_PICKER_UNAVAILABLE` if none could open. */
+  fun showRoutePicker() {
+    val via = OutputPicker.show(appContext, foregroundActivity)
+    Log.d(TAG, "output picker via ${via.name}")
+  }
+
+  // ── Cast ──
+
+  /** Where the Cast integration reports to. */
+  private val castHost =
+    object : CastHost {
+      override fun onCastStatus(status: CastStatus) {
+        emit(
+          Arguments.createMap().apply {
+            putString("type", "castState")
+            putString("state", status.state.wire)
+            if (status.device == null) putNull("device") else putString("device", status.device)
+          }
+        )
+        sessionPlayer?.refresh()
+      }
+
+      override fun onCastSessionStarted(deviceId: String, deviceName: String) = cast.sessionStarted(deviceId, deviceName, active)
+
+      override fun onCastSessionEnded() = cast.sessionEnded()
+
+      override fun onCastVolumeChanged() {
+        sessionPlayer?.refresh()
+      }
+    }
+
+  /** Any thread. */
+  val castStatus: CastStatus
+    get() = castBackend?.status ?: CastStatus.UNAVAILABLE
+
+  /** Main thread. The device chooser (the dialog to stop while connected); throws `CAST_UNAVAILABLE`. */
+  fun showCastPicker() {
+    val backend = castBackend ?: throw PlayerError(ErrorCode.CAST_UNAVAILABLE, "Google Cast is not available yet.", false)
+    backend.showPicker(foregroundActivity)
+  }
+
+  fun stopCasting() {
+    castBackend?.stopCasting()
+  }
+
+  /** A player is about to load [source]: if it is on the receiver and the receiver cannot reach it, it returns to the device. */
+  fun beforeLoad(controller: PlayerController, reachable: Boolean) = cast.beforeLoad(controller, reachable)
+
+  /** The receiver's volume, 0..1, while casting from the active player; the hardware keys control it. */
+  fun castVolume(): Double? = if (active?.status?.route?.kind == AudioRouteKind.CAST) castBackend?.deviceVolume() else null
+
+  fun setCastVolume(volume: Double) {
+    castBackend?.setDeviceVolume(volume.coerceIn(0.0, 1.0))
   }
 
   // ── Focus ──
@@ -141,6 +311,9 @@ internal object AnythingPlayerRuntime : FocusListener {
     val status = controller.status
     if (controller.options.mediaSession && status.playWhenReady) active = controller
     if (active == null && controller.options.mediaSession && status.state != PlaybackState.IDLE) active = controller
+    cast.activeChanged(active)
+    // Playing is when the output matters: read it now, then keep an eye on it.
+    if (status.state == PlaybackState.PLAYING) routes.refresh()
     refresh()
   }
 
@@ -155,6 +328,7 @@ internal object AnythingPlayerRuntime : FocusListener {
       focus.abandon()
     }
     updateRecoveryLocks()
+    routes.setPolling(players.values.any { it.status.state == PlaybackState.PLAYING })
     updateService()
     sessionPlayer?.refresh()
   }
@@ -165,8 +339,11 @@ internal object AnythingPlayerRuntime : FocusListener {
    * screen off the CPU could sleep through the backoff. Hold our own (bounded)
    * locks while any player wants audio that is not flowing.
    */
+  private val renewLocks = Runnable { updateRecoveryLocks() }
+
   private fun updateRecoveryLocks() {
-    val wanted = players.values.any { it.engine.wantsKeepalive }
+    // Reading a cast stream's titles needs the CPU awake too (nothing else holds a lock then).
+    val wanted = players.values.any { it.engine.wantsKeepalive || it.readsTitles }
     try {
       if (wanted) {
         val wl =
@@ -194,6 +371,9 @@ internal object AnythingPlayerRuntime : FocusListener {
         if (wakeLock?.isHeld == true) wakeLock?.release()
         if (wifiLock?.isHeld == true) wifiLock?.release()
       }
+      // The lock is bounded; a title reader outlives it, so renew it.
+      main.removeCallbacks(renewLocks)
+      if (wanted) main.postDelayed(renewLocks, RECOVERY_WAKE_LOCK_MS / 2)
     } catch (e: SecurityException) {
       Log.w(TAG, "recovery wake lock unavailable: ${e.message}")
     }
@@ -254,6 +434,8 @@ internal object AnythingPlayerRuntime : FocusListener {
 
   /** A command from the system media controls (lock screen, headset, car, Bluetooth). */
   fun remote(command: String, position: Double? = null) {
+    // An assistant's bare "play" with nothing loaded: the catalog has something.
+    if (command == "play" && Voice.nothingLoaded() && Voice.playDefault(autoplay = true)) return
     val target = active ?: return
     var nothingLoaded = false
     try {
@@ -286,8 +468,12 @@ internal object AnythingPlayerRuntime : FocusListener {
         startedActivities = (startedActivities - 1).coerceAtLeast(0)
       }
       override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) = Unit
-      override fun onActivityResumed(activity: Activity) = Unit
-      override fun onActivityPaused(activity: Activity) = Unit
+      override fun onActivityResumed(activity: Activity) {
+        resumedActivity = WeakReference(activity)
+      }
+      override fun onActivityPaused(activity: Activity) {
+        if (resumedActivity?.get() === activity) resumedActivity = null
+      }
       override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
       override fun onActivityDestroyed(activity: Activity) = Unit
     }

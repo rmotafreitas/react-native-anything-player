@@ -3,8 +3,10 @@ package com.anythingplayer.platform
 import android.net.Uri
 import java.io.File
 import android.os.Looper
+import android.util.Log
 import androidx.annotation.OptIn
 import androidx.media3.common.C
+import androidx.media3.common.DeviceInfo
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
@@ -14,7 +16,10 @@ import androidx.media3.common.SimpleBasePlayer
 import androidx.media3.common.util.UnstableApi
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
+import kotlin.math.roundToInt
+import com.anythingplayer.core.AudioRouteKind
 import com.anythingplayer.core.PlaybackState
+import com.anythingplayer.core.PlayerError
 
 /**
  * The player the Media3 session (notification, lock screen, headset, Bluetooth,
@@ -30,6 +35,9 @@ import com.anythingplayer.core.PlaybackState
  * - Every command must go through the engine (live-edge policy, user-pause
  *   latch), never straight to ExoPlayer.
  */
+/** The receiver's volume as the session's remote-volume scale: one hardware key press is one step (5 %). */
+private const val CAST_VOLUME_STEPS = 20
+
 @OptIn(UnstableApi::class)
 internal class SessionPlayer : SimpleBasePlayer(Looper.getMainLooper()) {
   /** The last local artwork read (uri → bytes): states are rebuilt often. */
@@ -59,12 +67,20 @@ internal class SessionPlayer : SimpleBasePlayer(Looper.getMainLooper()) {
 
   fun refresh() = invalidateState()
 
+  /** What a controller may do while nothing plays, when a catalog exists. */
+  private val idleCommands =
+    Player.Commands.Builder()
+      .addAll(Player.COMMAND_SET_MEDIA_ITEM, Player.COMMAND_CHANGE_MEDIA_ITEMS, Player.COMMAND_PREPARE, Player.COMMAND_PLAY_PAUSE)
+      .build()
+
   override fun getState(): State {
     val controller = AnythingPlayerRuntime.active
     val status = controller?.status
     if (controller == null || status == null || status.state == PlaybackState.IDLE) {
+      // Nothing is loaded. With a catalog an assistant may still ask for
+      // something to play ("play Jazz FM"): it sets an item, prepares and plays.
       return State.Builder()
-        .setAvailableCommands(Player.Commands.EMPTY)
+        .setAvailableCommands(if (Voice.hasItems()) idleCommands else Player.Commands.EMPTY)
         .setPlaybackState(Player.STATE_IDLE)
         .build()
     }
@@ -107,6 +123,7 @@ internal class SessionPlayer : SimpleBasePlayer(Looper.getMainLooper()) {
     val builder =
       State.Builder()
         .setAvailableCommands(commands)
+        .also { withReceiverVolume(it, status.route.kind == AudioRouteKind.CAST) }
         .setPlaylist(listOf(itemBuilder.build()))
         .setCurrentMediaItemIndex(0)
         .setPlaybackParameters(PlaybackParameters(status.rate.toFloat()))
@@ -143,6 +160,19 @@ internal class SessionPlayer : SimpleBasePlayer(Looper.getMainLooper()) {
     return builder.build()
   }
 
+  /**
+   * While the receiver plays, the session is remote playback: the hardware
+   * volume keys control the receiver's volume (the stream volume stays the
+   * player's `setVolume`).
+   */
+  private fun withReceiverVolume(state: State.Builder, casting: Boolean) {
+    if (!casting) return
+    val volume = AnythingPlayerRuntime.castVolume() ?: return
+    state
+      .setDeviceInfo(DeviceInfo.Builder(DeviceInfo.PLAYBACK_TYPE_REMOTE).setMinVolume(0).setMaxVolume(CAST_VOLUME_STEPS).build())
+      .setDeviceVolume((volume * CAST_VOLUME_STEPS).roundToInt())
+  }
+
   private fun availableCommands(seekable: Boolean, remote: Set<String>): Player.Commands {
     val commands =
       Player.Commands.Builder()
@@ -155,6 +185,15 @@ internal class SessionPlayer : SimpleBasePlayer(Looper.getMainLooper()) {
           Player.COMMAND_GET_TIMELINE,
           Player.COMMAND_RELEASE,
         )
+    if (AnythingPlayerRuntime.castVolume() != null) {
+      commands.addAll(
+        Player.COMMAND_GET_DEVICE_VOLUME,
+        Player.COMMAND_SET_DEVICE_VOLUME_WITH_FLAGS,
+        Player.COMMAND_ADJUST_DEVICE_VOLUME_WITH_FLAGS,
+      )
+    }
+    // Voice: an assistant can replace what plays with something from the catalog.
+    if (Voice.hasItems()) commands.addAll(Player.COMMAND_SET_MEDIA_ITEM, Player.COMMAND_CHANGE_MEDIA_ITEMS)
     if (seekable) commands.add(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)
     if ("next" in remote) commands.addAll(Player.COMMAND_SEEK_TO_NEXT, Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
     if ("previous" in remote) commands.addAll(Player.COMMAND_SEEK_TO_PREVIOUS, Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
@@ -177,7 +216,47 @@ internal class SessionPlayer : SimpleBasePlayer(Looper.getMainLooper()) {
     return Futures.immediateVoidFuture()
   }
 
-  override fun handlePrepare(): ListenableFuture<*> = Futures.immediateVoidFuture()
+  /** With nothing loaded, an assistant's `prepare()` stages what "play" would play. */
+  override fun handlePrepare(): ListenableFuture<*> {
+    if (Voice.nothingLoaded()) Voice.playDefault(autoplay = false)
+    return Futures.immediateVoidFuture()
+  }
+
+  /**
+   * An assistant set an item (already resolved to the catalog by the library
+   * callback): load it, paused. The `play()` that follows starts it.
+   */
+  override fun handleSetMediaItems(mediaItems: MutableList<MediaItem>, startIndex: Int, startPositionMs: Long): ListenableFuture<*> {
+    val chosen = mediaItems.getOrNull(startIndex.coerceAtLeast(0)) ?: mediaItems.firstOrNull()
+    val entry = chosen?.let { Voice.entry(it.mediaId) }
+    if (entry == null) {
+      Log.w("RNAP", "assistant set an item that is not in the catalog: ${chosen?.mediaId}")
+      return Futures.immediateVoidFuture()
+    }
+    val request = Voice.takeResolvedRequest() ?: SearchRequest(entry.title, origin = "assistant")
+    try {
+      val start = if (startPositionMs != C.TIME_UNSET && startPositionMs > 0) startPositionMs / 1000.0 else null
+      Voice.load(Voice.voicePlayer(null), entry, request, autoplay = false, startSeconds = start, completion = null)
+    } catch (error: PlayerError) {
+      Log.w("RNAP", "assistant request failed: ${error.message}")
+    }
+    return Futures.immediateVoidFuture()
+  }
+
+  override fun handleSetDeviceVolume(deviceVolume: Int, flags: Int): ListenableFuture<*> {
+    AnythingPlayerRuntime.setCastVolume(deviceVolume.toDouble() / CAST_VOLUME_STEPS)
+    return Futures.immediateVoidFuture()
+  }
+
+  override fun handleIncreaseDeviceVolume(flags: Int): ListenableFuture<*> = stepReceiverVolume(+1)
+
+  override fun handleDecreaseDeviceVolume(flags: Int): ListenableFuture<*> = stepReceiverVolume(-1)
+
+  private fun stepReceiverVolume(direction: Int): ListenableFuture<*> {
+    val current = AnythingPlayerRuntime.castVolume() ?: return Futures.immediateVoidFuture()
+    AnythingPlayerRuntime.setCastVolume(((current * CAST_VOLUME_STEPS).roundToInt() + direction).toDouble() / CAST_VOLUME_STEPS)
+    return Futures.immediateVoidFuture()
+  }
 
   override fun handleStop(): ListenableFuture<*> {
     AnythingPlayerRuntime.remote("stop")

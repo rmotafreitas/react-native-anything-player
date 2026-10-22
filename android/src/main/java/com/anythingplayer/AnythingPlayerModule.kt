@@ -10,18 +10,24 @@ import com.facebook.react.bridge.ReadableMap
 import com.facebook.react.bridge.WritableArray
 import com.facebook.react.bridge.WritableMap
 import com.anythingplayer.core.ErrorCode
+import com.anythingplayer.core.LoadOutcome
 import com.anythingplayer.core.PlayerError
 import com.anythingplayer.platform.AnythingPlayerRuntime
 import com.anythingplayer.platform.EventSink
 import com.anythingplayer.platform.PlayerController
+import com.anythingplayer.platform.SearchRequest
+import com.anythingplayer.platform.Voice
 import com.anythingplayer.platform.errorToMap
 import com.anythingplayer.platform.optBoolean
 import com.anythingplayer.platform.optDouble
+import com.anythingplayer.platform.optMap
+import com.anythingplayer.platform.optString
+import com.anythingplayer.platform.toJson
+import com.anythingplayer.platform.toWritableMap
 import com.anythingplayer.platform.parseNowPlaying
 import com.anythingplayer.platform.parseOptions
 import com.anythingplayer.platform.parseSource
 import com.anythingplayer.platform.statusToMap
-import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * The TurboModule. Thin: every command is posted, in call order, to the main
@@ -30,7 +36,10 @@ import java.util.concurrent.atomic.AtomicInteger
  */
 class AnythingPlayerModule(reactContext: ReactApplicationContext) : NativeAnythingPlayerSpec(reactContext) {
   private val main = Handler(Looper.getMainLooper())
-  /** Players created by this module instance (released on reload/teardown). */
+  /**
+   * Players this module instance created or attached to. On reload/teardown
+   * the ones without an app id are released; the others keep playing.
+   */
   private val owned = mutableSetOf<String>()
   private val sinkLock = Any()
   private var invalidated = false
@@ -42,20 +51,19 @@ class AnythingPlayerModule(reactContext: ReactApplicationContext) : NativeAnythi
 
   companion object {
     const val NAME = NativeAnythingPlayerSpec.NAME
-    private val counter = AtomicInteger(0)
+  }
+
+  override fun initialize() {
+    super.initialize()
+    AnythingPlayerRuntime.attachModule(sink)
+    main.post { AnythingPlayerRuntime.initialize(reactApplicationContext) }
   }
 
   override fun createPlayer(options: ReadableMap): String {
-    val id = "android-${counter.incrementAndGet()}-${System.nanoTime().toString(36)}"
-    val parsed = parseOptions(options)
-    val controller = PlayerController(id, reactApplicationContext, parsed, AnythingPlayerRuntime, sink)
-    synchronized(owned) { owned.add(id) }
-    AnythingPlayerRuntime.players[id] = controller
-    main.post {
-      AnythingPlayerRuntime.initialize(reactApplicationContext)
-      AnythingPlayerRuntime.register(controller)
-    }
-    return id
+    val obtained = AnythingPlayerRuntime.obtain(reactApplicationContext, options.optString("id"), parseOptions(options))
+    synchronized(owned) { owned.add(obtained.controller.id) }
+    if (obtained.attached) main.post { obtained.controller.noteAttach() }
+    return obtained.controller.id
   }
 
   override fun releasePlayer(playerId: String, promise: Promise) {
@@ -103,7 +111,12 @@ class AnythingPlayerModule(reactContext: ReactApplicationContext) : NativeAnythi
         return@post
       }
       try {
-        controller.load(descriptor, fields, autoplay, start, promise)
+        controller.load(descriptor, fields, autoplay, start) { outcome ->
+          when (outcome) {
+            is LoadOutcome.Failed -> reject(promise, outcome.error)
+            else -> promise.resolve(controller.statusMap())
+          }
+        }
       } catch (error: PlayerError) {
         reject(promise, error)
       }
@@ -160,56 +173,118 @@ class AnythingPlayerModule(reactContext: ReactApplicationContext) : NativeAnythi
   // native routing, Cast and catalog glue is its own commit and lands here.
 
   override fun showRoutePicker(playerId: String?, promise: Promise) {
-    promise.reject("NOT_IMPLEMENTED", "Outputs are not implemented on Android yet.", null)
+    main.post {
+      try {
+        AnythingPlayerRuntime.showRoutePicker()
+        promise.resolve(null)
+      } catch (error: PlayerError) {
+        reject(promise, error)
+      }
+    }
   }
 
-  override fun isRoutePickerAvailable(): Boolean = false
+  /** The Output Switcher, a dialog or the Bluetooth settings: there is always something to try. */
+  override fun isRoutePickerAvailable(): Boolean = true
 
   override fun getCastState(): WritableMap =
-    Arguments.createMap().apply {
-      putString("state", "unavailable")
-      putNull("device")
+    AnythingPlayerRuntime.castStatus.let { status ->
+      Arguments.createMap().apply {
+        putString("state", status.state.wire)
+        if (status.device == null) putNull("device") else putString("device", status.device)
+      }
     }
 
-  override fun configureCast(options: ReadableMap, promise: Promise) {
-    promise.reject("NOT_IMPLEMENTED", "Cast is not implemented on Android yet.", null)
-  }
+  /** The receiver is set at build time (`com.anythingplayer.CAST_RECEIVER_ID`); nothing to load here. */
+  override fun configureCast(options: ReadableMap, promise: Promise) = promise.resolve(null)
 
   override fun showCastPicker(promise: Promise) {
-    promise.reject("NOT_IMPLEMENTED", "Cast is not implemented on Android yet.", null)
+    main.post {
+      try {
+        AnythingPlayerRuntime.showCastPicker()
+        promise.resolve(null)
+      } catch (error: PlayerError) {
+        reject(promise, error)
+      }
+    }
   }
 
   override fun stopCasting(promise: Promise) {
-    promise.reject("NOT_IMPLEMENTED", "Cast is not implemented on Android yet.", null)
+    main.post {
+      AnythingPlayerRuntime.stopCasting()
+      promise.resolve(null)
+    }
   }
 
+  // ── Catalog & voice ──
+
   override fun setCatalog(items: ReadableArray, options: ReadableMap, promise: Promise) {
-    promise.reject("NOT_IMPLEMENTED", "The voice catalog is not implemented on Android yet.", null)
+    try {
+      Voice.attach(reactApplicationContext)
+      val serialized = (0 until items.size()).mapNotNull { items.getMap(it)?.toJson() }
+      Voice.set(serialized, options.optString("playerId") ?: "default", options.optMap("playerOptions")?.toJson())
+      promise.resolve(null)
+    } catch (error: Throwable) {
+      reject(promise, PlayerError(ErrorCode.INTERNAL_ERROR, error.message ?: error.javaClass.simpleName, false, causeDescription = error.toString()))
+    }
   }
 
   override fun searchCatalog(request: ReadableMap, promise: Promise) {
-    promise.resolve(Arguments.createArray())
+    Voice.attach(reactApplicationContext)
+    val matches = Arguments.createArray()
+    Voice.search(searchRequest(request)).forEach { matches.pushMap(it.json.toWritableMap()) }
+    promise.resolve(matches)
   }
 
   override fun playFromSearch(request: ReadableMap, playerId: String?, promise: Promise) {
-    promise.resolve(Arguments.createMap().apply { putNull("item") })
+    Voice.attach(reactApplicationContext)
+    val asked = searchRequest(request)
+    main.post {
+      Voice.playFromSearch(asked, playerId) { result ->
+        result.fold(
+          onSuccess = { entry ->
+            promise.resolve(
+              Arguments.createMap().apply {
+                if (entry == null) putNull("item") else putMap("item", entry.json.toWritableMap())
+              }
+            )
+          },
+          onFailure = { error ->
+            reject(promise, error as? PlayerError ?: PlayerError(ErrorCode.INTERNAL_ERROR, error.message ?: "playFromSearch failed", false, causeDescription = error.toString()))
+          },
+        )
+      }
+    }
   }
 
   override fun setSearchHandlerEnabled(enabled: Boolean) {
-    // No-op until the native catalog glue lands.
+    Voice.handlerEnabled = enabled
   }
 
   override fun resolveSearchRequest(requestId: String, result: ReadableMap) {
-    // No-op until the native catalog glue lands.
+    Voice.answer(requestId, result.optMap("item")?.toJson())
   }
+
+  private fun searchRequest(map: ReadableMap) =
+    SearchRequest(
+      query = map.optString("query") ?: "",
+      title = map.optString("title"),
+      artist = map.optString("artist"),
+      album = map.optString("album"),
+      genre = map.optString("genre"),
+      focus = map.optString("focus"),
+      origin = "app",
+    )
 
   /** JS reload / React host teardown: no JS can control these players any more. */
   override fun invalidate() {
     synchronized(sinkLock) { invalidated = true }
+    AnythingPlayerRuntime.detachModule(sink)
+    main.post { Voice.jsDetached() }
     val ids = synchronized(owned) { owned.toList().also { owned.clear() } }
     main.post {
       ids.forEach { id ->
-        AnythingPlayerRuntime.players[id]?.let {
+        // A player with an app id keeps playing: the next JS instance attaches to it.
+        AnythingPlayerRuntime.players[id]?.takeIf { !it.appId }?.let {
           it.release()
           AnythingPlayerRuntime.unregister(it)
         }
