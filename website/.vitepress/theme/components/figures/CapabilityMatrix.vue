@@ -1,11 +1,14 @@
 <script setup lang="ts">
-// The capability matrix as a real table, from
-// benchmarks/results/capabilities.json. GitHub shows the SVG drawn from the
-// same file by benchmarks/charts/render.mjs.
+// A capability matrix as a real table, from benchmarks/results/<name>.json
+// (React Native: capabilities; the web: capabilities-web). GitHub shows the
+// SVG drawn from the same file by benchmarks/charts/render.mjs.
 import { computed, ref } from 'vue';
-import data from '../../../../../benchmarks/results/capabilities.json';
+import mobile from '../../../../../benchmarks/results/capabilities.json';
+import web from '../../../../../benchmarks/results/capabilities-web.json';
 
-defineProps<{ alt?: string }>();
+const props = defineProps<{ name?: string; alt?: string }>();
+
+const data: typeof mobile & { title?: string } = props.name === 'capabilities-web' ? web : mobile;
 
 type Value = 'yes' | 'partial' | 'app' | 'no';
 const LABEL: Record<Value, string> = { yes: 'Built in', partial: 'Partial', app: 'Your code', no: 'No' };
@@ -30,10 +33,10 @@ function value(row: (typeof data.groups)[number]['rows'][number], id: string): V
 </script>
 
 <template>
-  <figure class="aw-matrix" :aria-label="alt ?? 'What you get out of the box'">
+  <figure class="aw-matrix" :aria-label="alt ?? data.title ?? 'What you get out of the box'">
     <div class="top">
       <div class="title">
-        <strong>What you get out of the box</strong>
+        <strong>{{ data.title ?? 'What you get out of the box' }}</strong>
         <span>{{ data.libraries.map((l) => `${l.label} ${l.version}`).join(' · ') }}</span>
       </div>
       <div class="chips" role="group" aria-label="Show">

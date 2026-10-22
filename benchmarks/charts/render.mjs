@@ -27,6 +27,8 @@ const C = {
   accent: '#ff6428',
   accentWash: '#fff0e6',
   other: '#e3d0c6',
+  accentLater: '#ffc4a8',
+  otherLater: '#f3e8e2',
   good: '#0ca30c',
   serious: '#ec835a',
   warning: '#fab219',
@@ -46,12 +48,12 @@ function niceStep(max, ticks = 5) {
 function card(width, height, body, { title, subtitle, note }) {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" font-family="${FONT}" role="img" aria-labelledby="t d">
 <title id="t">${esc(title)}</title>
-<desc id="d">${esc(subtitle)}${note ? ` — ${esc(note)}` : ''}</desc>
+<desc id="d">${esc(subtitle)}${note ? ` — ${esc([note].flat().join(' · '))}` : ''}</desc>
 <rect x="0.5" y="0.5" width="${width - 1}" height="${height - 1}" rx="12" fill="${C.surface}" stroke="${C.border}"/>
 <text x="24" y="36" font-size="17" font-weight="600" fill="${C.ink}">${esc(title)}</text>
 <text x="24" y="58" font-size="13" fill="${C.ink2}">${esc(subtitle)}</text>
 ${body}
-${note ? `<text x="24" y="${height - 18}" font-size="11" fill="${C.muted}">${esc(note)}</text>` : ''}
+${[note ?? []].flat().reverse().map((line, i) => `<text x="24" y="${height - 18 - i * 16}" font-size="11" fill="${C.muted}">${esc(line)}</text>`).join('\n')}
 </svg>
 `;
 }
@@ -70,13 +72,14 @@ function hbar({ title, subtitle, note, rows, unit, cap }) {
   const bar = 18;
   const top = 92;
   const plotW = width - 24 - labelW - valueW;
-  const max = cap ?? Math.max(...rows.map((r) => r.value));
+  const total = (r) => r.value + (r.later ?? 0);
+  const max = cap ?? Math.max(...rows.map(total));
   const step = niceStep(max);
   const axisMax = Math.ceil(max / step) * step;
   const x0 = 24 + labelW;
   const sx = (v) => (Math.min(v, axisMax) / axisMax) * plotW;
   const plotBottom = top + rows.length * rowH;
-  const height = plotBottom + 30 + (note ? 34 : 14);
+  const height = plotBottom + 30 + (note ? 34 + 16 * ([note].flat().length - 1) : 14);
 
   let body = '';
   for (let v = 0; v <= axisMax + 1e-9; v += step) {
@@ -85,18 +88,25 @@ function hbar({ title, subtitle, note, rows, unit, cap }) {
     body += `<text x="${x}" y="${plotBottom + 18}" font-size="11" fill="${C.muted}" text-anchor="middle" style="font-variant-numeric:tabular-nums">${fmt(v)}</text>`;
   }
   body += `<text x="${x0 + plotW}" y="${top - 16}" font-size="11" fill="${C.muted}" text-anchor="end">${esc(unit)}</text>`;
+  const digits = rows.some((r) => r.digits) ? 1 : 0;
+  const num = (v) => (digits ? v.toFixed(1) : fmt(v));
   rows.forEach((r, i) => {
     const y = top + i * rowH + (rowH - bar) / 2;
-    const w = Math.max(2, sx(r.value));
-    const off = r.value > axisMax;
+    const w = Math.max(2, sx(total(r)));
+    const off = total(r) > axisMax;
     body += `<text x="${x0 - 12}" y="${y + bar / 2 + 4.5}" font-size="13" fill="${r.highlight ? C.ink : C.ink2}" font-weight="${r.highlight ? 600 : 400}" text-anchor="end">${esc(r.label)}</text>`;
-    body += `<path d="${barPath(x0 + 0.5, y, w, bar)}" fill="${r.highlight ? C.accent : C.other}"><title>${esc(r.label)}: ${fmt(r.value)} ${esc(unit)}</title></path>`;
+    if (r.later) {
+      // What loads only when used: the same bar, washed, after the solid part.
+      body += `<path d="${barPath(x0 + 0.5, y, w, bar)}" fill="${r.highlight ? C.accentLater : C.otherLater}"><title>${esc(r.label)}: ${num(r.later)} ${esc(unit)} more, fetched on first play</title></path>`;
+      body += `<rect x="${x0 + 0.5}" y="${y}" width="${Math.max(2, Math.min(sx(r.value), w - 4))}" height="${bar}" fill="${r.highlight ? C.accent : C.other}"><title>${esc(r.label)}: ${num(r.value)} ${esc(unit)} on page load</title></rect>`;
+    } else
+      body += `<path d="${barPath(x0 + 0.5, y, w, bar)}" fill="${r.highlight ? C.accent : C.other}"><title>${esc(r.label)}: ${num(r.value)} ${esc(unit)}</title></path>`;
     if (off) {
       // Axis break: two surface-colored slashes near the clipped end.
       const bx = x0 + w - 22;
       body += `<path d="M${bx},${y + bar + 2}l6,-${bar + 4}M${bx + 6},${y + bar + 2}l6,-${bar + 4}" stroke="${C.surface}" stroke-width="3"/>`;
     }
-    const label = `${fmt(r.value)}${off ? ' (off scale)' : ''}`;
+    const label = r.later ? `${num(r.value)} + ${num(r.later)} to play` : `${num(r.value)}${off ? ' (off scale)' : ''}`;
     body += `<text x="${x0 + w + 8}" y="${y + bar / 2 + 4.5}" font-size="12" fill="${r.highlight ? C.ink : C.ink2}" font-weight="${r.highlight ? 600 : 400}" style="font-variant-numeric:tabular-nums">${label}</text>`;
   });
   return card(width, height, body, { title, subtitle, note });
@@ -109,7 +119,7 @@ const CELL = {
   no: { text: 'No', color: null, glyph: 'M-2.6,-2.6l5.2,5.2M2.6,-2.6l-5.2,5.2' },
 };
 
-function matrix(data) {
+function matrix(data, title = 'What you get out of the box') {
   const libs = data.libraries;
   const labelW = 330;
   const colW = 112;
@@ -125,7 +135,12 @@ function matrix(data) {
   body += `<rect x="${x0}" y="${y - 30}" width="${colW}" height="${heightPlot + 36}" rx="8" fill="${C.accentWash}"/>`;
   libs.forEach((lib, i) => {
     const cx = x0 + i * colW + colW / 2;
-    body += `<text x="${cx}" y="${y - 10}" font-size="13" font-weight="600" fill="${C.ink}" text-anchor="middle">${esc(lib.label)}</text>`;
+    // A long name goes on two lines, broken after a hyphen.
+    const cut = lib.label.length > 14 ? lib.label.lastIndexOf('-', Math.ceil(lib.label.length / 2) + 2) + 1 : 0;
+    const lines = cut > 0 ? [lib.label.slice(0, cut), lib.label.slice(cut)] : [lib.label];
+    lines.forEach((line, n) => {
+      body += `<text x="${cx}" y="${y - 10 - (lines.length - 1 - n) * 15}" font-size="13" font-weight="600" fill="${C.ink}" text-anchor="middle">${esc(line)}</text>`;
+    });
   });
   for (const group of data.groups) {
     y += 26;
@@ -149,9 +164,9 @@ function matrix(data) {
   }
   const height = y + 50;
   return card(width, height, body, {
-    title: 'What you get out of the box',
+    title: data.title ?? title,
     subtitle: libs.map((l) => `${l.label} ${l.version}`).join(' · '),
-    note: 'Read from each package’s published source (TypeScript API + native code); not device-measured. Hover a row for its evidence.',
+    note: data.note ?? 'Read from each package’s published source (TypeScript API + native code); not device-measured. Hover a row for its evidence.',
   });
 }
 
@@ -185,7 +200,7 @@ function main() {
       subtitle: 'Maven artifacts declared by the package (React Native and the Kotlin stdlib excluded)',
       unit: 'artifacts',
       rows: sorted((p) => p.androidDependencies.length),
-      note: `${source} · RNAP: Media3 only, HLS optional (rnapHls=false)`,
+      note: `${source} · RNAP: Media3 and MediaRouter, HLS optional (rnapHls=false), Cast opt-in`,
     }),
     'js-cost.svg': hbar({
       title: 'JavaScript added to your bundle',
@@ -195,8 +210,43 @@ function main() {
       note: source,
     }),
   };
+  // The web: one chart per kind of page, each library against its own kind.
+  const WEB_CHARTS = {
+    rnWeb: ['web-rn.svg', 'Expo web and React Native Web: JavaScript in the page', 'React Native packages bundled for the browser'],
+    react: ['web-react.svg', 'React (react-dom): JavaScript in the page', 'RNAP’s /react entry and the React audio libraries'],
+    vanilla: ['web-vanilla.svg', 'Any web page: JavaScript in the page', 'RNAP’s /web entry and the plain-JavaScript audio libraries'],
+  };
+  for (const category of size.web ?? []) {
+    const [file, title, intro] = WEB_CHARTS[category.id];
+    const rows = category.packages
+      .map((p) => {
+        const required = p.later.filter((l) => l.required).reduce((n, l) => n + l.gzipBytes, 0);
+        return {
+          label: p.label,
+          value: p.initialGzipBytes / 1024,
+          // Only what it must fetch to play at all: optional parts are in the table.
+          later: required / 1024 || undefined,
+          digits: 1,
+          highlight: p.name === 'react-native-anything-player',
+        };
+      })
+      .sort((a, b) => a.value + (a.later ?? 0) - (b.value + (b.later ?? 0)));
+    const extras = category.packages
+      .flatMap((p) => p.later.filter((l) => !l.required).map((l) => `${p.label} + ${l.name} ${Math.round(l.gzipBytes / 1024)} KB`));
+    charts[file] = hbar({
+      title,
+      subtitle: `${intro}. Minified + gzipped KB on page load${rows.some((r) => r.later) ? '; lighter: fetched before it plays' : ''}`,
+      unit: 'KB gzip',
+      cap: 60,
+      rows,
+      note: [source, ...(extras.length ? [`Not counted, for HLS outside Safari: ${extras.join(', ')}`] : [])],
+    });
+  }
+
   const caps = JSON.parse(fs.readFileSync(path.join(RESULTS, 'capabilities.json'), 'utf8'));
   charts['capabilities.svg'] = matrix(caps);
+  const webCaps = JSON.parse(fs.readFileSync(path.join(RESULTS, 'capabilities-web.json'), 'utf8'));
+  charts['capabilities-web.svg'] = matrix(webCaps);
 
   for (const [file, svg] of Object.entries(charts)) {
     fs.writeFileSync(path.join(OUT, file), svg);

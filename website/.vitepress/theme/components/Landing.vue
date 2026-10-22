@@ -53,7 +53,7 @@ const features = [
   },
   {
     title: 'Lightweight',
-    body: 'A TurboModule with zero JS dependencies and no framework requirement. Media3 only on Android; leave out HLS with one flag.',
+    body: 'A TurboModule with zero JS dependencies and no framework requirement. On Android, Media3 and the system output picker; leave out HLS with one flag.',
   },
   {
     title: 'Honest state',
@@ -246,8 +246,8 @@ const stats = [
     <section class="block lean">
       <div class="lean-stats">
         <p class="eyebrow">Lean by design</p>
-        <div class="big"><span>4</span> Android libraries</div>
-        <p>Media3 and nothing else. HLS is optional.</p>
+        <div class="big"><span>5</span> Android libraries</div>
+        <p>Media3 and the system output picker. HLS is optional, Cast opt-in.</p>
         <div class="big"><span>0</span> JS dependencies</div>
         <p>No framework, no Nitro, no state library. Expo is optional.</p>
       </div>
@@ -290,10 +290,12 @@ const stats = [
     <section class="block">
       <h2>How it compares</h2>
       <p class="sub">
-        Read from each library’s published source, not marketing. Where RNAP is behind (queues, caching,
-        CarPlay) is on the <a :href="withBase('/docs/roadmap')">roadmap</a>.
+        Each library against its own kind, read from its published source, not marketing. Where RNAP is behind
+        (queues, caching, CarPlay) is on the <a :href="withBase('/docs/roadmap')">roadmap</a>.
       </p>
       <CapabilityMatrix />
+      <CapabilityMatrix name="capabilities-web" />
+      <p class="sub small"><a :href="withBase('/docs/comparison')">Sizes on iOS, Android and every kind of web page →</a></p>
     </section>
 
     <section class="cta">

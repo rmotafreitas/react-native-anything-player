@@ -67,6 +67,10 @@ Import `react-native-anything-player/web`. It has no React or React Native depen
 
 esm.sh serves packages from npm, so the snippet works once RNAP is published there; until then, use a bundler, or serve `lib/module/` from the [release tarball](getting-started.md#install). With a bundler, `import { Player } from 'react-native-anything-player/web'` works the same. [`example-web/`](../example-web/main.js) is a complete page (stations, controls, metadata, a visualizer).
 
+### What a page loads
+
+About 28 KB of JavaScript (minified and gzipped) on page load, the same for all three entries. Two parts load only when they are needed, as separate files with bundlers that split code (Vite, webpack, Next.js, esbuild with `splitting`, Metro on Expo web): Google Cast's driver, after `configureCast()` has loaded the Cast SDK, and the MP4 repackaging, the first time a browser needs it (Firefox). Together they are about 6 KB. [Comparison & benchmarks](comparison.md#react-and-plain-web-pages) puts this next to the other web audio libraries.
+
 ## How a stream is played
 
 | Source | How | ICY metadata | Splice on drop | `liveOffset` |

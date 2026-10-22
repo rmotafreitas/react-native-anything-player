@@ -1,6 +1,16 @@
 #!/usr/bin/env node
-// Install-size comparison: react-native-anything-player against the other React Native
-// audio players, measured from what npm actually ships.
+// Size comparison, measured from what npm actually ships, by where an app runs:
+//
+//   - iOS and Android: RNAP against the other React Native audio players
+//     (download, native code, Android libraries, JS);
+//   - Expo web and React Native Web: the same React Native packages, bundled for
+//     the browser;
+//   - React (react-dom) and plain JavaScript pages: RNAP's `/react` and `/web`
+//     entries against the web audio libraries of each kind.
+//
+// Web numbers are what a production bundle loads: code-split like Vite or
+// webpack would, the JS a page loads up front apart from what a package loads
+// only when a feature is used.
 //
 //   node benchmarks/size/measure.mjs            # writes benchmarks/results/size.json
 //
@@ -29,6 +39,60 @@ const PACKAGES = [
   { name: 'react-native-video', label: 'react-native-video', role: 'video player' },
   { name: 'react-native-audio-api', label: 'react-native-audio-api', role: 'Web Audio engine' },
   { name: 'react-native-sound', label: 'react-native-sound', role: 'sound effects' },
+];
+
+/**
+ * The web libraries, by the kind of page they are for. `use`: what an app
+ * imports. `later`: what a package itself fetches at run time (not a bundle
+ * import), with when.
+ */
+const R = 'react-native-anything-player';
+const WEB = [
+  {
+    id: 'rnWeb',
+    title: 'Expo web and React Native Web',
+    external: ['react', 'react/*', 'react-dom', 'react-dom/*', 'react-native', 'react-native/*', 'react-native-web',
+      'react-native-web/*', 'expo', 'expo-modules-core', 'expo-asset', 'expo-constants', 'expo-file-system', '@expo/*',
+      'react-native-nitro-modules'],
+    reactNative: true,
+    packages: [
+      { name: R, label: 'RNAP', use: `export * from '${R}';`,
+        later: [{ name: 'hls.js', when: 'HLS outside Safari (the app adds it)' }] },
+      { name: '@rntp/player', label: 'RNTP 5', use: `export * from '@rntp/player';`,
+        later: [{ name: 'shaka-player', file: 'dist/shaka-player.compiled.js', when: 'HLS / DASH outside Safari' }] },
+      { name: 'react-native-track-player', version: '4', label: 'RNTP 4', use: `export * from 'react-native-track-player';`,
+        later: [{ name: 'shaka-player', file: 'dist/shaka-player.ui.js', when: 'playing anything', required: true }] },
+      { name: 'expo-audio', label: 'expo-audio', use: `export * from 'expo-audio';` },
+      { name: 'expo-av', label: 'expo-av', use: `export * from 'expo-av';` },
+      { name: 'react-native-video', label: 'react-native-video', use: `export * from 'react-native-video';` },
+      { name: 'react-native-audio-api', label: 'react-native-audio-api', use: `export * from 'react-native-audio-api';` },
+    ],
+  },
+  {
+    id: 'react',
+    title: 'React (react-dom)',
+    external: ['react', 'react/*', 'react-dom', 'react-dom/*'],
+    packages: [
+      { name: R, label: 'RNAP /react', use: `export * from '${R}/react';` },
+      { name: 'use-sound', label: 'use-sound (howler)', use: `export { default } from 'use-sound';` },
+      { name: 'react-h5-audio-player', label: 'react-h5-audio-player', use: `export { default } from 'react-h5-audio-player';` },
+      { name: 'react-audio-player', label: 'react-audio-player', use: `export { default } from 'react-audio-player';` },
+      { name: 'react-player', label: 'react-player', use: `export { default } from 'react-player';` },
+      { name: '@vidstack/react', label: 'Vidstack', use: `export { MediaPlayer, MediaProvider } from '@vidstack/react';` },
+    ],
+  },
+  {
+    id: 'vanilla',
+    title: 'Any web page (no framework)',
+    external: [],
+    packages: [
+      { name: R, label: 'RNAP /web', use: `export * from '${R}/web';` },
+      { name: 'howler', label: 'howler.js', use: `export { Howl, Howler } from 'howler';` },
+      { name: 'amplitudejs', label: 'Amplitude.js', use: `export { default } from 'amplitudejs';` },
+      { name: 'plyr', label: 'Plyr', use: `export { default } from 'plyr';` },
+      { name: 'icecast-metadata-player', label: 'icecast-metadata-player', use: `export { default } from 'icecast-metadata-player';` },
+    ],
+  },
 ];
 
 /** Provided by every RN app (or by the package's own peer framework): not counted. */
@@ -137,10 +201,70 @@ async function jsCost(esbuild, entryDir, pkgName, nodePaths, fromSource = false)
   return { min: code.length, gzip: zlib.gzipSync(code, { level: 9 }).length };
 }
 
+/**
+ * A production web bundle of `contents`, split like an app bundler splits it:
+ * the JS a page loads up front (the entry and its static imports) and all of
+ * it (with the chunks loaded by `import()` when a feature is used). Minified,
+ * gzip -9.
+ */
+async function webCost(esbuild, work, contents, { external, reactNative }) {
+  const entry = path.join(work, 'web-entry.js');
+  fs.writeFileSync(entry, contents);
+  const result = await esbuild.build({
+    entryPoints: [entry],
+    outdir: path.join(work, 'web-out'),
+    bundle: true,
+    minify: true,
+    splitting: true,
+    write: false,
+    metafile: true,
+    format: 'esm',
+    platform: 'browser',
+    // React Native packages resolve their `.web` files, as Metro and the RNW
+    // bundler configs do.
+    ...(reactNative
+      ? {
+          mainFields: ['browser', 'module', 'main'],
+          resolveExtensions: ['.web.tsx', '.web.ts', '.web.js', '.web.mjs', '.tsx', '.ts', '.js', '.mjs', '.json'],
+        }
+      : {}),
+    conditions: ['browser', 'import', 'default'],
+    define: { 'process.env.NODE_ENV': '"production"', __DEV__: 'false' },
+    external,
+    loader: { '.js': 'jsx', '.png': 'empty', '.jpg': 'empty', '.css': 'empty', '.ttf': 'empty', '.wasm': 'empty' },
+    logLevel: 'silent',
+  });
+  const gzip = (bytes) => zlib.gzipSync(bytes, { level: 9 }).length;
+  const files = new Map(result.outputFiles.map((f) => [path.relative(process.cwd(), f.path), f.contents]));
+  const outputs = result.metafile.outputs;
+  const initial = new Set();
+  const visit = (file) => {
+    if (initial.has(file)) return;
+    initial.add(file);
+    for (const i of outputs[file].imports) if (i.kind === 'import-statement' && outputs[i.path]) visit(i.path);
+  };
+  visit(Object.keys(outputs).find((file) => outputs[file].entryPoint));
+  const cost = { initialMin: 0, initialGzip: 0, totalGzip: 0, chunks: 0 };
+  for (const [file, code] of files) {
+    if (!file.endsWith('.js')) continue;
+    cost.chunks += 1;
+    cost.totalGzip += gzip(code);
+    if (initial.has(file)) {
+      cost.initialMin += code.length;
+      cost.initialGzip += gzip(code);
+    }
+  }
+  return cost;
+}
+
 async function main() {
   const work = fs.mkdtempSync(path.join(os.tmpdir(), 'rnap-size-'));
   fs.writeFileSync(path.join(work, 'package.json'), '{"name":"size","private":true}');
-  const specs = PACKAGES.map((p) => (p.version ? `${p.name}@${p.version}` : p.name));
+  const webOnly = WEB.flatMap((c) => c.packages)
+    .filter((p) => p.name !== R && !PACKAGES.some((q) => q.name === p.name))
+    .map((p) => (p.version ? `${p.name}@${p.version}` : p.name));
+  const runtimeExtras = [...new Set(WEB.flatMap((c) => c.packages.flatMap((p) => (p.later ?? []).map((l) => l.name))))];
+  const specs = [...PACKAGES.map((p) => (p.version ? `${p.name}@${p.version}` : p.name)), ...new Set(webOnly), ...runtimeExtras];
   console.log(`installing ${specs.length} packages into ${work} …`);
   sh('npm', ['install', '--ignore-scripts', '--legacy-peer-deps', '--omit=peer', '--no-audit',
     '--no-fund', 'esbuild@0.25', ...specs], { cwd: work });
@@ -206,11 +330,48 @@ async function main() {
       `  native ${row.native.lines} loc  android deps ${row.androidDependencies.length}`);
   }
 
+  // What a package fetches later on its own (hls.js, shaka-player): its own size, gzipped.
+  const extraSize = (name, file) => {
+    const dir = path.join(work, 'node_modules', name);
+    const manifest = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8'));
+    const main = file ?? (name === 'hls.js' ? 'dist/hls.min.js' : manifest.main);
+    return { version: manifest.version, gzip: zlib.gzipSync(fs.readFileSync(path.join(dir, main)), { level: 9 }).length };
+  };
+
+  const web = [];
+  for (const category of WEB) {
+    console.log(`web: ${category.title}`);
+    const packages = [];
+    for (const pkg of category.packages) {
+      const manifest = JSON.parse(fs.readFileSync(path.join(work, 'node_modules', pkg.name, 'package.json'), 'utf8'));
+      const cost = await webCost(esbuild, work, pkg.use, category);
+      const later = (pkg.later ?? []).map((l) => {
+        const extra = extraSize(l.name, l.file);
+        return { name: l.name, version: extra.version, gzipBytes: extra.gzip, when: l.when, required: l.required === true };
+      });
+      packages.push({
+        name: pkg.name,
+        label: pkg.label,
+        version: manifest.version,
+        license: manifest.license ?? null,
+        initialMinBytes: cost.initialMin,
+        initialGzipBytes: cost.initialGzip,
+        totalGzipBytes: cost.totalGzip,
+        later,
+      });
+      console.log(`  ${pkg.label.padEnd(26)} ${manifest.version.padEnd(9)} on load ${(cost.initialGzip / 1024).toFixed(1).padStart(6)} KB gz` +
+        `  with every feature ${(cost.totalGzip / 1024).toFixed(1).padStart(6)} KB gz` +
+        later.map((l) => `  + ${l.name} ${(l.gzipBytes / 1024).toFixed(0)} KB (${l.when})`).join(''));
+    }
+    web.push({ id: category.id, title: category.title, packages });
+  }
+
   fs.mkdirSync(path.dirname(OUT), { recursive: true });
   fs.writeFileSync(OUT, JSON.stringify({
     measuredAt: new Date().toISOString().slice(0, 10),
     method: 'benchmarks/size/measure.mjs',
     packages: rows,
+    web,
   }, null, 2) + '\n');
   console.log(`wrote ${path.relative(ROOT, OUT)}`);
   fs.rmSync(work, { recursive: true, force: true });

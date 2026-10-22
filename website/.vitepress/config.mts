@@ -239,7 +239,7 @@ export default defineConfig({
           if (!m) continue;
           const alt = kids[0].content.replace(/"/g, '&quot;');
           const tag =
-            m[1] === 'diagrams' ? 'Diagram' : m[2] === 'capabilities' ? 'CapabilityMatrix' : 'BarChart';
+            m[1] === 'diagrams' ? 'Diagram' : m[2].startsWith('capabilities') ? 'CapabilityMatrix' : 'BarChart';
           const block = new state.Token('html_block', '', 0);
           block.content = `<${tag} name="${m[2]}" alt="${alt}" />\n`;
           t.splice(i, 3, block);

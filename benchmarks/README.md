@@ -1,12 +1,12 @@
 # Benchmarks
 
-Reproducible comparisons between RNAP and the other React Native audio libraries. The results and charts are published in [docs/comparison.md](../docs/comparison.md).
+Reproducible comparisons between RNAP and the other audio libraries, each against its own kind: React Native libraries on iOS, Android and Expo web / React Native Web; web libraries on React and plain pages. The results and charts are published in [docs/comparison.md](../docs/comparison.md).
 
 | Script | What it measures | Output |
 |---|---|---|
-| `node benchmarks/size/measure.mjs` | npm tarball and unpacked size, native lines compiled into the app, Android Maven artifacts, JS bundle cost (min+gz) — for RNAP (packed from this checkout) and every competitor (latest on npm) | `results/size.json` |
+| `node benchmarks/size/measure.mjs` | npm tarball and unpacked size, native lines compiled into the app, Android Maven artifacts, JS bundle cost (min+gz) — for RNAP (packed from this checkout) and every competitor (latest on npm); for the web, the JS a page loads up front and with every lazily loaded part, per kind of page | `results/size.json` |
 | `node benchmarks/charts/render.mjs` | renders the charts from `results/` | `docs/assets/charts/*.svg` |
-| — (curated) | capability matrix read from each package's source, with evidence per row | `results/capabilities.json` |
+| — (curated) | capability matrices read from each package's source, with evidence per row | `results/capabilities.json` (React Native), `results/capabilities-web.json` (the web) |
 
 Needs Node ≥ 20, npm, and network access to the npm registry. The size script runs `yarn prepare` first if `lib/` is missing.
 

@@ -8,10 +8,10 @@
       "role": "player (this repo)",
       "version": "1.1.0",
       "license": "PolyForm-Noncommercial-1.0.0",
-      "tarballBytes": 492937,
-      "unpackedBytes": 1797892,
-      "jsMinBytes": 19610,
-      "jsGzipBytes": 9206,
+      "tarballBytes": 292922,
+      "unpackedBytes": 971246,
+      "jsMinBytes": 15507,
+      "jsGzipBytes": 5619,
       "runtimeDependencies": [],
       "requiredPeers": [],
       "native": {
@@ -297,6 +297,230 @@
       "androidDependencies": [],
       "optInAndroidDependencies": [],
       "vendoredBinaries": false
+    }
+  ],
+  "web": [
+    {
+      "id": "rnWeb",
+      "title": "Expo web and React Native Web",
+      "packages": [
+        {
+          "name": "react-native-anything-player",
+          "label": "RNAP",
+          "version": "1.1.0",
+          "license": "PolyForm-Noncommercial-1.0.0",
+          "initialMinBytes": 93466,
+          "initialGzipBytes": 30189,
+          "totalGzipBytes": 36138,
+          "later": [
+            {
+              "name": "hls.js",
+              "version": "1.7.3",
+              "gzipBytes": 188659,
+              "when": "HLS outside Safari (the app adds it)",
+              "required": false
+            }
+          ]
+        },
+        {
+          "name": "@rntp/player",
+          "label": "RNTP 5",
+          "version": "5.12.1",
+          "license": "SEE LICENSE IN <license.txt>",
+          "initialMinBytes": 33077,
+          "initialGzipBytes": 9186,
+          "totalGzipBytes": 299261,
+          "later": [
+            {
+              "name": "shaka-player",
+              "version": "5.3.1",
+              "gzipBytes": 294416,
+              "when": "HLS / DASH outside Safari",
+              "required": false
+            }
+          ]
+        },
+        {
+          "name": "react-native-track-player",
+          "label": "RNTP 4",
+          "version": "4.1.2",
+          "license": "Apache-2.0",
+          "initialMinBytes": 18857,
+          "initialGzipBytes": 5805,
+          "totalGzipBytes": 376222,
+          "later": [
+            {
+              "name": "shaka-player",
+              "version": "5.3.1",
+              "gzipBytes": 376280,
+              "when": "playing anything",
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "expo-audio",
+          "label": "expo-audio",
+          "version": "58.0.10",
+          "license": "MIT",
+          "initialMinBytes": 30333,
+          "initialGzipBytes": 8509,
+          "totalGzipBytes": 8509,
+          "later": []
+        },
+        {
+          "name": "expo-av",
+          "label": "expo-av",
+          "version": "16.0.8",
+          "license": "MIT",
+          "initialMinBytes": 29526,
+          "initialGzipBytes": 8730,
+          "totalGzipBytes": 8730,
+          "later": []
+        },
+        {
+          "name": "react-native-video",
+          "label": "react-native-video",
+          "version": "6.19.3",
+          "license": "MIT",
+          "initialMinBytes": 14791,
+          "initialGzipBytes": 4948,
+          "totalGzipBytes": 4948,
+          "later": []
+        },
+        {
+          "name": "react-native-audio-api",
+          "label": "react-native-audio-api",
+          "version": "0.13.6",
+          "license": "MIT",
+          "initialMinBytes": 63500,
+          "initialGzipBytes": 15396,
+          "totalGzipBytes": 15396,
+          "later": []
+        }
+      ]
+    },
+    {
+      "id": "react",
+      "title": "React (react-dom)",
+      "packages": [
+        {
+          "name": "react-native-anything-player",
+          "label": "RNAP /react",
+          "version": "1.1.0",
+          "license": "PolyForm-Noncommercial-1.0.0",
+          "initialMinBytes": 93563,
+          "initialGzipBytes": 30206,
+          "totalGzipBytes": 36155,
+          "later": []
+        },
+        {
+          "name": "use-sound",
+          "label": "use-sound (howler)",
+          "version": "5.0.0",
+          "license": "MIT",
+          "initialMinBytes": 1771,
+          "initialGzipBytes": 942,
+          "totalGzipBytes": 10872,
+          "later": []
+        },
+        {
+          "name": "react-h5-audio-player",
+          "label": "react-h5-audio-player",
+          "version": "3.10.2",
+          "license": "MIT",
+          "initialMinBytes": 40040,
+          "initialGzipBytes": 12398,
+          "totalGzipBytes": 12398,
+          "later": []
+        },
+        {
+          "name": "react-audio-player",
+          "label": "react-audio-player",
+          "version": "0.17.0",
+          "license": "MIT",
+          "initialMinBytes": 13693,
+          "initialGzipBytes": 3649,
+          "totalGzipBytes": 3649,
+          "later": []
+        },
+        {
+          "name": "react-player",
+          "label": "react-player",
+          "version": "3.4.0",
+          "license": "MIT",
+          "initialMinBytes": 7989,
+          "initialGzipBytes": 3200,
+          "totalGzipBytes": 628386,
+          "later": []
+        },
+        {
+          "name": "@vidstack/react",
+          "label": "Vidstack",
+          "version": "1.15.7",
+          "license": "MIT",
+          "initialMinBytes": 95018,
+          "initialGzipBytes": 33554,
+          "totalGzipBytes": 105751,
+          "later": []
+        }
+      ]
+    },
+    {
+      "id": "vanilla",
+      "title": "Any web page (no framework)",
+      "packages": [
+        {
+          "name": "react-native-anything-player",
+          "label": "RNAP /web",
+          "version": "1.1.0",
+          "license": "PolyForm-Noncommercial-1.0.0",
+          "initialMinBytes": 90105,
+          "initialGzipBytes": 28810,
+          "totalGzipBytes": 34759,
+          "later": []
+        },
+        {
+          "name": "howler",
+          "label": "howler.js",
+          "version": "2.2.4",
+          "license": "MIT",
+          "initialMinBytes": 37291,
+          "initialGzipBytes": 10190,
+          "totalGzipBytes": 10190,
+          "later": []
+        },
+        {
+          "name": "amplitudejs",
+          "label": "Amplitude.js",
+          "version": "5.3.2",
+          "license": "MIT",
+          "initialMinBytes": 98919,
+          "initialGzipBytes": 16977,
+          "totalGzipBytes": 16977,
+          "later": []
+        },
+        {
+          "name": "plyr",
+          "label": "Plyr",
+          "version": "3.8.5",
+          "license": "MIT",
+          "initialMinBytes": 113426,
+          "initialGzipBytes": 33918,
+          "totalGzipBytes": 33918,
+          "later": []
+        },
+        {
+          "name": "icecast-metadata-player",
+          "label": "icecast-metadata-player",
+          "version": "1.17.13",
+          "license": "LGPL-3.0-or-later",
+          "initialMinBytes": 73982,
+          "initialGzipBytes": 23872,
+          "totalGzipBytes": 243399,
+          "later": []
+        }
+      ]
     }
   ]
 }

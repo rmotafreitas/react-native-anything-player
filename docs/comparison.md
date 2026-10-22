@@ -1,10 +1,26 @@
 # Comparison & benchmarks
 
-How RNAP compares with the other React Native audio libraries, from what each one actually ships. Every number here comes from a script in [`benchmarks/`](../benchmarks/README.md), so you can re-run it.
+How RNAP compares with the other audio libraries, from what each one actually ships. Each library is compared with its own kind:
 
-> **What this page is not.** The numbers are measured from the published npm packages, not on a phone. Runtime benchmarks across libraries (time to first audio, time to recover from a network drop, memory, bridge traffic) need a device lab. Their protocol is in [`benchmarks/README.md`](../benchmarks/README.md#on-device-benchmarks-protocol) and they are not published yet. RNAP's own device measurements are in [Testing](testing.md#results-this-release).
+- **[iOS and Android](#ios-and-android)**: RNAP against the other React Native audio libraries.
+- **[Expo web and React Native Web](#expo-web-and-react-native-web)**: the same React Native packages, bundled for the browser.
+- **[React and plain web pages](#react-and-plain-web-pages)**: RNAP's `/react` and `/web` entries against the web audio libraries: React components and hooks, and plain JavaScript.
 
-## What you get out of the box
+Every number here comes from a script in [`benchmarks/`](../benchmarks/README.md), so you can re-run it.
+
+> **What this page is not.** The numbers are measured from the published npm packages, not on a phone or in a browser. Runtime benchmarks across libraries (time to first audio, time to recover from a network drop, memory, bridge traffic) need a device lab. Their protocol is in [`benchmarks/README.md`](../benchmarks/README.md#on-device-benchmarks-protocol) and they are not published yet. RNAP's own device measurements are in [Testing](testing.md#results-this-release).
+
+## At a glance
+
+| Where | Compared with | Where RNAP leads | Where RNAP is behind |
+|---|---|---|---|
+| iOS, Android | RNTP 4 and 5, expo-audio, expo-av, react-native-video, and four more | Recovers a stream with no app code; follows the network; radio titles; a visualizer for iOS live streams; several players; fewer Android libraries and less native code than RNTP 5; no extras to install | Queues, caching, CarPlay / Android Auto browsing, a sleep timer; JS size (5.5 KB, the others 2–7 KB); the licence |
+| Expo web, React Native Web | the same packages, on the web | The only one that recovers a stream or reads radio titles in the browser; Cast and AirPlay; nothing to fetch before it plays (RNTP 4 fetches 367 KB of shaka-player) | Page weight (29.5 KB against 4–15 KB): it carries a streaming engine, the others wrap `<audio>` |
+| React, plain web pages | howler.js, Plyr, Vidstack, react-player, icecast-metadata-player and others | Recovery, radio titles, Media Session, Cast and AirPlay together, in one library; the same player as on the phone | No player UI, video or sound-effect features; heavier than howler.js (10 KB) |
+
+## iOS and Android
+
+### What you get out of the box
 
 ![Capability matrix: RNAP, RNTP 5, RNTP 4 and expo-audio across streaming reliability, app features and adoption](assets/charts/capabilities.svg)
 
@@ -14,7 +30,7 @@ Where RNAP is behind today: queues, caching and preloading, CarPlay / Android Au
 
 Moving from one of them? See the migration guides for [react-native-track-player](migrating-from-track-player.md), [expo-audio](migrating-from-expo-audio.md) and [expo-av](migrating-from-expo-av.md).
 
-## Install size
+### Install size
 
 ![Download size of each package's npm tarball](assets/charts/install-size.svg)
 
@@ -26,7 +42,7 @@ Moving from one of them? See the migration guides for [react-native-track-player
 
 | Package | Version | Licence | Download | Unpacked | JS (min+gz) | Native code | Android artifacts | Required extras |
 |---|---|---|--:|--:|--:|--:|--:|---|
-| **RNAP** | 1.1.0 | PolyForm NC | 481 KB | 1,756 KB | 9.0 KB | 12,109 lines (+1,110 with Cast) | 5 (+2 with Cast) | — |
+| **RNAP** | 1.1.0 | PolyForm NC | 286 KB | 948 KB | 5.5 KB | 12,109 lines (+1,110 with Cast) | 5 (+2 with Cast) | — |
 | RNTP 5 (@rntp/player) | 5.12.1 | commercial | 253 KB | 1,211 KB | 2.4 KB | 13,232 lines | 7 | — |
 | RNTP 4 | 4.1.2 | Apache-2.0 | 83 KB | 378 KB | 3.5 KB | 3,500 lines | 5 | — |
 | expo-audio | 58.0.10 | MIT | 758 KB | 1,313 KB | 2.9 KB | 7,896 lines | 10 | `expo`, `expo-asset` |
@@ -41,14 +57,72 @@ Measured 2026-10-22 against the latest npm releases (`benchmarks/results/size.js
 
 How to read it:
 
-- **JavaScript is not where the cost is.** Every player adds 2–9 KB of gzipped JS, because they all do their work in native code. RNAP's 9 KB is everything its main entry exports (the player, hooks, the voice-catalog search, Cast and output helpers, and the two buttons with their icons). Metro bundles all of it; web bundlers drop what an app does not import. The browser engine is not in it: bundlers load it only on the web. The meaningful costs are the native code and the Android libraries your app compiles.
+- **JavaScript is not where the cost is.** Every player adds 2–7 KB of gzipped JS, because they all do their work in native code. RNAP's 5.5 KB is everything its main entry exports: the player, hooks, the voice catalog, the Cast and output functions, and the two buttons (their icons are image assets, not JS). The browser engine is not in it: bundlers load it only on the web. The meaningful costs are the native code and the Android libraries your app compiles.
 - **RNAP's native code** is 12.1k lines for the engine twins, the iOS stream proxy, the iOS stream visualizer, the media sessions, outputs and the output picker, and the voice catalog with Siri and the assistants. Google Cast adds 1.1k lines when it is turned on. RNTP 5 is 13.2k. The minimal players (react-native-sound, audio-pro, RNTP 4) are smaller because they do much less: no recovery, no proxy, no visualizer.
 - **Android libraries**: RNAP pulls in Media3 (ExoPlayer, session, the OkHttp data source and HLS) and AndroidX MediaRouter (the system output picker). HLS can be left out with `rnapHls=false`; Google Cast adds Media3 Cast and the Cast framework only with `rnapCast`. expo-audio adds DASH, SmoothStreaming and Media3 UI; react-native-video adds IMA ads and RTSP as well.
 - **No extras.** RNAP needs nothing beyond React Native: no framework (`expo` is optional, for the config plugin only), no Nitro, no worklets, no state library.
-- **Download size** is mostly source and prebuilt JS for every package. RNAP ships its TypeScript source and the compiled output for every entry (React Native, the web engine, React DOM), the native sources for iOS and Android (Cast and the Siri templates included, compiled only when turned on), the Expo plugin and the CLI: 481 KB. None of the web engine reaches a native app's bundle.
+- **Download size** is mostly the compiled JS and the native sources. RNAP ships only what an app uses: the compiled output for every entry (React Native, the web engine, React DOM) with its type declarations, no source maps and no second copy of the sources; the native sources for iOS and Android (Cast and the Siri templates included, compiled only when turned on); the Expo plugin; and the CLI as one minified file. Most of the difference with RNTP 5 is the web: RNAP carries a complete engine there, the same one as on the phone, which never reaches a native app's bundle.
+
+## Expo web and React Native Web
+
+The same React Native packages, bundled for the browser the way Metro and React Native Web resolve them (their `.web` files). What matters on the web is the JavaScript a page loads.
+
+![JavaScript each React Native package puts in a web page](assets/charts/web-rn.svg)
+
+| Package | On page load | Fetched to play | Lock screen (Media Session) | Recovers a dropped stream | Radio titles | HLS outside Safari |
+|---|--:|--:|---|---|---|---|
+| **RNAP** | 29.5 KB | — | ✓ | ✓ | ✓ | ✓ with hls.js (the app adds it, 184 KB) |
+| RNTP 5 | 9.0 KB | — | ✓ | – (`retry()` for the app) | – | ✓ with shaka-player (288 KB) |
+| RNTP 4 | 5.7 KB | 367 KB (shaka-player, for anything) | – | – (`retry()` for the app) | – | ✓ shaka-player |
+| expo-audio | 8.3 KB | — | ✓ | – | – | – |
+| expo-av | 8.5 KB | — | – | – | – | – |
+| react-native-video | 4.8 KB | — | ✓ | – | – | – |
+| react-native-audio-api | 15.0 KB | — | – | – | – | – |
+
+Minified and gzipped, with `react`, `react-native-web` and `expo` excluded (every such app has them). Read from each package's web sources.
+
+RNAP is the heaviest page here because it is the only one with a streaming engine on the web: it reads the stream itself (Media Source Extensions), so it can time radio titles to the audio, notice a stall, and reconnect under the same recovery rules as on the phone. The others hand a URL to an `<audio>` element and report what it does. RNTP 4 is light on load and then fetches shaka-player, its web player, before it plays anything. Google Cast and the Firefox repackaging load only when they are used (6 KB more).
+
+## React and plain web pages
+
+RNAP's web entries are the same engine with no React Native: `react-native-anything-player/react` for React DOM apps (Vite, Next.js) and `react-native-anything-player/web` for any page. The web audio libraries do different jobs, so the matrix shows what each one is for.
+
+![Capability matrix on the web: RNAP, howler.js, Plyr, Vidstack, react-player and icecast-metadata-player](assets/charts/capabilities-web.svg)
+
+### React (react-dom)
+
+![JavaScript each React audio library puts in a web page](assets/charts/web-react.svg)
+
+### Any web page
+
+![JavaScript each plain-JavaScript audio library puts in a web page](assets/charts/web-vanilla.svg)
+
+| Library | Version | Licence | On page load | Everything it can load | What it is |
+|---|---|---|--:|--:|---|
+| **RNAP `/web`** | 1.1.0 | PolyForm NC | 28.1 KB | 33.9 KB | A streaming player: recovery, radio titles, Media Session, Cast, AirPlay |
+| **RNAP `/react`** | 1.1.0 | PolyForm NC | 29.5 KB | 35.3 KB | The same, with hooks and the output and Cast buttons |
+| howler.js | 2.2.4 | MIT | 10.0 KB | 10.0 KB | Sound effects and short files over Web Audio: sprites, spatial audio |
+| use-sound | 5.0.0 | MIT | 0.9 KB | 10.6 KB | A React hook over howler.js, which it loads on first use |
+| Amplitude.js | 5.3.2 | MIT | 16.6 KB | 16.6 KB | Playlists and a bring-your-own-HTML player UI |
+| react-h5-audio-player | 3.10.2 | MIT | 12.1 KB | 12.1 KB | A player UI around `<audio>` (its CSS not counted) |
+| react-audio-player | 0.17.0 | MIT | 3.6 KB | 3.6 KB | A thin React wrapper for `<audio>` |
+| Plyr | 3.8.5 | MIT | 33.1 KB | 33.1 KB | A themed audio and video player UI, with YouTube and Vimeo |
+| react-player | 3.4.0 | MIT | 3.1 KB | 614 KB | A component that embeds YouTube, Vimeo, HLS, Mux and others, each loaded when used |
+| Vidstack | 1.15.7 | MIT | 32.8 KB | 103 KB | A video and audio player UI, with HLS, Cast and AirPlay |
+| icecast-metadata-player | 1.17.13 | LGPL-3.0 | 23.3 KB | 238 KB | An Icecast / Shoutcast player with radio titles; WebAssembly decoders for codecs the browser cannot stream |
+
+Minified and gzipped, with `react` and `react-dom` excluded. "On page load" is what a page loads up front; "everything it can load" adds the parts a library fetches with `import()` when a feature is used. (For RNAP that is Google Cast and the MP4 repackaging Firefox needs.)
+
+How to read it:
+
+- **Recovery is the gap.** Of these libraries, only RNAP and icecast-metadata-player reconnect a dropped live stream on their own. Vidstack and react-player get hls.js's fragment retries for HLS; the rest leave it to the app.
+- **For internet radio,** icecast-metadata-player is the closest peer: it reads radio titles and reconnects too. RNAP adds Media Session, Cast, AirPlay and a visualizer, and is the same player on iOS and Android.
+- **howler.js is smaller** (10 KB) and the better choice for sound effects. It has no streaming recovery, radio titles or Media Session.
+- **Plyr and Vidstack are about the same weight on load** (33 KB), and come with a player UI and video. RNAP has no UI beyond its output and Cast buttons: you draw your own controls with its hooks or events.
 
 ## Methodology
 
 - `node benchmarks/size/measure.mjs` installs every package from npm, packs this repository as it would be published, and records the tarball and unpacked sizes. It also counts the non-blank native source lines that compile into an app (tests, examples and builds excluded), parses the Maven artifacts from `android/build.gradle`, and bundles each package's JS with esbuild (minified, gzip -9, with React Native, React, Expo and other peer frameworks excluded).
+- For the web it bundles each package as an app's production build would: for the browser, code-split, with React (and React Native Web and Expo for the React Native packages) excluded. It records the JS a page loads up front, everything including the chunks loaded with `import()`, and what a package fetches on its own at run time (shaka-player for RNTP).
 - `node benchmarks/charts/render.mjs` draws the charts on this page from the results.
-- The capability matrix (`benchmarks/results/capabilities.json`) was read from each package's TypeScript API and native sources. Each row records its evidence; hover a row in the chart to see it.
+- The capability matrices (`benchmarks/results/capabilities.json` and `capabilities-web.json`) were read from each package's TypeScript API and sources. Each row records its evidence; hover a row in the chart to see it.

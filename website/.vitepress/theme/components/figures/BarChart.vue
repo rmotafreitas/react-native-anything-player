@@ -1,11 +1,33 @@
 <script setup lang="ts">
 // A horizontal bar chart drawn with HTML and CSS from
-// benchmarks/results/size.json. GitHub shows the same chart as the SVG that
-// benchmarks/charts/render.mjs draws from that file.
+// benchmarks/results/size.json: the React Native charts (install-size, …) and
+// one per kind of web page (web-rn, web-react, web-vanilla). GitHub shows the
+// same chart as the SVG that benchmarks/charts/render.mjs draws from that file.
 import { computed } from 'vue';
 import size from '../../../../../benchmarks/results/size.json';
 
 type Pkg = (typeof size.packages)[number];
+type WebPkg = (typeof size.web)[number]['packages'][number];
+
+/** The web charts: one per kind of page, each library against its own kind. */
+const WEB: Record<string, { id: string; title: string; subtitle: string; note?: string }> = {
+  'web-rn': {
+    id: 'rnWeb',
+    title: 'Expo web and React Native Web: JavaScript in the page',
+    subtitle: 'React Native packages bundled for the browser. Minified + gzipped KB on page load; lighter: fetched before it plays.',
+    note: 'Not counted, for HLS outside Safari: hls.js for RNAP (the app adds it), shaka-player for RNTP 5.',
+  },
+  'web-react': {
+    id: 'react',
+    title: 'React (react-dom): JavaScript in the page',
+    subtitle: 'RNAP’s /react entry and the React audio libraries. Minified + gzipped KB on page load.',
+  },
+  'web-vanilla': {
+    id: 'vanilla',
+    title: 'Any web page: JavaScript in the page',
+    subtitle: 'RNAP’s /web entry and the plain-JavaScript audio libraries. Minified + gzipped KB on page load.',
+  },
+};
 
 interface ChartSpec {
   title: string;
@@ -38,7 +60,7 @@ const CHARTS: Record<string, ChartSpec> = {
     subtitle: 'Maven artifacts the package declares (React Native and the Kotlin stdlib excluded).',
     unit: 'artifacts',
     value: (p) => p.androidDependencies.length,
-    note: 'RNAP: Media3 only; HLS is optional (rnapHls=false).',
+    note: 'RNAP: Media3 and MediaRouter; HLS is optional (rnapHls=false), Cast opt-in.',
   },
   'js-cost': {
     title: 'JavaScript added to your bundle',
@@ -58,34 +80,77 @@ const props = defineProps<{
   bare?: boolean;
 }>();
 
-const spec = computed(() => CHARTS[props.name]);
+const web = computed(() => WEB[props.name]);
+const spec = computed<ChartSpec | undefined>(() =>
+  web.value
+    ? { ...web.value, unit: 'KB gzip', value: () => 0, digits: 1, cap: 60 }
+    : CHARTS[props.name]
+);
 
-function licence(p: Pkg): string {
+function licence(p: { license: string | null }): string {
   const l = p.license ?? '';
   if (l.startsWith('SEE LICENSE')) return 'commercial';
   if (l.startsWith('PolyForm')) return 'PolyForm NC';
   return l;
 }
 
+interface Item {
+  name: string;
+  label: string;
+  license: string | null;
+  version: string;
+  detail: string;
+  value: number;
+  /** What it must fetch before it plays anything (drawn lighter, after the bar). */
+  later: number;
+}
+
+function items(s: ChartSpec): Item[] {
+  if (web.value) {
+    const category = size.web.find((c) => c.id === web.value!.id);
+    return (category?.packages ?? []).map((p: WebPkg) => ({
+      name: p.name,
+      label: p.label,
+      license: p.license,
+      version: p.version,
+      detail: `${p.name}@${p.version} · ${(p.totalGzipBytes / 1024).toFixed(1)} KB with every optional part loaded`,
+      value: p.initialGzipBytes / 1024,
+      later: p.later.filter((l) => l.required).reduce((n, l) => n + l.gzipBytes, 0) / 1024,
+    }));
+  }
+  return size.packages.map((p: Pkg) => ({
+    name: p.name,
+    label: p.label,
+    license: p.license,
+    version: p.version,
+    detail: `${p.name}@${p.version} · ${p.role}`,
+    value: s.value(p),
+    later: 0,
+  }));
+}
+
 const rows = computed(() => {
   const s = spec.value;
   if (!s) return [];
-  const list = size.packages.filter((p) => !props.only || props.only.includes(p.name));
-  const values = list.map((p) => s.value(p));
-  const max = s.cap ?? Math.max(...values);
+  const list = items(s).filter((p) => !props.only || props.only.includes(p.name));
+  const max = s.cap ?? Math.max(...list.map((p) => p.value + p.later));
+  const pct = (v: number) => Math.max(1.5, (Math.min(v, max) / max) * 100);
+  const num = (v: number) =>
+    v.toLocaleString('en-US', { maximumFractionDigits: s.digits ?? 0, minimumFractionDigits: s.digits ?? 0 });
   return list
     .map((p) => {
-      const v = s.value(p);
+      const total = p.value + p.later;
       return {
         key: p.name,
         label: p.label,
         tag: licence(p),
         version: p.version,
-        detail: `${p.name}@${p.version} · ${p.role}`,
-        value: v,
-        text: v.toLocaleString('en-US', { maximumFractionDigits: s.digits ?? 0, minimumFractionDigits: s.digits ?? 0 }),
-        pct: Math.max(1.5, (Math.min(v, max) / max) * 100),
-        clipped: v > max,
+        detail: p.detail,
+        value: total,
+        text: num(p.value) + (p.later ? ` + ${num(p.later)} to play` : ''),
+        pct: pct(total),
+        solid: p.later ? (pct(p.value) / pct(total)) * 100 : 100,
+        clipped: total > max,
         ours: p.name === 'react-native-anything-player',
       };
     })
@@ -113,10 +178,14 @@ const rows = computed(() => {
           {{ r.label }} <small>{{ r.tag }}</small>
         </span>
         <span class="track">
-          <span class="bar" :style="{ width: `${r.pct}%` }" :class="{ clipped: r.clipped }" />
+          <span
+            class="bar"
+            :style="{ width: `${r.pct}%`, '--solid': `${r.solid}%` }"
+            :class="{ clipped: r.clipped, later: r.solid < 100 }"
+          />
           <!-- A clipped bar carries its label inside, at the break. -->
           <span class="value" :class="{ inside: r.clipped }" :style="r.clipped ? {} : { left: `${r.pct}%` }">
-            {{ r.text + (r.ours ? ` ${spec.unit}` : '') + (r.clipped ? ' · off scale' : '') }}
+            {{ r.text + (r.ours ? ` ${spec.unit}` : '') + (r.clipped && !r.text.includes('+') ? ' · off scale' : '') }}
           </span>
         </span>
       </li>
@@ -223,6 +292,13 @@ const rows = computed(() => {
 }
 .ours .bar {
   background: linear-gradient(90deg, var(--brand-deep), var(--brand) 60%, var(--accent));
+}
+/* The part fetched on first play: the same bar, washed, after the solid part. */
+.bar.later {
+  background: linear-gradient(90deg, var(--switch-off) var(--solid), color-mix(in srgb, var(--switch-off) 45%, transparent) var(--solid));
+}
+.ours .bar.later {
+  background: linear-gradient(90deg, var(--brand) var(--solid), color-mix(in srgb, var(--brand) 35%, transparent) var(--solid));
 }
 .bar.clipped {
   border-radius: 0;

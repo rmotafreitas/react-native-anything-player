@@ -107,7 +107,7 @@ function NowPlaying() {
 |---|---|
 | [Why RNAP](docs/why.md) | Why this library exists, with sources |
 | [Getting started](docs/getting-started.md) | Installation (Expo, bare), first player, permissions |
-| [Comparison & benchmarks](docs/comparison.md) | RNAP against RNTP, expo-audio and the rest: capabilities, install size |
+| [Comparison & benchmarks](docs/comparison.md) | Each library against its own kind: RNTP, expo-audio and the rest on iOS and Android and on Expo web; howler.js, Plyr, Vidstack and the rest on React and plain web pages |
 | Migrating: [react-native-track-player](docs/migrating-from-track-player.md), [expo-audio](docs/migrating-from-expo-audio.md), [expo-av](docs/migrating-from-expo-av.md) | API mapping, lock-screen controls, and the recovery code you can delete |
 | [Playback](docs/playback.md) | Sources, commands, state model, progress, volume, seeking |
 | [Internet radio & ICY](docs/internet-radio.md) | Live streams, ICY metadata, live edge, recovery |

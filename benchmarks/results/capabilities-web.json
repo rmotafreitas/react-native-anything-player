@@ -1,0 +1,91 @@
+{
+  "checkedAt": "2026-10-22",
+  "method": "Read from each package's published npm tarball (its JavaScript and TypeScript API). \"Your code\" means possible only if the app writes it on top (for example its own Web Audio graph on the element). Not measured in a browser.",
+  "title": "On the web: what you get out of the box",
+  "note": "Read from each package’s published source (its JavaScript and TypeScript API); not measured in a browser. Hover a row for its evidence.",
+  "libraries": [
+    { "id": "rnap", "label": "RNAP", "version": "1.1.0" },
+    { "id": "howler", "label": "howler.js", "version": "2.2.4" },
+    { "id": "plyr", "label": "Plyr", "version": "3.8.5" },
+    { "id": "vidstack", "label": "Vidstack", "version": "1.15.7" },
+    { "id": "reactPlayer", "label": "react-player", "version": "3.4.0" },
+    { "id": "icecast", "label": "icecast-metadata-player", "version": "1.17.13" }
+  ],
+  "groups": [
+    {
+      "title": "Live streams and radio",
+      "rows": [
+        {
+          "label": "Reconnects a dropped live stream on its own",
+          "evidence": "RNAP: the engine's recovery (the same conformance suite as iOS and Android). icecast-metadata-player: retry and reconnect by default (retryTimeout). Vidstack and react-player: hls.js's own fragment retries, for HLS only. No reconnect logic in howler.js or Plyr.",
+          "values": { "rnap": "yes", "howler": "no", "plyr": "no", "vidstack": "partial", "reactPlayer": "partial", "icecast": "yes" }
+        },
+        {
+          "label": "Internet radio titles (ICY / Icecast)",
+          "evidence": "RNAP reads ICY through MSE (needs CORS from the station); icecast-metadata-player parses ICY and Ogg metadata. No ICY parsing in the others.",
+          "values": { "rnap": "yes", "howler": "no", "plyr": "no", "vidstack": "no", "reactPlayer": "no", "icecast": "yes" }
+        },
+        {
+          "label": "HLS outside Safari",
+          "evidence": "RNAP: configureHls(Hls) with the app's hls.js. Vidstack loads hls.js itself; react-player bundles it (hls-video-element). Plyr's docs have the app attach hls.js. howler.js and icecast-metadata-player play what the browser plays.",
+          "values": { "rnap": "yes", "howler": "no", "plyr": "app", "vidstack": "yes", "reactPlayer": "yes", "icecast": "no" }
+        },
+        {
+          "label": "Visualizer data for live streams",
+          "evidence": "RNAP: audioSample events for streams read through MSE and local files. The others expose the element (or Howler.ctx), for the app's own AnalyserNode.",
+          "values": { "rnap": "partial", "howler": "app", "plyr": "app", "vidstack": "app", "reactPlayer": "app", "icecast": "app" }
+        }
+      ]
+    },
+    {
+      "title": "System",
+      "rows": [
+        {
+          "label": "Lock screen and media keys (Media Session)",
+          "evidence": "navigator.mediaSession in RNAP, Plyr (mediaMetadata) and Vidstack; absent from howler.js, react-player's own code and icecast-metadata-player.",
+          "values": { "rnap": "yes", "howler": "no", "plyr": "yes", "vidstack": "yes", "reactPlayer": "no", "icecast": "no" }
+        },
+        {
+          "label": "Google Cast",
+          "evidence": "RNAP and Vidstack load the Cast sender SDK; no Cast code in the others.",
+          "values": { "rnap": "yes", "howler": "no", "plyr": "no", "vidstack": "yes", "reactPlayer": "no", "icecast": "no" }
+        },
+        {
+          "label": "AirPlay",
+          "evidence": "webkitShowPlaybackTargetPicker in RNAP, Plyr and Vidstack.",
+          "values": { "rnap": "yes", "howler": "no", "plyr": "yes", "vidstack": "yes", "reactPlayer": "no", "icecast": "no" }
+        },
+        {
+          "label": "The same player on iOS and Android",
+          "evidence": "RNAP's web engine is the TypeScript twin of its iOS and Android engines, held to the same conformance suite. The others are web-only.",
+          "values": { "rnap": "yes", "howler": "no", "plyr": "no", "vidstack": "no", "reactPlayer": "no", "icecast": "no" }
+        }
+      ]
+    },
+    {
+      "title": "Beyond streaming",
+      "rows": [
+        {
+          "label": "Player UI (controls, seek bar)",
+          "evidence": "Plyr and Vidstack ship themed controls; react-player shows the browser's or the embedded service's. RNAP has only the output and Cast buttons.",
+          "values": { "rnap": "no", "howler": "no", "plyr": "yes", "vidstack": "yes", "reactPlayer": "partial", "icecast": "no" }
+        },
+        {
+          "label": "Video, YouTube and Vimeo",
+          "evidence": "Plyr, Vidstack and react-player play video and embed YouTube and Vimeo. RNAP and howler.js are audio only.",
+          "values": { "rnap": "no", "howler": "no", "plyr": "yes", "vidstack": "yes", "reactPlayer": "yes", "icecast": "no" }
+        },
+        {
+          "label": "Sound effects: sprites, spatial audio",
+          "evidence": "howler.js: sprites and the spatial plugin over Web Audio.",
+          "values": { "rnap": "no", "howler": "yes", "plyr": "no", "vidstack": "no", "reactPlayer": "no", "icecast": "no" }
+        },
+        {
+          "label": "Free for commercial apps",
+          "evidence": "RNAP: PolyForm Noncommercial. howler.js, Plyr, Vidstack and react-player: MIT; icecast-metadata-player: LGPL-3.0.",
+          "values": { "rnap": "no", "howler": "yes", "plyr": "yes", "vidstack": "yes", "reactPlayer": "yes", "icecast": "yes" }
+        }
+      ]
+    }
+  ]
+}
