@@ -131,6 +131,8 @@ cd example/android && ./gradlew :app:connectedDebugAndroidTest \
 
 - The `catalog-groups` scenario checks `setCatalog` with groups, `setFavorites` and the group filter from JavaScript, natively and on the web.
 
+Checked on the Android 16 emulator: the 81 Kotlin unit tests pass; `BrowseTreeLibraryTest` passes 3 of 3 (a root of Favorites, Podcasts, Music and More in that order; Music holding the Jazz subfolder before its own item; grid hint on the station folders and list hint on the podcast folder; `playFromMediaId` starts the item and "Recently played" then opens the root); `VoiceLibraryTest` still passes 4 of 4. The R8-shrunk release build of the bare example (`-Pr8=true`, with `rnapCar=true`) passes all 24 scenarios, `catalog-groups` included. The merged manifest has the Android Auto meta-data with `rnapCar=true` (alone, or with `rnapCast=true`) and none without it.
+
 It cannot be a real car: the instrumented client is not Android Auto, so the car-only rules (folders only at the root, four tabs) are held by the unit tests. A head unit, CarPlay, Android Automotive OS and a watch are on the hardware list below.
 
 ## Soak
