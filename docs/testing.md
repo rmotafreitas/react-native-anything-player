@@ -82,7 +82,7 @@ Debug builds of the bare example passed the 16 scenarios that existed before the
 - the plain-web example (`example-web/`, served from its own origin so the radio is cross-origin): ICY over MSE with titles timed to the audio and the Media Session, the plain `<audio>` fallback without CORS, file seeking, a dropped connection spliced without a state change (one connection on the server), recovery from an outage, the Web Audio visualizer, and the autoplay policy (`AUTOPLAY_BLOCKED`, then playback from a tap);
 - the Expo example's integration scenarios on React Native Web (Chromium).
 
-Where a browser cannot read MP3 through MSE (the Firefox build Playwright ships), the ICY test asserts the plain-element fallback and the MSE-only tests are skipped with that reason. CI needs `ffmpeg` for the test media.
+Where a browser cannot read MP3 through MSE (the Firefox build Playwright ships), the ICY test asserts the plain-element fallback and the MSE-only tests are skipped with that reason. CI needs `ffmpeg` for the test media, and an audio output: on a machine with no sound device (a CI runner), Firefox never starts playback, so CI runs a PulseAudio null sink.
 
 ## System behaviour (manual, scripted with adb / simctl)
 

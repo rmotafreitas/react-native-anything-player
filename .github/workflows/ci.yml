@@ -261,6 +261,13 @@ jobs:
           restore-keys: ${{ runner.os }}-expo-npm-
       - name: Install the browsers
         run: npx playwright install --with-deps chromium firefox webkit
+      - name: Give the browsers an audio output
+        # The runner has no sound device; without one, Firefox never starts
+        # playback. A PulseAudio null sink plays into nothing.
+        run: |
+          sudo apt-get install -y -q pulseaudio
+          pulseaudio -D -n --exit-idle-time=-1 -L module-native-protocol-unix -L "module-null-sink sink_name=ci" -L module-always-sink
+          pactl info | grep 'Default Sink'
       - name: Build and run the end-to-end suite
         run: yarn test:web
       - name: Upload the Playwright traces
