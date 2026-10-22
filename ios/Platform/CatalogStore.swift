@@ -31,6 +31,17 @@ final class CatalogStore {
     save()
   }
 
+  /// Every item, in the order the app gave them.
+  func all() -> [[String: Any]] {
+    loadIfNeeded()
+    return items
+  }
+
+  func item(id: String) -> [String: Any]? {
+    loadIfNeeded()
+    return items.first { $0["id"] as? String == id }
+  }
+
   /// Ranked matches, best first.
   func search(_ query: CatalogQuery) -> [[String: Any]] {
     loadIfNeeded()

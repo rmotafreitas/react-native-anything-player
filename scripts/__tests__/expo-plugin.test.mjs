@@ -1,12 +1,14 @@
-// The Expo config plugin's edits (plugin/helpers.js). The Xcode target
-// (plugin/intentsExtension.js) is exercised by an `expo prebuild` of the Expo
-// example, which CI does not run; see docs/testing.md.
+// The Expo config plugin's edits (plugin/helpers.js, plugin/appIntents.js).
+// The Xcode extension target (plugin/intentsExtension.js) is exercised by an
+// `expo prebuild` of the Expo example, which CI does not run; see
+// docs/testing.md.
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { test } from 'node:test';
 
 const require = createRequire(import.meta.url);
 const helpers = require('../../plugin/helpers.js');
+const appIntents = require('../../plugin/appIntents.js');
 
 const MAIN_ACTIVITY = `package com.example.app
 
@@ -173,6 +175,122 @@ test('MainActivity hands its intents to RNAP, once', () => {
 
   assert.throws(
     () => helpers.injectHandleIntent('package a\n\nclass MainActivity {}\n'),
+    /by hand/
+  );
+});
+
+test('Siri: App Intents unless turned off', () => {
+  assert.deepEqual(helpers.resolveOptions({ siri: true }).siri, {
+    usageDescription: 'Lets you ask Siri to play stations and episodes.',
+    appIntents: true,
+  });
+  assert.equal(
+    helpers.resolveOptions({ siri: { appIntents: false } }).siri.appIntents,
+    false
+  );
+});
+
+/** A parsed project as node-xcode holds it: an app target, its group. */
+function xcodeProject(group) {
+  let next = 0;
+  return {
+    generateUuid: () => `UUID${String(++next).padStart(20, '0')}`,
+    hash: {
+      project: {
+        objects: {
+          PBXNativeTarget: {
+            T1: {
+              isa: 'PBXNativeTarget',
+              buildPhases: [
+                { value: 'P0', comment: 'Frameworks' },
+                { value: 'P1', comment: 'Sources' },
+              ],
+              name: 'RNAPIntents',
+              productType: '"com.apple.product-type.app-extension"',
+            },
+            T1_comment: 'RNAPIntents',
+            T2: {
+              isa: 'PBXNativeTarget',
+              buildPhases: [{ value: 'P2', comment: 'Sources' }],
+              name: 'MyApp',
+              productType: '"com.apple.product-type.application"',
+            },
+            T2_comment: 'MyApp',
+          },
+          PBXSourcesBuildPhase: {
+            P1: { isa: 'PBXSourcesBuildPhase', files: [] },
+            P2: {
+              isa: 'PBXSourcesBuildPhase',
+              files: [{ value: 'B1', comment: 'AppDelegate.swift in Sources' }],
+            },
+          },
+          PBXFrameworksBuildPhase: { P0: { files: [] } },
+          PBXBuildFile: { B1: { isa: 'PBXBuildFile', fileRef: 'F1' } },
+          PBXFileReference: {
+            F1: { isa: 'PBXFileReference', path: '"MyApp/AppDelegate.swift"' },
+          },
+          PBXGroup: {
+            G0: { isa: 'PBXGroup', children: [], sourceTree: '"<group>"' },
+            G1: {
+              isa: 'PBXGroup',
+              children: [{ value: 'F1', comment: 'AppDelegate.swift' }],
+              sourceTree: '"<group>"',
+              ...group,
+            },
+          },
+        },
+      },
+    },
+  };
+}
+
+test('App Intents: the template joins the app target, once', () => {
+  const project = xcodeProject({ name: 'MyApp' });
+  const objects = project.hash.project.objects;
+  appIntents.addAppIntentsSource(project, { projectName: 'MyApp' });
+  const [ref] = objects.PBXGroup.G1.children.slice(-1);
+  assert.equal(ref.comment, 'RNAPAppIntents.swift');
+  // A group with only a name sits at its parent's path.
+  assert.deepEqual(objects.PBXFileReference[ref.value], {
+    isa: 'PBXFileReference',
+    lastKnownFileType: 'sourcecode.swift',
+    name: 'RNAPAppIntents.swift',
+    path: 'MyApp/RNAPAppIntents.swift',
+    sourceTree: '"<group>"',
+  });
+  const files = objects.PBXSourcesBuildPhase.P2.files;
+  assert.equal(files.length, 2);
+  assert.equal(objects.PBXBuildFile[files[1].value].fileRef, ref.value);
+  assert.equal(files[1].comment, 'RNAPAppIntents.swift in Sources');
+  assert.equal(objects.PBXSourcesBuildPhase.P1.files.length, 0);
+
+  appIntents.addAppIntentsSource(project, { projectName: 'MyApp' });
+  assert.equal(objects.PBXGroup.G1.children.length, 2);
+  assert.equal(files.length, 2);
+});
+
+test('App Intents: a folder group, a name to quote, a missing group', () => {
+  const folder = xcodeProject({ path: '"My App"' });
+  appIntents.addAppIntentsSource(folder, { projectName: 'My App' });
+  const objects = folder.hash.project.objects;
+  const [ref] = objects.PBXGroup.G1.children.slice(-1);
+  assert.equal(
+    objects.PBXFileReference[ref.value].path,
+    'RNAPAppIntents.swift'
+  );
+
+  const named = xcodeProject({ name: '"my-app"' });
+  appIntents.addAppIntentsSource(named, { projectName: 'my-app' });
+  const refs = named.hash.project.objects.PBXFileReference;
+  assert.ok(
+    Object.values(refs).some((r) => r.path === '"my-app/RNAPAppIntents.swift"')
+  );
+
+  assert.throws(
+    () =>
+      appIntents.addAppIntentsSource(xcodeProject({ name: 'Other' }), {
+        projectName: 'MyApp',
+      }),
     /by hand/
   );
 });
