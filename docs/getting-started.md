@@ -34,7 +34,16 @@ Add the config plugin to `app.json` / `app.config.js`:
 }
 ```
 
-The plugin adds the iOS `audio` background mode. Pass `["react-native-anything-player", { "backgroundAudio": false }]` if you only play in the foreground. Then rebuild (`npx expo run:ios`, `npx expo run:android`, or EAS Build).
+The plugin adds the iOS `audio` background mode and lets Google Assistant and Gemini reach the app. Options, as `["react-native-anything-player", { … }]`:
+
+| Option | Default | |
+|---|---|---|
+| `backgroundAudio` | `true` | iOS `audio` background mode. `false` if you only play in the foreground |
+| `cast` | off | `true` (or `{ "receiverApplicationId": "…" }`) builds Google Cast in ([Casting & AirPlay](routes-and-casting.md#google-cast)) |
+| `siri` | off | `true` adds the Siri capability and the extension that hands "play X on MyApp" to the app ([Voice assistants](voice.md#siri)) |
+| `assistant` | `true` | the Android intent filter and `MainActivity` hook for Google Assistant and Gemini ([Voice assistants](voice.md#google-assistant-gemini)) |
+
+Then rebuild (`npx expo run:ios`, `npx expo run:android`, or EAS Build).
 
 ### Expo Go
 

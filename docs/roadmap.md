@@ -32,19 +32,19 @@ RNAP's goal is to be the audio library React Native developers pick first: **lig
 
 ### P2 — platform reach
 
-In order: web first, then cars and voice (they share a browse tree), then casting.
+In order: web first, then outputs, casting and voice, then cars (CarPlay and Android Auto reuse the voice catalog).
 
 | Gap | Status / proposal |
 |---|---|
 | **Web** | **Done.** A TypeScript twin of the engine, held to the same conformance suite, for Expo web, React Native Web and plain pages (`react-native-anything-player/web`): ICY over fetch + MSE, splices, Media Session, a Web Audio visualizer, `AUTOPLAY_BLOCKED`. See [Web](web.md). |
 | **Expo Go** | **Done:** it cannot load native code, so `new Player()` throws `NATIVE_MODULE_MISSING` with the development-build steps instead of crashing. |
 | **Watches** | **Documented:** Apple Watch and Wear OS control the phone's media session; to be checked on hardware. A watch app of its own is out of scope. |
-| CarPlay / Android Auto browsing | A browse tree (`setBrowseTree`) on the Media3 `MediaLibraryService` and `CPListTemplate`. Needed by car-first radio apps. |
-| Siri / "Hey Google" | Transport commands already go through the media session. "Play station X" needs the browse tree above: Media3 search on Android, a Siri media intent the app answers on iOS. |
-| AirPlay picker | An `AVRoutePickerView` component (`<RoutePicker />`). |
-| Chromecast | Media3 Cast and the Google Cast SDK, as an opt-in add-on so radio apps do not pay for it. |
+| **Output picker & AirPlay** | **Done:** `status.route` and `routeChange` everywhere; `<RoutePicker />` (iOS's AirPlay button, Android's Output Switcher, AirPlay in Safari, Remote Playback in Chrome). See [Casting & AirPlay](routes-and-casting.md). |
+| **Chromecast** | **Done**, opt-in (`cast` plugin option): the engine hands a player to a Cast receiver and back (held to the conformance suite), on Android (Media3 Cast), iOS (Google Cast SDK) and Chrome (Cast Web Sender). Radio titles keep flowing from the phone. |
+| **Siri / Google Assistant / Gemini** | **Done:** a catalog stored on the device (`setCatalog`), searched the same way on every platform, answers "play X on MyApp" even with the app closed; `playFromSearch()` on the web. See [Voice assistants](voice.md). |
+| CarPlay / Android Auto browsing | Next: a browse tree over the same catalog, on the Media3 `MediaLibraryService` (already serving the catalog to Assistant) and `CPListTemplate`. Needed by car-first radio apps. |
 | Recording | Out of scope. expo-audio and react-native-audio-api cover it; staying a player keeps RNAP small. |
 
 ## Before 1.0
 
-- Exercise on hardware what [Testing](testing.md) lists as unverified: real calls, Siri, Bluetooth / AirPods, CarPlay / Android Auto, wired-headset unplug, AirPlay, cellular handoff, Apple Watch and Wear OS controls.
+- Exercise on hardware what [Testing](testing.md) lists as unverified: real calls, Siri (transport and "play X on MyApp", including a cold start), Google Assistant and Gemini, Bluetooth / AirPods, CarPlay / Android Auto, wired-headset unplug, AirPlay, Google Cast (Android, iOS, Chrome), cellular handoff, Apple Watch and Wear OS controls.

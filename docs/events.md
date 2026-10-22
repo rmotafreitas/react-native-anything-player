@@ -17,6 +17,7 @@
 | `reconnect` | `{ attempt, nextAttemptAt, reason } \| null` | set while recovering |
 | `network` | `'online' \| 'offline' \| 'unknown'` | connectivity as the engine sees it |
 | `volume`, `muted`, `rate` | | as set |
+| `route` | `{ kind, name }` | where the audio goes: `speaker`, `headphones`, `bluetooth`, `airplay`, `cast`, `car`, `hdmi`, `usb`, `other` or `unknown`, with the device's name when known ([Casting & AirPlay](routes-and-casting.md#where-the-audio-goes)) |
 
 `player.refresh()` reads the native snapshot synchronously and applies it if it is newer. Players refresh automatically when the app becomes active.
 
@@ -38,6 +39,8 @@ off(); // unsubscribe
 | `diagnostic` | `DiagnosticEntry` | engine trace, only while diagnostics are enabled |
 | `audioSample` | `AudioSample` | decoded-audio window, only while `setAudioSampling` is on ([visualizer](visualizer.md)) |
 | `progress` | `Progress` | every `progressInterval` ms while playing, only when that option is set |
+| `routeChange` | `(route, previous)` | `status.route` changed: AirPlay or Bluetooth chosen, headphones unplugged, casting started or ended |
+| `searchPlay` | `{ request, item }` | a voice assistant or `playFromSearch()` started a catalog item on this player ([Voice assistants](voice.md)) |
 | `discontinuity` | `{ position, timestamp }` | a live stream's audio jumped: playback moved onto a fresh connection of the same source, with no state change. Reported when it becomes audible |
 
 Progress is a synchronous read ([playback](playback.md#progress)), so a foreground UI needs no events. `progress` events are opt-in (`new Player({ progressInterval: 1000 })`). They come from a native timer while playing, so they also run JS where the app's own timers are frozen: an Android app in the background keeps receiving them. Use them for work that must follow the audio there, such as switching the lock screen to the next song at the moment it is heard. Stalls shorter than 500 ms are not published.

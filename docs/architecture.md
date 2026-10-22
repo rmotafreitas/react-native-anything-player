@@ -8,7 +8,7 @@ React Native freezes JS timers in the background, can suspend or reload the JS r
 
 ### The engine
 
-`PlaybackEngine` owns the play intent (`playWhenReady`), the state machine, interruptions, network edges and every recovery timer. It never touches a media framework: it drives an `EngineDriver` (open / play / pause / seek / release / sample) and reads time from an `EngineClock`. It never owns timers either — after every input it asks its host for one wake-up instant. That makes it deterministic and testable with a fake clock: the [conformance suite](../conformance/README.md) runs 59 scenarios (races, stalls, offline, handoffs, interruptions, focus, drift, re-entrancy …) against every implementation: Swift, Kotlin, and TypeScript for the web.
+`PlaybackEngine` owns the play intent (`playWhenReady`), the state machine, interruptions, network edges and every recovery timer. It never touches a media framework: it drives an `EngineDriver` (open / play / pause / seek / release / sample) and reads time from an `EngineClock`. It never owns timers either — after every input it asks its host for one wake-up instant. That makes it deterministic and testable with a fake clock: the [conformance suite](../conformance/README.md) runs 80 scenarios (races, stalls, offline, handoffs, interruptions, focus, drift, re-entrancy, output handoffs …) against every implementation: Swift, Kotlin, and TypeScript for the web.
 
 **Why two implementations instead of a shared core (Rust, C++, Kotlin Multiplatform)?** The engine is ~700 lines of decision logic, not CPU-bound, and the hard part is platform semantics around it. A shared core would cost: a cross-compilation toolchain for contributors; prebuilt binaries per Android ABI and iOS slice in the npm package (or a toolchain for every consumer); JNA (≈1.5 MB, for UniFFI's Kotlin bindings) or hand-written JNI; Swift ↔ C/C++ glue; and debugging across an FFI boundary. ICY de-framing, the one byte-level piece, is already done by Media3 on Android; the iOS proxy's de-interleaver and re-framer are ~130 lines, fuzz-tested against arbitrary chunking and splicing. Duplication is instead controlled by one executable specification every twin must pass. The web engine is the third twin, a line-by-line port of the Kotlin one: the browser is its platform, as AVPlayer and ExoPlayer are theirs.
 
@@ -19,6 +19,14 @@ Every source open — `load`, a reconnect, a live-edge re-open — increments a 
 ### Re-entrancy
 
 ExoPlayer can call listeners synchronously from inside a command (`setPlayWhenReady` → `onIsPlayingChanged`). Found on device: the engine received "audio flowing" in the middle of `play()` and then overwrote it. Engines now update their own state *before* calling the driver, and the Android driver posts observations to the next main-loop turn. A conformance scenario with a re-entrant fake driver guards it.
+
+### Outputs
+
+Each engine drives one *routing driver*: the platform's local player, plus a Cast player when Cast is built in. Moving the audio to a Cast receiver, or back, is an engine transaction (`handoff`): the engine reads the position, unloads the item, switches the driver's output, re-applies the volume and re-opens the item on the new output under a new generation, so nothing late from the old output can reach it. The intent is kept going to a receiver and dropped coming back, so the phone never starts playing on its own. While the output is remote, the device's rules are off: no audio focus or ducking, interruptions and media-services resets ignored, the phone's connectivity never reloads the receiver, and a receiver's interpolated position is not taken for a stall; only what the receiver reports drives recovery. The conformance suite holds all three twins to these rules (`conformance/route.json`). A passive route change (AirPlay, Bluetooth) is just a status field.
+
+### Players without JavaScript
+
+A voice assistant can start the app with no JavaScript running. The native runtime can therefore create a player itself, from options stored with the voice catalog, and emits events only while a JS module is attached. A player created with an `id` survives the JS runtime that created it, and `new Player({ id })` attaches to it. The catalog's search is the fourth twin: TypeScript, Swift and Kotlin implementations of one specified matcher, held to `conformance/catalog`.
 
 ## Platform layers
 

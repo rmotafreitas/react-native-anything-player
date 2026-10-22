@@ -43,6 +43,9 @@ Native details are never dropped: `AVFoundationErrorDomain -11800` comes with th
 | `NATIVE_PLAYER_ERROR` | yes | unclassified native failure (details in `nativeCause`) |
 | `AUTOPLAY_BLOCKED` | yes | web: the browser refused `play()` without a user gesture; call it from a tap ([Web](web.md#autoplay)) |
 | `NATIVE_MODULE_MISSING` | no | thrown by `new Player()` when the binary lacks RNAP's native module: Expo Go, or an app not rebuilt ([Getting started](getting-started.md#expo-go)) |
+| `ROUTE_PICKER_UNAVAILABLE` | no | `showRoutePicker()` where there is no output picker (Firefox; a browser without AirPlay or Remote Playback for this source) ([Casting & AirPlay](routes-and-casting.md#the-output-picker)) |
+| `CAST_UNAVAILABLE` | no | `showCastPicker()` where Cast is not built in (no `cast` plugin option) or not supported (browsers other than Chrome), or before the web's Cast SDK is ready ([Casting & AirPlay](routes-and-casting.md#google-cast)) |
+| `CAST_UNSUPPORTED_SOURCE` | no | non-fatal `error` event: a Cast session started but the player's source cannot be reached by a receiver (a local file, `content://`, a bundled asset, `blob:`); the player stays on the device ([Casting & AirPlay](routes-and-casting.md#what-casting-does)) |
 | `INTERNAL_ERROR` | no | a bug — please report with `player.getDiagnostics()` |
 
 ## Recoverable vs fatal

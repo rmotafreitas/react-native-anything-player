@@ -13,7 +13,7 @@ RNAP is tested at six layers. Everything below runs locally; the device layers n
 
 ## Engine conformance
 
-`conformance/*.json` is the executable specification of the engine: 59 scenarios driven by a fake clock and a recording driver — command races (`load` A/B/C, play/pause storms), stale events, stalls (native, silent, trickling, sub-debounce), dead sockets, offline probing, restore and handoff edges, backoff and its reset, give-up, live drift, paused-stream release, interruptions and focus results, media-services reset, and re-entrant driver callbacks. The Swift, Kotlin and TypeScript engines must produce exactly the same driver commands, states and events. A recorder-level invariant also checks that `ended`/`error` are never delivered before the status that implies them. `conformance/metadata/icy.json` holds the ICY normalization cases (charsets, quoting, malformed blocks, splitting). See [conformance/README.md](../conformance/README.md) for the format.
+`conformance/*.json` is the executable specification of the engine: 80 scenarios driven by a fake clock and a recording driver — command races (`load` A/B/C, play/pause storms), stale events, stalls (native, silent, trickling, sub-debounce), dead sockets, offline probing, restore and handoff edges, backoff and its reset, give-up, live drift, paused-stream release, interruptions and focus results, media-services reset, and re-entrant driver callbacks, and output handoffs to and from a Cast receiver with the rules that hold while casting. The Swift, Kotlin and TypeScript engines must produce exactly the same driver commands, states and events. A recorder-level invariant also checks that `ended`/`error` are never delivered before the status that implies them. `conformance/metadata/icy.json` holds the ICY normalization cases (charsets, quoting, malformed blocks, splitting), and `conformance/catalog/` the voice catalog's text normalization and search ranking (accents, Turkish i, final sigma, ß, CJK, typos, filler words, structured requests). See [conformance/README.md](../conformance/README.md) for the format.
 
 ## On-device integration scenarios
 
@@ -101,7 +101,13 @@ Verified on the iOS 27 simulator:
 - Now Playing publications (title/artist from ICY, live flag, rate, artwork attached asynchronously), read from the unified log;
 - five JS reloads while playing: no crash, old players released (a crash on reload was found and fixed here — events emitted into a torn-down TurboModule).
 
-**Not verified (no physical devices available):** real phone calls, Siri, Bluetooth/AirPods/CarPlay/Android Auto hardware, wired-headset unplug, AirPlay, cellular handoff on a real radio, Now Playing on an Apple Watch and media controls on Wear OS. The code paths are covered by the conformance scenarios (interruptions, focus, output-disconnect, handoff) and follow the platform APIs, but they should be exercised on hardware before a 1.0.
+**Not verified (no physical devices available):** real phone calls, Siri, Bluetooth/AirPods/CarPlay/Android Auto hardware, wired-headset unplug, AirPlay, Google Cast receivers, cellular handoff on a real radio, Now Playing on an Apple Watch and media controls on Wear OS. Hardware checklist for outputs and voice:
+
+- AirPlay: pick a receiver from `<RoutePicker />` while a stream plays (`status.route.kind === 'airplay'`); lock the phone; pick the phone again.
+- Google Cast (Android, iOS, Chrome): cast a playing radio stream and a file mid-way; check position, titles (from the phone), lock-screen controls, volume, a receiver-side stop, Wi-Fi loss on the phone only, and stopping from the phone (returns paused).
+- Siri: "play ⟨station⟩ on ⟨app⟩" with the app in the foreground, backgrounded and force-quit; "play something on ⟨app⟩"; a name only the search handler knows.
+- Google Assistant and Gemini: the same requests, on a phone where each is the default assistant; and `adb shell am start -a android.media.action.MEDIA_PLAY_FROM_SEARCH -e query "⟨station⟩" ⟨package⟩`.
+ The code paths are covered by the conformance scenarios (interruptions, focus, output-disconnect, handoff) and follow the platform APIs, but they should be exercised on hardware before a 1.0.
 
 ## Soak
 
