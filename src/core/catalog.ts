@@ -20,6 +20,32 @@
 // ≥ 40 after weighting; `focus` keeps only items of that kind when any match;
 // equal scores keep catalog order.
 
+/**
+ * The segments of a group path: `"Podcasts/Daily"` is `["Podcasts", "Daily"]`.
+ * Segments are trimmed and empty ones dropped, so `" Jazz / "` is `["Jazz"]`
+ * and `""` or `"/"` is no group. Comparison is exact (case-sensitive).
+ * Twins: `BrowseTree.groupSegments` in Kotlin and Swift, held to
+ * `conformance/catalog/browse.json`.
+ */
+export function groupSegments(group: string | null | undefined): string[] {
+  if (typeof group !== 'string') return [];
+  return group
+    .split('/')
+    .map((segment) => segment.trim())
+    .filter((segment) => segment.length > 0);
+}
+
+/** Whether an item filed under `itemGroup` is in `group` or in one of its subgroups. */
+export function isInGroup(
+  itemGroup: string | null | undefined,
+  group: string | null | undefined
+): boolean {
+  const wanted = groupSegments(group);
+  if (wanted.length === 0) return true;
+  const own = groupSegments(itemGroup);
+  return startsWithTokens(own, wanted);
+}
+
 /** The fields search reads, in the shape every platform stores. */
 export interface SearchableItem {
   title: string;
@@ -28,6 +54,8 @@ export interface SearchableItem {
   genre?: string | null;
   keywords?: readonly string[] | null;
   kind?: string | null;
+  /** The browse group (`"Podcasts/Daily"`); not matched by text, only filtered by {@link CatalogQuery.group}. */
+  group?: string | null;
 }
 
 /** A search request (`query` may be empty when structured fields are given). */
@@ -38,6 +66,8 @@ export interface CatalogQuery {
   album?: string | null;
   genre?: string | null;
   focus?: string | null;
+  /** Only items in this group or its subgroups are searched (see {@link isInGroup}). */
+  group?: string | null;
 }
 
 /** The outcome of a search. */
@@ -251,7 +281,9 @@ export function searchCatalog(
   };
   const hasStructured = Object.values(structured).some((t) => t.length > 0);
   const scored: Array<{ index: number; score: number }> = [];
+  const inScope = groupSegments(request.group).length > 0;
   items.forEach((raw, index) => {
+    if (inScope && !isInGroup(raw.group, request.group)) return;
     const item = tokenizeItem(raw);
     const extra = structuredScores(structured, item);
     const score =

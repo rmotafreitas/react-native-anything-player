@@ -551,8 +551,16 @@ export interface SearchRequest {
   genre?: string;
   /** What the assistant thinks is meant; narrows results to items of that `kind` when any match. */
   focus?: SearchFocus;
-  /** Who asked: Siri, Google Assistant / Gemini, or the app itself. */
-  origin: 'siri' | 'assistant' | 'app';
+  /**
+   * Only items in this group or its subgroups (`"Podcasts"` matches
+   * `"Podcasts/Daily"`) are searched. See {@link CatalogItem.group}.
+   */
+  group?: string;
+  /**
+   * Who asked: Siri, Google Assistant / Gemini, the app itself, or a person
+   * picking an item from the car or watch browse tree (`'browse'`).
+   */
+  origin: 'siri' | 'assistant' | 'app' | 'browse';
 }
 
 /** See {@link SearchRequest.focus}. */
@@ -586,6 +594,14 @@ export interface CatalogItem {
   keywords?: string[];
   /** What it is (default `'station'`). */
   kind?: 'station' | 'song' | 'album' | 'podcast' | 'audiobook' | 'other';
+  /**
+   * Where the item sits in the browse tree that cars (Android Auto, Android
+   * Automotive, CarPlay) and Wear OS show: `"Jazz"`, or `"Podcasts/Daily"` for
+   * a folder inside a folder. `/` nests; segments are trimmed and compared
+   * exactly. The top-level groups become the tabs. Items without a group are
+   * listed under a "More" folder. See [Cars & watches](cars-and-watches.md).
+   */
+  group?: string;
 }
 
 /** Payload of the `searchPlay` event. */
@@ -607,6 +623,31 @@ export interface CatalogOptions {
   playerId?: string;
   /** Options for that player, when native has to create it. */
   playerOptions?: Omit<PlayerOptions, 'id'>;
+  /** What the cars' browse tree adds to the catalog's groups. */
+  browse?: BrowseOptions;
+}
+
+/**
+ * Extras of the browse tree (Android Auto, Android Automotive, CarPlay,
+ * Wear OS). The tree itself comes from {@link CatalogItem.group}.
+ */
+export interface BrowseOptions {
+  /**
+   * A "Recently played" folder with the last items played from the catalog
+   * (by a search, a voice request or a pick in the car), newest first. `true`
+   * keeps 10; a number keeps that many (1…50). Stored on the device. Default off.
+   */
+  recent?: boolean | number;
+  /**
+   * Ids of the items in a "Favorites" folder, in this order. Ids not in the
+   * catalog are ignored; an empty list hides the folder. Call `setCatalog`
+   * again to change it.
+   */
+  favorites?: string[];
+  /** Top-level group names in the order the tabs should have; groups not named follow in catalog order. */
+  rootOrder?: string[];
+  /** Names of the folders RNAP adds (English by default). */
+  titles?: { recent?: string; favorites?: string; more?: string };
 }
 
 /**

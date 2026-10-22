@@ -1,0 +1,260 @@
+{
+  "segments": [
+    { "group": "Jazz", "segments": ["Jazz"] },
+    { "group": "Podcasts/Daily", "segments": ["Podcasts", "Daily"] },
+    { "group": "  Podcasts / Daily  ", "segments": ["Podcasts", "Daily"] },
+    { "group": "Jazz//Cool/", "segments": ["Jazz", "Cool"] },
+    { "group": "/", "segments": [] },
+    { "group": "", "segments": [] },
+    { "group": "   ", "segments": [] },
+    { "group": "jazz", "segments": ["jazz"] },
+    { "group": "Rock & Roll/Ünïcode", "segments": ["Rock & Roll", "Ünïcode"] }
+  ],
+  "membership": [
+    { "itemGroup": "Podcasts/Daily", "group": "Podcasts", "in": true },
+    { "itemGroup": "Podcasts/Daily", "group": "Podcasts/Daily", "in": true },
+    { "itemGroup": "Podcasts", "group": "Podcasts/Daily", "in": false },
+    { "itemGroup": "Podcasts/Weekly", "group": "Podcasts/Daily", "in": false },
+    { "itemGroup": "Podcasts Extra", "group": "Podcasts", "in": false },
+    { "itemGroup": " Podcasts /Daily", "group": "Podcasts/", "in": true },
+    { "itemGroup": "jazz", "group": "Jazz", "in": false },
+    { "itemGroup": null, "group": "Jazz", "in": false },
+    { "itemGroup": "Jazz", "group": null, "in": true },
+    { "itemGroup": null, "group": "", "in": true },
+    { "itemGroup": "Jazz", "group": " / ", "in": true }
+  ],
+  "search": {
+    "catalog": [
+      { "id": "jazz-fm", "title": "Radio Jazz", "kind": "station", "group": "Music/Jazz" },
+      { "id": "jazz-pod", "title": "Radio Jazz Talk", "kind": "podcast", "group": "Podcasts/Daily" },
+      { "id": "jazz-loose", "title": "Radio Jazz Classics", "kind": "station" }
+    ],
+    "cases": [
+      { "name": "no group searches everything", "request": { "query": "radio jazz" }, "expect": ["jazz-fm", "jazz-pod", "jazz-loose"] },
+      { "name": "a group keeps its items", "request": { "query": "radio jazz", "group": "Podcasts" }, "expect": ["jazz-pod"] },
+      { "name": "a subgroup", "request": { "query": "radio jazz", "group": "Music/Jazz" }, "expect": ["jazz-fm"] },
+      { "name": "a parent group includes its subgroups", "request": { "query": "radio jazz", "group": "Music" }, "expect": ["jazz-fm"] },
+      { "name": "a group with no items matches nothing", "request": { "query": "radio jazz", "group": "Nothing" }, "expect": [] },
+      { "name": "a blank group is no filter", "request": { "query": "radio jazz", "group": " / " }, "expect": ["jazz-fm", "jazz-pod", "jazz-loose"] }
+    ]
+  },
+  "trees": [
+    {
+      "name": "no groups: a flat list of stations is a grid",
+      "items": [
+        { "id": "a", "title": "A", "kind": "station" },
+        { "id": "b", "title": "B", "kind": "album" }
+      ],
+      "children": { "rnap:root": [["item", "a", "A"], ["item", "b", "B"]] },
+      "styles": { "rnap:root": "grid" }
+    },
+    {
+      "name": "no groups: a song makes the list a list",
+      "items": [
+        { "id": "a", "title": "A", "kind": "station" },
+        { "id": "b", "title": "B", "kind": "song" }
+      ],
+      "children": { "rnap:root": [["item", "a", "A"], ["item", "b", "B"]] },
+      "styles": { "rnap:root": "list" }
+    },
+    {
+      "name": "an empty catalog has an empty root",
+      "items": [],
+      "children": { "rnap:root": [] }
+    },
+    {
+      "name": "groups become tabs, nested groups folders, ungrouped items More",
+      "items": [
+        { "id": "jazz", "title": "Jazz FM", "kind": "station", "group": "Jazz" },
+        { "id": "rock", "title": "Rock FM", "kind": "station", "group": "Rock" },
+        { "id": "news", "title": "News", "kind": "podcast", "group": "Podcasts/Daily" },
+        { "id": "weekly", "title": "Weekly", "kind": "podcast", "group": "Podcasts/Weekly" },
+        { "id": "intro", "title": "Intro", "kind": "podcast", "group": "Podcasts" },
+        { "id": "loose", "title": "Loose", "kind": "song" }
+      ],
+      "children": {
+        "rnap:root": [
+          ["folder", "rnap:group:Jazz", "Jazz"],
+          ["folder", "rnap:group:Rock", "Rock"],
+          ["folder", "rnap:group:Podcasts", "Podcasts"],
+          ["folder", "rnap:more", "More"]
+        ],
+        "rnap:group:Jazz": [["item", "jazz", "Jazz FM"]],
+        "rnap:group:Podcasts": [
+          ["folder", "rnap:group:Podcasts/Daily", "Daily"],
+          ["folder", "rnap:group:Podcasts/Weekly", "Weekly"],
+          ["item", "intro", "Intro"]
+        ],
+        "rnap:group:Podcasts/Daily": [["item", "news", "News"]],
+        "rnap:more": [["item", "loose", "Loose"]]
+      },
+      "styles": {
+        "rnap:group:Jazz": "grid",
+        "rnap:group:Podcasts": "list",
+        "rnap:group:Podcasts/Daily": "list",
+        "rnap:more": "list"
+      },
+      "missing": ["rnap:group:Nothing", "rnap:group:Jazz/Cool", "ghost", "rnap:recent", "rnap:favorites"]
+    },
+    {
+      "name": "rootOrder puts the named groups first; unknown names are ignored",
+      "items": [
+        { "id": "jazz", "title": "Jazz FM", "group": "Jazz" },
+        { "id": "rock", "title": "Rock FM", "group": "Rock" },
+        { "id": "pod", "title": "Pod", "group": "Podcasts/Daily" }
+      ],
+      "options": { "rootOrder": ["Rock", "Missing", "Podcasts/Daily", "Rock"] },
+      "children": {
+        "rnap:root": [
+          ["folder", "rnap:group:Rock", "Rock"],
+          ["folder", "rnap:group:Podcasts", "Podcasts"],
+          ["folder", "rnap:group:Jazz", "Jazz"]
+        ]
+      }
+    },
+    {
+      "name": "recent and favorites come first and only hold items still there",
+      "items": [
+        { "id": "jazz", "title": "Jazz FM", "group": "Jazz" },
+        { "id": "rock", "title": "Rock FM", "group": "Rock" },
+        { "id": "loose", "title": "Loose" }
+      ],
+      "options": { "recentLimit": 2, "favorites": ["rock", "ghost", "rock", "jazz"] },
+      "recent": ["loose", "ghost", "jazz", "rock", "loose"],
+      "children": {
+        "rnap:root": [
+          ["folder", "rnap:recent", "Recently played"],
+          ["folder", "rnap:favorites", "Favorites"],
+          ["folder", "rnap:group:Jazz", "Jazz"],
+          ["folder", "rnap:more", "More"]
+        ],
+        "rnap:more": [["folder", "rnap:group:Rock", "Rock"], ["item", "loose", "Loose"]],
+        "rnap:recent": [["item", "loose", "Loose"], ["item", "jazz", "Jazz FM"]],
+        "rnap:favorites": [["item", "rock", "Rock FM"], ["item", "jazz", "Jazz FM"]]
+      }
+    },
+    {
+      "name": "recent off, or nothing played yet, adds no folder; no favorites adds none",
+      "items": [{ "id": "jazz", "title": "Jazz FM", "group": "Jazz" }],
+      "options": { "recentLimit": 0, "favorites": ["ghost"] },
+      "recent": ["jazz"],
+      "children": { "rnap:root": [["folder", "rnap:group:Jazz", "Jazz"]] },
+      "missing": ["rnap:recent", "rnap:favorites"]
+    },
+    {
+      "name": "more tabs than a car shows: the last tab is More and holds the rest",
+      "items": [
+        { "id": "a", "title": "A", "group": "One" },
+        { "id": "b", "title": "B", "group": "Two" },
+        { "id": "c", "title": "C", "group": "Three" },
+        { "id": "d", "title": "D", "group": "Four" },
+        { "id": "e", "title": "E", "group": "Five" },
+        { "id": "f", "title": "F" }
+      ],
+      "children": {
+        "rnap:root": [
+          ["folder", "rnap:group:One", "One"],
+          ["folder", "rnap:group:Two", "Two"],
+          ["folder", "rnap:group:Three", "Three"],
+          ["folder", "rnap:more", "More"]
+        ],
+        "rnap:more": [
+          ["folder", "rnap:group:Four", "Four"],
+          ["folder", "rnap:group:Five", "Five"],
+          ["item", "f", "F"]
+        ],
+        "rnap:group:Five": [["item", "e", "E"]]
+      }
+    },
+    {
+      "name": "exactly as many tabs as fit, and none left over, needs no More",
+      "items": [
+        { "id": "a", "title": "A", "group": "One" },
+        { "id": "b", "title": "B", "group": "Two" },
+        { "id": "c", "title": "C", "group": "Three" },
+        { "id": "d", "title": "D", "group": "Four" }
+      ],
+      "children": {
+        "rnap:root": [
+          ["folder", "rnap:group:One", "One"],
+          ["folder", "rnap:group:Two", "Two"],
+          ["folder", "rnap:group:Three", "Three"],
+          ["folder", "rnap:group:Four", "Four"]
+        ]
+      },
+      "missing": ["rnap:more"]
+    },
+    {
+      "name": "a smaller root limit moves more into More",
+      "items": [
+        { "id": "a", "title": "A", "group": "One" },
+        { "id": "b", "title": "B", "group": "Two" },
+        { "id": "c", "title": "C", "group": "Three" }
+      ],
+      "options": { "rootLimit": 2 },
+      "children": {
+        "rnap:root": [["folder", "rnap:group:One", "One"], ["folder", "rnap:more", "More"]],
+        "rnap:more": [["folder", "rnap:group:Two", "Two"], ["folder", "rnap:group:Three", "Three"]]
+      }
+    },
+    {
+      "name": "a browser that wants folders only gets a flat catalog under More",
+      "items": [
+        { "id": "a", "title": "A", "kind": "station" },
+        { "id": "b", "title": "B", "kind": "station" }
+      ],
+      "options": { "foldersOnly": true },
+      "children": {
+        "rnap:root": [["folder", "rnap:more", "More"]],
+        "rnap:more": [["item", "a", "A"], ["item", "b", "B"]]
+      },
+      "styles": { "rnap:more": "grid" }
+    },
+    {
+      "name": "titles can be renamed; blank segments are dropped; groups are case-sensitive",
+      "items": [
+        { "id": "a", "title": "A", "group": " Jazz / " },
+        { "id": "b", "title": "B", "group": "Jazz//Cool" },
+        { "id": "c", "title": "C", "group": "jazz" },
+        { "id": "d", "title": "D" }
+      ],
+      "options": { "recentLimit": 1, "favorites": ["a"], "titles": { "recent": "Zuletzt", "favorites": "Favoriten", "more": "Mehr" } },
+      "recent": ["d"],
+      "children": {
+        "rnap:root": [
+          ["folder", "rnap:recent", "Zuletzt"],
+          ["folder", "rnap:favorites", "Favoriten"],
+          ["folder", "rnap:group:Jazz", "Jazz"],
+          ["folder", "rnap:more", "Mehr"]
+        ],
+        "rnap:more": [["folder", "rnap:group:jazz", "jazz"], ["item", "d", "D"]],
+        "rnap:group:Jazz": [["folder", "rnap:group:Jazz/Cool", "Cool"], ["item", "a", "A"]],
+        "rnap:group:Jazz/Cool": [["item", "b", "B"]]
+      }
+    },
+    {
+      "name": "a folder shows the artwork of the first item inside",
+      "items": [
+        { "id": "a", "title": "A", "group": "Pods/Daily" },
+        { "id": "b", "title": "B", "group": "Pods/Daily", "artwork": "https://x/b.png" },
+        { "id": "c", "title": "C", "group": "Pods", "artwork": "https://x/c.png" },
+        { "id": "d", "title": "D", "group": "Bare" }
+      ],
+      "children": {
+        "rnap:root": [["folder", "rnap:group:Pods", "Pods"], ["folder", "rnap:group:Bare", "Bare"]]
+      },
+      "artworks": {
+        "rnap:group:Pods": "https://x/b.png",
+        "rnap:group:Pods/Daily": "https://x/b.png",
+        "rnap:group:Bare": null,
+        "b": "https://x/b.png",
+        "a": null
+      }
+    },
+    {
+      "name": "an item may be listed under a folder-like id",
+      "items": [{ "id": "rnap:group:Jazz", "title": "Impostor", "group": "Jazz" }],
+      "children": { "rnap:group:Jazz": [["item", "rnap:group:Jazz", "Impostor"]] }
+    }
+  ]
+}

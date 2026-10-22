@@ -51,6 +51,7 @@ export type {
   AudioSample,
   AudioSamplingOptions,
   BlobInput,
+  BrowseOptions,
   CastState,
   CatalogItem,
   CatalogOptions,

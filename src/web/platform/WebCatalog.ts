@@ -13,6 +13,7 @@ export interface StoredItem {
   artist?: string;
   album?: string;
   genre?: string;
+  group?: string;
   artwork?: string;
   keywords: string[];
   kind: string;
@@ -29,6 +30,9 @@ export class WebCatalog {
   playerOptions: Record<string, unknown> = {};
   /** Whether the app answers what the catalog does not have. */
   handlerEnabled = false;
+  /** Ids of the last items played, newest first (kept when `browse.recent` is set). */
+  recentIds: string[] = [];
+  private recentLimit = 0;
   private lastPlayedId: string | null = null;
   private readonly pending = new Map<
     string,
@@ -38,7 +42,16 @@ export class WebCatalog {
 
   set(items: object[], options: object): void {
     this.items = items as StoredItem[];
-    const o = options as { playerId?: unknown; playerOptions?: unknown };
+    const o = options as {
+      playerId?: unknown;
+      playerOptions?: unknown;
+      browse?: { recent?: unknown };
+    };
+    const recent = o.browse?.recent;
+    this.recentLimit = typeof recent === 'number' ? recent : 0;
+    this.recentIds = this.recentIds
+      .filter((id) => items.some((item) => (item as StoredItem).id === id))
+      .slice(0, this.recentLimit);
     this.playerId = typeof o.playerId === 'string' ? o.playerId : 'default';
     this.playerOptions =
       o.playerOptions && typeof o.playerOptions === 'object'
@@ -67,6 +80,11 @@ export class WebCatalog {
 
   played(item: StoredItem): void {
     this.lastPlayedId = item.id;
+    if (this.recentLimit > 0)
+      this.recentIds = [
+        item.id,
+        ...this.recentIds.filter((id) => id !== item.id),
+      ].slice(0, this.recentLimit);
   }
 
   /** Asks the app's search handler (a `searchRequest` event) and waits for its answer. */
