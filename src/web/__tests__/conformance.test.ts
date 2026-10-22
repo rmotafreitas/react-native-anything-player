@@ -15,7 +15,7 @@ import {
   type InterruptionReason,
   type NetworkState,
 } from '../engine/types';
-import { EngineHarness, type Motion } from './EngineHarness';
+import { EngineHarness, WALL_BASE, type Motion } from './EngineHarness';
 
 type Step = Record<string, unknown>;
 interface Scenario {
@@ -47,6 +47,8 @@ function engineOptions(o: Record<string, unknown> = {}): EngineOptions {
   }
   if ('liveMaxDriftMs' in o)
     options.liveMaxDriftMs = o.liveMaxDriftMs as number;
+  if ('fadeInMs' in o) options.fadeInMs = o.fadeInMs as number;
+  if ('fadeOutMs' in o) options.fadeOutMs = o.fadeOutMs as number;
   return options;
 }
 
@@ -84,6 +86,15 @@ function perform(call: string, step: Step, h: EngineHarness): void {
       return h.engine.setRate(value);
     case 'duck':
       return h.engine.setDucked(step.value === true);
+    case 'fadeTo':
+      return h.engine.fadeTo(value, step.ms as number, () => {
+        h.recorder.fades += 1;
+      });
+    case 'sleep':
+      return h.engine.sleep(
+        (step.after as number | null | undefined) ?? null,
+        (step.fadeOut as number | undefined) ?? null
+      );
     case 'foreground':
       return h.engine.appForegrounded();
     case 'handoff':
@@ -220,6 +231,18 @@ function check(
       case 'needsAudioFocus':
         expect_(label, h.engine.needsAudioFocus, v);
         break;
+      case 'volume':
+        expect_(label, s.volume, v);
+        break;
+      case 'sleepAt':
+        expect_(label, s.sleepAt == null ? null : s.sleepAt - WALL_BASE, v);
+        break;
+      case 'sleeps':
+        expect_(label, h.recorder.sleeps, v);
+        break;
+      case 'fades':
+        expect_(label, h.recorder.fades, v);
+        break;
       default:
         throw new Error(`${at}: unknown expectation ${key}`);
     }
@@ -228,6 +251,8 @@ function check(
   h.recorder.loads = [];
   h.recorder.errors = [];
   h.recorder.ended = 0;
+  h.recorder.sleeps = 0;
+  h.recorder.fades = 0;
 }
 
 function expect_(label: string, actual: unknown, expected: unknown): void {

@@ -19,6 +19,9 @@ export interface PlayerModule {
   setVolume(playerId: string, volume: number): Promise<object>;
   setMuted(playerId: string, muted: boolean): Promise<object>;
   setRate(playerId: string, rate: number): Promise<object>;
+  fadeTo(playerId: string, volume: number, seconds: number): Promise<object>;
+  sleep(playerId: string, timer: object): Promise<object>;
+  setFade(playerId: string, fade: object): Promise<object>;
   updateNowPlaying(playerId: string, metadata: object): Promise<void>;
   getStatus(playerId: string): object;
   getProgress(playerId: string): object;

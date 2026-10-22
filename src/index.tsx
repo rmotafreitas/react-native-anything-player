@@ -36,7 +36,9 @@ export {
   usePlayerEvent,
   useCastStatus,
   useRoutePickerAvailable,
+  useSleepTimer,
 } from './hooks';
+export type { SleepTimerState } from './hooks';
 export { RoutePicker } from './components/RoutePicker';
 export type { RoutePickerProps } from './components/RoutePicker';
 export { CastButton } from './components/CastButton';
@@ -54,6 +56,7 @@ export type {
   CatalogOptions,
   DiagnosticEntry,
   Discontinuity,
+  FadeOptions,
   Interruption,
   InterruptionReason,
   LoadOptions,
@@ -74,6 +77,8 @@ export type {
   SearchFocus,
   SearchPlayEvent,
   SearchRequest,
+  SleepEvent,
+  SleepTimer,
   Source,
   SourceInput,
 } from './types';

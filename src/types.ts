@@ -183,6 +183,11 @@ export interface PlayerStatus {
   rate: number;
   /** Where the audio goes: the speaker, headphones, AirPlay, a Cast receiver… */
   route: AudioRoute;
+  /**
+   * Epoch ms when the sleep timer pauses the player, `null` when no timer is
+   * set (see `Player.sleep`).
+   */
+  sleepAt: number | null;
 }
 
 /** A progress reading. Positions are seconds. */
@@ -382,6 +387,11 @@ export interface PlayerOptions {
     /** Stop playback when the user swipes the app away from recents. Default `false`. */
     stopOnTaskRemoved?: boolean;
   };
+  /**
+   * Volume fades on play, pause and stop (see `Player.setFade`). Off by
+   * default.
+   */
+  fade?: FadeOptions;
   /** Start with diagnostics enabled (see `setDiagnosticsEnabled`). */
   diagnostics?: boolean;
   /**
@@ -447,6 +457,41 @@ export interface PlayerEventMap {
   routeChange: (route: AudioRoute, previous: AudioRoute) => void;
   /** A voice assistant, or `playFromSearch()`, started a catalog item on this player. */
   searchPlay: (event: SearchPlayEvent) => void;
+  /** The sleep timer ran out (`status.sleepAt` is back to `null`). */
+  sleep: (event: SleepEvent) => void;
+}
+
+/**
+ * Volume fades applied natively on play, pause and stop. Seconds; `0` or
+ * absent = no fade.
+ */
+export interface FadeOptions {
+  /** `play()` (and a `load` that starts playback) fades in from silence over this long, once the audio flows. */
+  in?: number;
+  /**
+   * `pause()` and `stop()` fade out over this long, then pause or stop. Also
+   * the sleep timer's fade-out when `Player.sleep` does not give one.
+   */
+  out?: number;
+}
+
+/** What `Player.sleep` takes. Seconds. */
+export interface SleepTimer {
+  /** Pause after this long (wall time: it counts while paused too). */
+  after: number;
+  /**
+   * Fade the volume out over the last `fadeOut` seconds before the pause.
+   * Defaults to `fade.out` (no fade without one).
+   */
+  fadeOut?: number;
+}
+
+/** See {@link PlayerEventMap.sleep}. */
+export interface SleepEvent {
+  /** `fired`: the timer ran out (the player paused, if it was playing). */
+  reason: 'fired';
+  /** Epoch ms. */
+  timestamp: number;
 }
 
 /** See {@link PlayerEventMap.discontinuity}. */

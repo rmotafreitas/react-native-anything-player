@@ -1,0 +1,402 @@
+[
+  {
+    "name": "pause with a fade-out lowers the volume, then pauses",
+    "options": { "fadeOutMs": 200 },
+    "steps": [
+      { "network": "online" },
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "expect": { "state": "playing", "commands": ["open(gen=1,start=-,play=true)"] } },
+      { "call": "pause" },
+      { "expect": { "state": "playing", "playWhenReady": false, "commands": [], "needsAudioFocus": true, "volume": 1 } },
+      { "advance": 100 },
+      { "expect": { "state": "playing", "commands": ["volume(0.75)", "volume(0.50)"] } },
+      { "advance": 100 },
+      { "expect": { "state": "paused", "playWhenReady": false, "commands": ["volume(0.25)", "volume(0.00)", "pause"], "needsAudioFocus": false, "volume": 1 } },
+      { "call": "play" },
+      { "expect": { "state": "buffering", "playWhenReady": true, "commands": ["volume(1.00)", "play"] } }
+    ]
+  },
+  {
+    "name": "pause during a fade-out pauses at once",
+    "options": { "fadeOutMs": 200 },
+    "steps": [
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "call": "pause" },
+      { "advance": 50 },
+      { "expect": { "state": "playing", "commands": ["open(gen=1,start=-,play=true)", "volume(0.75)"] } },
+      { "call": "pause" },
+      { "expect": { "state": "paused", "playWhenReady": false, "commands": ["volume(0.00)", "pause"] } },
+      { "advance": 200 },
+      { "expect": { "state": "paused", "commands": [] } }
+    ]
+  },
+  {
+    "name": "play during a fade-out cancels it",
+    "options": { "fadeOutMs": 200 },
+    "steps": [
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "call": "pause" },
+      { "advance": 100 },
+      { "expect": { "commands": ["open(gen=1,start=-,play=true)", "volume(0.75)", "volume(0.50)"] } },
+      { "call": "play" },
+      { "expect": { "state": "playing", "playWhenReady": true, "commands": ["volume(1.00)"] } },
+      { "advance": 300 },
+      { "expect": { "state": "playing", "playWhenReady": true, "commands": [] } }
+    ]
+  },
+  {
+    "name": "stop with a fade-out lowers the volume, then stops",
+    "options": { "fadeOutMs": 200 },
+    "steps": [
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "call": "stop" },
+      { "expect": { "state": "playing", "playWhenReady": false, "commands": ["open(gen=1,start=-,play=true)"] } },
+      { "advance": 200 },
+      { "expect": { "state": "stopped", "commands": ["volume(0.75)", "volume(0.50)", "volume(0.25)", "volume(0.00)", "release"] } },
+      { "call": "play" },
+      { "expect": { "state": "loading", "playWhenReady": true, "commands": ["volume(1.00)", "open(gen=2,start=-,play=true)"] } }
+    ]
+  },
+  {
+    "name": "a stall during a fade-out pauses at once",
+    "options": { "fadeOutMs": 200 },
+    "steps": [
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "call": "pause" },
+      { "advance": 50 },
+      { "native": "buffering" },
+      { "expect": { "state": "paused", "playWhenReady": false, "commands": ["open(gen=1,start=-,play=true)", "volume(0.75)", "volume(0.00)", "pause"] } }
+    ]
+  },
+  {
+    "name": "load during a fade-out ends it with the old item",
+    "options": { "fadeOutMs": 200 },
+    "steps": [
+      { "call": "load", "uri": "https://radio.example/a", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "call": "pause" },
+      { "advance": 50 },
+      { "call": "load", "uri": "https://radio.example/b", "live": true },
+      { "expect": { "state": "loading", "playWhenReady": false, "commands": ["open(gen=1,start=-,play=true)", "volume(0.75)", "open(gen=2,start=-,play=false)"] } },
+      { "advance": 200 },
+      { "native": "ready", "live": true },
+      { "expect": { "state": "paused", "commands": [] } },
+      { "call": "play" },
+      { "expect": { "state": "buffering", "commands": ["volume(1.00)", "play"] } }
+    ]
+  },
+  {
+    "name": "fade-in on play starts when the audio does",
+    "options": { "fadeInMs": 200 },
+    "steps": [
+      { "call": "load", "uri": "https://cdn.example/song.mp3" },
+      { "native": "ready", "duration": 180, "seekable": true },
+      { "expect": { "state": "paused", "commands": ["open(gen=1,start=-,play=false)"] } },
+      { "call": "play" },
+      { "expect": { "state": "buffering", "commands": ["volume(0.00)", "play"] } },
+      { "advance": 500 },
+      { "expect": { "commands": [] } },
+      { "native": "playing" },
+      { "expect": { "state": "playing", "commands": [] } },
+      { "advance": 200 },
+      { "expect": { "state": "playing", "commands": ["volume(0.25)", "volume(0.50)", "volume(0.75)", "volume(1.00)"], "volume": 1 } }
+    ]
+  },
+  {
+    "name": "fade-in on a load with autoplay",
+    "options": { "fadeInMs": 200 },
+    "steps": [
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "expect": { "state": "loading", "commands": ["volume(0.00)", "open(gen=1,start=-,play=true)"] } },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "advance": 100 },
+      { "expect": { "state": "playing", "commands": ["volume(0.25)", "volume(0.50)"] } }
+    ]
+  },
+  {
+    "name": "pause during a fade-in fades out from where it is",
+    "options": { "fadeInMs": 200, "fadeOutMs": 200 },
+    "steps": [
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "advance": 100 },
+      { "expect": { "commands": ["volume(0.00)", "open(gen=1,start=-,play=true)", "volume(0.25)", "volume(0.50)"] } },
+      { "call": "pause" },
+      { "advance": 100 },
+      { "expect": { "state": "paused", "commands": ["volume(0.25)", "volume(0.00)", "pause"] } }
+    ]
+  },
+  {
+    "name": "fadeTo moves the volume to its target and settles",
+    "steps": [
+      { "call": "load", "uri": "https://cdn.example/song.mp3", "autoplay": true },
+      { "native": "ready", "duration": 180, "seekable": true },
+      { "native": "playing" },
+      { "expect": { "commands": ["open(gen=1,start=-,play=true)"] } },
+      { "call": "fadeTo", "value": 0.6, "ms": 200 },
+      { "expect": { "volume": 0.6, "commands": [], "fades": 0 } },
+      { "advance": 100 },
+      { "expect": { "commands": ["volume(0.90)", "volume(0.80)"], "fades": 0 } },
+      { "advance": 100 },
+      { "expect": { "commands": ["volume(0.70)", "volume(0.60)"], "fades": 1, "volume": 0.6 } },
+      { "call": "duck", "value": true },
+      { "expect": { "commands": ["volume(0.12)"], "volume": 0.6 } }
+    ]
+  },
+  {
+    "name": "setVolume replaces a fadeTo, which settles",
+    "steps": [
+      { "call": "load", "uri": "https://cdn.example/song.mp3", "autoplay": true },
+      { "native": "ready", "duration": 180, "seekable": true },
+      { "native": "playing" },
+      { "call": "fadeTo", "value": 0.6, "ms": 200 },
+      { "advance": 50 },
+      { "expect": { "commands": ["open(gen=1,start=-,play=true)", "volume(0.90)"], "fades": 0 } },
+      { "call": "volume", "value": 0.3 },
+      { "expect": { "commands": ["volume(0.30)"], "fades": 1, "volume": 0.3 } },
+      { "advance": 300 },
+      { "expect": { "commands": [], "fades": 0 } },
+      { "call": "fadeTo", "value": 0.3, "ms": 200 },
+      { "expect": { "commands": ["volume(0.30)"], "fades": 1 } },
+      { "call": "fadeTo", "value": 0.5, "ms": -1, "throws": "INVALID_ARGUMENT" }
+    ]
+  },
+  {
+    "name": "a fade-out multiplies the ducked volume and follows the duck",
+    "options": { "fadeOutMs": 200 },
+    "steps": [
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "call": "volume", "value": 0.8 },
+      { "call": "duck", "value": true },
+      { "expect": { "commands": ["open(gen=1,start=-,play=true)", "volume(0.80)", "volume(0.16)"] } },
+      { "call": "pause" },
+      { "advance": 50 },
+      { "expect": { "commands": ["volume(0.12)"] } },
+      { "call": "duck", "value": false },
+      { "expect": { "commands": ["volume(0.60)"], "volume": 0.8 } },
+      { "advance": 150 },
+      { "expect": { "state": "paused", "commands": ["volume(0.40)", "volume(0.20)", "volume(0.00)", "pause"], "volume": 0.8 } }
+    ]
+  },
+  {
+    "name": "an interruption during a fade-out keeps the user's pause",
+    "options": { "fadeOutMs": 200 },
+    "steps": [
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "call": "pause" },
+      { "advance": 50 },
+      { "expect": { "commands": ["open(gen=1,start=-,play=true)", "volume(0.75)"] } },
+      { "interruption": "began", "reason": "interruption", "resumable": true },
+      { "expect": { "state": "paused", "playWhenReady": false, "interruption": null, "commands": ["volume(0.00)", "pause"] } },
+      { "interruption": "ended", "shouldResume": true },
+      { "advance": 300 },
+      { "expect": { "state": "paused", "playWhenReady": false, "commands": [] } }
+    ]
+  },
+  {
+    "name": "an interruption during a fade-in resumes with a new fade-in",
+    "options": { "fadeInMs": 200 },
+    "steps": [
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "advance": 100 },
+      { "expect": { "commands": ["volume(0.00)", "open(gen=1,start=-,play=true)", "volume(0.25)", "volume(0.50)"] } },
+      { "interruption": "began", "reason": "interruption", "resumable": true },
+      { "expect": { "state": "paused", "interruption": "interruption", "commands": ["pause"] } },
+      { "advance": 200 },
+      { "expect": { "commands": [] } },
+      { "interruption": "ended", "shouldResume": true },
+      { "expect": { "state": "buffering", "playWhenReady": true, "interruption": null, "commands": ["volume(0.00)", "play"] } },
+      { "native": "playing" },
+      { "advance": 200 },
+      { "expect": { "state": "playing", "commands": ["volume(0.25)", "volume(0.50)", "volume(0.75)", "volume(1.00)"] } }
+    ]
+  },
+  {
+    "name": "the sleep timer pauses after its delay",
+    "steps": [
+      { "network": "online" },
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "call": "sleep", "after": 60000 },
+      { "expect": { "sleepAt": 60000, "commands": ["open(gen=1,start=-,play=true)"], "sleeps": 0 } },
+      { "advance": 59999 },
+      { "expect": { "state": "playing", "sleepAt": 60000, "commands": [], "sleeps": 0 } },
+      { "advance": 1 },
+      { "expect": { "state": "paused", "playWhenReady": false, "sleepAt": null, "commands": ["pause"], "sleeps": 1 } },
+      { "advance": 30000 },
+      { "expect": { "state": "paused", "commands": ["release"], "sleeps": 0 } }
+    ]
+  },
+  {
+    "name": "the sleep timer fades out over its last seconds",
+    "steps": [
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "call": "sleep", "after": 1000, "fadeOut": 200 },
+      { "advance": 800 },
+      { "expect": { "state": "playing", "commands": ["open(gen=1,start=-,play=true)"] } },
+      { "advance": 100 },
+      { "expect": { "state": "playing", "commands": ["volume(0.75)", "volume(0.50)"], "volume": 1 } },
+      { "advance": 100 },
+      { "expect": { "state": "paused", "sleepAt": null, "commands": ["volume(0.25)", "volume(0.00)", "pause"], "sleeps": 1, "volume": 1 } },
+      { "call": "play" },
+      { "expect": { "state": "buffering", "commands": ["volume(1.00)", "play"] } }
+    ]
+  },
+  {
+    "name": "the sleep timer's fade-out defaults to the fade option",
+    "options": { "fadeOutMs": 200 },
+    "steps": [
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "call": "sleep", "after": 1000 },
+      { "advance": 900 },
+      { "expect": { "commands": ["open(gen=1,start=-,play=true)", "volume(0.75)", "volume(0.50)"] } }
+    ]
+  },
+  {
+    "name": "cancelling the sleep timer during its fade-out brings the volume back",
+    "steps": [
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "call": "sleep", "after": 1000, "fadeOut": 200 },
+      { "advance": 900 },
+      { "expect": { "commands": ["open(gen=1,start=-,play=true)", "volume(0.75)", "volume(0.50)"] } },
+      { "call": "sleep", "after": null },
+      { "expect": { "sleepAt": null, "commands": [] } },
+      { "advance": 100 },
+      { "expect": { "state": "playing", "commands": ["volume(0.75)", "volume(1.00)"], "sleeps": 0 } },
+      { "advance": 1000 },
+      { "expect": { "state": "playing", "commands": [], "sleeps": 0 } }
+    ]
+  },
+  {
+    "name": "a new sleep timer replaces the previous one",
+    "steps": [
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "call": "sleep", "after": 1000 },
+      { "advance": 500 },
+      { "call": "sleep", "after": 3000 },
+      { "expect": { "sleepAt": 3500 } },
+      { "advance": 1000 },
+      { "expect": { "state": "playing", "sleeps": 0 } },
+      { "advance": 2000 },
+      { "expect": { "state": "paused", "sleepAt": null, "sleeps": 1 } },
+      { "call": "sleep", "after": -1, "throws": "INVALID_ARGUMENT" },
+      { "call": "sleep", "after": 1000, "fadeOut": -5, "throws": "INVALID_ARGUMENT" }
+    ]
+  },
+  {
+    "name": "a sleep timer that ends while paused only ends",
+    "steps": [
+      { "call": "load", "uri": "https://cdn.example/song.mp3" },
+      { "native": "ready", "duration": 180, "seekable": true },
+      { "call": "sleep", "after": 1000, "fadeOut": 500 },
+      { "advance": 1000 },
+      { "expect": { "state": "paused", "playWhenReady": false, "sleepAt": null, "sleeps": 1, "commands": ["open(gen=1,start=-,play=false)"] } }
+    ]
+  },
+  {
+    "name": "the sleep timer cancels a pending system resume",
+    "steps": [
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "call": "sleep", "after": 1000 },
+      { "interruption": "began", "reason": "interruption", "resumable": true },
+      { "advance": 1000 },
+      { "expect": { "state": "paused", "interruption": null, "sleeps": 1, "commands": ["open(gen=1,start=-,play=true)", "pause"] } },
+      { "interruption": "ended", "shouldResume": true },
+      { "expect": { "state": "paused", "playWhenReady": false, "commands": [] } }
+    ]
+  },
+  {
+    "name": "the sleep timer keeps its time across a reconnect",
+    "steps": [
+      { "network": "online" },
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "call": "sleep", "after": 5000 },
+      { "native": "failed", "code": "NETWORK_ERROR", "recoverable": true },
+      { "expect": { "state": "reconnecting", "sleepAt": 5000, "errors": ["NETWORK_ERROR:recoverable"], "commands": ["open(gen=1,start=-,play=true)"] } },
+      { "advance": 1000 },
+      { "expect": { "state": "loading", "sleepAt": 5000, "commands": ["open(gen=2,start=-,play=true)"] } },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "advance": 4000 },
+      { "expect": { "state": "paused", "playWhenReady": false, "sleepAt": null, "sleeps": 1, "commands": ["pause"] } }
+    ]
+  },
+  {
+    "name": "the sleep timer stops a reconnect that is waiting",
+    "steps": [
+      { "network": "online" },
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "native": "failed", "code": "NETWORK_ERROR", "recoverable": true },
+      { "call": "sleep", "after": 500 },
+      { "advance": 500 },
+      { "expect": { "state": "paused", "playWhenReady": false, "reconnectAttempt": null, "sleeps": 1, "commands": ["open(gen=1,start=-,play=true)", "pause"], "errors": ["NETWORK_ERROR:recoverable"] } },
+      { "advance": 2000 },
+      { "expect": { "state": "paused", "commands": [] } },
+      { "call": "play" },
+      { "expect": { "state": "loading", "commands": ["open(gen=2,start=-,play=true)"] } }
+    ]
+  },
+  {
+    "name": "fades are off on a Cast receiver",
+    "options": { "fadeInMs": 200, "fadeOutMs": 200 },
+    "steps": [
+      { "call": "handoff", "route": "cast", "name": "TV", "output": "cast:tv", "resume": true },
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "expect": { "state": "playing", "commands": ["switchOutput(cast:tv)", "volume(1.00)", "open(gen=2,start=-,play=true)"] } },
+      { "call": "pause" },
+      { "expect": { "state": "paused", "commands": ["pause"] } },
+      { "call": "fadeTo", "value": 0.5, "ms": 1000 },
+      { "expect": { "commands": ["volume(0.50)"], "fades": 1 } }
+    ]
+  },
+  {
+    "name": "a handoff during a fade-out lands the pause on the old output",
+    "options": { "fadeOutMs": 200 },
+    "steps": [
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "call": "pause" },
+      { "advance": 50 },
+      { "expect": { "commands": ["open(gen=1,start=-,play=true)", "volume(0.75)"] } },
+      { "call": "handoff", "route": "cast", "name": "TV", "output": "cast:tv", "resume": true },
+      { "expect": { "state": "loading", "playWhenReady": false, "commands": ["volume(0.00)", "pause", "unload", "switchOutput(cast:tv)", "volume(1.00)", "open(gen=2,start=-,play=false)"] } }
+    ]
+  }
+]

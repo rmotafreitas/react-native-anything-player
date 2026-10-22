@@ -21,11 +21,14 @@ import type {
   PlaybackSample,
 } from '../engine/types';
 
+/** The fake wall clock reads this at monotonic 0. */
+export const WALL_BASE = 1_700_000_000_000;
+
 /** Deterministic clock: time only moves when a test advances it. */
 export class FakeClock implements EngineClock {
   monotonicMs = 0;
   get wallMs(): number {
-    return 1_700_000_000_000 + this.monotonicMs;
+    return WALL_BASE + this.monotonicMs;
   }
 }
 
@@ -158,6 +161,10 @@ export class Recorder implements EngineDelegate {
   loads: string[] = [];
   errors: string[] = [];
   ended = 0;
+  /** Sleep timers that fired. */
+  sleeps = 0;
+  /** `fadeTo` calls that settled. */
+  fades = 0;
   diagnostics: EngineDiagnostic[] = [];
   wakeupAt: number | null = null;
   /** Ordering invariant breaches (an event delivered before its status). */
@@ -190,6 +197,12 @@ export class Recorder implements EngineDelegate {
     if (this.statuses[this.statuses.length - 1]?.state !== 'ended')
       this.violations.push('ended before ended status');
     this.ended += 1;
+  }
+
+  engineSleepFired(): void {
+    if (this.statuses[this.statuses.length - 1]?.sleepAt != null)
+      this.violations.push('sleep event before its status');
+    this.sleeps += 1;
   }
 
   engineDiagnostic(entry: EngineDiagnostic): void {

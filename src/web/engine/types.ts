@@ -110,6 +110,26 @@ export interface EngineStatus {
   muted: boolean;
   rate: number;
   route: AudioRoute;
+  /** Wall-clock epoch ms when the sleep timer pauses the player, `null` when off. */
+  sleepAt: number | null;
+}
+
+/** A linear move from `from` to `to` between two monotonic instants (ms). */
+export interface Ramp {
+  from: number;
+  to: number;
+  startAt: number;
+  endAt: number;
+}
+
+/** The ramp's value at `t`: `from` before it starts, `to` once it ends. */
+export function rampValue(ramp: Ramp, t: number): number {
+  if (t >= ramp.endAt) return ramp.to;
+  if (t <= ramp.startAt) return ramp.from;
+  return (
+    ramp.from +
+    (ramp.to - ramp.from) * ((t - ramp.startAt) / (ramp.endAt - ramp.startAt))
+  );
 }
 
 /** One structured diagnostic line (ring-buffered, optionally streamed). */

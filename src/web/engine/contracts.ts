@@ -21,7 +21,7 @@ export interface EngineDriver {
   releaseConnection(): void;
   /** Remove the current item entirely. */
   unload(): void;
-  /** Effective output volume (volume × mute × duck), 0..1. */
+  /** Effective output volume (volume × mute × duck × fades), 0..1. */
   setVolume(effective: number): void;
   setRate(rate: number): void;
   /**
@@ -51,6 +51,8 @@ export interface EngineDelegate {
   engineLoadSettled(loadId: number, outcome: LoadOutcome): void;
   engineError(error: PlayerError, fatal: boolean): void;
   engineDidEnd(): void;
+  /** The sleep timer paused the player (`sleep` event). */
+  engineSleepFired(): void;
   engineDiagnostic(entry: EngineDiagnostic): void;
   /** The engine wants `onWakeup()` at this monotonic instant (`null` = none). */
   engineWakeupAt(at: number | null): void;

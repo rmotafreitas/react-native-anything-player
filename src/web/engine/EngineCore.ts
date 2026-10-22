@@ -44,6 +44,9 @@ function released(): PlayerError {
   return engineError('PLAYER_RELEASED', 'The player was released.', false);
 }
 
+/** What a fade-out leads to when it reaches silence. */
+export type FadeOutEnd = 'pause' | 'stop';
+
 export abstract class EngineCore {
   delegate: EngineDelegate | null = null;
 
@@ -175,6 +178,7 @@ export abstract class EngineCore {
       muted: this.muted,
       rate: this.rate,
       route: this.route,
+      sleepAt: this.sleepWallAt,
     };
   }
 
@@ -191,7 +195,11 @@ export abstract class EngineCore {
   /** Whether the player holds (or may soon re-take) audio focus. */
   get needsAudioFocus(): boolean {
     if (this.remote) return false;
-    return this._playWhenReady || (this._interruption?.resumable ?? false);
+    return (
+      this._playWhenReady ||
+      this.fadingOut ||
+      (this._interruption?.resumable ?? false)
+    );
   }
 
   /** Driver observations for any other generation are stale and must be dropped. */
@@ -207,6 +215,9 @@ export abstract class EngineCore {
     startPosition: number | null
   ): void {
     this.ensureAlive();
+    // A fade-out ends with the item it was fading.
+    this.cancelFadeOut();
+    const flowing = this._playWhenReady && this._state === 'playing';
     const wanted =
       autoplay ?? (this._playWhenReady && continuesIntent(this._state));
     if (this.pendingLoadId != null) {
@@ -226,6 +237,7 @@ export abstract class EngineCore {
     this.resumePosition = startPosition;
     this._playWhenReady = wanted;
     if (wanted) this.applyFocus(this.requestFocus());
+    if (this._playWhenReady) this.startFadeIn(flowing);
     this.log('load', {
       uri: newSource.uri,
       autoplay: `${this._playWhenReady}`,
@@ -273,6 +285,12 @@ export abstract class EngineCore {
 
   pause(): void {
     this.ensureAlive();
+    if (this.fadingOut) {
+      // A pause during a fade-out: silence now.
+      this.completeFadeOut();
+      this.commit();
+      return;
+    }
     const hadInterruption = this._interruption != null;
     this._interruption = null;
     if (!this._playWhenReady) {
@@ -281,14 +299,28 @@ export abstract class EngineCore {
       return;
     }
     this._playWhenReady = false;
-    this.pauseIntent('pause');
+    if (!this.beginFadeOut('pause')) this.pauseIntent('pause');
     this.commit();
   }
 
   stop(): void {
     this.ensureAlive();
     if (this._source == null) return;
+    if (this.fadingOut) {
+      // A stop during a fade-out: stop now.
+      this.completeFadeOut('stop');
+    } else if (this._playWhenReady && this.beginFadeOut('stop')) {
+      this._playWhenReady = false;
+      this._interruption = null;
+    } else {
+      this.stopNow();
+    }
+    this.commit();
+  }
+
+  protected stopNow(): void {
     this.settlePendingLoad(SUPERSEDED);
+    this.holdGain();
     this._playWhenReady = false;
     this._interruption = null;
     this.resetRecovery();
@@ -299,11 +331,11 @@ export abstract class EngineCore {
     this.connectionReleased = true;
     this.resumePosition = this.isLive ? null : 0;
     this.setState('stopped', 'stop');
-    this.commit();
   }
 
   reset(): void {
     this.ensureAlive();
+    this.cancelFadeOut();
     this.settlePendingLoad(SUPERSEDED);
     this._generation += 1;
     this._source = null;
@@ -361,6 +393,7 @@ export abstract class EngineCore {
         false
       );
     }
+    this.cancelFadeTo();
     this.volume = Math.min(1, Math.max(0, value));
     this.applyVolume();
     this.commit();
@@ -397,6 +430,7 @@ export abstract class EngineCore {
   release(): void {
     if (this.isReleased) return;
     this.settlePendingLoad({ kind: 'failed', error: released() });
+    this.releaseFades();
     this._playWhenReady = false;
     this._interruption = null;
     this.resetRecovery();
@@ -434,6 +468,8 @@ export abstract class EngineCore {
   onPlaying(generation: number): void {
     if (!this.accepts(generation)) return this.logStale('playing', generation);
     if (!this._playWhenReady) {
+      // Fading out: the audio keeps going until the fade ends.
+      if (this.fadingOut) return this.commit();
       this.log('native playing without intent', {});
       this.driver.pause();
       this.commit();
@@ -455,6 +491,7 @@ export abstract class EngineCore {
     this.lastPosition = this.driver.sample().position;
     this.lastPositionAdvanceAt = t;
     this.playingSince = t;
+    this.startPendingFadeIn();
     // Drift is only enforced at moments that are silent anyway (resuming from a
     // pause, or during a published stall), never by cutting audio that resumed.
     this.setState('playing', 'audio flowing');
@@ -465,6 +502,8 @@ export abstract class EngineCore {
   onBuffering(generation: number): void {
     if (!this.accepts(generation))
       return this.logStale('buffering', generation);
+    // Nothing left to fade.
+    this.completeFadeOut();
     if (this._state === 'playing' && this.stallPublishAt == null) {
       this.stallStartedAt = this.now;
       this.stallPublishAt = this.now + RecoveryPolicy.STALL_DEBOUNCE_MS;
@@ -475,12 +514,14 @@ export abstract class EngineCore {
 
   onFailed(generation: number, error: PlayerError): void {
     if (!this.accepts(generation)) return this.logStale('failed', generation);
+    this.completeFadeOut();
     this.handleFailure(error);
     this.commit();
   }
 
   onEnded(generation: number): void {
     if (!this.accepts(generation)) return this.logStale('ended', generation);
+    this.completeFadeOut();
     if (this.isLive || this.duration == null) {
       this.handleFailure(
         engineError('STREAM_ENDED', 'The stream closed the connection.', true)
@@ -499,6 +540,10 @@ export abstract class EngineCore {
   onPausedExternally(generation: number, reason: InterruptionReason): void {
     if (!this.accepts(generation))
       return this.logStale('paused externally', generation);
+    if (this.fadingOut) {
+      this.completeFadeOut();
+      return this.commit();
+    }
     if (!this._playWhenReady) return;
     this.systemPause(reason, false);
   }
@@ -506,6 +551,8 @@ export abstract class EngineCore {
   // ── System pause (shared by the system inputs and the driver) ──
 
   protected systemPause(reason: InterruptionReason, resumable: boolean): void {
+    // A user's fade-out stops at once; the pause stays the user's.
+    this.completeFadeOut();
     if (!this._playWhenReady) {
       const current = this._interruption;
       if (current != null && current.resumable && !resumable) {
@@ -534,6 +581,7 @@ export abstract class EngineCore {
         this.attemptReconnect('backoff elapsed');
       }
     }
+    this.fadeWakeup(t);
     if (
       this._playWhenReady &&
       t - this.lastHeartbeatAt >= RecoveryPolicy.HEARTBEAT_MS - 50
@@ -596,6 +644,7 @@ export abstract class EngineCore {
   }
 
   protected startPlayback(cause: string): void {
+    this.playFades(cause);
     this._playWhenReady = true;
     this.pauseReleaseAt = null;
     if (this._state === 'error') this.lastError = null;
@@ -655,6 +704,7 @@ export abstract class EngineCore {
   }
 
   protected pauseIntent(cause: string): void {
+    this.holdGain();
     this.resetRecovery();
     this.stallStartedAt = null;
     this.playingSince = null;
@@ -992,10 +1042,33 @@ export abstract class EngineCore {
     this.suspectUntil = t + RecoveryPolicy.NETWORK_SUSPECT_MS;
   }
 
-  protected applyVolume(): void {
-    const duck = this.remote ? 1 : this.duckFactor;
-    this.driver.setVolume(this.muted ? 0 : this.volume * duck);
-  }
+  // ── Fades & the sleep timer (EngineFades.ts) ──
+
+  /** Wall-clock epoch ms when the sleep timer fires (`status.sleepAt`). */
+  protected abstract sleepWallAt: number | null;
+  /** A pause or a stop is fading out: the intent is off, the audio still flows. */
+  protected abstract get fadingOut(): boolean;
+  /** Sends the output volume (volume × duck × fades, or 0 when muted). */
+  protected abstract applyVolume(): void;
+  /** The intent turns on with a load: `flowing` = the audio already plays. */
+  protected abstract startFadeIn(flowing: boolean): void;
+  /** `play()` and system resumes: a fade-out under way is cancelled, a fade-in starts. */
+  protected abstract playFades(cause: string): void;
+  /** Starts the fade-out of a pause or a stop; `false` when there is nothing to fade. */
+  protected abstract beginFadeOut(then: FadeOutEnd): boolean;
+  /** Lands a fade-out now (`then` overrides what it ends in). */
+  protected abstract completeFadeOut(then?: FadeOutEnd): void;
+  /** Drops a fade-out without its pause (the item goes). */
+  protected abstract cancelFadeOut(): void;
+  /** The audio flows: a pending fade-in starts. */
+  protected abstract startPendingFadeIn(): void;
+  /** The audio stops: the fade gain stays where it is. */
+  protected abstract holdGain(): void;
+  protected abstract cancelFadeTo(): void;
+  protected abstract releaseFades(): void;
+  /** Fires the sleep timer and steps the fades due at `t`. */
+  protected abstract fadeWakeup(t: number): void;
+  protected abstract fadeWakeups(candidates: number[]): void;
 
   protected settlePendingLoad(outcome: LoadOutcome): void {
     const id = this.pendingLoadId;
@@ -1048,6 +1121,7 @@ export abstract class EngineCore {
       candidates.push(this.nextAttemptAt);
     if (this._playWhenReady)
       candidates.push(this.lastHeartbeatAt + RecoveryPolicy.HEARTBEAT_MS);
+    this.fadeWakeups(candidates);
     return candidates.length > 0 ? Math.min(...candidates) : null;
   }
 }

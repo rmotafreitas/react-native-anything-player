@@ -33,9 +33,11 @@ export const RecoveryPolicy = {
   STABLE_PLAYBACK_MS: 10_000,
   /** A paused network live stream's connection is released after this. */
   PAUSED_STREAM_RELEASE_MS: 30_000,
+  /** How often a fade (play, pause, stop, `fadeTo`, the sleep timer) updates the volume. */
+  FADE_TICK_MS: 50,
 } as const;
 
-/** App-configurable recovery knobs (`PlayerOptions`). */
+/** App-configurable engine knobs (`PlayerOptions`): recovery and fades. */
 export interface EngineOptions {
   /** Reconnect automatically after recoverable failures while playback is wanted. */
   reconnect: boolean;
@@ -45,6 +47,10 @@ export interface EngineOptions {
   autoResumeAfterInterruption: boolean;
   /** Live drift (pauses + stalls since the open) that forces a live-edge re-open. */
   liveMaxDriftMs: number;
+  /** Fade-in when playback starts (`0` = none). Starts when the audio does. */
+  fadeInMs: number;
+  /** Fade-out before a pause or a stop, and the sleep timer's default (`0` = none). */
+  fadeOutMs: number;
 }
 
 export const DEFAULT_ENGINE_OPTIONS: EngineOptions = {
@@ -52,6 +58,8 @@ export const DEFAULT_ENGINE_OPTIONS: EngineOptions = {
   giveUpAfterMs: 600_000,
   autoResumeAfterInterruption: true,
   liveMaxDriftMs: 5_000,
+  fadeInMs: 0,
+  fadeOutMs: 0,
 };
 
 /** Deterministic exponential backoff with injectable jitter. */

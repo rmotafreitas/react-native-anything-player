@@ -16,8 +16,10 @@ export {
   usePlayerStatus,
   useProgress,
   useRoutePickerAvailable,
+  useSleepTimer,
   useStreamMetadata,
 } from '../core/hooks';
+export type { SleepTimerState } from '../core/hooks';
 export { RoutePicker } from './RoutePicker';
 export type { RoutePickerProps } from './RoutePicker';
 export { CastButton } from './CastButton';

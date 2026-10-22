@@ -69,6 +69,7 @@ export type {
   CatalogOptions,
   DiagnosticEntry,
   Discontinuity,
+  FadeOptions,
   Interruption,
   InterruptionReason,
   LoadOptions,
@@ -89,6 +90,8 @@ export type {
   SearchFocus,
   SearchPlayEvent,
   SearchRequest,
+  SleepEvent,
+  SleepTimer,
   Source,
   SourceInput,
 } from '../types';

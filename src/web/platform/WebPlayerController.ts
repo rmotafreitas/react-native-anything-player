@@ -417,6 +417,10 @@ export class WebPlayerController implements EngineDelegate, DriverObserver {
     this.emit('ended', {});
   }
 
+  engineSleepFired(): void {
+    this.emit('sleep', { reason: 'fired', timestamp: webClock.wallMs });
+  }
+
   engineDiagnostic(entry: EngineDiagnostic): void {
     this.diagnostics.push(entry);
     if (this.diagnostics.length > DIAGNOSTICS_CAPACITY)

@@ -9,7 +9,12 @@
 import { PlayerError, toPlayerError } from '../../errors';
 import type { PlayerModule } from '../../core/host';
 import { browser } from './dom';
-import { parseNowPlaying, parseOptions, parseSource } from './serialization';
+import {
+  parseFade,
+  parseNowPlaying,
+  parseOptions,
+  parseSource,
+} from './serialization';
 import { WebCatalog, type StoredItem } from './WebCatalog';
 import { WebOutputs } from './WebOutputs';
 import { WebPlayerController } from './WebPlayerController';
@@ -139,6 +144,35 @@ export class WebModule implements PlayerModule {
 
   setRate(playerId: string, rate: number): Promise<object> {
     return this.command(playerId, (c) => c.engine.setRate(rate));
+  }
+
+  fadeTo(playerId: string, volume: number, seconds: number): Promise<object> {
+    const controller = this.runtime.players.get(playerId);
+    if (!controller) return Promise.reject(released());
+    return new Promise((resolve, reject) => {
+      try {
+        controller.engine.fadeTo(volume, seconds * 1000, () => {
+          // Settle after the status the fade implies was delivered.
+          browser().setTimeout(() => resolve(controller.statusMap()), 0);
+        });
+      } catch (error) {
+        reject(asError(error));
+      }
+    });
+  }
+
+  sleep(playerId: string, timer: object): Promise<object> {
+    const t = timer as { after?: unknown; fadeOut?: unknown };
+    const after = typeof t.after === 'number' ? t.after * 1000 : null;
+    const fadeOut = typeof t.fadeOut === 'number' ? t.fadeOut * 1000 : null;
+    return this.command(playerId, (c) => c.engine.sleep(after, fadeOut));
+  }
+
+  setFade(playerId: string, fade: object): Promise<object> {
+    const { fadeInMs, fadeOutMs } = parseFade(fade);
+    return this.command(playerId, (c) =>
+      c.engine.setFades(fadeInMs, fadeOutMs)
+    );
   }
 
   async updateNowPlaying(playerId: string, metadata: object): Promise<void> {
