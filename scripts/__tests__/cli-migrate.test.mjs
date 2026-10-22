@@ -95,8 +95,20 @@ test('expo-av: createAsync becomes one player, and the mode call goes away', () 
   assert.match(result.code, /await player\.play\(\);/);
   assert.match(result.code, /await player\.setVolume\(0\.5\);/);
   assert.match(result.code, /await player\.seekTo\(30\);/);
-  assert.match(result.code, /player\.on\('status', \(status: AVPlaybackStatus\) =>/);
+  // The status payload differs (PlayerStatus is not AVPlaybackStatus), so the
+  // listener is left for a human.
+  assert.match(
+    result.code,
+    /sound\.setOnPlaybackStatusUpdate\(\(status: AVPlaybackStatus\) =>/
+  );
+  assert.doesNotMatch(result.code, /player\.on\('status'/);
   const notes = result.notes.map((note) => note.text);
+  assert.ok(
+    notes.some((note) =>
+      /setOnPlaybackStatusUpdate\(fn\) is left as it is.*#status-and-events/.test(note)
+    )
+  );
+  assert.ok(notes.some((note) => /^`sound` is gone/.test(note)));
   assert.ok(notes.some((note) => /Audio\.setAudioModeAsync\(\) is not needed/.test(note)));
   assert.ok(notes.some((note) => /`Video` stays in expo-av/.test(note)));
 });
@@ -172,7 +184,98 @@ export function a() {
     /player\.seekTo\(player\.getProgress\(\)\.position \+ 5000\);/
   );
   assert.match(result.code, /player\.status\.volume/);
-  assert.match(result.code, /const s = player\.status;/);
+  assert.match(result.code, /const s = player\.state;/);
+  assert.doesNotMatch(result.code, /player\.status;/);
+});
+
+test('track player: getPlaybackState() keeps the { state } shape', () => {
+  const code = `import TrackPlayer from 'react-native-track-player';
+export async function a() {
+  const playback = await TrackPlayer.getPlaybackState();
+  return (await TrackPlayer.getPlaybackState()).state === 'playing' ? playback : null;
+}
+`;
+  const result = migrateCode(code, { file: 'player.ts' });
+  assert.ok(result);
+  assert.match(result.code, /const playback = await \{ state: player\.state \};/);
+  assert.match(result.code, /\(await \{ state: player\.state \}\)\.state === 'playing'/);
+  assert.ok(result.notes.some((note) => /getPlaybackState\(\) became \{ state: player\.state \}/.test(note.text)));
+});
+
+test('track player: a namespace import is migrated member by member', () => {
+  const code = `import * as TrackPlayer from 'react-native-track-player';
+export async function a() {
+  await TrackPlayer.play();
+  const progress = TrackPlayer.useProgress(500);
+  const s = await TrackPlayer.getState();
+  return { progress, s, playing: TrackPlayer.State.Playing };
+}
+`;
+  const result = migrateCode(code, { file: 'player.ts' });
+  assert.ok(result);
+  assert.doesNotMatch(result.code, /TrackPlayer/);
+  assert.doesNotMatch(result.code, /react-native-track-player/);
+  assert.match(result.code, /^import \{ useProgress \} from 'react-native-anything-player';/m);
+  assert.match(result.code, /^import \{ player \} from '\.\/player';/m);
+  assert.match(result.code, /await player\.play\(\);/);
+  assert.match(result.code, /useProgress\(player, 500\)/);
+  assert.match(result.code, /await player\.state;/);
+  assert.match(result.code, /playing: 'playing'/);
+});
+
+test('track player: a namespace with a call that cannot move is left whole', () => {
+  const code = `import * as TrackPlayer from 'react-native-track-player';
+export async function a() {
+  await TrackPlayer.setupPlayer();
+  await TrackPlayer.play();
+}
+`;
+  const result = migrateCode(code, { file: 'player.ts' });
+  assert.ok(result);
+  assert.match(result.code, /^import \* as TrackPlayer from 'react-native-track-player';/m);
+  assert.match(result.code, /await TrackPlayer\.play\(\);/);
+  assert.match(result.code, /await TrackPlayer\.setupPlayer\(\);/);
+  assert.ok(result.notes.some((note) => /TrackPlayer\.setupPlayer\(\): create one/.test(note.text)));
+  assert.equal(migrateCode(result.code, { file: 'player.ts' }), null);
+});
+
+test('expo-audio: a namespace import stays with its calls, and says so', () => {
+  const code = `import * as Audio from 'expo-audio';
+export const player = Audio.createAudioPlayer('https://radio.example/live.mp3');
+export function useStatus() {
+  return Audio.useAudioPlayerStatus(player);
+}
+`;
+  const result = migrateCode(code, { file: 'audio.ts' });
+  assert.ok(result);
+  assert.match(result.code, /^import \* as Audio from 'expo-audio';/m);
+  assert.match(result.code, /Audio\.createAudioPlayer\(/);
+  assert.match(result.code, /Audio\.useAudioPlayerStatus\(player\)/);
+  assert.ok(result.notes.some((note) => /`Audio` imports all of expo-audio/.test(note.text)));
+  assert.equal(migrateCode(result.code, { file: 'audio.ts' }), null);
+});
+
+test('a CRLF file keeps CRLF in its edits and its notes', () => {
+  const crlf = (text) => text.replace(/\n/g, '\r\n');
+  const code = crlf(`import { createAudioPlayer } from 'expo-audio';
+import { other } from './other';
+
+const audio = createAudioPlayer('https://radio.example/live.mp3');
+audio.loop = true;
+`);
+  const result = migrateCode(code, { file: 'audio.ts' });
+  assert.ok(result);
+  assert.match(result.code, /rnap-migrate/);
+  assert.doesNotMatch(result.code, /[^\r]\n/);
+  assert.match(result.code, /new Player\(\);\r\naudio\.load\(/);
+  // A second run merges into the same header and stays CRLF.
+  assert.equal(migrateCode(result.code, { file: 'audio.ts' }), null);
+});
+
+test('a file with LF stays LF', () => {
+  const result = migrateCode(EXPO_AUDIO, { file: 'audio.ts' });
+  assert.ok(result);
+  assert.doesNotMatch(result.code, /\r/);
 });
 
 test('a second run changes nothing', () => {

@@ -221,14 +221,22 @@ function findAncestor(ast, target, predicate) {
 
 /* ------------------------------------------------------------------ helpers */
 
+/** The file's line ending: CRLF when most of its breaks are, else LF. */
+function detectEol(code) {
+  const crlf = (code.match(/\r\n/g) ?? []).length;
+  const lf = (code.match(/\n/g) ?? []).length - crlf;
+  return crlf > lf ? '\r\n' : '\n';
+}
+
 function applyEdits(code, edits) {
+  const eol = detectEol(code);
   const sorted = [...edits].sort((a, b) => a.start - b.start || b.end - a.end);
   let out = '';
   let cursor = 0;
   let applied = 0;
   for (const edit of sorted) {
     if (edit.start < cursor) continue;
-    out += code.slice(cursor, edit.start) + edit.text;
+    out += code.slice(cursor, edit.start) + edit.text.replace(/\r?\n/g, eol);
     cursor = edit.end;
     applied += 1;
   }
@@ -356,13 +364,19 @@ const COMMANDS = {
     note: { anchor: '#playback', text: 'getRate() became player.status.rate.' },
   },
   getState: {
-    special: 'status',
+    special: 'state',
     note: {
       anchor: '#events',
-      text: 'getState()/getPlaybackState() became player.status.',
+      text: 'getState() became player.state (a state string, no longer a promise).',
     },
   },
-  getPlaybackState: { special: 'status' },
+  getPlaybackState: {
+    special: 'playbackState',
+    note: {
+      anchor: '#events',
+      text: 'getPlaybackState() became { state: player.state }: read player.state, or player.status for the whole snapshot.',
+    },
+  },
 };
 
 const UNMAPPED_COMMANDS = {
@@ -480,11 +494,14 @@ const EXPO_AV_COMMANDS = {
   setVolumeAsync: { name: 'setVolume', args: 'first' },
   setRateAsync: { name: 'setRate', args: 'first' },
   setPositionAsync: { name: 'seekTo', args: 'first', seconds: true },
-  setOnPlaybackStatusUpdate: { name: 'on', args: 'first', event: 'status' },
   setOnMetadataUpdate: { name: 'on', args: 'first', event: 'metadata' },
 };
 
 const EXPO_AV_UNMAPPED = {
+  setOnPlaybackStatusUpdate: {
+    anchor: '#status-and-events',
+    text: 'setOnPlaybackStatusUpdate(fn) is left as it is: player.on("status", fn) delivers a PlayerStatus, not an AVPlaybackStatus, so port the handler by hand (isPlaying is status.state === "playing", positions are seconds).',
+  },
   getStatusAsync: {
     anchor: '#status-and-events',
     text: 'getStatusAsync() became player.status (synchronous).',
@@ -644,11 +661,13 @@ function trackPlayerPass(code, ast, { notes, guide }) {
   const values = [];
   const player = playerName(ast);
 
-  const imported = { defaultLocal: null, named: [] };
+  const imported = { defaults: [], namespaces: [], named: [] };
   for (const node of sourceImports(ast, packages)) {
     for (const specifier of node.specifiers) {
       if (specifier.type === 'ImportDefaultSpecifier')
-        imported.defaultLocal = specifier.local.name;
+        imported.defaults.push(specifier);
+      else if (specifier.type === 'ImportNamespaceSpecifier')
+        imported.namespaces.push(specifier);
       else if (specifier.type === 'ImportSpecifier')
         imported.named.push({
           specifier,
@@ -658,34 +677,83 @@ function trackPlayerPass(code, ast, { notes, guide }) {
     }
   }
 
-  // TrackPlayer itself: the default import.
-  const tp = imported.defaultLocal;
-  let migrateCommands = false;
   let usesPlayer = false;
-  if (tp) {
-    const commandUses = [];
+
+  // TrackPlayer itself: the default import, or `import * as TrackPlayer`, whose
+  // members are the same commands plus the hooks and State.
+  const rewriteBinding = (specifier, namespace) => {
+    const tp = specifier.local.name;
+    const plans = [];
+    const unmapped = [];
     walk(ast, (node) => {
       if (node.type !== 'MemberExpression') return;
       if (!isIdentifier(node.object, tp)) return;
       if (node.property.type !== 'Identifier' || node.computed) return;
-      commandUses.push(node);
+      const name = node.property.name;
+      const call =
+        node.parent?.type === 'CallExpression' && node.parent.callee === node
+          ? node.parent
+          : null;
+      const member = node.parent;
+      if (COMMANDS[name]) plans.push({ kind: 'command', node, call, name });
+      else if (namespace && HOOKS[name] && call)
+        plans.push({ kind: 'hook', node, call, name });
+      else if (
+        namespace &&
+        name === 'State' &&
+        member?.type === 'MemberExpression' &&
+        member.object === node &&
+        !member.computed &&
+        member.property.type === 'Identifier' &&
+        STATES[member.property.name] !== undefined
+      )
+        plans.push({ kind: 'state', node: member, name: member.property.name });
+      else unmapped.push(node);
     });
     const bare = referencesTo(ast, tp).filter((use) => !use.isMemberObject);
-    const unmapped = commandUses.filter(
-      (node) => !COMMANDS[node.property.name]
-    );
-    migrateCommands = unmapped.length === 0 && bare.length === 0;
 
-    if (migrateCommands) {
-      if (commandUses.length > 0) usesPlayer = true;
-      for (const node of commandUses) {
-        const command = COMMANDS[node.property.name];
-        const call = node.parent?.type === 'CallExpression' ? node.parent : null;
+    if (unmapped.length === 0 && bare.length === 0) {
+      if (plans.length > 0) usesPlayer = true;
+      for (const plan of plans) {
+        if (plan.kind === 'state') {
+          edits.push({
+            start: plan.node.start,
+            end: plan.node.end,
+            text: `'${STATES[plan.name]}'`,
+          });
+          continue;
+        }
+        if (plan.kind === 'hook') {
+          const hook = HOOKS[plan.name];
+          edits.push({
+            start: plan.call.start,
+            end: plan.call.end,
+            text: `${hook.name}(${[player, ...argumentTexts(code, plan.call)].join(', ')})`,
+          });
+          values.push(hook.name);
+          const note = HOOK_NOTES[plan.name] ?? hook.note;
+          if (note)
+            addNote(
+              notes,
+              typeof note === 'string' ? note : note.anchor,
+              typeof note === 'string'
+                ? `${plan.name}() now takes the player first.`
+                : note.text,
+              guide
+            );
+          continue;
+        }
+        const command = COMMANDS[plan.name];
+        const { node, call } = plan;
         const range = command.special ? (call ?? node) : node;
         let text;
         if (command.special === 'seekBy') {
           const offset = call ? keepArguments(code, call, 'all') : 'offset';
           text = `${player}.seekTo(${player}.getProgress().position + ${offset})`;
+        } else if (command.special === 'state') {
+          text = `${player}.state`;
+        } else if (command.special === 'playbackState') {
+          text = `{ state: ${player}.state }`;
         } else if (command.special) {
           text = `${player}.${command.special}`;
         } else {
@@ -695,35 +763,30 @@ function trackPlayerPass(code, ast, { notes, guide }) {
         if (command.note)
           addNote(notes, command.note.anchor, command.note.text, guide);
       }
-    } else {
-      keep.add(
-        sourceImports(ast, packages)
-          .flatMap((node) => node.specifiers)
-          .find(
-            (specifier) =>
-              specifier.type === 'ImportDefaultSpecifier' &&
-              specifier.local.name === tp
-          )
-      );
-      for (const node of unmapped) {
-        const note = UNMAPPED_COMMANDS[node.property.name];
-        addNote(
-          notes,
-          note?.anchor ?? '#api-mapping',
-          note?.text ??
-            `TrackPlayer.${node.property.name}() has no equivalent in this codemod: see the API mapping.`,
-          guide
-        );
-      }
-      if (bare.length > 0)
-        addNote(
-          notes,
-          '#api-mapping',
-          `TrackPlayer is used as a value: RNAP has no such singleton, commands live on the player object.`,
-          guide
-        );
+      return;
     }
-  }
+
+    keep.add(specifier);
+    for (const node of unmapped) {
+      const note = UNMAPPED_COMMANDS[node.property.name];
+      addNote(
+        notes,
+        note?.anchor ?? '#api-mapping',
+        note?.text ??
+          `TrackPlayer.${node.property.name}() has no equivalent in this codemod: see the API mapping.`,
+        guide
+      );
+    }
+    if (bare.length > 0)
+      addNote(
+        notes,
+        '#api-mapping',
+        `TrackPlayer is used as a value: RNAP has no such singleton, commands live on the player object.`,
+        guide
+      );
+  };
+  for (const specifier of imported.defaults) rewriteBinding(specifier, false);
+  for (const specifier of imported.namespaces) rewriteBinding(specifier, true);
 
   // Named imports: hooks and State.
   for (const binding of imported.named) {
@@ -833,6 +896,21 @@ function expoAudioPass(code, ast, { notes, guide }) {
         name: importedName(specifier),
         typeOnly: isTypeSpecifier(node, specifier),
       });
+    }
+  }
+
+  // A namespace (or default) import of expo-audio is not mapped member by
+  // member: it stays, with every call through it, and the note says so.
+  for (const node of sourceImports(ast, packages)) {
+    for (const specifier of node.specifiers) {
+      if (specifier.type === 'ImportSpecifier') continue;
+      keep.add(specifier);
+      addNote(
+        notes,
+        '#api-mapping',
+        `\`${specifier.local.name}\` imports all of expo-audio: calls through it are left as they are, so rewrite them by hand (createAudioPlayer, useAudioPlayerStatus).`,
+        guide
+      );
     }
   }
 
@@ -1222,7 +1300,11 @@ function expoAvPass(code, ast, { notes, guide }) {
       (use) =>
         !(
           use.parent?.type === 'MemberExpression' &&
-          use.parent.object === use.node
+          use.parent.object === use.node &&
+          // A call that was not rewritten still needs a player to talk to.
+          (!use.isMemberObject ||
+            use.parent.property.type !== 'Identifier' ||
+            EXPO_AV_COMMANDS[use.parent.property.name] !== undefined)
         ) &&
         !(
           use.parent?.type === 'ObjectProperty' &&
@@ -1263,29 +1345,44 @@ const PASSES = {
   'expo-av': expoAvPass,
 };
 
+const NOTES_HEADER = '// rnap-migrate: what still needs a human, from ';
+
 function insertNotes(code, notes, guide) {
   if (notes.length === 0) return code;
-  const headerLine = `// rnap-migrate: what still needs a human, from ${guide}`;
-  const lines = code.split('\n');
+  const eol = detectEol(code);
   const merged = [];
-  let header = headerLine;
-  let start = 0;
-  if (lines[0].startsWith('// rnap-migrate: what still needs a human, from ')) {
-    header = lines[0];
-    let index = 1;
-    while (index < lines.length && lines[index].startsWith('//  - ')) {
-      merged.push(lines[index]);
-      index += 1;
+  let header = `${NOTES_HEADER}${guide}`;
+  let rest = code;
+
+  // The header and bullets of an earlier run are merged, not repeated. The
+  // body after them is kept byte for byte.
+  const lineAt = (position) => {
+    const newline = code.indexOf('\n', position);
+    const end = newline === -1 ? code.length : newline;
+    return {
+      text: code.slice(position, end).replace(/\r$/, ''),
+      next: newline === -1 ? code.length : newline + 1,
+    };
+  };
+  const first = lineAt(0);
+  if (first.text.startsWith(NOTES_HEADER)) {
+    header = first.text;
+    let position = first.next;
+    for (;;) {
+      const line = lineAt(position);
+      if (position >= code.length || !line.text.startsWith('//  - ')) break;
+      merged.push(line.text);
+      position = line.next;
     }
-    if (index < lines.length && lines[index].trim() === '') index += 1;
-    start = index;
+    if (position < code.length && lineAt(position).text.trim() === '')
+      position = lineAt(position).next;
+    rest = code.slice(position);
   }
   for (const note of notes) {
     const line = `//  - ${note.text}`;
     if (!merged.includes(line)) merged.push(line);
   }
-  const block = [header, ...merged, ''];
-  return `${block.join('\n')}\n${lines.slice(start).join('\n')}`;
+  return `${[header, ...merged, ''].join(eol)}${eol}${rest}`;
 }
 
 /**
