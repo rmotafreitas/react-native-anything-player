@@ -16,7 +16,8 @@
 | `error` | `PlayerErrorInfo \| null` | set in `state: 'error'` |
 | `reconnect` | `{ attempt, nextAttemptAt, reason } \| null` | set while recovering |
 | `network` | `'online' \| 'offline' \| 'unknown'` | connectivity as the engine sees it |
-| `volume`, `muted`, `rate` | | as set |
+| `volume`, `muted`, `rate` | | as set (a fade never changes `volume`, except `fadeTo`'s target) |
+| `sleepAt` | `number \| null` | when the sleep timer pauses playback, in epoch milliseconds; `null` without one ([sleep timer](playback.md#sleep-timer-and-fades)) |
 | `route` | `{ kind, name }` | where the audio goes: `speaker`, `headphones`, `bluetooth`, `airplay`, `cast`, `car`, `hdmi`, `usb`, `other` or `unknown`, with the device's name when known ([Casting & AirPlay](routes-and-casting.md#where-the-audio-goes)) |
 
 `player.refresh()` reads the native snapshot synchronously and applies it if it is newer. Players refresh automatically when the app becomes active.
