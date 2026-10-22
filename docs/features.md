@@ -172,6 +172,26 @@ See [Casting & AirPlay](routes-and-casting.md).
 | Siri shortcuts, Spotlight, Shortcuts app, Action button | ✓ † ⁴ | – | – | – | – | – |
 | Speech in the page | – | – | ◐ ⁵ | – | ◐ ⁵ | ◐ ⁵ |
 
+## Cars and watches
+
+| | iOS | Android | Chromium | Firefox | Safari | iPhone, iPad |
+|---|---|---|---|---|---|---|
+| Groups in the catalog; `searchCatalog` by `group` | ✓ | ✓ | ✓ ¹ | ✓ ¹ | ✓ ¹ | ✓ ¹ |
+| Browse tree in the car: CarPlay, Android Auto, Android Automotive OS | ✓ † ² | ✓ † ³ | – | – | – | – |
+| Browse tree on a watch | – ⁴ | ✓ † ⁵ | – | – | – | – |
+| Recently played, favorites in the tree | ✓ † | ✓ † | – | – | – | – |
+| Playing from the tree reported to JS (`searchPlay`, `origin: 'browse'`) | ✓ † | ✓ † | – | – | – | – |
+| Now Playing on the watch | ✓ † ⁶ | ✓ † ⁵ | – | – | – | – |
+
+1. The same matcher and the same group rules as on the phone ([test cases](../conformance/catalog/browse.json)). The web keeps the groups and favorites; it has no car or watch screen.
+2. CarPlay: opt-in (`car` in the Expo plugin, `RNAP_CAR=1`), and it needs Apple's CarPlay audio entitlement.
+3. Android Auto: opt-in (`car`, `rnapCar=true`). Android Automotive OS needs an automotive build of the app. The tree is the same.
+4. Apple Watch has no media browser for another app's audio; start the station from the phone or CarPlay.
+5. Wear OS uses the phone's media library and session. Not tried on a watch.
+6. Through the phone's Now Playing.
+
+See [Cars & watches](cars-and-watches.md).
+
 1. The same matcher as on the phone, held to [the same test cases](../conformance/catalog/search.json).
 2. Siri.
 3. Google Assistant and Gemini.

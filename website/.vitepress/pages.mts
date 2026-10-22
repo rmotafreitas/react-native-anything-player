@@ -114,6 +114,12 @@ export const SECTIONS: DocSection[] = [
           'Let Siri, Google Assistant and Gemini play your stations and episodes, even with the app closed, and the same catalog search on the web.',
       },
       {
+        link: '/docs/cars-and-watches',
+        text: 'Cars & watches',
+        description:
+          'Browse and play your catalog in CarPlay, Android Auto, Android Automotive OS and on watches: groups, favorites, recently played, and what each platform needs.',
+      },
+      {
         link: '/docs/web',
         text: 'Web',
         description:

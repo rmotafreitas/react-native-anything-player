@@ -39,13 +39,13 @@ In order: web first, then outputs, casting and voice, then cars (CarPlay and And
 |---|---|
 | **Web** | **Done.** A TypeScript twin of the engine, held to the same conformance suite, for Expo web, React Native Web and plain pages (`react-native-anything-player/web`): ICY over fetch + MSE, splices, Media Session, a Web Audio visualizer, `AUTOPLAY_BLOCKED`. See [Web](web.md). |
 | **Expo Go** | **Done:** it cannot load native code, so `new Player()` throws `NATIVE_MODULE_MISSING` with the development-build steps instead of crashing. |
-| **Watches** | **Documented:** Apple Watch and Wear OS control the phone's media session; to be checked on hardware. A watch app of its own is out of scope. |
+| **Watches** | **Documented:** Apple Watch shows Now Playing and its controls; Wear OS lists the phone's browse tree and controls its session. To be checked on hardware. A watch app of its own is out of scope. See [Cars & watches](cars-and-watches.md). |
 | **Output picker & AirPlay** | **Done:** `status.route` and `routeChange` everywhere; `<RoutePicker />` (iOS's AirPlay button, Android's Output Switcher, AirPlay in Safari, Remote Playback in Chrome). See [Casting & AirPlay](routes-and-casting.md). |
 | **Chromecast** | **Done**, opt-in (`cast` plugin option): the engine hands a player to a Cast receiver and back (held to the conformance suite), on Android (Media3 Cast), iOS (Google Cast SDK) and Chrome (Cast Web Sender). Radio titles keep flowing from the phone. |
 | **Siri / Google Assistant / Gemini** | **Done:** a catalog stored on the device (`setCatalog`), searched the same way on every platform, answers "play X on MyApp" even with the app closed; `playFromSearch()` on the web. See [Voice assistants](voice.md). |
 | **Siri shortcuts** | **Done:** App Intents and App Shortcuts (iOS 16+) on the same catalog, alongside the Siri media extension. |
 | **Web: Firefox, HLS, local files** | **Done:** MP3/AAC remuxed to fragmented MP4 where a browser's MSE needs it (Firefox gets ICY titles, splices and the visualizer); hls.js through `configureHls`; `File` / `Blob` and `blob:` / `data:` sources. |
-| CarPlay / Android Auto browsing | Next: a browse tree over the same catalog, on the Media3 `MediaLibraryService` (already serving the catalog to Assistant) and `CPListTemplate`. Needed by car-first radio apps. |
+| **CarPlay / Android Auto browsing** | **Done**, opt-in (`car` plugin option): one browse tree from the catalog's `group`s, served by the Media3 `MediaLibraryService` (Android Auto, Android Automotive OS, Wear OS) and a CarPlay audio scene (`CPTabBarTemplate` of lists, Now Playing). Checked with a media client on the emulator; head units, CarPlay and watches are on the hardware list. See [Cars & watches](cars-and-watches.md). |
 | Recording | Out of scope. expo-audio and react-native-audio-api cover it; staying a player keeps RNAP small. |
 
 ## Hardware verification

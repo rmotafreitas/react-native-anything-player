@@ -41,7 +41,7 @@ Options are fixed for the player's lifetime, except `fade`, which `setFade()` re
 
 With an `id`, a player outlives the JavaScript that created it, and `new Player({ id })` attaches to the native player with that id (one Siri or Google Assistant started, or one that kept playing across a reload), keeping its options. See [Voice assistants](voice.md#playing-a-request).
 
-App-wide settings live outside `Player`: the voice catalog (`setCatalog`, [Voice assistants](voice.md)), Cast (`configureCast` on the web, [Casting & AirPlay](routes-and-casting.md)) and hls.js on the web (`configureHls`, [Web](web.md#hls)).
+App-wide settings live outside `Player`: the voice catalog and its browse tree (`setCatalog`, `setFavorites`, [Voice assistants](voice.md), [Cars & watches](cars-and-watches.md)), Cast (`configureCast` on the web, [Casting & AirPlay](routes-and-casting.md)) and hls.js on the web (`configureHls`, [Web](web.md#hls)).
 
 ## Modules
 
@@ -58,12 +58,14 @@ The switch is a native file — `android/gradle.properties`, `ios/Podfile.proper
 | `AndroidManifest.xml` `<application>` | `<meta-data android:name="com.anythingplayer.FOREGROUND_TIMEOUT_MS" android:value="…"/>` | how long a paused session stays in the foreground (Media3 default and max: 10 min) |
 | `android/gradle.properties` | `rnapCast=true` | build Google Cast in (Media3 Cast and the Cast framework: 1.4 MB more in a release APK with R8) |
 | `AndroidManifest.xml` `<application>` | `<meta-data android:name="com.anythingplayer.CAST_RECEIVER_ID" android:value="…"/>` | your own Cast receiver (default: the Default Media Receiver) |
+| `android/gradle.properties` | `rnapCar=true` | declare the app a media app for Android Auto ([Cars & watches](cars-and-watches.md#android-auto)); the browse tree itself needs no option |
 | `pod install` | `RNAP_CAST=1` (or `"rnap.cast": "true"` in `ios/Podfile.properties.json`) | build Google Cast in on iOS |
+| `pod install` | `RNAP_CAR=1` (or `"rnap.car": "true"` in `ios/Podfile.properties.json`) | build the CarPlay scene in; needs Apple's CarPlay audio entitlement ([Cars & watches](cars-and-watches.md#carplay)) |
 | `Info.plist` | `RNAPCastReceiverId` | your own Cast receiver on iOS |
 | `android/gradle.properties` | `rnapSound=true` | build the [Sound API](sound.md) in (a `SoundPool`: no extra library) |
 | `pod install` | `RNAP_SOUND=1` (or `"rnap.sound": "true"` in `ios/Podfile.properties.json`) | build the Sound API in on iOS |
 | Expo config plugin | `["react-native-anything-player", { "backgroundAudio": false }]` | do not add the iOS `audio` background mode |
-| Expo config plugin | `cast`, `siri`, `assistant`, `sound` | Google Cast, Siri (extension and shortcuts), Google Assistant / Gemini, the Sound API: see [Getting started](getting-started.md#expo) |
+| Expo config plugin | `cast`, `siri`, `assistant`, `sound`, `car` | Google Cast, Siri (extension and shortcuts), Google Assistant / Gemini, the Sound API, CarPlay and Android Auto: see [Getting started](getting-started.md#expo) |
 
 The recovery timings that are *not* configurable are fixed on purpose; [recovery.md](recovery.md) explains each.
 
