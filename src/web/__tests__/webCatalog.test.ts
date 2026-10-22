@@ -128,16 +128,15 @@ describe('web catalog', () => {
     expect(await timedOut).toEqual({ item: null });
   });
 
-  it('has no output picker or Cast until the browser layer provides them', async () => {
+  it('has no output picker or Cast without a player or the Cast SDK', async () => {
     expect(module.isRoutePickerAvailable()).toBe(false);
-    await expect(module.showRoutePicker()).rejects.toMatchObject({
+    await expect(module.showRoutePicker(null)).rejects.toMatchObject({
       code: 'ROUTE_PICKER_UNAVAILABLE',
     });
     expect(module.getCastState()).toEqual({
       state: 'unavailable',
       device: null,
     });
-    await expect(module.configureCast()).resolves.toBeUndefined();
     await expect(module.showCastPicker()).rejects.toMatchObject({
       code: 'CAST_UNAVAILABLE',
     });

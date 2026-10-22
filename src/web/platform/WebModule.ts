@@ -11,6 +11,7 @@ import type { PlayerModule } from '../../core/host';
 import { browser } from './dom';
 import { parseNowPlaying, parseOptions, parseSource } from './serialization';
 import { WebCatalog, type StoredItem } from './WebCatalog';
+import { WebOutputs } from './WebOutputs';
 import { WebPlayerController } from './WebPlayerController';
 import { WebRuntime } from './WebRuntime';
 
@@ -35,24 +36,15 @@ function autoplayBlocked(): PlayerError {
   });
 }
 
-function unavailable(
-  code: 'ROUTE_PICKER_UNAVAILABLE' | 'CAST_UNAVAILABLE',
-  message: string
-): PlayerError {
-  return new PlayerError({
-    code,
-    message,
-    recoverable: false,
-    platform: 'web',
-  });
-}
-
 function asError(error: unknown): PlayerError {
   return error instanceof PlayerError ? error : toPlayerError(error);
 }
 
 export class WebModule implements PlayerModule {
   private readonly runtime = new WebRuntime();
+  private readonly outputs = new WebOutputs(this.runtime, (event) =>
+    this.emit(event)
+  );
   private readonly catalog = new WebCatalog();
   private readonly listeners = new Set<Listener>();
   private queue: object[] = [];
@@ -188,37 +180,36 @@ export class WebModule implements PlayerModule {
 
   // ── Outputs ──
 
-  showRoutePicker(): Promise<void> {
-    return Promise.reject(
-      unavailable(
-        'ROUTE_PICKER_UNAVAILABLE',
-        'This browser has no output picker.'
-      )
-    );
+  showRoutePicker(playerId: string | null): Promise<void> {
+    if (playerId != null && !this.runtime.players.has(playerId))
+      return Promise.reject(released());
+    // Browsers open their pickers only inside the gesture: no await before it.
+    return this.outputs.showRoutePicker(playerId);
   }
 
   isRoutePickerAvailable(): boolean {
-    return false;
+    return this.outputs.isRoutePickerAvailable();
   }
 
   // ── Google Cast ──
 
   getCastState(): object {
-    return { state: 'unavailable', device: null };
+    return this.outputs.getCastState();
   }
 
-  async configureCast(): Promise<void> {
-    // Nothing to load where Cast is unavailable.
+  configureCast(options: object = {}): Promise<void> {
+    const id = (options as { receiverApplicationId?: unknown })
+      .receiverApplicationId;
+    return this.runtime.cast.configure(typeof id === 'string' ? id : undefined);
   }
 
   showCastPicker(): Promise<void> {
-    return Promise.reject(
-      unavailable('CAST_UNAVAILABLE', 'Google Cast is not available here.')
-    );
+    // `requestSession` must be called inside the click, not after an await.
+    return this.runtime.cast.requestSession();
   }
 
-  async stopCasting(): Promise<void> {
-    // Not casting.
+  stopCasting(): Promise<void> {
+    return this.runtime.cast.endSession();
   }
 
   // ── Catalog ──

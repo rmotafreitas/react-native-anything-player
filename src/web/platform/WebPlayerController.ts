@@ -11,21 +11,28 @@ import {
 } from '../engine/PlaybackEngine';
 import type { StreamMetadata } from '../engine/StreamMetadata';
 import { TrackClock } from '../engine/TrackClock';
-import type {
-  EngineDiagnostic,
-  EngineStatus,
-  FocusResult,
-  InterruptionReason,
-  ReadyInfo,
-  SourceDescriptor,
+import {
+  UNKNOWN_ROUTE,
+  type AudioRoute,
+  type EngineDiagnostic,
+  type EngineStatus,
+  type FocusResult,
+  type InterruptionReason,
+  type ReadyInfo,
+  type SourceDescriptor,
 } from '../engine/types';
 import { AudioSampler } from './AudioSampler';
+import { CastDriver } from './CastDriver';
+import type { CastService } from './CastService';
 import { browser, monotonicNow, type AudioElementLike } from './dom';
+import { ElementRoute } from './ElementRoute';
 import {
   MediaElementDriver,
   type DriverObserver,
   type PlayAttempt,
+  type ProgressReading,
 } from './MediaElementDriver';
+import { RoutingDriver } from './RoutingDriver';
 import {
   NO_FIELDS,
   diagnosticToMap,
@@ -43,6 +50,16 @@ export type EventSink = (event: Record<string, unknown>) => void;
 export interface PlayerRuntime {
   onStatusChanged(controller: WebPlayerController): void;
   onNowPlayingChanged(controller: WebPlayerController): void;
+  /** The Cast SDK, shared by every player. */
+  readonly cast: CastService;
+  /** A player is about to load `source` (its output may need to move first). */
+  beforeLoad(
+    controller: WebPlayerController,
+    source: SourceDescriptor,
+    autoplay: boolean | null
+  ): void;
+  /** What the browser says about a player's route or output picker changed. */
+  onOutputsChanged(controller: WebPlayerController): void;
 }
 
 /** What the media session shows (merged). */
@@ -73,8 +90,13 @@ interface PendingLoad {
 }
 
 export class WebPlayerController implements EngineDelegate, DriverObserver {
+  /** The local output: the <audio> element. */
   readonly driver: MediaElementDriver;
+  /** What the engine commands: the local output or the Cast receiver. */
+  readonly routing: RoutingDriver;
   readonly engine: PlaybackEngine;
+  /** What the browser knows about where the element plays (AirPlay, Remote Playback). */
+  readonly elementRoute: ElementRoute;
   readonly sampler = new AudioSampler();
   private seq = 0;
   private statusSnapshot: { status: EngineStatus; seq: number };
@@ -93,6 +115,7 @@ export class WebPlayerController implements EngineDelegate, DriverObserver {
   private released = false;
   private wakeupTimer: number | null = null;
   private progressTimer: number | null = null;
+  private localRoute: AudioRoute = UNKNOWN_ROUTE;
 
   constructor(
     readonly id: string,
@@ -101,9 +124,15 @@ export class WebPlayerController implements EngineDelegate, DriverObserver {
     private readonly sink: EventSink
   ) {
     this.driver = new MediaElementDriver(this, options.titleFormat);
-    this.engine = new PlaybackEngine(this.driver, webClock, options.engine);
+    this.routing = new RoutingDriver(
+      this.driver,
+      new CastDriver(this, () => this.nowPlaying(), runtime.cast)
+    );
+    this.engine = new PlaybackEngine(this.routing, webClock, options.engine);
     this.statusSnapshot = { status: this.engine.status, seq: 0 };
     this.engine.delegate = this;
+    this.elementRoute = new ElementRoute(() => this.elementRouteChanged());
+    this.elementRoute.attach(this.driver.element);
   }
 
   get status(): EngineStatus {
@@ -128,6 +157,7 @@ export class WebPlayerController implements EngineDelegate, DriverObserver {
     this._streamMetadata = null;
     this.station = { name: null, genre: null };
     this.driver.lastPlayAttempt = null;
+    this.runtime.beforeLoad(this, source, autoplay);
     this.engine.load(source, autoplay, start);
     const promise = new Promise<object>((resolve, reject) => {
       this.pendingLoads.set(this.engine.loadId, { resolve, reject });
@@ -192,6 +222,7 @@ export class WebPlayerController implements EngineDelegate, DriverObserver {
     this.sampler.stop();
     this.clearTimers();
     this.engine.release();
+    this.elementRoute.detach();
     this.driver.destroy();
     this.pendingLoads.clear();
   }
@@ -202,8 +233,39 @@ export class WebPlayerController implements EngineDelegate, DriverObserver {
     return statusToMap(this.statusSnapshot.status, this.statusSnapshot.seq);
   }
 
+  /** Where the item is, on the current output. */
+  progress(): ProgressReading {
+    return this.routing.progress();
+  }
+
   progressMap(): Record<string, unknown> {
-    return progressToMap(this.driver.progress(), webClock.wallMs);
+    return progressToMap(this.progress(), webClock.wallMs);
+  }
+
+  // ── Outputs ──
+
+  /** The route of the local output, as the browser reports it. */
+  get currentLocalRoute(): AudioRoute {
+    return this.localRoute;
+  }
+
+  /** Whether the browser offers an output picker (AirPlay, Remote Playback) for this item. */
+  pickerAvailable(): boolean {
+    return this.elementRoute.available(this.driver.isStreamed);
+  }
+
+  /** Opens the browser's output picker; call it synchronously inside a gesture. */
+  showPicker(): Promise<void> {
+    return this.elementRoute.showPicker(this.driver.isStreamed);
+  }
+
+  private elementRouteChanged(): void {
+    const route = this.elementRoute.route;
+    if (route.kind !== this.localRoute.kind) {
+      this.localRoute = route;
+      this.engine.routeChanged(route);
+    }
+    this.runtime.onOutputsChanged(this);
   }
 
   metadataMap(): Record<string, unknown> {
@@ -431,8 +493,9 @@ export class WebPlayerController implements EngineDelegate, DriverObserver {
     });
   }
 
-  onElementReplaced(_element: AudioElementLike): void {
+  onElementReplaced(element: AudioElementLike): void {
     this.driver.tapped = false;
+    this.elementRoute.attach(element);
   }
 }
 

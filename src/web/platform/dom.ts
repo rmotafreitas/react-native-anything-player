@@ -32,6 +32,20 @@ export interface MediaErrorLike {
   readonly message: string;
 }
 
+/** A `<source>` child of a media element. */
+export interface SourceElementLike {
+  src: string;
+  type: string;
+}
+
+/** The Remote Playback API (Chrome): send an element's media to a receiver. */
+export interface RemotePlaybackLike extends EventTargetLike {
+  readonly state: string;
+  prompt(): Promise<void>;
+  watchAvailability(callback: (available: boolean) => void): Promise<number>;
+  cancelWatchAvailability(id?: number): Promise<void>;
+}
+
 export interface AudioElementLike extends EventTargetLike {
   src: string;
   currentTime: number;
@@ -45,6 +59,11 @@ export interface AudioElementLike extends EventTargetLike {
   preload: string;
   crossOrigin: string | null;
   disableRemotePlayback?: boolean;
+  /** Safari: whether the element plays to an AirPlay receiver. */
+  readonly webkitCurrentPlaybackTargetIsWireless?: boolean;
+  /** Safari: opens the AirPlay picker (inside a user gesture). */
+  webkitShowPlaybackTargetPicker?(): void;
+  readonly remote?: RemotePlaybackLike;
   readonly buffered: TimeRangesLike;
   readonly seekable: TimeRangesLike;
   readonly error: MediaErrorLike | null;
@@ -52,6 +71,8 @@ export interface AudioElementLike extends EventTargetLike {
   pause(): void;
   load(): void;
   removeAttribute(name: string): void;
+  appendChild(child: SourceElementLike): void;
+  removeChild(child: SourceElementLike): void;
 }
 
 export interface SourceBufferLike extends EventTargetLike {
@@ -140,6 +161,114 @@ export interface AudioContextLike {
   createAnalyser(): AnalyserLike;
 }
 
+/** A Cast receiver, as the sender SDK describes it. */
+export interface CastReceiverLike {
+  readonly friendlyName: string;
+  readonly label?: string;
+  readonly deviceId?: string;
+}
+
+export interface CastMediaLike {
+  readonly idleReason?: string | null;
+  supportsCommand(command: string): boolean;
+  setVolume(
+    request: unknown,
+    onSuccess: () => void,
+    onError: (error: unknown) => void
+  ): void;
+}
+
+export interface CastSessionLike {
+  getCastDevice(): CastReceiverLike | null;
+  getMediaSession(): CastMediaLike | null;
+  /** Resolves `undefined` on success; an error code (resolved or rejected) on failure. */
+  loadMedia(request: unknown): Promise<string | undefined>;
+}
+
+export interface CastContextLike {
+  setOptions(options: Record<string, unknown>): void;
+  getCastState(): string;
+  getCurrentSession(): CastSessionLike | null;
+  addEventListener(type: string, listener: (event: any) => void): void;
+  /** Resolves `undefined` once a session starts, else an error code (`'cancel'` when dismissed). */
+  requestSession(): Promise<string | undefined>;
+  endCurrentSession(stopCasting: boolean): void;
+}
+
+export interface RemotePlayerLike {
+  readonly isConnected: boolean;
+  readonly isMediaLoaded: boolean;
+  readonly isPaused: boolean;
+  readonly canSeek: boolean;
+  readonly playerState: string | null;
+  duration: number;
+  currentTime: number;
+}
+
+export interface RemotePlayerControllerLike {
+  addEventListener(type: string, listener: (event: any) => void): void;
+  removeEventListener(type: string, listener: (event: any) => void): void;
+  playOrPause(): void;
+  stop(): void;
+  seek(): void;
+}
+
+/** `cast.framework`, once the Cast sender SDK is loaded. */
+export interface CastFrameworkLike {
+  CastContext: { getInstance(): CastContextLike };
+  CastContextEventType: {
+    CAST_STATE_CHANGED: string;
+    SESSION_STATE_CHANGED: string;
+  };
+  SessionState: Record<
+    'SESSION_STARTED' | 'SESSION_RESUMED' | 'SESSION_ENDED',
+    string
+  >;
+  RemotePlayerEventType: { ANY_CHANGE: string };
+  RemotePlayer: new () => RemotePlayerLike;
+  RemotePlayerController: new (
+    player: RemotePlayerLike
+  ) => RemotePlayerControllerLike;
+}
+
+export interface CastMediaInfoLike {
+  streamType: string;
+  metadata: unknown;
+}
+
+/** `chrome.cast`, once the Cast sender SDK is loaded. */
+export interface ChromeCastLike {
+  AutoJoinPolicy: { ORIGIN_SCOPED: string };
+  Image: new (url: string) => unknown;
+  Volume: new (level: number | null, muted?: boolean | null) => unknown;
+  media: {
+    DEFAULT_MEDIA_RECEIVER_APP_ID: string;
+    StreamType: { LIVE: string; BUFFERED: string };
+    MediaCommand: { STREAM_VOLUME: string };
+    MediaInfo: new (
+      contentId: string,
+      contentType: string
+    ) => CastMediaInfoLike;
+    MusicTrackMediaMetadata: new () => {
+      title?: string;
+      artist?: string;
+      albumName?: string;
+      images?: unknown[];
+    };
+    LoadRequest: new (mediaInfo: CastMediaInfoLike) => {
+      autoplay: boolean;
+      currentTime?: number;
+    };
+    VolumeRequest: new (volume: unknown) => unknown;
+  };
+}
+
+export interface ScriptElementLike {
+  src: string;
+  async: boolean;
+  onerror: (() => void) | null;
+}
+
 export interface NetworkInformationLike extends EventTargetLike {
   readonly type?: string;
 }
@@ -147,15 +276,24 @@ export interface NetworkInformationLike extends EventTargetLike {
 export interface BrowserGlobals {
   document?: EventTargetLike & {
     readonly visibilityState: string;
+    readonly head?: { appendChild(node: ScriptElementLike): void };
     createElement(tag: 'audio'): AudioElementLike;
+    createElement(tag: 'source'): SourceElementLike;
+    createElement(tag: 'script'): ScriptElementLike;
   };
   navigator?: {
     readonly onLine: boolean;
+    readonly userAgent?: string;
     readonly mediaSession?: MediaSessionLike;
     readonly connection?: NetworkInformationLike;
   };
   location?: { readonly href: string; readonly origin: string };
   addEventListener?: EventTargetLike['addEventListener'];
+  readonly isSecureContext?: boolean;
+  /** The Cast sender SDK's namespaces and its load callback. */
+  cast?: { framework?: CastFrameworkLike };
+  chrome?: { cast?: ChromeCastLike };
+  __onGCastApiAvailable?: (available: boolean) => void;
   MediaSource?: MediaSourceConstructor;
   ManagedMediaSource?: MediaSourceConstructor;
   MediaMetadata?: new (init: {
@@ -170,7 +308,12 @@ export interface BrowserGlobals {
     new (
       url: string,
       base?: string
-    ): { readonly origin: string; readonly pathname: string };
+    ): {
+      readonly origin: string;
+      readonly pathname: string;
+      readonly href: string;
+      readonly protocol: string;
+    };
     createObjectURL(object: unknown): string;
     revokeObjectURL(url: string): void;
   };

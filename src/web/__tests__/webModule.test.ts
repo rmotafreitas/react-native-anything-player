@@ -803,7 +803,10 @@ describe('live streams through MSE', () => {
     uninstall();
     setup({ mediaSource: 'managed' });
     const { element } = await openStream();
+    // Headers cannot reach an AirPlay receiver: no alternative source, no AirPlay.
     expect(element.disableRemotePlayback).toBe(true);
+    expect(element.children).toHaveLength(1);
+    expect(element.mediaSource).not.toBeNull();
   });
 
   it.each([

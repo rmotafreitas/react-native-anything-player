@@ -147,8 +147,79 @@ export class FakeMediaSource extends FakeEvents {
 const objectUrls = new Map<string, unknown>();
 let urlCounter = 0;
 
+/** Features the next fake elements have (set by `install`). */
+export const elementFeatures = {
+  airplay: false,
+  remote: false,
+  refuseWatch: false,
+};
+
+/** A scripted Remote Playback API (Chrome). */
+export class FakeRemotePlayback extends FakeEvents {
+  state = 'disconnected';
+  prompts = 0;
+  /** What `prompt()` does: select a receiver, or reject with this error. */
+  promptError: { name: string; message: string } | null = null;
+  private readonly watchers = new Map<number, (available: boolean) => void>();
+  private nextWatcher = 1;
+  cancelled: number[] = [];
+  /** Reject `watchAvailability` (the browser refuses to watch). */
+  refuseWatch = elementFeatures.refuseWatch;
+
+  watchAvailability(callback: (available: boolean) => void): Promise<number> {
+    if (this.refuseWatch) return Promise.reject(new Error('NotSupportedError'));
+    const id = this.nextWatcher++;
+    this.watchers.set(id, callback);
+    return Promise.resolve(id);
+  }
+
+  cancelWatchAvailability(id?: number): Promise<void> {
+    this.cancelled.push(id ?? -1);
+    this.watchers.delete(id ?? -1);
+    return Promise.resolve();
+  }
+
+  prompt(): Promise<void> {
+    this.prompts += 1;
+    if (this.promptError)
+      return Promise.reject(
+        Object.assign(new Error(this.promptError.message), {
+          name: this.promptError.name,
+        })
+      );
+    return Promise.resolve();
+  }
+
+  // ── Test controls ──
+
+  setAvailable(available: boolean): void {
+    this.watchers.forEach((callback) => callback(available));
+  }
+
+  setState(state: 'connecting' | 'connected' | 'disconnected'): void {
+    this.state = state;
+    const events = {
+      connecting: 'connecting',
+      connected: 'connect',
+      disconnected: 'disconnect',
+    };
+    this.dispatch(events[state]);
+  }
+
+  get watching(): number {
+    return this.watchers.size;
+  }
+}
+
 export class FakeAudio extends FakeEvents {
   private _src = '';
+  /** `<source>` children, in order. */
+  children: Array<{ src: string; type: string }> = [];
+  /** Safari: set when this element has the AirPlay API. */
+  webkitShowPlaybackTargetPicker?: () => void;
+  webkitCurrentPlaybackTargetIsWireless = false;
+  airplayPickers = 0;
+  remote?: FakeRemotePlayback;
   currentTime = 0;
   duration = NaN;
   paused = true;
@@ -170,6 +241,16 @@ export class FakeAudio extends FakeEvents {
   srcHistory: string[] = [];
   mediaSource: FakeMediaSource | null = null;
 
+  constructor() {
+    super();
+    if (elementFeatures.airplay) {
+      this.webkitShowPlaybackTargetPicker = () => {
+        this.airplayPickers += 1;
+      };
+    }
+    if (elementFeatures.remote) this.remote = new FakeRemotePlayback();
+  }
+
   get src(): string {
     return this._src;
   }
@@ -177,12 +258,28 @@ export class FakeAudio extends FakeEvents {
   set src(value: string) {
     this._src = value;
     this.srcHistory.push(value);
+    this.attachMediaSource(value);
+  }
+
+  private attachMediaSource(url: string): void {
     this.mediaSource = null;
-    const attached = objectUrls.get(value);
+    const attached = objectUrls.get(url);
     if (attached instanceof FakeMediaSource) {
       this.mediaSource = attached;
       queueMicrotask(() => attached.open());
     }
+  }
+
+  appendChild(child: { src: string; type: string }): void {
+    this.children.push(child);
+    // Resource selection: the first usable `<source>` of an element without `src`.
+    if (this._src === '' && this.mediaSource == null)
+      this.attachMediaSource(child.src);
+  }
+
+  removeChild(child: { src: string; type: string }): void {
+    this.children = this.children.filter((c) => c !== child);
+    if (objectUrls.get(child.src) === this.mediaSource) this.mediaSource = null;
   }
 
   get buffered() {
@@ -243,6 +340,19 @@ export class FakeAudio extends FakeEvents {
   fail(code: number, message = 'failed'): void {
     this.error = { code, message };
     this.dispatch('error');
+  }
+
+  /** Safari: AirPlay receivers appeared (or all went away). */
+  setAirplayTargets(available: boolean): void {
+    this.dispatch('webkitplaybacktargetavailabilitychanged', {
+      availability: available ? 'available' : 'not-available',
+    });
+  }
+
+  /** Safari: the element started or stopped playing to an AirPlay receiver. */
+  setWireless(wireless: boolean): void {
+    this.webkitCurrentPlaybackTargetIsWireless = wireless;
+    this.dispatch('webkitcurrentplaybacktargetiswirelesschanged');
   }
 }
 
@@ -446,6 +556,8 @@ class FakeMediaMetadata {
 
 export interface FakeWorld {
   elements: FakeAudio[];
+  /** `<script>` elements the page added to <head> (the Cast SDK). */
+  scripts: Array<{ src: string; onerror: (() => void) | null }>;
   fetch: FakeFetch;
   session: FakeMediaSession;
   navigator: { onLine: boolean; connection: FakeEvents & { type: string } };
@@ -466,6 +578,10 @@ const KEYS = [
   'URL',
   'fetch',
   'addEventListener',
+  'isSecureContext',
+  'cast',
+  'chrome',
+  '__onGCastApiAvailable',
 ] as const;
 
 let saved: Record<string, PropertyDescriptor | undefined> = {};
@@ -476,6 +592,14 @@ export function install(
     mediaSource?: 'standard' | 'managed' | 'none';
     audioContext?: boolean;
     mediaSession?: boolean;
+    /** Safari: elements have the AirPlay API. */
+    airplay?: boolean;
+    /** Chrome: elements have the Remote Playback API. */
+    remotePlayback?: boolean;
+    /** Chrome: `watchAvailability` rejects. */
+    refuseWatch?: boolean;
+    userAgent?: string;
+    secureContext?: boolean;
   } = {}
 ): FakeWorld {
   const g = globalThis as Record<string, unknown>;
@@ -486,10 +610,21 @@ export function install(
   FakeMediaSource.failAdd = false;
   FakeMediaSource.supported = new Set(['audio/mpeg', 'audio/aac']);
   FakeAudioContext.instances = [];
+  elementFeatures.airplay = options.airplay === true;
+  elementFeatures.remote = options.remotePlayback === true;
+  elementFeatures.refuseWatch = options.refuseWatch === true;
   const elements: FakeAudio[] = [];
+  const scripts: FakeWorld['scripts'] = [];
   const document = Object.assign(new FakeEvents(), {
     visibilityState: 'visible',
-    createElement: () => {
+    head: {
+      appendChild: (script: FakeWorld['scripts'][number]) =>
+        scripts.push(script),
+    },
+    createElement: (tag: string) => {
+      if (tag === 'source') return { src: '', type: '' };
+      if (tag === 'script')
+        return { src: '', async: false, onerror: null as (() => void) | null };
       const element = new FakeAudio();
       elements.push(element);
       return element;
@@ -499,6 +634,9 @@ export function install(
   const session = new FakeMediaSession();
   const navigator = {
     onLine: true,
+    userAgent:
+      options.userAgent ??
+      'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36',
     connection,
     ...(options.mediaSession === false ? {} : { mediaSession: session }),
   };
@@ -511,6 +649,10 @@ export function install(
       writable: true,
     });
   define('document', document);
+  define('isSecureContext', options.secureContext !== false);
+  define('cast', undefined);
+  define('chrome', undefined);
+  define('__onGCastApiAvailable', undefined);
   define('navigator', navigator);
   define('location', {
     href: 'https://app.example/',
@@ -533,6 +675,7 @@ export function install(
   define('addEventListener', window.addEventListener.bind(window));
   return {
     elements,
+    scripts,
     fetch,
     session,
     navigator,

@@ -4,7 +4,8 @@
 // Twin of `AnythingPlayerRuntime.kt` / `AnythingPlayerRuntime.swift`.
 
 import type { PlayerError } from '../../errors';
-import type { NetworkState } from '../engine/types';
+import type { NetworkState, SourceDescriptor } from '../engine/types';
+import { CastService } from './CastService';
 import {
   browser,
   type MediaSessionAction,
@@ -21,8 +22,28 @@ const FORWARDED: Array<[MediaSessionAction, string]> = [
   ['seekbackward', 'skipBackward'],
 ];
 
+/** Who coordinates the outputs (Cast, the browser's pickers) across players. */
+export interface RuntimeListener {
+  /** The player on the lock screen changed. */
+  onActiveChanged(
+    previous: WebPlayerController | null,
+    next: WebPlayerController | null
+  ): void;
+  onControllerStatus(controller: WebPlayerController): void;
+  onControllerRemoved(controller: WebPlayerController): void;
+  onControllerAdded(controller: WebPlayerController): void;
+  onOutputsChanged(controller: WebPlayerController): void;
+  beforeLoad(
+    controller: WebPlayerController,
+    source: SourceDescriptor,
+    autoplay: boolean | null
+  ): void;
+}
+
 export class WebRuntime implements PlayerRuntime {
   readonly players = new Map<string, WebPlayerController>();
+  readonly cast = new CastService();
+  listener: RuntimeListener | null = null;
   /** The player the system media controls show and control. */
   private active: WebPlayerController | null = null;
   private started = false;
@@ -39,24 +60,34 @@ export class WebRuntime implements PlayerRuntime {
     this.start();
     this.players.set(controller.id, controller);
     controller.engine.networkChanged(this.network, false);
+    this.listener?.onControllerAdded(controller);
     // The system controls answer as soon as a player with a session exists:
     // a Play with nothing loaded is forwarded to the app (see `remote`).
     if (!this.active && controller.options.mediaSession) {
-      this.active = controller;
+      this.setActive(controller);
       this.refreshSession();
     }
   }
 
   unregister(controller: WebPlayerController): void {
     this.players.delete(controller.id);
+    this.listener?.onControllerRemoved(controller);
     if (this.active === controller) {
-      this.active =
+      this.setActive(
         [...this.players.values()]
           .reverse()
           .find((p) => p.options.mediaSession && p.status.state !== 'idle') ??
-        null;
+          null
+      );
     }
     this.refreshSession();
+  }
+
+  private setActive(next: WebPlayerController | null): void {
+    const previous = this.active;
+    if (previous === next) return;
+    this.active = next;
+    this.listener?.onActiveChanged(previous, next);
   }
 
   // ── State fan-in ──
@@ -64,14 +95,27 @@ export class WebRuntime implements PlayerRuntime {
   onStatusChanged(controller: WebPlayerController): void {
     const status = controller.status;
     if (controller.options.mediaSession && status.playWhenReady)
-      this.active = controller;
+      this.setActive(controller);
     if (
       this.active == null &&
       controller.options.mediaSession &&
       status.state !== 'idle'
     )
-      this.active = controller;
+      this.setActive(controller);
+    this.listener?.onControllerStatus(controller);
     this.refreshSession();
+  }
+
+  beforeLoad(
+    controller: WebPlayerController,
+    source: SourceDescriptor,
+    autoplay: boolean | null
+  ): void {
+    this.listener?.beforeLoad(controller, source, autoplay);
+  }
+
+  onOutputsChanged(controller: WebPlayerController): void {
+    this.listener?.onOutputsChanged(controller);
   }
 
   onNowPlayingChanged(controller: WebPlayerController): void {
@@ -171,7 +215,7 @@ export class WebRuntime implements PlayerRuntime {
           playbackRate: status.state === 'playing' ? 1 : 0,
         });
       } else if (status.seekable && status.duration != null) {
-        const progress = target.driver.progress();
+        const progress = target.progress();
         session.setPositionState?.({
           duration: status.duration,
           position: Math.min(progress.position, status.duration),
