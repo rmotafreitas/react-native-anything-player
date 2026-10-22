@@ -125,4 +125,54 @@ class CatalogStoreTest {
     assertNull(entry.artist)
     assertEquals("podcast", entry.searchable.kind)
   }
+
+  @Test
+  fun `recent items and favorites are kept, newest first, and follow the catalog`() {
+    val store = CatalogStore(file())
+    val browse = JSONObject("""{"recent":2,"favorites":["b","a","gone"],"rootOrder":["Music"],"titles":{"recent":"Last"}}""")
+    store.replace(listOf(item("a", "A"), item("b", "B"), item("c", "C")), "default", null, browse)
+    store.played("a")
+    store.played("b")
+    store.played("a")
+    store.played("c")
+    val snapshot = CatalogStore(file()).snapshot()
+    assertEquals(listOf("c", "a"), snapshot.recentIds)
+    assertEquals(2, snapshot.browse.recentLimit)
+    assertEquals(listOf("b", "a", "gone"), snapshot.browse.favorites)
+    assertEquals(listOf("Music"), snapshot.browse.rootOrder)
+    assertEquals("Last", snapshot.browse.titles.recent)
+    assertEquals("Favorites", snapshot.browse.titles.favorites)
+
+    store.replace(listOf(item("a", "A"), item("b", "B")), "default", null, browse)
+    assertEquals(listOf("a"), store.snapshot().recentIds)
+  }
+
+  @Test
+  fun `recent items are not kept unless the app asked`() {
+    val store = CatalogStore(file())
+    store.replace(listOf(item("a", "A")), "default", null)
+    store.played("a")
+    assertTrue(store.snapshot().recentIds.isEmpty())
+    assertEquals("a", store.snapshot().lastPlayedId)
+  }
+
+  @Test
+  fun `setFavorites changes the folder without touching the catalog`() {
+    val store = CatalogStore(file())
+    store.replace(listOf(item("a", "A"), item("b", "B")), "default", null, JSONObject("""{"recent":0,"favorites":["a"]}"""))
+    val before = store.snapshot().revision
+    store.setFavorites(listOf("b", "b", "zzz"))
+    val after = CatalogStore(file()).snapshot()
+    assertEquals(listOf("b"), after.browse.favorites)
+    assertEquals(listOf("a", "b"), after.items.map { it.id })
+    assertTrue(store.snapshot().revision > before)
+  }
+
+  @Test
+  fun `items keep their group`() {
+    val store = CatalogStore(file())
+    store.replace(listOf(item("a", "A", "group" to "Podcasts/Daily")), "default", null)
+    assertEquals("Podcasts/Daily", CatalogStore(file()).snapshot().items[0].group)
+    assertEquals("Podcasts/Daily", store.snapshot().items[0].searchable.group)
+  }
 }

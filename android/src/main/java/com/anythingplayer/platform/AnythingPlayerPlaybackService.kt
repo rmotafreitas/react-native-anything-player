@@ -26,7 +26,9 @@ import com.google.common.util.concurrent.MoreExecutors
  *
  * It is a media *library* service so Google Assistant and Gemini can browse
  * and search the catalog and start it — even when the app is not running: the
- * system binds the service, which brings the runtime up without JS.
+ * system binds the service, which brings the runtime up without JS. The same
+ * library is the browse tree of Android Auto, Android Automotive OS and
+ * Wear OS: folders from the catalog's groups (see [MediaLibrary]).
  */
 @OptIn(UnstableApi::class)
 class AnythingPlayerPlaybackService : MediaLibraryService() {
@@ -101,8 +103,8 @@ class AnythingPlayerPlaybackService : MediaLibraryService() {
 }
 
 /**
- * What the assistants can do with the library: browse the catalog (flat,
- * paginated), search it, and set items on the player — every path to
+ * What the assistants, cars and watches can do with the library: browse the
+ * catalog's tree (paginated), search it, and set items on the player — every path to
  * "play this" goes through [MediaLibrary.resolve].
  */
 @OptIn(UnstableApi::class)
@@ -111,8 +113,14 @@ private class LibraryCallback(private val context: Context) : MediaLibraryServic
     session: MediaLibraryService.MediaLibrarySession,
     browser: MediaSession.ControllerInfo,
     params: MediaLibraryService.LibraryParams?,
-  ): ListenableFuture<LibraryResult<MediaItem>> =
-    Futures.immediateFuture(LibraryResult.ofItem(MediaLibrary.root(context), params))
+  ): ListenableFuture<LibraryResult<MediaItem>> {
+    // A browser that asks for what to resume ("recent") gets a root holding only the last item played.
+    if (params?.isRecent == true) {
+      if (Voice.snapshot().lastPlayedId == null) return Futures.immediateFuture(LibraryResult.ofError(SessionError.ERROR_NOT_SUPPORTED))
+      return Futures.immediateFuture(LibraryResult.ofItem(MediaLibrary.resumeRoot(), MediaLibrary.rootParams(recent = true)))
+    }
+    return Futures.immediateFuture(LibraryResult.ofItem(MediaLibrary.root(context), MediaLibrary.rootParams(recent = false)))
+  }
 
   override fun onGetChildren(
     session: MediaLibraryService.MediaLibrarySession,
@@ -122,8 +130,15 @@ private class LibraryCallback(private val context: Context) : MediaLibraryServic
     pageSize: Int,
     params: MediaLibraryService.LibraryParams?,
   ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> {
-    if (parentId != MediaLibrary.ROOT_ID) return Futures.immediateFuture(LibraryResult.ofError(SessionError.ERROR_BAD_VALUE))
-    return Futures.immediateFuture(LibraryResult.ofItemList(ImmutableList.copyOf(MediaLibrary.page(Voice.items(), page, pageSize)), params))
+    val snapshot = Voice.snapshot()
+    val children =
+      if (parentId == MediaLibrary.RESUME_ID) {
+        MediaLibrary.resumed(snapshot)?.let(::listOf)?.let { MediaLibrary.pageOf(it, page, pageSize) }
+      } else {
+        MediaLibrary.children(MediaLibrary.view(snapshot, isCar(session, browser)), parentId, page, pageSize)
+      }
+    if (children == null) return Futures.immediateFuture(LibraryResult.ofError(SessionError.ERROR_BAD_VALUE))
+    return Futures.immediateFuture(LibraryResult.ofItemList(ImmutableList.copyOf(children), params))
   }
 
   override fun onGetItem(
@@ -132,9 +147,13 @@ private class LibraryCallback(private val context: Context) : MediaLibraryServic
     mediaId: String,
   ): ListenableFuture<LibraryResult<MediaItem>> {
     if (mediaId == MediaLibrary.ROOT_ID) return Futures.immediateFuture(LibraryResult.ofItem(MediaLibrary.root(context), null))
-    val entry = Voice.entry(mediaId) ?: return Futures.immediateFuture(LibraryResult.ofError(SessionError.ERROR_BAD_VALUE))
-    return Futures.immediateFuture(LibraryResult.ofItem(MediaLibrary.item(entry), null))
+    val item = MediaLibrary.itemById(MediaLibrary.view(Voice.snapshot(), isCar(session, browser)), mediaId)
+    return Futures.immediateFuture(if (item == null) LibraryResult.ofError(SessionError.ERROR_BAD_VALUE) else LibraryResult.ofItem(item, null))
   }
+
+  /** Android Auto (on the phone) and Android Automotive OS (in the car): folders at the root, a few tabs. */
+  private fun isCar(session: MediaLibraryService.MediaLibrarySession, browser: MediaSession.ControllerInfo) =
+    session.isAutomotiveController(browser) || session.isAutoCompanionController(browser)
 
   override fun onSearch(
     session: MediaLibraryService.MediaLibrarySession,

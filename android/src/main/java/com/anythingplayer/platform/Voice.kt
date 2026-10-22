@@ -64,10 +64,19 @@ internal object Voice {
   fun entry(id: String): CatalogEntry? = items().firstOrNull { it.id == id } ?: synchronized(adhoc) { adhoc[id] }
 
   /** Replaces the catalog (persisted before this returns) and tells the media library. Any thread. */
-  fun set(items: List<JSONObject>, playerId: String, playerOptions: JSONObject?) {
-    store().replace(items, playerId, playerOptions)
+  fun set(items: List<JSONObject>, playerId: String, playerOptions: JSONObject?, browse: JSONObject? = null) {
+    store().replace(items, playerId, playerOptions, browse)
     AnythingPlayerRuntime.post { AnythingPlayerRuntime.catalogChanged() }
   }
+
+  /** Replaces the ids of the Favorites folder (persisted before this returns) and tells the media library. Any thread. */
+  fun setFavorites(ids: List<String>) {
+    store().setFavorites(ids)
+    AnythingPlayerRuntime.post { AnythingPlayerRuntime.catalogChanged() }
+  }
+
+  /** The catalog with its browse settings, as one reading. */
+  fun snapshot(): CatalogSnapshot = store().snapshot()
 
   /** Ranked matches, best first. */
   fun search(request: SearchRequest): List<CatalogEntry> {
@@ -219,5 +228,6 @@ internal fun SearchRequest.toMap(): WritableMap =
     album?.let { putString("album", it) }
     genre?.let { putString("genre", it) }
     focus?.let { putString("focus", it) }
+    group?.let { putString("group", it) }
     putString("origin", origin)
   }

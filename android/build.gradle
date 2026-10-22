@@ -50,11 +50,18 @@ def includeCast = ["rnapCast"].any { name ->
   def value = project.hasProperty(name) ? project.property(name) : (rootProject.ext.has(name) ? rootProject.ext.get(name) : null)
   value != null && value.toString() == "true"
 }
-// The Sound API (`react-native-anything-player/sound`) is opt-in too: a
-// SoundPool per sound, no extra library. `rnapSound=true` in gradle.properties
+// The Sound API (`react-native-anything-player/sound`) is opt-in too: one
+// shared SoundPool, no extra library. `rnapSound=true` in gradle.properties
 // (or -PrnapSound=true, or `rnapSound` in the root `ext`). Off, `src/nosound`
 // stubs report `unavailable` and `Sound.load()` rejects with SOUND_UNAVAILABLE.
 def includeSound = ["rnapSound"].any { name ->
+  def value = project.hasProperty(name) ? project.property(name) : (rootProject.ext.has(name) ? rootProject.ext.get(name) : null)
+  value != null && value.toString() == "true"
+}
+// Android Auto is opt-in: `rnapCar=true` (or -PrnapCar=true, or `rnapCar` in
+// the root `ext`) declares the app a media app for Android Auto. The browse
+// tree itself (Wear OS, Android Automotive OS, Assistant) needs no flag.
+def includeCar = ["rnapCar"].any { name ->
   def value = project.hasProperty(name) ? project.property(name) : (rootProject.ext.has(name) ? rootProject.ext.get(name) : null)
   value != null && value.toString() == "true"
 }
@@ -81,12 +88,15 @@ android {
   sourceSets {
     main.java.srcDirs += includeCast ? "src/cast/java" : "src/nocast/java"
     main.java.srcDirs += includeSound ? "src/sound/java" : "src/nosound/java"
-    if (includeCast) {
-      // The Cast options provider and the Output Switcher receiver are declared
-      // only when Cast is built in: merged on top of the main manifest.
-      debug.manifest.srcFile "src/cast/AndroidManifest.xml"
-      release.manifest.srcFile "src/cast/AndroidManifest.xml"
+    // Cast's options provider and Output Switcher receiver, and Android Auto's
+    // meta-data, are declared only when built in: merged on top of the main
+    // manifest. A source set holds one manifest, so both together have their own.
+    def overlay = includeCast && includeCar ? "src/castcar/AndroidManifest.xml" : includeCast ? "src/cast/AndroidManifest.xml" : includeCar ? "src/car/AndroidManifest.xml" : null
+    if (overlay != null) {
+      debug.manifest.srcFile overlay
+      release.manifest.srcFile overlay
     }
+    if (includeCar) main.res.srcDirs += "src/car/res"
   }
 
   testOptions {

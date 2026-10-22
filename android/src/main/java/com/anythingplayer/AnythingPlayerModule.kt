@@ -250,7 +250,17 @@ class AnythingPlayerModule(reactContext: ReactApplicationContext) : NativeAnythi
     try {
       Voice.attach(reactApplicationContext)
       val serialized = (0 until items.size()).mapNotNull { items.getMap(it)?.toJson() }
-      Voice.set(serialized, options.optString("playerId") ?: "default", options.optMap("playerOptions")?.toJson())
+      Voice.set(serialized, options.optString("playerId") ?: "default", options.optMap("playerOptions")?.toJson(), options.optMap("browse")?.toJson())
+      promise.resolve(null)
+    } catch (error: Throwable) {
+      reject(promise, PlayerError(ErrorCode.INTERNAL_ERROR, error.message ?: error.javaClass.simpleName, false, causeDescription = error.toString()))
+    }
+  }
+
+  override fun setFavorites(ids: ReadableArray, promise: Promise) {
+    try {
+      Voice.attach(reactApplicationContext)
+      Voice.setFavorites((0 until ids.size()).mapNotNull { ids.getString(it) })
       promise.resolve(null)
     } catch (error: Throwable) {
       reject(promise, PlayerError(ErrorCode.INTERNAL_ERROR, error.message ?: error.javaClass.simpleName, false, causeDescription = error.toString()))
@@ -302,6 +312,7 @@ class AnythingPlayerModule(reactContext: ReactApplicationContext) : NativeAnythi
       genre = map.optString("genre"),
       focus = map.optString("focus"),
       origin = "app",
+      group = map.optString("group"),
     )
 
   /** JS reload / React host teardown: no JS can control these players any more. */
