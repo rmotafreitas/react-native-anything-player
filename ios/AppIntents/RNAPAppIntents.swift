@@ -127,11 +127,14 @@ enum RNAPPlay {
 
 // Audio intents: they play without opening the app, and Siri does not talk
 // over the audio. iOS 16 calls the protocol AudioStartingIntent, iOS 17
-// renamed it AudioPlaybackIntent. (The extension marked deprecated keeps the
-// old name from warning.)
-@available(iOS, introduced: 16, deprecated: 17)
+// renamed it AudioPlaybackIntent. (Swift warns about the old name even below
+// iOS 17, except inside something deprecated: hence `deprecated` on the
+// extensions, which only affects warnings.)
+@available(iOS 16, *)
+@available(*, deprecated, message: "iOS 16's AudioPlaybackIntent")
 extension PlayCatalogItemIntent: AudioStartingIntent {}
-@available(iOS, introduced: 16, deprecated: 17)
+@available(iOS 16, *)
+@available(*, deprecated, message: "iOS 16's AudioPlaybackIntent")
 extension PlaySomethingIntent: AudioStartingIntent {}
 @available(iOS 17, *)
 extension PlayCatalogItemIntent: AudioPlaybackIntent {}
