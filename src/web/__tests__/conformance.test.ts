@@ -270,10 +270,14 @@ function expect_(label: string, actual: unknown, expected: unknown): void {
  * Ordered commands: each entry must match (as a string prefix) a recorded
  * command at or after the previous match — a subsequence, not a run.
  */
-function orderedCommands_(label: string, expected: string[], actual: string[]): void {
+function orderedCommands_(
+  label: string,
+  expected: string[],
+  actual: string[]
+): void {
   let cursor = 0;
   for (const pattern of expected) {
-    while (cursor < actual.length && !actual[cursor].startsWith(pattern))
+    while (cursor < actual.length && !actual[cursor]!.startsWith(pattern))
       cursor += 1;
     if (cursor === actual.length)
       throw new Error(
