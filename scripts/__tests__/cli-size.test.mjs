@@ -83,6 +83,7 @@ test('deriveSizeData keeps only what the CLI prints', () => {
       { id: 'rnap', version: '1.0.0', r8: { apkBytes: 100 }, noR8: { apkBytes: 300 } },
       { id: 'rnapNoHls', r8: { apkBytes: 90 }, noR8: { apkBytes: 280 } },
       { id: 'rnapCast', r8: { apkBytes: 150 }, noR8: { apkBytes: 400 } },
+      { id: 'rnapSound', r8: { apkBytes: 105 }, noR8: { apkBytes: 310 } },
       { id: 'other', r8: { apkBytes: 1 }, noR8: { apkBytes: 1 } },
     ],
   };
@@ -109,6 +110,9 @@ test('deriveSizeData keeps only what the CLI prints', () => {
   assert.deepEqual(derived.android.base, { r8: 100, noR8: 300 });
   assert.deepEqual(derived.android.modules.hls, { r8: 10, noR8: 20 });
   assert.deepEqual(derived.android.modules.cast, { r8: 50, noR8: 100 });
+  assert.deepEqual(derived.android.modules.sound, { r8: 5, noR8: 10 });
+  // No rnapCar entry in the run: the module is reported as not measured.
+  assert.equal(derived.android.modules.car, undefined);
   assert.equal(derived.version, '1.0.0');
   assert.deepEqual(derived.web, [
     {

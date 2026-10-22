@@ -120,6 +120,20 @@ function checkBackgroundAudio(ctx, view, findings) {
     return;
   }
 
+  // `rnap remove background-audio` leaves this marker so a bare project's
+  // missing mode reads as a choice, not a mistake.
+  if (ctx.ios.podfileProperties?.['rnap.backgroundAudio'] === 'false') {
+    findings.push(
+      finding(
+        'ios-background-audio',
+        'info',
+        'Background audio is off on purpose (`"rnap.backgroundAudio": "false"` in ios/Podfile.properties.json): playback stops when the screen locks or the app is backgrounded.',
+        null
+      )
+    );
+    return;
+  }
+
   findings.push(
     finding(
       'ios-background-audio',

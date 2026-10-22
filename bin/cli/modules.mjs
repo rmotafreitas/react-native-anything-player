@@ -31,7 +31,10 @@ import { readText, relative } from './util.mjs';
  * @property {{key: string, item?: string, value?: string}[]} [plistExtras]
  *   further Info.plist keys a module needs (Cast discovery)
  * @property {{key: string, type?: 'string'}} [expo] option of the Expo config plugin
- * @property {string} [planned] why the module has no switch yet (roadmap)
+ * @property {{key: string}} [offMarker] a key in ios/Podfile.properties.json set
+ *   to `"false"` when the module is turned off on purpose. Nothing builds from
+ *   it: it tells the doctor the missing setting is intended.
+ * @property {string} [manualUndo] what to undo by hand when the module goes off
  * @property {Record<string, string>} [manual] steps by platform, or `expo`
  * @property {string} docs where the switch is documented
  */
@@ -104,6 +107,7 @@ export const MODULES = [
     platforms: ['ios'],
     expo: { key: 'backgroundAudio' },
     plist: { key: 'UIBackgroundModes', item: 'audio' },
+    offMarker: { key: 'rnap.backgroundAudio' },
     docs: 'docs/getting-started.md#bare-react-native',
   },
   {
@@ -113,9 +117,10 @@ export const MODULES = [
       'Short sounds with the Sound API (react-native-anything-player/sound).',
     defaultOn: false,
     platforms: ['android', 'ios'],
-    planned:
-      'The Sound API is not in this version yet: it is a separate package on the roadmap (docs/roadmap.md), so there is no switch to flip.',
-    docs: 'docs/configuration.md#modules',
+    gradle: { key: 'rnapSound', on: 'true', off: 'false' },
+    pod: { key: 'rnap.sound' },
+    expo: { key: 'sound' },
+    docs: 'docs/sound.md#enabling-it',
   },
   {
     id: 'car',
@@ -123,9 +128,15 @@ export const MODULES = [
     description: 'Android Auto and CarPlay browsing.',
     defaultOn: false,
     platforms: ['android', 'ios'],
-    planned:
-      'Car browsing is not in this version yet: it is on the roadmap (docs/roadmap.md), so there is no switch to flip.',
-    docs: 'docs/configuration.md#modules',
+    gradle: { key: 'rnapCar', on: 'true', off: 'false' },
+    pod: { key: 'rnap.car' },
+    expo: { key: 'car' },
+    manual: {
+      ios: 'CarPlay also needs Apple\'s CarPlay audio entitlement (`com.apple.developer.carplay-audio`) and the `RNAP CarPlay` scene in `UIApplicationSceneManifest`: follow docs/cars-and-watches.md#carplay, or use the Expo plugin with `car: true`.',
+    },
+    manualUndo:
+      'Remove the `RNAP CarPlay` scene from `UIApplicationSceneManifest` and the `com.apple.developer.carplay-audio` entitlement by hand (the CLI does not edit them).',
+    docs: 'docs/cars-and-watches.md',
   },
 ];
 
@@ -335,6 +346,17 @@ export function setPluginOption(text, key, value) {
 
 const PODFILE_PROPERTIES = 'ios/Podfile.properties.json';
 
+/**
+ * The `offMarker` value to write for `on`, or `null` when the file already
+ * says it: turning off writes `"false"`, turning on only resets a marker that
+ * is there (an absent marker already means on).
+ */
+function offMarkerValue(ctx, module, on) {
+  const current = ctx.ios.podfileProperties?.[module.offMarker.key];
+  if (on) return current === undefined || current === 'true' ? null : 'true';
+  return current === 'false' ? null : 'false';
+}
+
 function propertyValue(value) {
   return value ? 'true' : 'false';
 }
@@ -365,17 +387,20 @@ export function planModuleChanges(ctx, module, on, { readFile } = {}) {
   const manual = [];
   const state = moduleState(ctx, module.id);
   const places = state ? applicablePlaces(state) : [];
-  if (places.length > 0 && places.every((value) => value === on))
+  const expoOwns = Boolean(ctx.expo.rnapPlugin) && !ctx.jsConfigFile;
+  const markerPending =
+    Boolean(module.offMarker) &&
+    ctx.ios.present &&
+    !(expoOwns && module.expo) &&
+    offMarkerValue(ctx, module, on) !== null;
+  if (
+    places.length > 0 &&
+    places.every((value) => value === on) &&
+    !markerPending
+  )
     return { edits, manual };
-  // A module the library does not build yet has no switch: say so, change
-  // nothing. Turning it "off" again is the default state, handled above.
-  if (module.planned) {
-    if (on) manual.push(module.planned);
-    return { edits, manual };
-  }
 
   const read = readFile ?? ((file) => readText(path.resolve(ctx.cwd, file)));
-  const expoOwns = Boolean(ctx.expo.rnapPlugin) && !ctx.jsConfigFile;
 
   const addEdit = (file, apply, change, { create = false } = {}) => {
     const before = read(file) ?? '';
@@ -455,6 +480,22 @@ export function planModuleChanges(ctx, module, on, { readFile } = {}) {
     );
   }
 
+  if (markerPending) {
+    const value = offMarkerValue(ctx, module, on);
+    addEdit(
+      PODFILE_PROPERTIES,
+      (before) =>
+        editJsonDetailed(before === '' ? '{}\n' : before, (properties) => {
+          properties[module.offMarker.key] = value;
+          return true;
+        }),
+      on
+        ? `set \`"${module.offMarker.key}": "true"\``
+        : `set \`"${module.offMarker.key}": "false"\` (the doctor then reports ${module.id} as off on purpose)`,
+      { create: ctx.ios.podfileProperties === null }
+    );
+  }
+
   if (native && module.plistExtras && ctx.ios.present) {
     if (ctx.ios.infoPlistFile) {
       addEdit(
@@ -504,6 +545,8 @@ export function planModuleChanges(ctx, module, on, { readFile } = {}) {
       if (!on) manual.push(undoText(module));
     } else if (on) {
       manual.push(module.manual.ios);
+    } else if (module.manualUndo) {
+      manual.push(module.manualUndo);
     }
   }
 
