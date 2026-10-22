@@ -99,8 +99,12 @@ const GESTURES = ['pointerdown', 'touchend', 'keydown', 'click'];
 /** Fade-out when a voice stops, so a cut waveform does not click. */
 const STOP_FADE_S = 0.005;
 const STOP_AFTER_S = 0.03;
-/** How long `unlock()` waits for a context to start before calling the page blocked. */
-const UNLOCK_WAIT_MS = 1_000;
+/**
+ * How long `unlock()` waits for a context to start before calling the page
+ * blocked. Only reached after a gesture (without one it fails at once), and
+ * a browser can take over a second to open the audio device on a busy machine.
+ */
+const UNLOCK_WAIT_MS = 3_000;
 
 interface Voice {
   readonly id: number;
