@@ -81,6 +81,10 @@ class FakeDriver(private val clock: FakeClock) : EngineDriver {
   override fun unload() { commands.add("unload") }
   override fun setVolume(effective: Double) { commands.add("volume(${f2(effective)})") }
   override fun setRate(rate: Double) { commands.add("rate(${f2(rate)})") }
+  override fun switchOutput(outputId: String) {
+    commands.add("switchOutput($outputId)")
+    motion = Motion.FROZEN
+  }
 }
 
 /** Collects everything the engine reports. */

@@ -5,6 +5,7 @@ import android.os.Looper
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
+import com.facebook.react.bridge.ReadableArray
 import com.facebook.react.bridge.ReadableMap
 import com.facebook.react.bridge.WritableArray
 import com.facebook.react.bridge.WritableMap
@@ -152,6 +153,54 @@ class AnythingPlayerModule(reactContext: ReactApplicationContext) : NativeAnythi
     val clamped = points.toInt().coerceIn(16, 4096)
     main.post { AnythingPlayerRuntime.players[playerId]?.setAudioSampling(enabled, clamped) }
     return true
+  }
+
+  // ── Outputs, Cast and the voice catalog ──
+  // Compile-only stubs for the new members of the JS ⇄ native contract: the
+  // native routing, Cast and catalog glue is its own commit and lands here.
+
+  override fun showRoutePicker(playerId: String?, promise: Promise) {
+    promise.reject("NOT_IMPLEMENTED", "Outputs are not implemented on Android yet.", null)
+  }
+
+  override fun isRoutePickerAvailable(): Boolean = false
+
+  override fun getCastState(): WritableMap =
+    Arguments.createMap().apply {
+      putString("state", "unavailable")
+      putNull("device")
+    }
+
+  override fun configureCast(options: ReadableMap, promise: Promise) {
+    promise.reject("NOT_IMPLEMENTED", "Cast is not implemented on Android yet.", null)
+  }
+
+  override fun showCastPicker(promise: Promise) {
+    promise.reject("NOT_IMPLEMENTED", "Cast is not implemented on Android yet.", null)
+  }
+
+  override fun stopCasting(promise: Promise) {
+    promise.reject("NOT_IMPLEMENTED", "Cast is not implemented on Android yet.", null)
+  }
+
+  override fun setCatalog(items: ReadableArray, options: ReadableMap, promise: Promise) {
+    promise.reject("NOT_IMPLEMENTED", "The voice catalog is not implemented on Android yet.", null)
+  }
+
+  override fun searchCatalog(request: ReadableMap, promise: Promise) {
+    promise.resolve(Arguments.createArray())
+  }
+
+  override fun playFromSearch(request: ReadableMap, playerId: String?, promise: Promise) {
+    promise.resolve(Arguments.createMap().apply { putNull("item") })
+  }
+
+  override fun setSearchHandlerEnabled(enabled: Boolean) {
+    // No-op until the native catalog glue lands.
+  }
+
+  override fun resolveSearchRequest(requestId: String, result: ReadableMap) {
+    // No-op until the native catalog glue lands.
   }
 
   /** JS reload / React host teardown: no JS can control these players any more. */

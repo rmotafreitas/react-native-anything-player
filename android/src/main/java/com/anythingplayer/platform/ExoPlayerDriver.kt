@@ -418,6 +418,10 @@ internal class ExoPlayerDriver(
     player?.setPlaybackSpeed(this.rate)
   }
 
+  override fun switchOutput(outputId: String) {
+    // The local player is one output; a routing driver will switch outputs.
+  }
+
   override fun sample(): PlaybackSample {
     val p = player ?: return PlaybackSample()
     return PlaybackSample(p.currentPosition / 1000.0, p.bufferedPosition / 1000.0)
