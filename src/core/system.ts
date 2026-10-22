@@ -145,9 +145,16 @@ export function stopCasting(): Promise<void> {
 // ── Catalog & voice ──
 
 /** What native stores for a catalog item: resolved artwork, normalized source. */
+/** Folder ids of the car and watch browse tree start with this; catalog ids may not. */
+const RESERVED_ID_PREFIX = 'rnap:';
+
 function serializeItem(item: CatalogItem): Record<string, unknown> {
   if (!item || typeof item.id !== 'string' || item.id.trim() === '')
     throw invalid('A catalog item needs a non-empty `id`.');
+  if (item.id.startsWith(RESERVED_ID_PREFIX))
+    throw invalid(
+      `Catalog item id "${item.id}" starts with "${RESERVED_ID_PREFIX}", which the car and watch browse tree reserves for its folders.`
+    );
   if (typeof item.title !== 'string' || item.title.trim() === '')
     throw invalid(`Catalog item "${item.id}" needs a non-empty \`title\`.`);
   const source = normalizeSource(item.source);

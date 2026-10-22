@@ -576,7 +576,10 @@ export type SearchFocus =
 
 /** Something voice assistants (and `playFromSearch()`) can find and play. */
 export interface CatalogItem {
-  /** Unique within the catalog. */
+  /**
+   * Unique within the catalog. Must not start with `rnap:`, which the car and
+   * watch browse tree reserves for its folders (`setCatalog` rejects it).
+   */
   id: string;
   /** What people call it: a station's or a song's name. */
   title: string;

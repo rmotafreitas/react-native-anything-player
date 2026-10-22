@@ -267,6 +267,9 @@ describe('catalog', () => {
     await expect(setCatalog([{ ...station, id: '' }])).rejects.toMatchObject({
       code: 'INVALID_ARGUMENT',
     });
+    await expect(
+      setCatalog([{ ...station, id: 'rnap:group:Jazz' }])
+    ).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
     await expect(setCatalog([{ ...station, title: '' }])).rejects.toMatchObject(
       { code: 'INVALID_ARGUMENT' }
     );

@@ -32,8 +32,10 @@ internal object MediaLibrary {
   const val KEYWORDS_EXTRA = "com.anythingplayer.KEYWORDS"
   /** Android Auto: the app uses content-style hints. */
   private const val CONTENT_STYLE_SUPPORTED = "android.media.browse.CONTENT_STYLE_SUPPORTED"
-  /** Android Auto and Automotive show at most this many tabs. */
+  /** Android Auto and Automotive show at most this many tabs, unless the browser's root hints say otherwise. */
   private const val CAR_TABS = BrowseTree.DEFAULT_ROOT_LIMIT
+  /** Android Auto and Automotive do not page: a folder with more children than this is split into slices. */
+  private const val CAR_FOLDER = BrowseTree.DEFAULT_FOLDER_LIMIT
 
   fun root(context: Context): MediaItem =
     MediaItem.Builder()
@@ -51,16 +53,19 @@ internal object MediaLibrary {
   /** A tree, and the catalog entries its leaves stand for. */
   class View(val tree: BrowseTree, val entries: Map<String, CatalogEntry>)
 
-  private data class Key(val revision: Long, val rootLimit: Int, val foldersOnly: Boolean)
+  private data class Key(val revision: Long, val rootLimit: Int, val foldersOnly: Boolean, val folderLimit: Int)
 
   private var cached: Pair<Key, View>? = null
 
-  /** What a browser can show: a car lists folders at the root (tabs, at most [CAR_TABS]); any other browser, everything. */
+  /**
+   * What a browser can show: a car lists folders at the root (tabs, [carTabs] at most, else [CAR_TABS]) and
+   * folders of at most [CAR_FOLDER] children (it cannot page); any other browser, everything.
+   */
   @Synchronized
-  fun view(snapshot: CatalogSnapshot, car: Boolean): View {
-    val key = Key(snapshot.revision, if (car) CAR_TABS else Int.MAX_VALUE, car)
+  fun view(snapshot: CatalogSnapshot, car: Boolean, carTabs: Int? = null): View {
+    val key = Key(snapshot.revision, if (car) carTabs ?: CAR_TABS else Int.MAX_VALUE, car, if (car) CAR_FOLDER else 0)
     cached?.takeIf { it.first == key }?.let { return it.second }
-    val options: BrowseOptions = snapshot.browse.copy(rootLimit = key.rootLimit, foldersOnly = key.foldersOnly)
+    val options: BrowseOptions = snapshot.browse.copy(rootLimit = key.rootLimit, foldersOnly = key.foldersOnly, folderLimit = key.folderLimit)
     val items = snapshot.items.map { BrowseItem(it.id, it.title, it.kind, it.group, it.artwork, it.artist) }
     return View(BrowseTree(items, options, snapshot.recentIds), snapshot.items.associateBy { it.id }).also { cached = key to it }
   }
@@ -79,6 +84,10 @@ internal object MediaLibrary {
     return MediaItem.Builder().setMediaId(node.id).setMediaMetadata(metadata.build()).build()
   }
 
+  /** The tabs a browser's root hints allow ([MediaConstants.EXTRAS_KEY_ROOT_CHILDREN_LIMIT]); [CAR_TABS] when it says nothing. */
+  fun carTabs(hints: MediaLibraryService.LibraryParams?): Int =
+    hints?.extras?.getInt(MediaConstants.EXTRAS_KEY_ROOT_CHILDREN_LIMIT, 0)?.takeIf { it > 0 } ?: CAR_TABS
+
   /** The children of a folder, one page, as media items. Null when there is no such folder. */
   fun children(view: View, id: String, page: Int, pageSize: Int): List<MediaItem>? {
     val nodes = view.tree.children(id) ?: return null
@@ -87,8 +96,9 @@ internal object MediaLibrary {
     return nodes.subList(from, minOf(from + size, nodes.size)).mapNotNull { mediaItem(view, it) }
   }
 
-  /** The item a browser asked for by id: a folder, a catalog item, or null. */
-  fun itemById(view: View, id: String): MediaItem? = view.tree.node(id)?.let { mediaItem(view, it) } ?: Voice.entry(id)?.let(::item)
+  /** The item a browser asked for by id: a folder, a catalog item, or null (`rnap:` ids are folders only). */
+  fun itemById(view: View, id: String): MediaItem? =
+    view.tree.node(id)?.let { mediaItem(view, it) } ?: if (id.startsWith(BrowseTree.RESERVED_PREFIX)) null else Voice.entry(id)?.let(::item)
 
   /**
    * How a browsable folder lays out its children in a car: items as a grid for

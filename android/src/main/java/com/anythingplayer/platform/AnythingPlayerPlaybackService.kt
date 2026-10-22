@@ -17,6 +17,7 @@ import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
+import java.util.WeakHashMap
 
 /**
  * Hosts the Media3 session that powers the media notification, lock screen,
@@ -109,6 +110,9 @@ class AnythingPlayerPlaybackService : MediaLibraryService() {
  */
 @OptIn(UnstableApi::class)
 private class LibraryCallback(private val context: Context) : MediaLibraryService.MediaLibrarySession.Callback {
+  /** The tabs each car browser said it shows (its root hints), by browser; read when it lists the folders. */
+  private val carTabs = WeakHashMap<MediaSession.ControllerInfo, Int>()
+
   override fun onGetLibraryRoot(
     session: MediaLibraryService.MediaLibrarySession,
     browser: MediaSession.ControllerInfo,
@@ -119,6 +123,7 @@ private class LibraryCallback(private val context: Context) : MediaLibraryServic
       if (Voice.snapshot().lastPlayedId == null) return Futures.immediateFuture(LibraryResult.ofError(SessionError.ERROR_NOT_SUPPORTED))
       return Futures.immediateFuture(LibraryResult.ofItem(MediaLibrary.resumeRoot(), MediaLibrary.rootParams(recent = true)))
     }
+    synchronized(carTabs) { carTabs[browser] = MediaLibrary.carTabs(params) }
     return Futures.immediateFuture(LibraryResult.ofItem(MediaLibrary.root(context), MediaLibrary.rootParams(recent = false)))
   }
 
@@ -131,11 +136,15 @@ private class LibraryCallback(private val context: Context) : MediaLibraryServic
     params: MediaLibraryService.LibraryParams?,
   ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> {
     val snapshot = Voice.snapshot()
+    val car = isCar(session, browser)
     val children =
       if (parentId == MediaLibrary.RESUME_ID) {
         MediaLibrary.resumed(snapshot)?.let(::listOf)?.let { MediaLibrary.pageOf(it, page, pageSize) }
+      } else if (car) {
+        // Android Auto and Automotive do not page: the whole folder (long ones are slices of the tree).
+        MediaLibrary.children(view(snapshot, browser, car = true), parentId, 0, Int.MAX_VALUE)
       } else {
-        MediaLibrary.children(MediaLibrary.view(snapshot, isCar(session, browser)), parentId, page, pageSize)
+        MediaLibrary.children(view(snapshot, browser, car = false), parentId, page, pageSize)
       }
     if (children == null) return Futures.immediateFuture(LibraryResult.ofError(SessionError.ERROR_BAD_VALUE))
     return Futures.immediateFuture(LibraryResult.ofItemList(ImmutableList.copyOf(children), params))
@@ -147,11 +156,14 @@ private class LibraryCallback(private val context: Context) : MediaLibraryServic
     mediaId: String,
   ): ListenableFuture<LibraryResult<MediaItem>> {
     if (mediaId == MediaLibrary.ROOT_ID) return Futures.immediateFuture(LibraryResult.ofItem(MediaLibrary.root(context), null))
-    val item = MediaLibrary.itemById(MediaLibrary.view(Voice.snapshot(), isCar(session, browser)), mediaId)
+    val item = MediaLibrary.itemById(view(Voice.snapshot(), browser, isCar(session, browser)), mediaId)
     return Futures.immediateFuture(if (item == null) LibraryResult.ofError(SessionError.ERROR_BAD_VALUE) else LibraryResult.ofItem(item, null))
   }
 
-  /** Android Auto (on the phone) and Android Automotive OS (in the car): folders at the root, a few tabs. */
+  private fun view(snapshot: CatalogSnapshot, browser: MediaSession.ControllerInfo, car: Boolean) =
+    MediaLibrary.view(snapshot, car, synchronized(carTabs) { carTabs[browser] })
+
+  /** Android Auto (on the phone) and Android Automotive OS (in the car): folders at the root, a few tabs, no paging. */
   private fun isCar(session: MediaLibraryService.MediaLibrarySession, browser: MediaSession.ControllerInfo) =
     session.isAutomotiveController(browser) || session.isAutoCompanionController(browser)
 
