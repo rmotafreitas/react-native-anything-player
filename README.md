@@ -36,7 +36,7 @@ Read from each library's published source; sizes, methodology and the gaps RNAP 
 - **Voice assistants**: a catalog stored on the device answers "Hey Siri / Hey Google, play X on MyApp", even with the app closed; Siri shortcuts on iOS 16+; the same search on the web (`playFromSearch`).
 - **Song progress for radio**: give the current song's duration and the lock screen shows its progress, advanced natively.
 - **Web**: the same API in Expo web, React Native Web, React apps without React Native (`react-native-anything-player/react`: Vite, Next.js) and plain pages (`react-native-anything-player/web`), on a TypeScript twin of the engine that passes the same conformance suite: ICY metadata over fetch + MSE, splices, recovery, the Media Session, the visualizer.
-- **Observability**: a native ring buffer of structured engine traces, readable any time with `player.getDiagnostics()`, and a CLI (`doctor`) that checks an app's setup and its stream URLs.
+- **Observability**: a native ring buffer of structured engine traces, readable any time with `player.getDiagnostics()`, and a CLI (`rnap`) that lists and switches the build modules, estimates their size, checks an app's setup and its stream URLs, and rewrites the mechanical part of a migration.
 - **Small and fast**: a TurboModule with zero JS dependencies; progress is a synchronous JSI read (~10 µs), so a progress bar needs no events. Opt into `progress` events from a native timer (`progressInterval`) when JS must follow the audio where its own timers are frozen.
 
 ## Install
@@ -123,7 +123,7 @@ function NowPlaying() {
 | [Debugging & troubleshooting](docs/debugging.md) | Diagnostics, logs, common problems, FAQ |
 | [Architecture](docs/architecture.md) | Design decisions and research |
 | [Testing](docs/testing.md) | Test layers, conformance suite, device tests, soak results |
-| [CLI](docs/cli.md) | `doctor` and `init`: check and fix an app's setup |
+| [CLI](docs/cli.md) | `modules`, `add`, `remove`, `size`, `info` and `migrate`: switch build modules, estimate their size, report a setup, rewrite a migration; `doctor` and `init` check and fix an app's setup |
 | [Roadmap](docs/roadmap.md) | What RNAP still needs, in priority order |
 | [Changelog](CHANGELOG.md), [Versioning & releases](docs/releases.md) | Every release; what a version number promises |
 

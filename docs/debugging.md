@@ -31,7 +31,7 @@ Nothing is logged at default levels in production.
 
 ## Project setup check
 
-Most of the symptoms below start before the app runs. `npx react-native-anything-player doctor` checks the project against the requirements — versions, the New Architecture, the iOS background mode, Cast and Siri keys, Pods, the Android assistant hook — and probes stream URLs for cleartext, ICY and CORS. `npx react-native-anything-player init` applies the fixes that are safe to automate. See [CLI](cli.md).
+Most of the symptoms below start before the app runs. `npx rnap doctor` checks the project against the requirements — versions, the New Architecture, the iOS background mode, Cast and Siri keys, Pods, the Android assistant hook — and probes stream URLs for cleartext, ICY and CORS. `npx rnap init` applies the fixes that are safe to automate. `npx rnap modules` says which build modules this project has. See [CLI](cli.md).
 
 ## Inspecting the system's view (Android)
 

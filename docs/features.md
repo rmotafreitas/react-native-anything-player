@@ -185,7 +185,7 @@ See [Voice assistants](voice.md).
 | | iOS | Android | Web (every engine) |
 |---|---|---|---|
 | Expo config plugin | ✓ | ✓ | – (nothing to configure) |
-| `npx react-native-anything-player doctor` / `init` | ✓ | ✓ | ◐ stream URL checks (CORS, ICY) |
+| `npx rnap doctor` / `init` | ✓ | ✓ | ◐ stream URL checks (CORS, ICY) |
 | TypeScript types | ✓ | ✓ | ✓ |
 | Zero runtime JS dependencies | ✓ | ✓ | ✓ (hls.js is optional and yours to add) |
 | Size in a release build | not measured yet | about 1.2 MB of a release APK, with R8 ([measured](comparison.md#added-to-a-release-apk)) | about 28 KB of JS on page load ([measured](comparison.md#react-and-plain-web-pages)) |

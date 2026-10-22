@@ -43,6 +43,12 @@ With an `id`, a player outlives the JavaScript that created it, and `new Player(
 
 App-wide settings live outside `Player`: the voice catalog (`setCatalog`, [Voice assistants](voice.md)), Cast (`configureCast` on the web, [Casting & AirPlay](routes-and-casting.md)) and hls.js on the web (`configureHls`, [Web](web.md#hls)).
 
+## Modules
+
+Some parts of RNAP are chosen at build time, not at runtime: HLS, Cast, Siri, Assistant and the iOS background mode. `npx rnap modules` prints each one with the state of this project, `npx rnap add` and `npx rnap remove` write the switch, and [CLI](cli.md#modules) has the table with the platforms and the defaults.
+
+The switch is a native file — `android/gradle.properties`, `ios/Podfile.properties.json`, the app's `Info.plist` — or an option of the Expo config plugin, described in [Build-time options](#build-time-options). Sound and car browsing are planned for a later version: they have no switch yet, and the CLI says so instead of writing one.
+
 ## Build-time options
 
 | Where | Option | Effect |
