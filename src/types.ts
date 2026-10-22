@@ -599,7 +599,7 @@ export interface CatalogItem {
    * Automotive, CarPlay) and Wear OS show: `"Jazz"`, or `"Podcasts/Daily"` for
    * a folder inside a folder. `/` nests; segments are trimmed and compared
    * exactly. The top-level groups become the tabs. Items without a group are
-   * listed under a "More" folder. See [Cars & watches](cars-and-watches.md).
+   * listed under a "More" folder. See the Cars & watches guide.
    */
   group?: string;
 }
@@ -647,7 +647,14 @@ export interface BrowseOptions {
   /** Top-level group names in the order the tabs should have; groups not named follow in catalog order. */
   rootOrder?: string[];
   /** Names of the folders RNAP adds (English by default). */
-  titles?: { recent?: string; favorites?: string; more?: string };
+  titles?: {
+    /** Default `"Recently played"`. */
+    recent?: string;
+    /** Default `"Favorites"`. */
+    favorites?: string;
+    /** Default `"More"`: ungrouped items, and groups that did not fit in the tabs. */
+    more?: string;
+  };
 }
 
 /**
