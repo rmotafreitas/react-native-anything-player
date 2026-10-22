@@ -47,6 +47,30 @@ enum InterruptionReason: String {
   case system
 }
 
+/// The kind of output the audio goes to. Mirrors `AudioRouteKind` in TS.
+enum AudioRouteKind: String {
+  case speaker
+  case headphones
+  case bluetooth
+  case airplay
+  case cast
+  case car
+  case hdmi
+  case usb
+  case other
+  case unknown
+}
+
+/// Where a player's audio goes. See the Casting and AirPlay guide.
+struct AudioRoute: Equatable {
+  let kind: AudioRouteKind
+  /// The device's name when the platform tells it ("Living Room"), else `nil`.
+  let name: String?
+
+  /// The route before the platform reports one: the engine never guesses.
+  static let unknown = AudioRoute(kind: .unknown, name: nil)
+}
+
 struct Interruption: Equatable {
   let reason: InterruptionReason
   /// Whether the OS may end it by resuming playback on its own.
@@ -165,6 +189,7 @@ struct Status: Equatable {
   var volume: Double = 1
   var muted = false
   var rate: Double = 1
+  var route: AudioRoute = .unknown
 }
 
 /// One structured diagnostic line (ring-buffered natively, optionally streamed).

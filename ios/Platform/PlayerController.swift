@@ -413,6 +413,7 @@ enum Serialization {
       "volume": s.volume,
       "muted": s.muted,
       "rate": s.rate,
+      "route": ["kind": s.route.kind.rawValue, "name": optional(s.route.name)],
     ]
     if let i = s.interruption {
       dict["interruption"] = ["reason": i.reason.rawValue, "resumable": i.resumable, "since": i.since]

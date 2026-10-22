@@ -114,6 +114,10 @@ final class ConformanceTests: XCTestCase {
       h.engine.networkChanged(
         network == "online" ? .online : network == "offline" ? .offline : .unknown,
         interfaceChanged: step["handoff"] as? Bool ?? false)
+    } else if let route = step["route"] as? String {
+      h.engine.routeChanged(
+        AudioRoute(
+          kind: AudioRouteKind(rawValue: route) ?? .unknown, name: step["name"] as? String))
     } else if step["platformReset"] != nil {
       h.engine.platformReset()
     } else if let ms = step["advance"] as? NSNumber {
@@ -145,6 +149,13 @@ final class ConformanceTests: XCTestCase {
     case "rate": try h.engine.setRate(value)
     case "duck": h.engine.setDucked(step["value"] as? Bool ?? false)
     case "foreground": h.engine.appForegrounded()
+    case "handoff":
+      h.engine.handoff(
+        route: AudioRoute(
+          kind: AudioRouteKind(rawValue: step["route"] as? String ?? "") ?? .unknown,
+          name: step["name"] as? String),
+        outputId: step["output"] as? String ?? "",
+        resume: step["resume"] as? Bool ?? false)
     default: XCTFail("unknown call \(call)")
     }
   }
@@ -164,6 +175,8 @@ final class ConformanceTests: XCTestCase {
       case "interruptionResumable":
         XCTAssertEqual(s.interruption?.resumable, value as? Bool, "\(at): interruptionResumable")
       case "error": XCTAssertEqual(s.error?.code.rawValue, value as? String, "\(at): error")
+      case "route": XCTAssertEqual(s.route.kind.rawValue, value as? String, "\(at): route")
+      case "routeName": XCTAssertEqual(s.route.name, value as? String, "\(at): routeName")
       case "reconnectAttempt":
         XCTAssertEqual(s.reconnect?.attempt, (value as? NSNumber)?.intValue, "\(at): reconnectAttempt")
       case "commands": XCTAssertEqual(h.driver.commands, value as? [String], "\(at): commands")

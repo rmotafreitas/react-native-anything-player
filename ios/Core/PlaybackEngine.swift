@@ -28,6 +28,10 @@ protocol EngineDriver: AnyObject {
   /// Effective output volume (volume × mute × duck), 0...1.
   func setVolume(_ effective: Double)
   func setRate(_ rate: Double)
+  /// Send what follows to another output (`"local"`, `"cast:<device>"`). Only
+  /// the platform's routing driver implements a real switch; the engine calls
+  /// it from `handoff`, after unloading the item from the previous output.
+  func switchOutput(_ outputId: String)
   func sample() -> PlaybackSample
 }
 
@@ -86,6 +90,12 @@ final class PlaybackEngine {
   private var volume: Double = 1
   private var muted = false
   private var rate: Double = 1
+
+  // ── Output ──
+  private var route: AudioRoute = .unknown
+  private var outputId = "local"
+  /// The audio plays on another device (Cast): the local audio rules are off.
+  private var remote = false
 
   // ── Timing (monotonic ms) ──
   private var lastOpenAt: Int64?
@@ -155,6 +165,7 @@ final class PlaybackEngine {
     s.volume = volume
     s.muted = muted
     s.rate = rate
+    s.route = route
     return s
   }
 
@@ -165,9 +176,11 @@ final class PlaybackEngine {
     playWhenReady && (state == .loading || state == .buffering || state == .reconnecting)
   }
 
-  /// Whether the player holds (or may soon re-take) audio focus.
+  /// Whether the player holds (or may soon re-take) audio focus. A remote
+  /// output always has it.
   var needsAudioFocus: Bool {
-    playWhenReady || (interruption?.resumable ?? false)
+    if remote { return false }
+    return playWhenReady || (interruption?.resumable ?? false)
   }
 
   /// Native observations for any other generation are stale and must be dropped.
@@ -195,7 +208,7 @@ final class PlaybackEngine {
     resetRecovery()
     resumePosition = startPosition
     playWhenReady = wanted
-    if wanted { applyFocus(delegate?.engineRequestsAudioFocus() ?? .granted) }
+    if wanted { applyFocus(requestFocus()) }
     log("load", ["uri": newSource.uri, "autoplay": "\(playWhenReady)"])
     open(startPosition: startPosition, reason: "load")
     commit()
@@ -208,7 +221,7 @@ final class PlaybackEngine {
       commit()
       return
     }
-    let focus = delegate?.engineRequestsAudioFocus() ?? .granted
+    let focus = requestFocus()
     switch focus {
     case .denied:
       interruption = Interruption(reason: .audioFocusDenied, resumable: false, since: clock.wallMs)
@@ -336,7 +349,8 @@ final class PlaybackEngine {
   func setDucked(_ ducked: Bool) {
     guard !released else { return }
     duckFactor = ducked ? 0.2 : 1
-    applyVolume()
+    // The receiver mixes its own audio: ducking is the phone's business.
+    if !remote { applyVolume() }
   }
 
   func release() {
@@ -444,25 +458,71 @@ final class PlaybackEngine {
   func onPausedExternally(generation gen: Int, reason: InterruptionReason) {
     guard accepts(gen) else { return logStale("paused externally", gen) }
     guard playWhenReady else { return }
-    interruptionBegan(reason: reason, resumable: false)
+    systemPause(reason: reason, resumable: false)
+  }
+
+  // MARK: - Outputs
+
+  /// The local output changed (headphones, AirPlay, Bluetooth). Ignored while casting.
+  func routeChanged(_ route: AudioRoute) {
+    guard !released else { return }
+    if remote {
+      log("route ignored", ["kind": route.kind.rawValue, "note": "remote output"])
+      return
+    }
+    self.route = route
+    commit()
+  }
+
+  /// The audio moves to another output: a Cast receiver, or back to the device.
+  /// The item is unloaded from the previous output and, if it was active,
+  /// re-opened on the new one at the same position. `resume` keeps the play
+  /// intent; without it the item arrives paused. An inactive item (stopped,
+  /// ended, failed) re-opens on the new output at the next `play()`.
+  func handoff(route: AudioRoute, outputId: String, resume: Bool) {
+    guard !released else { return }
+    if outputId == self.outputId {
+      self.route = route
+      commit()
+      return
+    }
+    let position = handoffPosition()
+    // A paused stream whose connection was released stays released.
+    let active =
+      source != nil && Self.continuesIntent(state)
+      && !(state == .paused && connectionReleased)
+    if source != nil { driver.unload() }
+    driver.switchOutput(outputId)
+    self.outputId = outputId
+    self.route = route
+    remote = route.kind == .cast
+    log("handoff", ["to": outputId, "resume": "\(resume)"])
+    applyVolume()
+    if active {
+      playWhenReady = resume && playWhenReady
+      resetRecovery()
+      resumePosition = position
+      if playWhenReady { applyFocus(requestFocus()) }
+      open(startPosition: position, reason: "handoff")
+    } else {
+      // Old-output callbacks are stale; nothing is loaded on the new one.
+      generation += 1
+      readyForGeneration = false
+      if source != nil { connectionReleased = true }
+    }
+    commit()
   }
 
   // MARK: - System events
 
   func interruptionBegan(reason: InterruptionReason, resumable: Bool) {
     guard !released else { return }
-    guard playWhenReady else {
-      // Nothing to pause. A permanent loss while paused cancels a pending resume.
-      if let current = interruption, current.resumable, !resumable {
-        interruption = Interruption(reason: reason, resumable: false, since: current.since)
-      }
-      commit()
+    if remote {
+      // A call on the phone does not pause the living-room speaker.
+      log("interruption ignored", ["reason": reason.rawValue, "note": "remote output"])
       return
     }
-    playWhenReady = false
-    interruption = Interruption(reason: reason, resumable: resumable, since: clock.wallMs)
-    pauseIntent(cause: "system: \(reason.rawValue)")
-    commit()
+    systemPause(reason: reason, resumable: resumable)
   }
 
   /// The OS ended an interruption. `shouldResume` folds in the platform hints
@@ -484,6 +544,11 @@ final class PlaybackEngine {
     guard !released else { return }
     let previous = network
     network = next
+    if remote {
+      // The receiver has its own network: the phone's must not reload it.
+      commit()
+      return
+    }
     let t = now
     if previous == .online && next == .offline {
       markNetworkEdge(t)
@@ -513,7 +578,7 @@ final class PlaybackEngine {
   /// through its backoff deadline; audio that is wanted but not flowing is
   /// recovered now. An open that is still young is left alone.
   func appForegrounded() {
-    guard !released, playWhenReady else { return }
+    guard !released, playWhenReady, !remote else { return }
     if state == .reconnecting || state == .buffering || state == .loading {
       attemptReconnect(reason: "app foregrounded")
     }
@@ -523,7 +588,7 @@ final class PlaybackEngine {
   /// The platform media stack was reset (iOS media services); the driver has
   /// already been rebuilt. Re-open what was loaded, keeping the intent.
   func platformReset() {
-    guard !released, source != nil, state != .idle else { return }
+    guard !released, !remote, source != nil, state != .idle else { return }
     log("platform reset", [:])
     if state == .stopped || state == .ended || state == .error {
       connectionReleased = true
@@ -582,6 +647,12 @@ final class PlaybackEngine {
     }
   }
 
+  /// Audio focus is the device's: a remote output always has it.
+  private func requestFocus() -> FocusResult {
+    if remote { return .granted }
+    return delegate?.engineRequestsAudioFocus() ?? .granted
+  }
+
   private func applyFocus(_ focus: FocusResult) {
     switch focus {
     case .granted: break
@@ -592,6 +663,23 @@ final class PlaybackEngine {
       playWhenReady = false
       interruption = Interruption(reason: .audioFocusDenied, resumable: false, since: clock.wallMs)
     }
+  }
+
+  /// A system pause (interruptions and the driver share it). `playWhenReady`
+  /// may already be false when the OS refuses to start playback.
+  private func systemPause(reason: InterruptionReason, resumable: Bool) {
+    guard playWhenReady else {
+      // Nothing to pause. A permanent loss while paused cancels a pending resume.
+      if let current = interruption, current.resumable, !resumable {
+        interruption = Interruption(reason: reason, resumable: false, since: current.since)
+      }
+      commit()
+      return
+    }
+    playWhenReady = false
+    interruption = Interruption(reason: reason, resumable: resumable, since: clock.wallMs)
+    pauseIntent(cause: "system: \(reason.rawValue)")
+    commit()
   }
 
   /// Turns the intent on from any state (focus already granted).
@@ -621,14 +709,24 @@ final class PlaybackEngine {
     case .stopped, .error:
       reopen(reason: cause, startPosition: isLive ? nil : resumePosition)
     case .ended:
-      resumePosition = 0
-      setState(.buffering, cause: "\(cause): restart")
-      beginWaiting()
-      driver.seek(to: 0)
-      driver.play()
+      restartFromEnd(cause: cause)
     case .buffering, .playing, .reconnecting:
       break
     }
+  }
+
+  /// An ended item that is still open restarts in place; one that left its
+  /// output (a handoff) is opened again.
+  private func restartFromEnd(cause: String) {
+    resumePosition = 0
+    if connectionReleased {
+      reopen(reason: "\(cause): restart", startPosition: 0)
+      return
+    }
+    setState(.buffering, cause: "\(cause): restart")
+    beginWaiting()
+    driver.seek(to: 0)
+    driver.play()
   }
 
   /// Turns the intent off (user or system). `playWhenReady` already false.
@@ -691,6 +789,14 @@ final class PlaybackEngine {
   private func currentPositionEstimate() -> Double? {
     guard !isLive else { return nil }
     return lastPosition > 0 ? lastPosition : nil
+  }
+
+  /// Where the item is, read before it leaves its output.
+  private func handoffPosition() -> Double? {
+    guard !isLive else { return nil }
+    let sampled = state == .playing || state == .buffering || state == .paused
+    if sampled && readyForGeneration && !connectionReleased { rememberPosition() }
+    return resumePosition ?? currentPositionEstimate()
   }
 
   private func rememberPosition() {
@@ -779,7 +885,7 @@ final class PlaybackEngine {
       return
     }
     if recoveringSince == nil { recoveringSince = now }
-    if network == .offline && offlineSkips < RecoveryPolicy.offlineProbeEvery {
+    if !remote && network == .offline && offlineSkips < RecoveryPolicy.offlineProbeEvery {
       offlineSkips += 1
       let delay = backoff.next()
       nextAttemptAt = now + delay
@@ -817,6 +923,9 @@ final class PlaybackEngine {
       if sample.position > lastPosition + 0.05 || sample.position < lastPosition - 0.5 {
         lastPosition = sample.position
         lastPositionAdvanceAt = t
+      } else if remote {
+        // A receiver's position is interpolated between its reports: only the
+        // state it reports (buffering, failed) counts.
       } else {
         let limit = suspect ? RecoveryPolicy.suspectSilentStallMs : RecoveryPolicy.silentStallMs
         if t - lastPositionAdvanceAt >= limit && rate > 0 {
@@ -834,6 +943,13 @@ final class PlaybackEngine {
         recoveringSince = nil
       }
     case .buffering:
+      if remote {
+        // No buffer to watch on a receiver: only a stall that lasts too long.
+        if let stalled = stallStartedAt, t - stalled >= RecoveryPolicy.stallMaxMs {
+          attemptReconnect(reason: "stalled \(t - stalled)ms")
+        }
+        break
+      }
       let sample = driver.sample()
       if sample.bufferedPosition > lastBuffered + 0.01 {
         lastBuffered = sample.bufferedPosition
@@ -883,7 +999,8 @@ final class PlaybackEngine {
   }
 
   private func applyVolume() {
-    driver.setVolume(muted ? 0 : volume * duckFactor)
+    let duck = remote ? 1 : duckFactor
+    driver.setVolume(muted ? 0 : volume * duck)
   }
 
   private func settlePendingLoad(_ outcome: LoadOutcome) {
