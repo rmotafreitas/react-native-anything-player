@@ -9,45 +9,23 @@ open release pull request.
 
 ## [1.2.0](https://github.com/rmotafreitas/react-native-anything-player/compare/v1.1.1...v1.2.0) (2026-10-23)
 
+Short sounds, cars and watches, a sleep timer, and a CLI that sets up the optional parts. Everything is additive except one rule for catalog ids (see **Upgrading**).
 
 ### Added
 
-* **android:** car browsers get whole folders, sliced at 100, and their own tab limit ([32aaf05](https://github.com/rmotafreitas/react-native-anything-player/commit/32aaf05e346b8ada20992f012100a2e043e46ab5))
-* **android:** serve the browse tree from the media library; opt-in Android Auto flag ([c3392a1](https://github.com/rmotafreitas/react-native-anything-player/commit/c3392a16bf0c00e2ded72be0a48605fbdfb31c20))
-* **browse:** split long folders into slices and reserve the rnap: id prefix ([73fcf7e](https://github.com/rmotafreitas/react-native-anything-player/commit/73fcf7e922ac87a490f431f1c124335314862695))
-* **catalog:** groups, browse options and a Kotlin browse-tree builder ([5a64002](https://github.com/rmotafreitas/react-native-anything-player/commit/5a64002fd70d2bf12afa6a357f105d3dc34d6ece))
-* **catalog:** setFavorites and web keeps groups and favorites ([b3c8bb2](https://github.com/rmotafreitas/react-native-anything-player/commit/b3c8bb2bb54fceed1a48181127d72504563e6e75))
-* **cli:** add modules, add, remove, size, info and migrate ([bb686f9](https://github.com/rmotafreitas/react-native-anything-player/commit/bb686f964dfbe59d503b624a20e37df0b0ef547a))
-* **cli:** sound and car are real modules; background-audio removal is explicit ([d2fac08](https://github.com/rmotafreitas/react-native-anything-player/commit/d2fac08bda691157005388eda170a655260c1a86))
-* **engine:** sleep timer and fades in the Swift and Kotlin twins ([4356ccf](https://github.com/rmotafreitas/react-native-anything-player/commit/4356ccf474fcaec6c02ac097cb8612469427b704))
-* **ios:** browse tree, CarPlay audio scene (opt-in RNAP_CAR), Expo plugin car option ([8ad7bb1](https://github.com/rmotafreitas/react-native-anything-player/commit/8ad7bb199d5faef0c4e849a25c9d16baea586e94))
-* **ios:** sleep timer and fades in the iOS module ([78fe694](https://github.com/rmotafreitas/react-native-anything-player/commit/78fe694858892ee5773bf3cd13e37e6d772e8bd9))
-* sleep timer and volume fades in the web engine and the Player API ([8af6c10](https://github.com/rmotafreitas/react-native-anything-player/commit/8af6c107d7c6701c612749caea3b88a0baacdf44))
-* **sound:** Android backend on SoundPool, behind rnapSound ([af110ca](https://github.com/rmotafreitas/react-native-anything-player/commit/af110ca8a637215144f0858888e3eee3181e3964))
-* **sound:** iOS backend on AVAudioEngine, behind RNAP_SOUND ([33a394b](https://github.com/rmotafreitas/react-native-anything-player/commit/33a394ba67b0196b30f4ac27319d2500f16a9eb6))
-* **sound:** the Expo plugin's sound option ([0313925](https://github.com/rmotafreitas/react-native-anything-player/commit/03139254b9f8723e244ad33e136419b48d848a8f))
-* **sound:** the Sound API core, the Web Audio backend and the native bridge (JS side) ([0b569f6](https://github.com/rmotafreitas/react-native-anything-player/commit/0b569f6e94251f11de4c6c9812050e8464f2cd5f))
-
-
-### Fixed
-
-* **carplay:** continue a list past CarPlay's row limit in a More… row ([a44054d](https://github.com/rmotafreitas/react-native-anything-player/commit/a44054d194a1de6e4b26a918a96ebca27bf020d8))
-* **cli:** a module under 1 KB says so; size tests read the measured data ([9daf8c3](https://github.com/rmotafreitas/react-native-anything-player/commit/9daf8c3c4abbaa840945d4024b810e0f7dbe817a))
-* **cli:** migrate namespace imports, status payloads and line endings ([6378d8c](https://github.com/rmotafreitas/react-native-anything-player/commit/6378d8cae7b762419d1299a2585ffa82e30fd1f8))
-* **cli:** no write through a planted temporary file; leave read-only files alone ([300f016](https://github.com/rmotafreitas/react-native-anything-player/commit/300f016eccdecae88125fea2a134fd5be00bb6c0))
-* **cli:** refuse stale writes, write atomically, and patch JSON in place ([6c0cf66](https://github.com/rmotafreitas/react-native-anything-player/commit/6c0cf66b5512232645fa1143ae45a475159e0927))
-* **ios:** keep the CarPlay scene delegate out of the generated Swift header ([3dda8cf](https://github.com/rmotafreitas/react-native-anything-player/commit/3dda8cfa63442c0a3cc561dd2131ae721c90a206))
-* **sound:** one shared SoundPool on Android; loads settle when the module is released ([98ddd47](https://github.com/rmotafreitas/react-native-anything-player/commit/98ddd473d78f785e14afa017a397a5f364cd550d))
-* **sound:** wait up to 3 s for the browser to start audio after a gesture ([05880d3](https://github.com/rmotafreitas/react-native-anything-player/commit/05880d3e10a7c23b1035fcdd48846ef6821f575d))
-* **web:** load the hls.js glue when hls.js is registered, not at play time ([7679dea](https://github.com/rmotafreitas/react-native-anything-player/commit/7679deaa2a58e9da4b43daf75fec9f9998b41d6b))
-* **website:** redirect the API reference's old paths to the player section ([db7e1f4](https://github.com/rmotafreitas/react-native-anything-player/commit/db7e1f43a0de539b6a5c015d32e74abcb424bf0c))
-
+- **Sound API** (`react-native-anything-player/sound`): short sounds for UI clicks and games, preloaded into memory and played with low latency. Several voices at once (the oldest is stolen when all are busy), per-play volume, rate, pan and loop, a handle per voice, and `stopAll()`. It mixes with other audio and has no media session. iOS on AVAudioEngine, Android on one shared SoundPool (32 voices), the web on Web Audio. Opt-in on iOS and Android with the Expo plugin's `sound` option (`rnapSound=true` / `RNAP_SOUND=1` without Expo); always available on the web. New error code `SOUND_UNAVAILABLE`. See [Sound](docs/sound.md).
+- **Cars and watches.** Catalog items take a `group` (`"Jazz"`, `"Podcasts/Daily"`), and the catalog becomes a browse tree in CarPlay, Android Auto, Android Automotive OS and Wear OS, with "Recently played" and favorites (`setCatalog(items, { browse })`, `setFavorites(ids)`). A pick plays through the same path as a voice request and is reported as `searchPlay` with `request.origin: 'browse'`. Long folders are split for car screens, and `searchCatalog` / `playFromSearch` filter by group. CarPlay and Android Auto are opt-in with the plugin's `car` option (`rnapCar` / `RNAP_CAR` without Expo); Wear OS needs nothing. See [Cars & watches](docs/cars-and-watches.md).
+- **Sleep timer and fades.** `player.sleep({ after, fadeOut })` pauses after a delay, fading out first; `sleep(null)` cancels it, `status.sleepAt` and a `sleep` event report it, and `useSleepTimer()` counts down. Opt-in fades on play, pause and stop (`new Player({ fade: { in, out } })`, `setFade()`), and `fadeTo(volume, seconds)`. The native engine runs them, so they keep working while JavaScript is frozen in the background. 25 new conformance scenarios, passed by all three engines. See [Playback](docs/playback.md#sleep-timer-and-fades).
+- **CLI: modules, size, info, migrate.** `npx rnap` is the documented name. `rnap modules`, `rnap add` and `rnap remove` turn the optional parts on and off (HLS, Cast, Siri, Assistant, the iOS background mode, the Sound API, cars) by writing `gradle.properties`, `Podfile.properties.json` or the Expo plugin's options, after showing the diff. `rnap size` shows what each costs in a release APK and a web page. `rnap info` prints a report to paste into a bug report. `rnap migrate` rewrites react-native-track-player, expo-audio and expo-av code to RNAP where the mapping is mechanical, and marks the rest. A write is atomic and refused if the file changed after its diff was shown. `doctor` reports module settings that disagree. See [CLI](docs/cli.md).
 
 ### Changed
 
-* **cli:** load @babel/parser from the app instead of bundling it ([f028ef8](https://github.com/rmotafreitas/react-native-anything-player/commit/f028ef83a791341f465e40bc41e0d413fb616368))
-* **web:** keep the Sound API out of /web and /react ([65ea76b](https://github.com/rmotafreitas/react-native-anything-player/commit/65ea76bba7db49b0f2ef2493c574ff6dedf7b918))
-* **web:** load the hls.js glue only when an HLS source plays ([ef9aae1](https://github.com/rmotafreitas/react-native-anything-player/commit/ef9aae13ff03ae6d3dd3521bfdda98bf0a82bd2b))
+- **Web: less JavaScript on page load.** The hls.js glue loads when hls.js is registered (`configureHls`), and Google Cast's driver and Firefox's MP4 repackaging only when they are used: about 8 KB a page without them never loads. The Sound API is its own entry, so a page that only streams does not load it.
+- The API reference has a `player` and a `sound` section; links to its old paths redirect.
+
+### Upgrading
+
+- **Catalog ids starting with `rnap:` are rejected** with `INVALID_ARGUMENT`, because the browse tree names its folders with that prefix. Rename such ids before upgrading. No other change is needed.
 
 ## [1.1.1](https://github.com/rmotafreitas/react-native-anything-player/compare/v1.1.0...v1.1.1) (2026-10-22)
 
