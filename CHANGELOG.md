@@ -7,6 +7,26 @@ and versions follow [Semantic Versioning](https://semver.org/): see
 change and how releases are made. Changes not released yet are listed in the
 open release pull request.
 
+## [1.2.0](https://github.com/rmotafreitas/react-native-anything-player/compare/v1.1.1...v1.2.0) (2026-10-23)
+
+Short sounds, cars and watches, a sleep timer, and a CLI that sets up the optional parts. Everything is additive except one rule for catalog ids (see **Upgrading**).
+
+### Added
+
+- **Sound API** (`react-native-anything-player/sound`): short sounds for UI clicks and games, preloaded into memory and played with low latency. Several voices at once (the oldest is stolen when all are busy), per-play volume, rate, pan and loop, a handle per voice, and `stopAll()`. It mixes with other audio and has no media session. iOS on AVAudioEngine, Android on one shared SoundPool (32 voices), the web on Web Audio. Opt-in on iOS and Android with the Expo plugin's `sound` option (`rnapSound=true` / `RNAP_SOUND=1` without Expo); always available on the web. New error code `SOUND_UNAVAILABLE`. See [Sound](docs/sound.md).
+- **Cars and watches.** Catalog items take a `group` (`"Jazz"`, `"Podcasts/Daily"`), and the catalog becomes a browse tree in CarPlay, Android Auto, Android Automotive OS and Wear OS, with "Recently played" and favorites (`setCatalog(items, { browse })`, `setFavorites(ids)`). A pick plays through the same path as a voice request and is reported as `searchPlay` with `request.origin: 'browse'`. Long folders are split for car screens, and `searchCatalog` / `playFromSearch` filter by group. CarPlay and Android Auto are opt-in with the plugin's `car` option (`rnapCar` / `RNAP_CAR` without Expo); Wear OS needs nothing. See [Cars & watches](docs/cars-and-watches.md).
+- **Sleep timer and fades.** `player.sleep({ after, fadeOut })` pauses after a delay, fading out first; `sleep(null)` cancels it, `status.sleepAt` and a `sleep` event report it, and `useSleepTimer()` counts down. Opt-in fades on play, pause and stop (`new Player({ fade: { in, out } })`, `setFade()`), and `fadeTo(volume, seconds)`. The native engine runs them, so they keep working while JavaScript is frozen in the background. 25 new conformance scenarios, passed by all three engines. See [Playback](docs/playback.md#sleep-timer-and-fades).
+- **CLI: modules, size, info, migrate.** `npx rnap` is the documented name. `rnap modules`, `rnap add` and `rnap remove` turn the optional parts on and off (HLS, Cast, Siri, Assistant, the iOS background mode, the Sound API, cars) by writing `gradle.properties`, `Podfile.properties.json` or the Expo plugin's options, after showing the diff. `rnap size` shows what each costs in a release APK and a web page. `rnap info` prints a report to paste into a bug report. `rnap migrate` rewrites react-native-track-player, expo-audio and expo-av code to RNAP where the mapping is mechanical, and marks the rest. A write is atomic and refused if the file changed after its diff was shown. `doctor` reports module settings that disagree. See [CLI](docs/cli.md).
+
+### Changed
+
+- **Web: less JavaScript on page load.** The hls.js glue loads when hls.js is registered (`configureHls`), and Google Cast's driver and Firefox's MP4 repackaging only when they are used: about 8 KB a page without them never loads. The Sound API is its own entry, so a page that only streams does not load it.
+- The API reference has a `player` and a `sound` section; links to its old paths redirect.
+
+### Upgrading
+
+- **Catalog ids starting with `rnap:` are rejected** with `INVALID_ARGUMENT`, because the browse tree names its folders with that prefix. Rename such ids before upgrading. No other change is needed.
+
 ## [1.1.1](https://github.com/rmotafreitas/react-native-anything-player/compare/v1.1.0...v1.1.1) (2026-10-22)
 
 
