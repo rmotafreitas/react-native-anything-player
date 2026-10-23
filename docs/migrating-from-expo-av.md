@@ -192,7 +192,7 @@ player.on('error', (error, { fatal }) => { if (fatal) showToast(error.message); 
 
 - **Recording** (`Audio.Recording`): out of scope. RNAP stays a player to stay small. Use `expo-audio` or `react-native-audio-api` for recording ([roadmap](roadmap.md#p2-—-platform-reach)).
 - **Video** (the `Video` component): RNAP plays audio only. Use a video library for that.
-- **Several `Sound` objects.** RNAP can run several players, but the lock screen shows the most recently started one ([several players](playback.md#several-players)). For short effects and UI clicks, RNAP has no API yet; a separate `Sound` API is [roadmap P1](roadmap.md#p1-—-the-features-people-search-for).
+- **Several `Sound` objects.** RNAP can run several players, but the lock screen shows the most recently started one ([several players](playback.md#several-players)). For short effects and UI clicks, use the [Sound API](sound.md) instead: it preloads, plays many copies at once with volume, rate, pan and loop, and mixes with other audio without a media session.
 - **No queue.** expo-av never had one; if you built a playlist on top of it, the same pattern works: load the next item on `ended` ([details and limits](migrating-from-track-player.md#the-queue-is-the-big-difference)).
 - **No looping, pan or pitch control.**
 - **Seconds, not milliseconds.** Every position, duration and start offset.

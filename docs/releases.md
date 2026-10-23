@@ -41,6 +41,7 @@ A deprecated API keeps working until the next major, with at least one minor rel
 | iOS | 15.1 (Siri shortcuts: 16) |
 | Android | 7.0 (API 24) |
 | Browsers | the current and previous version of Chrome / Edge, Firefox and Safari (iOS 17.1+ for radio titles) |
+| Desktop | not a supported platform yet: Electron and Tauri run the web engine, untested ([Desktop](desktop.md)) |
 | Node (CLI) | 20 |
 
 Raising a minimum is a major release, unless the platform itself has stopped working on it (a store requirement, or a React Native release that drops it), which is called out in the changelog.

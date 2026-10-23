@@ -89,8 +89,8 @@ The Android manifest entries (foreground service, wake lock, network state) come
 | `skip(i)`, `skipToNext()`, `skipToPrevious()` | `skipToIndex`, `skipToNext`, `skipToPrevious` | `load()` the item you want |
 | `setRepeatMode(RepeatMode.Off \| Track \| Queue)` | `setRepeatMode('off' \| 'one' \| 'all')`, `setShuffleEnabled` | none. Repeat one: `player.on('ended', () => player.play())` |
 | – | `preload(item)`, `cancelPreload` | none |
-| – | `sleepAfterTime`, `sleepAfterMediaItemAtIndex`, `cancelSleepTimer` | none yet ([sleep timer is roadmap P1](roadmap.md#p1-—-the-features-people-search-for)) |
-| – | `setBrowseTree` (Android Auto, CarPlay) | none. [CarPlay / Android Auto browsing is next on the roadmap](roadmap.md#p2-—-platform-reach) |
+| – | `sleepAfterTime`, `sleepAfterMediaItemAtIndex`, `cancelSleepTimer` | `player.sleep({ after, fadeOut })`, `player.sleep(null)`; no "after this item" without a queue ([sleep timer](playback.md#sleep-timer)) |
+| – | `setBrowseTree` (Android Auto, CarPlay) | `setCatalog()` with a `group` on each item, opt-in with `car` ([Cars & watches](cars-and-watches.md)) |
 
 ## The queue is the big difference
 
@@ -159,7 +159,7 @@ RNAP has one state machine and one snapshot, `player.status` ([events](events.md
 | `PlaybackMetadataReceived`, `MetadataCommonReceived`, `MetadataTimedReceived`, `MetadataChapterReceived` | `MetadataReceived`, `MediaMetadataChanged` | `player.on('metadata', (m) => …)`: `m.title`, `m.artist`, `m.station`, `m.genre`, `m.raw` |
 | `PlaybackProgressUpdated` (`updateOptions({ progressUpdateEventInterval })`, seconds) | `PlaybackProgressUpdated` | `progress` event with `new Player({ progressInterval })` in **milliseconds**. For a UI, call `getProgress()` instead |
 | `RemoteDuck` | – | none. The engine pauses and resumes itself; read `status.interruption` ([interruptions](background-and-system.md#audio-focus-and-interruptions)) |
-| – | `SleepTimerTriggered`, `BrowseRefreshRequested` | none |
+| – | `SleepTimerTriggered`, `BrowseRefreshRequested` | `player.on('sleep', …)`; the tree follows `setCatalog()`, so there is nothing to refresh |
 
 PlaybackError codes map to `status.error.code`. RNTP 5's `network` is `NETWORK_ERROR`, `NETWORK_UNAVAILABLE`, `TIMEOUT` or `HTTP_ERROR`; `source` is `SOURCE_NOT_FOUND`, `UNSUPPORTED_FORMAT` or `INVALID_SOURCE`; `renderer` is `DECODER_ERROR`; `play-not-permitted` is `AUTOPLAY_BLOCKED`. The [error table](errors.md) says which ones the engine retries.
 
@@ -273,7 +273,7 @@ player.on('error', (error, { fatal }) => {
 ## What differs or is missing
 
 - **No queue** (above), so no `skipToNext`, repeat modes, shuffle or `getQueue()`.
-- **No cache, preload, sleep timer, progress sync, Android Auto or CarPlay browse tree.** RNTP 5 has them; on the RNAP roadmap are the [cache and sleep timer (P1)](roadmap.md#p1-—-the-features-people-search-for) and [car browsing (P2)](roadmap.md#p2-—-platform-reach).
+- **No cache, preload or progress sync.** RNTP 5 has them; cache and preload are on the RNAP [roadmap (P1)](roadmap.md#p1-—-the-features-people-search-for). The sleep timer and the CarPlay / Android Auto browse tree exist, in a different shape (above).
 - **No ratings, like, dislike or bookmark** buttons, and no custom notification icons.
 - **`stop()` is not `reset()`.** RNAP's `stop()` keeps the source so `play()` can restart it; use `reset()` to unload.
 - **Time units.** RNAP positions are seconds and its hook interval is milliseconds. RNTP 5's `useProgress` takes seconds.

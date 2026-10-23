@@ -56,7 +56,7 @@ npm install react-native-anything-player
 >
 > To pin a version, use `releases/download/v1.2.0/react-native-anything-player.tgz`.
 
-Requires React Native **≥ 0.80** with the New Architecture (the default), iOS 15.1+, Android 7.0+ (API 24). On the web: any current browser ([Web](docs/web.md)). Expo Go cannot load native code: use a development build.
+Requires React Native **≥ 0.80** with the New Architecture (the default), iOS 15.1+, Android 7.0+ (API 24). On the web: any current browser ([Web](docs/web.md)); on the desktop, Electron and Tauri apps through the web engine ([Desktop](docs/desktop.md)). Expo Go cannot load native code: use a development build.
 
 **Expo** (development builds / prebuild — not Expo Go):
 
@@ -116,6 +116,7 @@ function NowPlaying() {
 | [Events](docs/events.md) | Status, events, ordering and threading guarantees |
 | [Feature matrix](docs/features.md) | What works where: iOS, Android and the web, feature by feature |
 | [Web](docs/web.md) | Expo web, React Native Web, React (Vite, Next.js), plain pages: setup, CORS, autoplay, browser support |
+| [Desktop](docs/desktop.md) | Electron and Tauri through the web engine; native macOS and Windows on the roadmap |
 | [Sound effects](docs/sound.md) | `Sound`: short effects with low latency, many at once, mixed with other audio, on iOS, Android and the web |
 | [Visualizer](docs/visualizer.md) | Decoded-audio windows for oscilloscopes and meters (iOS streams included) |
 | [Errors](docs/errors.md) | Normalized error codes |
@@ -125,7 +126,7 @@ function NowPlaying() {
 | [Architecture](docs/architecture.md) | Design decisions and research |
 | [Testing](docs/testing.md) | Test layers, conformance suite, device tests, soak results |
 | [CLI](docs/cli.md) | `modules`, `add`, `remove`, `size`, `info` and `migrate`: switch build modules, estimate their size, report a setup, rewrite a migration; `doctor` and `init` check and fix an app's setup |
-| [Roadmap](docs/roadmap.md) | What RNAP still needs, in priority order |
+| [Roadmap](docs/roadmap.md) | What RNAP still needs, in priority order: the queue, caching, native desktop |
 | [Changelog](CHANGELOG.md), [Versioning & releases](docs/releases.md) | Every release; what a version number promises |
 
 The same pages are published as a site (search included): `yarn docs` runs it locally, `yarn docs:build` builds it. The site also carries an API reference for every export, generated from the TSDoc in `src/` by TypeDoc (`yarn docs:api` writes it to `docs/api/`, which is not committed). Diagrams are PlantUML sources in `docs/diagrams/` (`node scripts/render-diagrams.mjs`); charts come from `benchmarks/` (`node benchmarks/size/measure.mjs && node benchmarks/charts/render.mjs`).

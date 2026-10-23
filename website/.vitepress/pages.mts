@@ -126,6 +126,12 @@ export const SECTIONS: DocSection[] = [
           'RNAP on the web: Expo web, React Native Web and plain pages, with ICY metadata over MSE, automatic recovery, the Media Session and autoplay handling.',
       },
       {
+        link: '/docs/desktop',
+        text: 'Desktop',
+        description:
+          'RNAP in desktop apps: Electron and Tauri run its web engine today, with what each OS web view supports. Native macOS and Windows are on the roadmap.',
+      },
+      {
         link: '/docs/visualizer',
         text: 'Visualizer',
         description:
@@ -185,9 +191,9 @@ export const SECTIONS: DocSection[] = [
       },
       {
         link: '/docs/cli',
-        text: 'CLI: doctor & init',
+        text: 'CLI: rnap',
         description:
-          'npx react-native-anything-player doctor checks an app\'s setup, native build and stream URLs; init applies the safe fixes, each shown as a diff.',
+          'npx rnap checks an app\'s setup and stream URLs, switches build modules with their size, writes bug reports and rewrites migrations, each change as a diff.',
       },
     ],
   },
@@ -198,7 +204,7 @@ export const SECTIONS: DocSection[] = [
         link: '/docs/roadmap',
         text: 'Roadmap',
         description:
-          'Where RNAP stands against React Native Track Player and expo-audio, and what comes next: a queue, CarPlay and Android Auto, caching and more.',
+          'Where RNAP stands against React Native Track Player and expo-audio, and what comes next: a queue, caching and preloading, and native desktop apps.',
       },
       {
         link: '/docs/changelog',

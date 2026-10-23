@@ -103,7 +103,7 @@ const outage = [
 const APK_PLAYERS = ['react-native-anything-player', '@rntp/player', 'react-native-video', 'react-native-audio-pro'];
 
 const stats = [
-  { value: '80', label: 'engine scenarios, run on Swift, Kotlin and TypeScript' },
+  { value: '105', label: 'engine scenarios, run on Swift, Kotlin and TypeScript' },
   { value: '3 s', label: 'to detect a dead socket and re-open' },
   { value: '~10 µs', label: 'getProgress() over JSI (iOS p50)' },
   { value: '1', label: 'connection per stream, counted server-side' },
@@ -284,6 +284,7 @@ const stats = [
         <li>React Native Web</li>
         <li>React (Vite, Next.js)</li>
         <li>Any web page</li>
+        <li>Electron, Tauri</li>
       </ul>
       <p class="sub">In the browser, by engine: Chromium, Firefox and Safari are tested on every change.</p>
       <ul class="platforms">
@@ -292,6 +293,10 @@ const stats = [
         <li>Safari</li>
         <li>iPhone and iPad browsers</li>
       </ul>
+      <p class="sub small">
+        On the desktop, Electron and Tauri apps run the web engine; native macOS and Windows are on the
+        <a :href="withBase('/docs/roadmap#desktop')">roadmap</a>.
+      </p>
       <p class="sub small"><a :href="withBase('/docs/features')">What works where, by OS and by browser engine: the feature matrix →</a></p>
     </section>
 
@@ -299,7 +304,7 @@ const stats = [
       <h2>How it compares</h2>
       <p class="sub">
         Each library against its own kind, read from its published source, not marketing. Where RNAP is behind
-        (queues, caching, CarPlay) is on the <a :href="withBase('/docs/roadmap')">roadmap</a>.
+        (queues, caching, native desktop) is on the <a :href="withBase('/docs/roadmap')">roadmap</a>.
       </p>
       <CapabilityMatrix />
       <CapabilityMatrix name="capabilities-web" />

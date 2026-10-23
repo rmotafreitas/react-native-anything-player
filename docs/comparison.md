@@ -49,7 +49,7 @@ Read from each package's sources (its `.web` files and entry points). RNTP 4.1.2
 
 RNAP is the only one of the four that recovers a stream without app code. The others give the app a `retry()` or a fresh `load()` and leave detection, backoff, connectivity and JS-frozen timing to you. That is the gap behind the most common complaint about RNTP: [a Wi-Fi ↔ 4G switch stops the stream for good](https://github.com/doublesymmetry/react-native-track-player/issues/686), and [iOS does not even report the error](https://github.com/doublesymmetry/react-native-track-player/issues/1437).
 
-Where RNAP is behind today: queues, caching and preloading, CarPlay / Android Auto browsing, a sleep timer, and a licence that is free for commercial apps. See the [roadmap](roadmap.md).
+Where RNAP is behind today: queues, caching and preloading, and a licence that is free for commercial apps. See the [roadmap](roadmap.md).
 
 Moving from one of them? See the migration guides for [react-native-track-player](migrating-from-track-player.md), [expo-audio](migrating-from-expo-audio.md) and [expo-av](migrating-from-expo-av.md).
 

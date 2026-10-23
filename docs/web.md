@@ -121,6 +121,8 @@ What matters is the browser's engine. Chromium, Firefox and Safari's WebKit are 
 | Network handoff detection | ✓ (Network Information API) | – | – | – |
 | Volume | ✓ | ✓ | ✓ | fixed by the system (`setMuted` works) |
 
+Desktop apps built on a web view use the column of their engine: Electron (Chromium, without Google Cast) and Tauri (WebView2 on Windows, WebKit on macOS and Linux). See [Desktop](desktop.md).
+
 ## HLS
 
 Safari (and Android's browsers) play HLS themselves, and RNAP hands them the playlist. Everywhere else it needs [hls.js](https://github.com/video-dev/hls.js), which RNAP does not bundle: install it and register it once at startup.

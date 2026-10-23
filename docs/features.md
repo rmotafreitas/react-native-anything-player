@@ -12,9 +12,13 @@ The browser columns below cover three ways to use the same browser engine. They 
 | **Expo web, React Native Web** | `react-native-anything-player` | ✓ | ✓ | ✓ (React Native Web buttons) |
 | **React** (react-dom: Vite, Next.js, Create React App) | `react-native-anything-player/react` | ✓ | ✓ | ✓ (`<button>`s, `className` and `style`) |
 | **Any web page** (no framework) | `react-native-anything-player/web` | ✓ | – | – (call `showRoutePicker()` / `showCastPicker()` from your own button) |
+| **Desktop apps on a web view** (Electron, Tauri) | `react-native-anything-player/react` or `/web` | ◐ ¹ | ◐ ¹ | ◐ ¹ (no Google Cast) |
+| Native desktop (macOS, Windows) | – | – | – | – (on the [roadmap](roadmap.md#desktop)) |
 | Expo Go | – | – | – | – (no native code: `new Player()` throws `NATIVE_MODULE_MISSING`; use a development build) |
 
-See [Getting started](getting-started.md) for React Native and Expo, and [Web](web.md) for the three web entries.
+1. The web engine, with the column of the web view's engine below: Chromium in Electron and in Tauri on Windows, Safari in Tauri on macOS. Expected, not yet tested; see [Desktop](desktop.md).
+
+See [Getting started](getting-started.md) for React Native and Expo, [Web](web.md) for the three web entries and [Desktop](desktop.md) for Electron and Tauri.
 
 ## Platforms
 
@@ -33,9 +37,9 @@ In a browser, what RNAP can do depends on the browser's engine, not its name. Th
 
 | Column below | Engine | Browsers | Tested on every change |
 |---|---|---|---|
-| **Chromium** | Blink | Chrome, Edge, Opera, Samsung Internet and most Android browsers | ✓ (Playwright Chromium) |
+| **Chromium** | Blink | Chrome, Edge, Opera, Samsung Internet and most Android browsers; Electron and Tauri on Windows (no Google Cast) | ✓ (Playwright Chromium) |
 | **Firefox** | Gecko | Firefox on desktop and Android | ✓ (Playwright Firefox) |
-| **Safari** | WebKit on macOS | Safari on the Mac | ✓ (Playwright WebKit) |
+| **Safari** | WebKit on macOS | Safari on the Mac; Tauri on macOS | ✓ (Playwright WebKit) |
 | **iPhone, iPad** | WebKit on iOS and iPadOS | Safari, Chrome, Firefox, Edge and every other browser there | – (Playwright's WebKit is the desktop engine) |
 
 Supported: the current and previous version of each browser. Radio titles on iPhone and iPad need iOS 17.1 (Managed Media Source); before it, streams play without them.
@@ -172,6 +176,14 @@ See [Casting & AirPlay](routes-and-casting.md).
 | Siri shortcuts, Spotlight, Shortcuts app, Action button | ✓ † ⁴ | – | – | – | – | – |
 | Speech in the page | – | – | ◐ ⁵ | – | ◐ ⁵ | ◐ ⁵ |
 
+1. The same matcher as on the phone, held to [the same test cases](../conformance/catalog/search.json).
+2. Siri.
+3. Google Assistant and Gemini.
+4. iOS 16 and later.
+5. Wire the browser's speech recognition to `playFromSearch` ([example](voice.md#on-the-web)). Firefox has none.
+
+See [Voice assistants](voice.md).
+
 ## Cars and watches
 
 | | iOS | Android | Chromium | Firefox | Safari | iPhone, iPad |
@@ -192,20 +204,13 @@ See [Casting & AirPlay](routes-and-casting.md).
 
 See [Cars & watches](cars-and-watches.md).
 
-1. The same matcher as on the phone, held to [the same test cases](../conformance/catalog/search.json).
-2. Siri.
-3. Google Assistant and Gemini.
-4. iOS 16 and later.
-5. Wire the browser's speech recognition to `playFromSearch` ([example](voice.md#on-the-web)). Firefox has none.
-
-See [Voice assistants](voice.md).
-
 ## Setup and tooling
 
 | | iOS | Android | Web (every engine) |
 |---|---|---|---|
 | Expo config plugin | ✓ | ✓ | – (nothing to configure) |
 | `npx rnap doctor` / `init` | ✓ | ✓ | ◐ stream URL checks (CORS, ICY) |
+| `npx rnap add` / `remove` (build modules) | ✓ | ✓ | – (a page downloads Cast, HLS and the MP4 remuxer only when it uses them) |
 | TypeScript types | ✓ | ✓ | ✓ |
 | Zero runtime JS dependencies | ✓ | ✓ | ✓ (hls.js is optional and yours to add) |
 | Size in a release build | not measured yet | about 1.2 MB of a release APK, with R8 ([measured](comparison.md#added-to-a-release-apk)) | about 30 KB of JS on page load ([measured](comparison.md#react-and-plain-web-pages)) |
