@@ -24,67 +24,113 @@
       "id": "rnap",
       "label": "RNAP",
       "name": "react-native-anything-player",
-      "version": "1.1.1",
+      "version": "1.2.0",
       "gradle": {},
       "r8": {
-        "apkBytes": 1204382,
-        "dexBytes": 855041,
-        "nativeBytes": 82320,
+        "apkBytes": 1220766,
+        "dexBytes": 873128,
+        "nativeBytes": 92576,
         "resourceBytes": 247672,
-        "otherBytes": 5131
+        "otherBytes": 5136
       },
       "noR8": {
-        "apkBytes": 3847757,
-        "dexBytes": 3027861,
-        "nativeBytes": 82320,
+        "apkBytes": 3880525,
+        "dexBytes": 3057473,
+        "nativeBytes": 92576,
         "resourceBytes": 673161,
-        "otherBytes": 5220
+        "otherBytes": 5223
       }
     },
     {
       "id": "rnapNoHls",
       "label": "RNAP without HLS",
       "name": "react-native-anything-player",
-      "version": "1.1.1",
+      "version": "1.2.0",
       "gradle": {
         "rnapHls": "false"
       },
       "r8": {
-        "apkBytes": 1138846,
-        "dexBytes": 796087,
-        "nativeBytes": 82320,
+        "apkBytes": 1155230,
+        "dexBytes": 811387,
+        "nativeBytes": 92576,
         "resourceBytes": 247672,
-        "otherBytes": 5094
+        "otherBytes": 5103
       },
       "noR8": {
-        "apkBytes": 3749453,
-        "dexBytes": 2939922,
-        "nativeBytes": 82320,
+        "apkBytes": 3782221,
+        "dexBytes": 2971002,
+        "nativeBytes": 92576,
         "resourceBytes": 673161,
-        "otherBytes": 5214
+        "otherBytes": 5209
       }
     },
     {
       "id": "rnapCast",
       "label": "RNAP with Cast",
       "name": "react-native-anything-player",
-      "version": "1.1.1",
+      "version": "1.2.0",
       "gradle": {
         "rnapCast": "true"
       },
       "r8": {
-        "apkBytes": 2672113,
-        "dexBytes": 1223505,
-        "nativeBytes": 92416,
+        "apkBytes": 2688497,
+        "dexBytes": 1238829,
+        "nativeBytes": 102672,
         "resourceBytes": 1242142,
-        "otherBytes": 21482
+        "otherBytes": 21503
       },
       "noR8": {
-        "apkBytes": 11239208,
-        "dexBytes": 9426194,
-        "nativeBytes": 92416,
+        "apkBytes": 11271976,
+        "dexBytes": 9456914,
+        "nativeBytes": 102672,
         "resourceBytes": 1587802,
-        "otherBytes": 29401
+        "otherBytes": 28629
+      }
+    },
+    {
+      "id": "rnapSound",
+      "label": "RNAP with Sound",
+      "name": "react-native-anything-player",
+      "version": "1.2.0",
+      "gradle": {
+        "rnapSound": "true"
+      },
+      "r8": {
+        "apkBytes": 1220766,
+        "dexBytes": 878335,
+        "nativeBytes": 92576,
+        "resourceBytes": 247672,
+        "otherBytes": 5154
+      },
+      "noR8": {
+        "apkBytes": 3880525,
+        "dexBytes": 3065611,
+        "nativeBytes": 92576,
+        "resourceBytes": 673161,
+        "otherBytes": 5225
+      }
+    },
+    {
+      "id": "rnapCar",
+      "label": "RNAP with Android Auto",
+      "name": "react-native-anything-player",
+      "version": "1.2.0",
+      "gradle": {
+        "rnapCar": "true"
+      },
+      "r8": {
+        "apkBytes": 1221258,
+        "dexBytes": 873128,
+        "nativeBytes": 92576,
+        "resourceBytes": 248010,
+        "otherBytes": 5194
+      },
+      "noR8": {
+        "apkBytes": 3880881,
+        "dexBytes": 3057726,
+        "nativeBytes": 92576,
+        "resourceBytes": 673363,
+        "otherBytes": 5271
       }
     },
     {
@@ -216,6 +262,71 @@
         "nativeBytes": 26184,
         "resourceBytes": 0,
         "otherBytes": 1
+      }
+    },
+    {
+      "id": "expoRuntime",
+      "label": "Expo modules runtime",
+      "name": "expo",
+      "version": "57.0.31",
+      "gradle": {},
+      "r8": {
+        "apkBytes": 4005638,
+        "dexBytes": 1085906,
+        "nativeBytes": 2189096,
+        "resourceBytes": 566800,
+        "otherBytes": 101203
+      },
+      "noR8": {
+        "apkBytes": 6505324,
+        "dexBytes": 3112976,
+        "nativeBytes": 2189096,
+        "resourceBytes": 998468,
+        "otherBytes": 101063
+      }
+    },
+    {
+      "id": "expoAudio",
+      "label": "expo-audio",
+      "name": "expo-audio",
+      "version": "57.0.5",
+      "gradle": {},
+      "over": "expo",
+      "r8": {
+        "apkBytes": 1101920,
+        "dexBytes": 796588,
+        "nativeBytes": 0,
+        "resourceBytes": 284073,
+        "otherBytes": 4668
+      },
+      "noR8": {
+        "apkBytes": 3322945,
+        "dexBytes": 2724622,
+        "nativeBytes": 0,
+        "resourceBytes": 567256,
+        "otherBytes": 4980
+      }
+    },
+    {
+      "id": "expoAv",
+      "label": "expo-av",
+      "name": "expo-av",
+      "version": "16.0.8",
+      "gradle": {},
+      "over": "expo",
+      "r8": {
+        "apkBytes": 764611,
+        "dexBytes": 538162,
+        "nativeBytes": 96416,
+        "resourceBytes": 120244,
+        "otherBytes": 307
+      },
+      "noR8": {
+        "apkBytes": 2538301,
+        "dexBytes": 2013532,
+        "nativeBytes": 96416,
+        "resourceBytes": 398327,
+        "otherBytes": 301
       }
     }
   ]

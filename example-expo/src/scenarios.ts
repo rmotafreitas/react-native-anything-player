@@ -18,6 +18,9 @@ import {
   type PlayerStatus,
   type Progress,
   isPlayerError,
+  searchCatalog,
+  setCatalog,
+  setFavorites,
 } from 'react-native-anything-player';
 import { LOCAL_TONE, STREAM_HOST, serverControl, serverStats } from './config';
 
@@ -786,6 +789,50 @@ export const SCENARIOS: Scenario[] = [
       }),
   },
 ];
+
+SCENARIOS.push({
+  name: 'catalog-groups',
+  timeoutMs: 10_000,
+  run: async () => {
+    const item = (
+      id: string,
+      title: string,
+      kind: 'station' | 'podcast',
+      group?: string
+    ) => ({
+      id,
+      title,
+      kind,
+      ...(group ? { group } : {}),
+      source: { uri: `${STREAM_HOST}/file.mp3` },
+    });
+    // Left in place on purpose: the browse tree of cars and watches can be
+    // inspected afterwards (docs/testing.md, "Browse tree").
+    await setCatalog(
+      [
+        item('jazz', 'Alpha Radio', 'station', 'Music/Jazz'),
+        item('daily', 'Beta Radio', 'podcast', 'Podcasts/Daily'),
+        item('loose', 'Gamma Radio', 'station'),
+      ],
+      { browse: { recent: true, favorites: ['jazz'] } }
+    );
+    await setFavorites(['daily', 'jazz']);
+    const ids = async (group?: string) =>
+      (await searchCatalog({ query: 'radio', ...(group ? { group } : {}) }))
+        .map((i) => i.id)
+        .join(',');
+    expect(
+      (await ids()) === 'jazz,daily,loose',
+      'no group searches everything'
+    );
+    expect(
+      (await ids('Music')) === 'jazz',
+      'a parent group holds its subgroups'
+    );
+    expect((await ids('Podcasts/Daily')) === 'daily', 'a subgroup');
+    expect((await ids('Nothing')) === '', 'a group with no items');
+  },
+});
 
 /** Measurement probes (not assertions): how long until the server sees the connection close. */
 async function timeToClose(

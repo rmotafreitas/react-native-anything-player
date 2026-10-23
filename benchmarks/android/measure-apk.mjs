@@ -2,7 +2,7 @@
 // What each React Native audio library adds to a release APK, with R8 on and
 // off, measured by building a real app.
 //
-//   node benchmarks/android/measure-apk.mjs [--only rnap,rntp5] [--keep]
+//   node benchmarks/android/measure-apk.mjs [--only rnap,rntp5,expoAv] [--keep]
 //   # writes benchmarks/results/apk.json
 //   node benchmarks/android/measure-apk.mjs --only rnap --rnap old.tgz --out /tmp/old.json
 //   # another RNAP tarball (a release, to compare), written elsewhere
@@ -14,6 +14,12 @@
 // optimizing default rules, R8 full mode); "R8 off" ships every class every
 // dependency declares. The app's JS does not import the library, so this is the
 // native side only: the JS bundle cost is in size.json.
+//
+// The same bare app again with the Expo modules runtime (`expo` and its
+// autolinking, as `npx install-expo-modules` sets a bare app up), measured
+// alone and then with expo-audio and expo-av. Those two are recorded against
+// the Expo app, not the bare one (`over: 'expo'`): the runtime's own cost is
+// the `expoRuntime` row. The app's JS still imports nothing.
 //
 // Needs the Android SDK (ANDROID_HOME), JDK 17+, npm and network access.
 import { execFileSync } from 'node:child_process';
@@ -49,6 +55,18 @@ const LIBRARIES = [
     install: ['@rnap'],
     gradle: { rnapCast: 'true' },
   },
+  {
+    id: 'rnapSound',
+    label: 'RNAP with Sound',
+    install: ['@rnap'],
+    gradle: { rnapSound: 'true' },
+  },
+  {
+    id: 'rnapCar',
+    label: 'RNAP with Android Auto',
+    install: ['@rnap'],
+    gradle: { rnapCar: 'true' },
+  },
   { id: 'rntp5', label: 'RNTP 5', install: ['@rntp/player'] },
   { id: 'rntp4', label: 'RNTP 4', install: ['react-native-track-player@4'] },
   { id: 'video', label: 'react-native-video', install: ['react-native-video'] },
@@ -70,6 +88,41 @@ const LIBRARIES = [
   { id: 'sound', label: 'react-native-sound', install: ['react-native-sound'] },
 ];
 
+/** The Expo SDK version this repo pairs React Native with (example-expo). */
+const EXPO = JSON.parse(
+  fs.readFileSync(path.join(ROOT, 'example-expo/package.json'), 'utf8')
+).dependencies.expo;
+
+/**
+ * The Expo libraries. `install` may be replaced by the version Expo's own
+ * install tool would pick, from expo's bundledNativeModules.json.
+ */
+const EXPO_LIBRARIES = [
+  { id: 'expoAudio', label: 'expo-audio', install: ['expo-audio'] },
+  {
+    id: 'expoAv',
+    label: 'expo-av',
+    // Not in this Expo SDK's bundledNativeModules.json (it left the SDK with
+    // 54): latest is what `npx expo install` resolves, its prebuilt AAR
+    // links against older Expo APIs, so R8 needs -dontwarn rules (what
+    // Android Studio suggests a store app to add).
+    install: ['expo-av'],
+    proguard: [
+      '-dontwarn expo.modules.core.interfaces.services.KeepAwakeManager',
+      '-dontwarn expo.modules.kotlin.types.AnyTypeProvider',
+      '-dontwarn expo.modules.kotlin.types.LazyKType',
+    ],
+  },
+];
+const EXPO_IDS = ['expoRuntime', ...EXPO_LIBRARIES.map((l) => l.id)];
+
+/** What orders the merged apk.json rows: bare libraries, then the Expo ones. */
+const ORDER = [
+  ...LIBRARIES,
+  { id: 'expoRuntime' },
+  ...EXPO_LIBRARIES,
+];
+
 const args = process.argv.slice(2);
 const only = args.includes('--only')
   ? args[args.indexOf('--only') + 1].split(',')
@@ -88,7 +141,7 @@ const run = (cmd, argv, opts = {}) =>
   });
 
 /** The example's Android project, without RNAP or anything else in it. */
-function scaffold(app) {
+function scaffold(app, expo = false) {
   fs.mkdirSync(app, { recursive: true });
   fs.writeFileSync(
     path.join(app, 'package.json'),
@@ -97,7 +150,11 @@ function scaffold(app) {
         name: 'bench',
         version: '0.0.1',
         private: true,
-        dependencies: { 'react': RN.react, 'react-native': RN['react-native'] },
+        dependencies: {
+          'react': RN.react,
+          'react-native': RN['react-native'],
+          ...(expo ? { expo: EXPO } : {}),
+        },
         devDependencies: {
           '@babel/core': '^7.25.2',
           '@babel/preset-env': '^7.25.3',
@@ -146,7 +203,27 @@ function scaffold(app) {
   fs.mkdirSync(path.join(java, 'bench'), { recursive: true });
   fs.writeFileSync(
     path.join(java, 'bench/MainActivity.kt'),
-    `package bench
+    expo
+      ? `package bench
+
+import com.facebook.react.ReactActivity
+import com.facebook.react.ReactActivityDelegate
+import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint.fabricEnabled
+import com.facebook.react.defaults.DefaultReactActivityDelegate
+
+import expo.modules.ReactActivityDelegateWrapper
+
+class MainActivity : ReactActivity() {
+  override fun getMainComponentName(): String = "bench"
+  override fun createReactActivityDelegate(): ReactActivityDelegate {
+    return ReactActivityDelegateWrapper(
+          this,
+          BuildConfig.IS_NEW_ARCHITECTURE_ENABLED,
+          DefaultReactActivityDelegate(this, mainComponentName, fabricEnabled))
+  }
+}
+`
+      : `package bench
 
 import com.facebook.react.ReactActivity
 import com.facebook.react.ReactActivityDelegate
@@ -162,7 +239,37 @@ class MainActivity : ReactActivity() {
   );
   fs.writeFileSync(
     path.join(java, 'bench/MainApplication.kt'),
-    `package bench
+    expo
+      ? `package bench
+
+import android.app.Application
+import android.content.res.Configuration
+import com.facebook.react.PackageList
+import com.facebook.react.ReactApplication
+import com.facebook.react.ReactHost
+import com.facebook.react.ReactNativeApplicationEntryPoint.loadReactNative
+
+import expo.modules.ApplicationLifecycleDispatcher
+import expo.modules.ExpoReactHostFactory
+
+class MainApplication : Application(), ReactApplication {
+  override val reactHost: ReactHost by lazy {
+    ExpoReactHostFactory.getDefaultReactHost(context = applicationContext, packageList = PackageList(this).packages)
+  }
+
+  override fun onCreate() {
+    super.onCreate()
+    loadReactNative(this)
+    ApplicationLifecycleDispatcher.onApplicationCreate(this)
+  }
+
+  override fun onConfigurationChanged(newConfig: Configuration) {
+    super.onConfigurationChanged(newConfig)
+    ApplicationLifecycleDispatcher.onConfigurationChanged(this, newConfig)
+  }
+}
+`
+      : `package bench
 
 import android.app.Application
 import com.facebook.react.PackageList
@@ -218,7 +325,36 @@ class MainApplication : Application(), ReactApplication {
       )
   );
   edit('settings.gradle', (s) =>
-    s.replace(/rootProject\.name = '[^']+'/, "rootProject.name = 'bench'")
+    expo
+      ? // What `npx install-expo-modules` leaves in a bare app: Expo's own
+        // settings plugin wraps the React Native one.
+        `pluginManagement { includeBuild('../node_modules/@react-native/gradle-plugin')
+  def expoPluginsPath = new File(
+    providers.exec {
+      workingDir(rootDir)
+      commandLine("node", "--print", "require.resolve('expo-modules-autolinking/package.json', { paths: [require.resolve('expo/package.json')] })")
+    }.standardOutput.asText.get().trim(),
+    '../android/expo-gradle-plugin'
+  ).absolutePath
+  includeBuild(expoPluginsPath)
+}
+
+plugins { id('com.facebook.react.settings')
+  id('expo-autolinking-settings')
+}
+
+extensions.configure(com.facebook.react.ReactSettingsExtension){ ex -> ex.autolinkLibrariesFromCommand(expoAutolinking.rnConfigCommand) }
+
+expoAutolinking.useExpoModules()
+
+rootProject.name = 'bench'
+
+expoAutolinking.useExpoVersionCatalog()
+
+include ':app'
+includeBuild(expoAutolinking.reactNativeGradlePlugin)
+`
+      : s.replace(/rootProject\.name = '[^']+'/, "rootProject.name = 'bench'")
   );
   edit('gradle.properties', (s) =>
     s
@@ -228,6 +364,12 @@ class MainApplication : Application(), ReactApplication {
       )
       .replace(/-Xmx\d+m/, '-Xmx4096m')
   );
+  if (expo)
+    // The Expo settings plugin's companion, what install-expo-modules appends.
+    fs.appendFileSync(
+      path.join(android, 'build.gradle'),
+      'apply plugin: "expo-root-project"\n'
+    );
 }
 
 /** RNAP packed from this checkout, as it would be published. */
@@ -265,6 +407,13 @@ function apkSizes(apk) {
   return sizes;
 }
 
+/** The package spec without its version range ('expo-audio@~57.0.5' → 'expo-audio'). */
+const baseName = (s) => {
+  const at = s.startsWith('@') ? s.indexOf('/', 1) + 1 : 0;
+  const v = s.indexOf('@', at);
+  return v > 0 ? s.slice(0, v) : s;
+};
+
 function build(app, r8, gradle = {}) {
   const props = [
     `-Pr8=${r8}`,
@@ -285,81 +434,162 @@ function main() {
   const app = path.join(work, 'app');
   console.log(`scaffolding the app in ${app} …`);
   scaffold(app);
-  if (!fs.existsSync(path.join(ROOT, 'lib/module/index.js')))
-    run('yarn', ['prepare'], { cwd: ROOT });
-  const rnap = rnapTarball ? path.resolve(rnapTarball) : packRnap(work);
-  const npm = (...argv) =>
+  const npmFor = (dir) => (...argv) =>
     run('npm', [...argv, '--no-audit', '--no-fund', '--legacy-peer-deps'], {
-      cwd: app,
+      cwd: dir,
     });
+  const npm = npmFor(app);
   npm('install');
 
-  const measure = (label, gradle) => {
+  const measure = (appDir, label, gradle) => {
     const sizes = {
-      r8: build(app, true, gradle),
-      noR8: build(app, false, gradle),
+      r8: build(appDir, true, gradle),
+      noR8: build(appDir, false, gradle),
     };
     console.log(
       `  ${label.padEnd(26)} R8 on ${(sizes.r8.apkBytes / 1024).toFixed(0).padStart(7)} KB   R8 off ${(sizes.noR8.apkBytes / 1024).toFixed(0).padStart(7)} KB`
     );
     return sizes;
   };
-  console.log('building (arm64-v8a, release):');
-  const baseline = measure('empty app');
-  const rows = [];
-  for (const lib of LIBRARIES.filter((l) => !only || only.includes(l.id))) {
-    const specs = lib.install.map((s) => (s === '@rnap' ? rnap : s));
-    try {
-      npm('install', ...specs);
-      const sizes = measure(lib.label, lib.gradle);
-      const pkg =
-        lib.install[0] === '@rnap'
-          ? 'react-native-anything-player'
-          : lib.install[0].replace(/@\d+$/, '');
-      const version = JSON.parse(
-        fs.readFileSync(
-          path.join(app, 'node_modules', pkg, 'package.json'),
-          'utf8'
-        )
-      ).version;
-      const delta = (a, b) =>
-        Object.fromEntries(Object.keys(a).map((k) => [k, a[k] - b[k]]));
-      rows.push({
-        id: lib.id,
-        label: lib.label,
-        name: pkg,
-        version,
-        gradle: lib.gradle ?? {},
-        r8: delta(sizes.r8, baseline.r8),
-        noR8: delta(sizes.noR8, baseline.noR8),
-      });
-    } catch (error) {
-      console.warn(
-        `  ${lib.label}: build failed\n${String(error.stderr ?? error)
-          .split('\n')
-          .filter((l) => /error|What went wrong|FAILURE/i.test(l))
-          .slice(0, 8)
-          .join('\n')}`
-      );
-      rows.push({ id: lib.id, label: lib.label, failed: true });
-    } finally {
-      const names = lib.install.map((s) =>
-        s === '@rnap' ? 'react-native-anything-player' : s.replace(/@\d+$/, '')
-      );
-      npm('uninstall', ...names);
+  const delta = (a, b) =>
+    Object.fromEntries(Object.keys(a).map((k) => [k, a[k] - b[k]]));
+  const versionOf = (appDir, pkg) =>
+    JSON.parse(
+      fs.readFileSync(path.join(appDir, 'node_modules', pkg, 'package.json'), 'utf8')
+    ).version;
+  /** One app: scaffold installs done, an empty measure, then one per library. */
+  const measureLibraries = (
+    appDir,
+    npmFn,
+    baselineRef,
+    libs,
+    { label0 } = {}
+  ) => {
+    const rows = [];
+    if (label0) measure(appDir, label0);
+    const proguardFile = path.join(appDir, 'android/app/proguard-rules.pro');
+    const proguardOriginal = fs.readFileSync(proguardFile, 'utf8');
+    for (const lib of libs) {
+      const specs = lib.install.map((s) => (s === '@rnap' ? rnap : s));
+      try {
+        if (lib.proguard)
+          // What a real app would add to ship this library with R8.
+          fs.writeFileSync(
+            proguardFile,
+            `${proguardOriginal}${lib.proguard.join('\n')}\n`
+          );
+        npmFn('install', ...specs);
+        const sizes = measure(appDir, lib.label, lib.gradle);
+        const pkg =
+          lib.pkg ??
+          (lib.install[0] === '@rnap'
+            ? 'react-native-anything-player'
+            : baseName(lib.install[0]));
+        const version = versionOf(appDir, pkg);
+        rows.push({
+          id: lib.id,
+          label: lib.label,
+          name: pkg,
+          version,
+          gradle: lib.gradle ?? {},
+          ...(lib.over ? { over: lib.over } : {}),
+          r8: delta(sizes.r8, baselineRef.r8),
+          noR8: delta(sizes.noR8, baselineRef.noR8),
+        });
+      } catch (error) {
+        console.warn(
+          `  ${lib.label}: build failed\n${String(error.stderr ?? error)
+            .split('\n')
+            .filter((l) => /error|What went wrong|FAILURE/i.test(l))
+            .slice(0, 8)
+            .join('\n')}`
+        );
+        rows.push({ id: lib.id, label: lib.label, failed: true });
+      } finally {
+        fs.writeFileSync(proguardFile, proguardOriginal);
+        const names = lib.install.map((s) =>
+          s === '@rnap' ? 'react-native-anything-player' : baseName(s)
+        );
+        npmFn('uninstall', ...names);
+      }
     }
-  }
+    return rows;
+  };
 
   const previous = fs.existsSync(out)
-    ? JSON.parse(fs.readFileSync(out, 'utf8')).libraries
-    : [];
+    ? JSON.parse(fs.readFileSync(out, 'utf8'))
+    : null;
+  const bare = !only || only.some((id) => LIBRARIES.some((l) => l.id === id));
+  const expo = !only || only.some((id) => EXPO_IDS.includes(id));
+  // RNAP is packed from this checkout only when it is being measured.
+  const wantRnap = bare && !rnapTarball;
+  if (wantRnap && !fs.existsSync(path.join(ROOT, 'lib/module/index.js')))
+    run('yarn', ['prepare'], { cwd: ROOT });
+  let rnap = rnapTarball ? path.resolve(rnapTarball) : null;
+  if (!rnap && wantRnap) rnap = packRnap(work);
+  // The expoRuntime row is a delta over the bare empty app, so that baseline
+  // is also needed when only the Expo ids are requested. When it is not
+  // rebuilt, the previous run's stored baseline stands (that row is left
+  // untouched by the merge).
+  const needBare = bare || only?.includes('expoRuntime');
+  let baseline = null;
+  if (needBare) {
+    console.log('building (empty bare app, arm64-v8a, release):');
+    baseline = measure(app, 'empty app');
+  } else baseline = previous?.baseline ?? null;
+  if (expo && !baseline)
+    throw new Error(
+      `the Expo runtime row needs the bare baseline; run once without --only, or --only expoRuntime`
+    );
+
+  let rows = [];
+  if (bare)
+    rows.push(
+      ...measureLibraries(app, npm, baseline, LIBRARIES.filter((l) => !only || only.includes(l.id)))
+    );
+
+  if (expo) {
+    const appExpo = path.join(work, 'app-expo');
+    console.log(`scaffolding the Expo modules app in ${appExpo} …`);
+    scaffold(appExpo, true);
+    const npmExpo = npmFor(appExpo);
+    npmExpo('install');
+    // The runtime the modules come from is measured over the bare empty app…
+    console.log('building (Expo modules runtime, arm64-v8a, release):');
+    const expoSizes = measure(appExpo, 'Expo modules runtime');
+    rows.push({
+      id: 'expoRuntime',
+      label: 'Expo modules runtime',
+      name: 'expo',
+      version: versionOf(appExpo, 'expo'),
+      gradle: {},
+      r8: delta(expoSizes.r8, baseline.r8),
+      noR8: delta(expoSizes.noR8, baseline.noR8),
+    });
+    // …and each Expo module over the Expo app.
+    const bundled = JSON.parse(
+      fs.readFileSync(
+        path.join(appExpo, 'node_modules', 'expo', 'bundledNativeModules.json'),
+        'utf8'
+      )
+    );
+    const libs = EXPO_LIBRARIES.map((lib) => ({
+      ...lib,
+      install: lib.install.map((s) => (bundled[s] ? `${s}@${bundled[s]}` : s)),
+      over: 'expo',
+    }));
+    rows.push(
+      ...measureLibraries(appExpo, npmExpo, expoSizes, libs.filter((l) => !only || only.includes(l.id)))
+    );
+  }
+
   const merged = [
-    ...previous.filter((p) => !rows.some((r) => r.id === p.id)),
+    ...(previous?.libraries ?? []).filter((p) => !rows.some((r) => r.id === p.id)),
     ...rows,
   ].sort(
     (a, b) =>
-      LIBRARIES.findIndex((l) => l.id === a.id) -
-      LIBRARIES.findIndex((l) => l.id === b.id)
+      ORDER.findIndex((l) => l.id === a.id) -
+      ORDER.findIndex((l) => l.id === b.id)
   );
   fs.writeFileSync(
     out,
@@ -369,7 +599,7 @@ function main() {
         method: 'benchmarks/android/measure-apk.mjs',
         reactNative: RN['react-native'],
         abi: 'arm64-v8a',
-        baseline,
+        baseline: baseline ?? previous?.baseline,
         libraries: merged,
       },
       null,

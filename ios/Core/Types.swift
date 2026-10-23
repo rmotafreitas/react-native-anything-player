@@ -101,6 +101,7 @@ enum ErrorCode: String {
   case routePickerUnavailable = "ROUTE_PICKER_UNAVAILABLE"
   case castUnavailable = "CAST_UNAVAILABLE"
   case castUnsupportedSource = "CAST_UNSUPPORTED_SOURCE"
+  case soundUnavailable = "SOUND_UNAVAILABLE"
 }
 
 struct PlayerError: Error, Equatable {
@@ -193,6 +194,23 @@ struct Status: Equatable {
   var muted = false
   var rate: Double = 1
   var route: AudioRoute = .unknown
+  /// Wall-clock epoch ms when the sleep timer pauses the player, `nil` when off.
+  var sleepAt: Int64? = nil
+}
+
+/// A linear move from `from` to `to` between two monotonic instants (ms).
+struct Ramp: Equatable {
+  let from: Double
+  let to: Double
+  let startAt: Int64
+  let endAt: Int64
+
+  /// The value at `t`: `from` before it starts, `to` once it ends.
+  func value(at t: Int64) -> Double {
+    if t >= endAt { return to }
+    if t <= startAt { return from }
+    return from + (to - from) * (Double(t - startAt) / Double(endAt - startAt))
+  }
 }
 
 /// One structured diagnostic line (ring-buffered natively, optionally streamed).

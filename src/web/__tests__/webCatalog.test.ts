@@ -56,6 +56,27 @@ afterEach(() => {
 });
 
 describe('web catalog', () => {
+  it('filters a search by group and keeps the favorites', async () => {
+    await module.setCatalog(
+      [
+        { ...CATALOG[0], group: 'Music/Jazz' },
+        ...(CATALOG.slice(1) as object[]),
+      ],
+      { browse: { favorites: ['x', 'y'] } }
+    );
+    const inGroup = (await module.searchCatalog({
+      query: 'jazz',
+      group: 'Music',
+    })) as unknown[];
+    const elsewhere = await module.searchCatalog({
+      query: 'jazz',
+      group: 'Podcasts',
+    });
+    expect(inGroup).toHaveLength(1);
+    expect(elsewhere).toEqual([]);
+    await module.setFavorites(['nope']);
+  });
+
   it('searches with the shared matcher', async () => {
     await module.setCatalog(CATALOG, {});
     const found = (await module.searchCatalog({ query: 'jazz' })) as Array<{

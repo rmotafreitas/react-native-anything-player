@@ -84,12 +84,20 @@ const props = defineProps<{
 }>();
 
 /** A release APK: what each library adds with R8, and the rest without it (benchmarks/results/apk.json). */
+const kb = (bytes: number) => Math.round(bytes / 1024);
+const expoRuntime = apk.libraries.find(
+  (l) => !('failed' in l && l.failed) && l.id === 'expoRuntime'
+) as Extract<(typeof apk.libraries)[number], { r8: unknown }> | undefined;
 const APK: ChartSpec = {
   title: 'Added to a release APK',
   subtitle: `React Native ${apk.reactNative}, ${apk.abi}, against an empty app. KB with R8 (solid) / without R8 (whole bar).`,
   unit: 'KB',
   value: () => 0,
-  note: 'RNAP without HLS, with Cast, and the libraries that did not build are listed on the page.',
+  note:
+    'RNAP without HLS, with Cast, and the libraries that did not build are listed on the page.' +
+    (expoRuntime
+      ? ` expo-audio and expo-av are measured over an app that already has the Expo modules runtime (itself ${kb(expoRuntime.r8.apkBytes).toLocaleString('en-US')} KB with R8 / ${kb(expoRuntime.noR8.apkBytes).toLocaleString('en-US')} KB without it).`
+      : ''),
   source: { date: apk.measuredAt, script: 'benchmarks/android/measure-apk.mjs', text: 'Built' },
 };
 
@@ -126,9 +134,12 @@ interface Item {
 
 function items(s: ChartSpec): Item[] {
   if (props.name === 'apk-size') {
-    const kb = (bytes: number) => Math.round(bytes / 1024);
     return apk.libraries
-      .filter((l) => !('failed' in l && l.failed) && l.id !== 'rnapNoHls' && l.id !== 'rnapCast')
+      .filter(
+        (l) =>
+          !('failed' in l && l.failed) &&
+          !['rnapNoHls', 'rnapCast', 'rnapSound', 'rnapCar', 'expoRuntime'].includes(l.id)
+      )
       .map((l) => {
         const lib = l as Extract<(typeof apk.libraries)[number], { r8: unknown }>;
         return {
@@ -136,7 +147,10 @@ function items(s: ChartSpec): Item[] {
           label: lib.label,
           license: null,
           version: lib.version,
-          detail: `${lib.name}@${lib.version} · dex ${kb(lib.r8.dexBytes)} KB, native ${kb(lib.r8.nativeBytes)} KB, resources ${kb(lib.r8.resourceBytes)} KB with R8`,
+          detail:
+            lib.id === 'expoAudio' || lib.id === 'expoAv'
+              ? `${lib.label}@${lib.version}, added to an app that already has the Expo modules runtime · dex ${kb(lib.r8.dexBytes)} KB, native ${kb(lib.r8.nativeBytes)} KB, resources ${kb(lib.r8.resourceBytes)} KB with R8`
+              : `${lib.name}@${lib.version} · dex ${kb(lib.r8.dexBytes)} KB, native ${kb(lib.r8.nativeBytes)} KB, resources ${kb(lib.r8.resourceBytes)} KB with R8`,
           value: lib.r8.apkBytes / 1024,
           later: Math.max(0, lib.noR8.apkBytes - lib.r8.apkBytes) / 1024,
           text: `${kb(lib.r8.apkBytes).toLocaleString('en-US')} / ${kb(lib.noR8.apkBytes).toLocaleString('en-US')}`,

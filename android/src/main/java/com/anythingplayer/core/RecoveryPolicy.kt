@@ -49,9 +49,12 @@ object RecoveryPolicy {
 
   /** A paused network live stream's connection is released after this. */
   const val PAUSED_STREAM_RELEASE_MS = 30_000L
+
+  /** How often a fade (play, pause, stop, `fadeTo`, the sleep timer) updates the volume. */
+  const val FADE_TICK_MS = 50L
 }
 
-/** App-configurable recovery knobs (`PlayerOptions` in TS). */
+/** App-configurable engine knobs (`PlayerOptions` in TS): recovery and fades. */
 data class EngineOptions(
   /** Reconnect automatically after recoverable failures while playback is wanted. */
   val reconnect: Boolean = true,
@@ -61,6 +64,10 @@ data class EngineOptions(
   val autoResumeAfterInterruption: Boolean = true,
   /** Live drift (pauses + stalls since the open) that forces a live-edge re-open. */
   val liveMaxDriftMs: Long = 5_000L,
+  /** Fade-in when playback starts (`0` = none). Starts when the audio does. */
+  val fadeInMs: Long = 0L,
+  /** Fade-out before a pause or a stop, and the sleep timer's default (`0` = none). */
+  val fadeOutMs: Long = 0L,
 )
 
 /** Deterministic exponential backoff with injectable jitter. */

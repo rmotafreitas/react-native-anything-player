@@ -48,6 +48,8 @@ class ConformanceTest {
         options = options.copy(autoResumeAfterInterruption = o.getBoolean("autoResumeAfterInterruption"))
       }
       if (o.has("liveMaxDriftMs")) options = options.copy(liveMaxDriftMs = o.getLong("liveMaxDriftMs"))
+      if (o.has("fadeInMs")) options = options.copy(fadeInMs = o.getLong("fadeInMs"))
+      if (o.has("fadeOutMs")) options = options.copy(fadeOutMs = o.getLong("fadeOutMs"))
     }
     val h = EngineHarness(options)
     val steps = scenario.getJSONArray("steps")
@@ -170,6 +172,12 @@ class ConformanceTest {
       "rate" -> h.engine.setRate(value)
       "duck" -> h.engine.setDucked(step.optBoolean("value", false))
       "foreground" -> h.engine.appForegrounded()
+      "fadeTo" -> h.engine.fadeTo(value, step.getDouble("ms")) { h.recorder.fades += 1 }
+      "sleep" ->
+        h.engine.sleep(
+          if (step.has("after") && !step.isNull("after")) step.getDouble("after") else null,
+          if (step.has("fadeOut")) step.getDouble("fadeOut") else null,
+        )
       "handoff" ->
         h.engine.handoff(
           AudioRoute(
@@ -188,6 +196,21 @@ class ConformanceTest {
     if (step.has(key) && !step.isNull(key)) step.getString(key) else null
 
   private fun stringList(array: JSONArray): List<String> = (0 until array.length()).map { array.getString(it) }
+
+  /**
+   * Ordered commands: each entry must match (as a string prefix) a recorded
+   * command at or after the previous match — a subsequence, not a run.
+   */
+  private fun orderedCommands(at: String, expected: List<String>, actual: List<String>) {
+    var cursor = 0
+    for (pattern in expected) {
+      while (cursor < actual.size && !actual[cursor].startsWith(pattern)) cursor += 1
+      if (cursor >= actual.size) {
+        fail("$at: orderedCommands: no command starting with \"$pattern\" at or after index $cursor in $actual")
+      }
+      cursor += 1
+    }
+  }
 
   private fun nullable(o: JSONObject, key: String): Any? = if (o.isNull(key)) null else o.get(key)
 
@@ -213,6 +236,11 @@ class ConformanceTest {
         "needsAudioFocus" -> assertEquals("$at: needsAudioFocus", v, h.engine.needsAudioFocus)
         "route" -> assertEquals("$at: route", v, s.route.kind.wire)
         "routeName" -> assertEquals("$at: routeName", v, s.route.name)
+        "volume" -> assertEquals("$at: volume", (v as Number).toDouble(), s.volume, 0.0)
+        "sleepAt" -> assertEquals("$at: sleepAt", (v as Number?)?.toLong(), s.sleepAt?.let { it - WALL_BASE })
+        "sleeps" -> assertEquals("$at: sleeps", (v as Number).toInt(), h.recorder.sleeps)
+        "fades" -> assertEquals("$at: fades", (v as Number).toInt(), h.recorder.fades)
+        "orderedCommands" -> orderedCommands(at, stringList(v as JSONArray), h.driver.commands)
         else -> fail("$at: unknown expectation $key")
       }
     }
@@ -220,5 +248,7 @@ class ConformanceTest {
     h.recorder.loads.clear()
     h.recorder.errors.clear()
     h.recorder.ended = 0
+    h.recorder.sleeps = 0
+    h.recorder.fades = 0
   }
 }

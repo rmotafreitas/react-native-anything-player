@@ -46,6 +46,7 @@ Native details are never dropped: `AVFoundationErrorDomain -11800` comes with th
 | `ROUTE_PICKER_UNAVAILABLE` | no | `showRoutePicker()` where there is no output picker (Firefox; a browser without AirPlay or Remote Playback for this source) ([Casting & AirPlay](routes-and-casting.md#the-output-picker)) |
 | `CAST_UNAVAILABLE` | no | `showCastPicker()` where Cast is not built in (no `cast` plugin option) or not supported (browsers other than Chrome), or before the web's Cast SDK is ready ([Casting & AirPlay](routes-and-casting.md#google-cast)) |
 | `CAST_UNSUPPORTED_SOURCE` | no | non-fatal `error` event: a Cast session started but the player's source cannot be reached by a receiver (a local file, `content://`, a bundled asset, `blob:`); the player stays on the device ([Casting & AirPlay](routes-and-casting.md#what-casting-does)) |
+| `SOUND_UNAVAILABLE` | no | `Sound.load()` or `Sound.configure()` on iOS or Android in an app built without the `sound` option ([Sound](sound.md#enabling-it)) |
 | `INTERNAL_ERROR` | no | a bug — please report with `player.getDiagnostics()` |
 
 ## Recoverable vs fatal

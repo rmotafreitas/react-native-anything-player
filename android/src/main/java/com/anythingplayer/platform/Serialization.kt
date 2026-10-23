@@ -74,6 +74,12 @@ internal fun ReadableMap.optDouble(key: String): Double? =
 internal fun ReadableMap.optMap(key: String): ReadableMap? =
   if (hasKey(key) && getType(key) == ReadableType.Map) getMap(key) else null
 
+/** A `fade` side (`in` / `out`, seconds) in ms; absent or ≤ 0 = no fade. */
+internal fun fadeMs(fade: ReadableMap?, key: String): Long {
+  val seconds = fade?.optDouble(key) ?: return 0L
+  return if (seconds > 0) Math.round(seconds * 1000) else 0L
+}
+
 internal fun parseOptions(map: ReadableMap): PlayerOptions {
   val recovery = map.optMap("recovery")
   val giveUp =
@@ -85,6 +91,8 @@ internal fun parseOptions(map: ReadableMap): PlayerOptions {
       giveUpAfterMs = giveUp,
       autoResumeAfterInterruption = map.optMap("interruptions")?.optBoolean("autoResume") ?: true,
       liveMaxDriftMs = recovery?.optDouble("liveMaxDriftMs")?.toLong() ?: EngineOptions().liveMaxDriftMs,
+      fadeInMs = fadeMs(map.optMap("fade"), "in"),
+      fadeOutMs = fadeMs(map.optMap("fade"), "out"),
     )
   val session = map.optMap("mediaSession")
   val commands = mutableSetOf<String>()
@@ -198,6 +206,8 @@ internal fun statusToMap(status: Status, seq: Long): WritableMap =
         if (status.route.name == null) putNull("name") else putString("name", status.route.name)
       },
     )
+    val sleepAt = status.sleepAt
+    if (sleepAt == null) putNull("sleepAt") else putDouble("sleepAt", sleepAt.toDouble())
   }
 
 internal fun metadataToMap(metadata: StreamMetadata, timestamp: Long): WritableMap =

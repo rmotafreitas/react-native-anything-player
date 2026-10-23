@@ -15,6 +15,7 @@ import {
   playFromSearch,
   searchCatalog,
   setCatalog,
+  setFavorites,
   setSearchHandler,
   showCastPicker,
   showRoutePicker,
@@ -212,6 +213,53 @@ describe('catalog', () => {
     expect(fake.calls[1]).toEqual(['setCatalog', [], { playerId: 'default' }]);
   });
 
+  it('sends groups and the browse options, trimmed to what is in the catalog', async () => {
+    await setCatalog(
+      [
+        { ...station, group: ' Music / Jazz ' },
+        { id: 'b', title: 'B', source: { uri: 'https://b.example/s' } },
+      ],
+      {
+        browse: {
+          recent: true,
+          favorites: ['b', 'b', 'gone', ''],
+          rootOrder: [' Podcasts ', 'Music'],
+          titles: { recent: 'Last played', favorites: '  ' },
+        },
+      }
+    );
+    const [, items, options] = fake.calls[0] as [string, any[], any];
+    expect(items[0].group).toBe('Music/Jazz');
+    expect(items[1].group).toBeUndefined();
+    expect(options.browse).toEqual({
+      recent: 10,
+      favorites: ['b'],
+      rootOrder: ['Podcasts', 'Music'],
+      titles: { recent: 'Last played' },
+    });
+  });
+
+  it.each([
+    [false, 0],
+    [undefined, 0],
+    [3.7, 3],
+    [500, 50],
+    [-4, 0],
+    [Number.NaN, 0],
+  ])('keeps %p recent items as %p', async (recent, kept) => {
+    await setCatalog([station], { browse: { recent } });
+    const [, , options] = fake.calls[0] as [string, any, any];
+    expect(options.browse.recent).toBe(kept);
+  });
+
+  it('replaces the favorites without the catalog', async () => {
+    await setFavorites(['a', 'b', 'a', '']);
+    expect(fake.calls[0]).toEqual(['setFavorites', ['a', 'b']]);
+    await expect(setFavorites('x' as never)).rejects.toMatchObject({
+      code: 'INVALID_ARGUMENT',
+    });
+  });
+
   it('rejects invalid catalogs', async () => {
     await expect(setCatalog('x' as never)).rejects.toMatchObject({
       code: 'INVALID_ARGUMENT',
@@ -219,6 +267,9 @@ describe('catalog', () => {
     await expect(setCatalog([{ ...station, id: '' }])).rejects.toMatchObject({
       code: 'INVALID_ARGUMENT',
     });
+    await expect(
+      setCatalog([{ ...station, id: 'rnap:group:Jazz' }])
+    ).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
     await expect(setCatalog([{ ...station, title: '' }])).rejects.toMatchObject(
       { code: 'INVALID_ARGUMENT' }
     );

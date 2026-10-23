@@ -87,6 +87,7 @@ export function parseOptions(value: unknown): WebPlayerOptions {
         bool(dict(map.interruptions)?.autoResume) ?? true,
       liveMaxDriftMs:
         num(recovery?.liveMaxDriftMs) ?? DEFAULT_ENGINE_OPTIONS.liveMaxDriftMs,
+      ...parseFade(map.fade),
     },
     mediaSession: bool(session?.enabled) ?? true,
     remoteCommands: new Set(commands),
@@ -95,6 +96,17 @@ export function parseOptions(value: unknown): WebPlayerOptions {
     useStreamMetadata: bool(metadata?.useStreamMetadataForNowPlaying) ?? true,
     progressIntervalMs: interval != null && interval > 0 ? interval : 0,
   };
+}
+
+/** `{ in?, out? }` in seconds (what `PlayerOptions.fade` and `setFade` send) → ms. */
+export function parseFade(value: unknown): {
+  fadeInMs: number;
+  fadeOutMs: number;
+} {
+  const fade = dict(value);
+  const ms = (seconds: number | null) =>
+    seconds != null && seconds > 0 ? Math.round(seconds * 1000) : 0;
+  return { fadeInMs: ms(num(fade?.in)), fadeOutMs: ms(num(fade?.out)) };
 }
 
 export function parseSource(
@@ -146,6 +158,7 @@ export function statusToMap(status: EngineStatus, seq: number): Dict {
     muted: status.muted,
     rate: status.rate,
     route: { ...status.route },
+    sleepAt: status.sleepAt,
   };
 }
 

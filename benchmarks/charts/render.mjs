@@ -247,11 +247,11 @@ function main() {
   const apkFile = path.join(RESULTS, 'apk.json');
   if (fs.existsSync(apkFile)) {
     const apk = JSON.parse(fs.readFileSync(apkFile, 'utf8'));
-    const variants = new Set(['rnapNoHls', 'rnapCast']);
+    const variants = new Set(['rnapNoHls', 'rnapCast', 'rnapSound', 'rnapCar']);
     const built = apk.libraries.filter((l) => !l.failed);
     const kb = (bytes) => bytes / 1024;
     const rows = built
-      .filter((l) => !variants.has(l.id))
+      .filter((l) => !variants.has(l.id) && l.id !== 'expoRuntime')
       .map((l) => ({
         label: l.label,
         value: kb(l.r8.apkBytes),
@@ -266,6 +266,7 @@ function main() {
       .filter((l) => variants.has(l.id))
       .map((l) => `${l.label}: ${fmt(kb(l.r8.apkBytes))} KB`)
       .join(' · ');
+    const expo = built.find((l) => l.id === 'expoRuntime');
     const failed = apk.libraries.filter((l) => l.failed).map((l) => l.label);
     charts['apk-size.svg'] = hbar({
       title: 'Added to a release APK',
@@ -275,6 +276,11 @@ function main() {
       note: [
         `Built ${apk.measuredAt} · benchmarks/android/measure-apk.mjs`,
         ...(variantNote ? [`With R8: ${variantNote}`] : []),
+        ...(expo
+          ? [
+              `expo-audio and expo-av stand on an app that already has the Expo modules runtime, itself ${fmt(kb(expo.r8.apkBytes))} KB with R8 / ${fmt(kb(expo.noR8.apkBytes))} KB without`,
+            ]
+          : []),
         ...(failed.length ? [`Did not build with React Native ${apk.reactNative}: ${failed.join(', ')}`] : []),
       ],
     });

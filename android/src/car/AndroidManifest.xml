@@ -1,0 +1,8 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <application>
+    <!-- Android Auto lists the app as a media app and browses the media library service. -->
+    <meta-data
+      android:name="com.google.android.gms.car.application"
+      android:resource="@xml/rnap_automotive_app_desc" />
+  </application>
+</manifest>

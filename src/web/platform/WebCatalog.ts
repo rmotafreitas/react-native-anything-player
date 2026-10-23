@@ -13,6 +13,7 @@ export interface StoredItem {
   artist?: string;
   album?: string;
   genre?: string;
+  group?: string;
   artwork?: string;
   keywords: string[];
   kind: string;
@@ -29,6 +30,8 @@ export class WebCatalog {
   playerOptions: Record<string, unknown> = {};
   /** Whether the app answers what the catalog does not have. */
   handlerEnabled = false;
+  /** The ids of the favorites (`browse.favorites`, `setFavorites`); the web has no browse surface, it only keeps them. */
+  favoriteIds: string[] = [];
   private lastPlayedId: string | null = null;
   private readonly pending = new Map<
     string,
@@ -38,7 +41,15 @@ export class WebCatalog {
 
   set(items: object[], options: object): void {
     this.items = items as StoredItem[];
-    const o = options as { playerId?: unknown; playerOptions?: unknown };
+    const o = options as {
+      playerId?: unknown;
+      playerOptions?: unknown;
+      browse?: { favorites?: unknown };
+    };
+    if (Array.isArray(o.browse?.favorites))
+      this.favoriteIds = o.browse.favorites.filter(
+        (id): id is string => typeof id === 'string'
+      );
     this.playerId = typeof o.playerId === 'string' ? o.playerId : 'default';
     this.playerOptions =
       o.playerOptions && typeof o.playerOptions === 'object'

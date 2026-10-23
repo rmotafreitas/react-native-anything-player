@@ -2,7 +2,7 @@
   "checkedAt": "2026-10-05",
   "method": "Read from each package's published npm tarball (TypeScript API + native sources). \"Your code\" means possible only if the app writes the logic itself (RNTP's retry() exists, but nothing calls it for you). Nothing here was measured on a device.",
   "libraries": [
-    { "id": "rnap", "label": "RNAP", "version": "1.1.1" },
+    { "id": "rnap", "label": "RNAP", "version": "1.2.0" },
     { "id": "rntp5", "label": "RNTP 5", "version": "5.12.1" },
     { "id": "rntp4", "label": "RNTP 4", "version": "4.1.2" },
     { "id": "expoAudio", "label": "expo-audio", "version": "57.0.5" }
@@ -68,8 +68,8 @@
         },
         {
           "label": "CarPlay / Android Auto browsing",
-          "evidence": "RNTP 5 setBrowseTree + CarPlay framework",
-          "values": { "rnap": "no", "rntp5": "yes", "rntp4": "no", "expoAudio": "no" }
+          "evidence": "RNAP: a browse tree from the catalog's groups for CarPlay, Android Auto, Automotive OS and Wear OS (CarPlay and Android Auto opt-in: `car`); RNTP 5 setBrowseTree + CarPlay framework",
+          "values": { "rnap": "yes", "rntp5": "yes", "rntp4": "no", "expoAudio": "no" }
         },
         {
           "label": "Chromecast / AirPlay picker",
@@ -78,8 +78,8 @@
         },
         {
           "label": "Sleep timer",
-          "evidence": "RNTP 5 sleepAfterTime / sleepAfterMediaItemAtIndex",
-          "values": { "rnap": "no", "rntp5": "yes", "rntp4": "no", "expoAudio": "no" }
+          "evidence": "RNAP player.sleep({ after, fadeOut }), run by the native engine; RNTP 5 sleepAfterTime / sleepAfterMediaItemAtIndex",
+          "values": { "rnap": "yes", "rntp5": "yes", "rntp4": "no", "expoAudio": "no" }
         },
         {
           "label": "Web",

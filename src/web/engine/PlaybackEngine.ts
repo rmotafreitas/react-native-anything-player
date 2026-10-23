@@ -13,7 +13,7 @@
 // Twins: `ios/Core/PlaybackEngine.swift`, `android/.../core/PlaybackEngine.kt`.
 // All three run `conformance/`.
 
-import { EngineCore } from './EngineCore';
+import { EngineFades } from './EngineFades';
 import { continuesIntent } from './status';
 import type { AudioRoute, InterruptionReason, NetworkState } from './types';
 
@@ -24,7 +24,7 @@ export type {
   LoadOutcome,
 } from './contracts';
 
-export class PlaybackEngine extends EngineCore {
+export class PlaybackEngine extends EngineFades {
   // ── Output ──
 
   /** The local output changed (headphones, AirPlay, Bluetooth). Ignored while casting. */
@@ -52,6 +52,8 @@ export class PlaybackEngine extends EngineCore {
       this.commit();
       return;
     }
+    // A fade-out lands first: the pause belongs to the old output.
+    this.completeFadeOut();
     const position = this.handoffPosition();
     // A paused stream whose connection was released stays released.
     const active =
@@ -64,6 +66,7 @@ export class PlaybackEngine extends EngineCore {
     this.route = route;
     this.remote = route.kind === 'cast';
     this.log('handoff', { to: outputId, resume: `${resume}` });
+    this.settleFades();
     this.applyVolume();
     if (active) {
       this._playWhenReady = resume && this._playWhenReady;
@@ -174,6 +177,7 @@ export class PlaybackEngine extends EngineCore {
     )
       return;
     this.log('platform reset', {});
+    this.completeFadeOut();
     if (
       this._state === 'stopped' ||
       this._state === 'ended' ||

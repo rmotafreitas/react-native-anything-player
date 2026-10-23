@@ -118,11 +118,11 @@ function walk(dir, out = []) {
 }
 
 /**
- * RNAP's opt-in parts: Google Cast (the `cast` build flag) and the Siri
- * templates an app compiles only with `siri`. Reported apart from what every
- * app compiles.
+ * RNAP's opt-in parts: Google Cast (`cast`), the Sound API (`sound`), CarPlay
+ * and Android Auto (`car`), and the Siri templates an app compiles only with
+ * `siri`. Reported apart from what every app compiles.
  */
-const OPT_IN_NATIVE = /[\\/](ios[\\/](Cast|AppIntents|IntentsExtension)|android[\\/]src[\\/]cast)[\\/]/;
+const OPT_IN_NATIVE = /[\\/](ios[\\/](Cast|CarPlay|Sound|AppIntents|IntentsExtension)|android[\\/]src[\\/](cast|castcar|car|sound))[\\/]/;
 
 function countLines(files) {
   let bytes = 0;

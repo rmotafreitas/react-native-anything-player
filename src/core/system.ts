@@ -4,6 +4,7 @@
 // see the Casting and AirPlay and the Voice assistants guides.
 
 import { PlayerError, toPlayerError } from '../errors';
+import { groupSegments } from './catalog';
 import { host } from './host';
 import { onModuleEvent } from './moduleEvents';
 import {
@@ -15,6 +16,7 @@ import {
 import type {
   CastState,
   CatalogItem,
+  BrowseOptions,
   CatalogOptions,
   SearchRequest,
   Source,
@@ -143,9 +145,16 @@ export function stopCasting(): Promise<void> {
 // ── Catalog & voice ──
 
 /** What native stores for a catalog item: resolved artwork, normalized source. */
+/** Folder ids of the car and watch browse tree start with this; catalog ids may not. */
+const RESERVED_ID_PREFIX = 'rnap:';
+
 function serializeItem(item: CatalogItem): Record<string, unknown> {
   if (!item || typeof item.id !== 'string' || item.id.trim() === '')
     throw invalid('A catalog item needs a non-empty `id`.');
+  if (item.id.startsWith(RESERVED_ID_PREFIX))
+    throw invalid(
+      `Catalog item id "${item.id}" starts with "${RESERVED_ID_PREFIX}", which the car and watch browse tree reserves for its folders.`
+    );
   if (typeof item.title !== 'string' || item.title.trim() === '')
     throw invalid(`Catalog item "${item.id}" needs a non-empty \`title\`.`);
   const source = normalizeSource(item.source);
@@ -167,6 +176,8 @@ function serializeItem(item: CatalogItem): Record<string, unknown> {
   if (item.artist != null) out.artist = String(item.artist);
   if (item.album != null) out.album = String(item.album);
   if (item.genre != null) out.genre = String(item.genre);
+  const group = groupSegments(item.group).join('/');
+  if (group !== '') out.group = group;
   if (shown.artwork != null) out.artwork = shown.artwork;
   return out;
 }
@@ -183,6 +194,7 @@ function deserializeItem(raw: unknown): CatalogItem {
   if (typeof item.artist === 'string') out.artist = item.artist;
   if (typeof item.album === 'string') out.album = item.album;
   if (typeof item.genre === 'string') out.genre = item.genre;
+  if (typeof item.group === 'string') out.group = item.group;
   if (typeof item.artwork === 'string') out.artwork = item.artwork;
   return out;
 }
@@ -195,11 +207,54 @@ function serializeRequest(input: SearchInput): Record<string, unknown> {
   if (!request || typeof request.query !== 'string')
     throw invalid('A search request needs a `query` string (it may be empty).');
   const out: Record<string, unknown> = { query: request.query };
-  for (const key of ['title', 'artist', 'album', 'genre', 'focus'] as const) {
+  for (const key of [
+    'title',
+    'artist',
+    'album',
+    'genre',
+    'focus',
+    'group',
+  ] as const) {
     const value = request[key];
     if (typeof value === 'string' && value !== '') out[key] = value;
   }
   return out;
+}
+
+const MAX_RECENT = 50;
+const DEFAULT_RECENT = 10;
+
+function recentLimit(recent: BrowseOptions['recent']): number {
+  if (recent === true) return DEFAULT_RECENT;
+  if (typeof recent !== 'number' || !Number.isFinite(recent)) return 0;
+  return Math.min(MAX_RECENT, Math.max(0, Math.floor(recent)));
+}
+
+/** What native stores of {@link BrowseOptions}: `recent` as a count (0 = off). */
+function serializeBrowse(
+  browse: BrowseOptions,
+  ids: ReadonlySet<unknown>
+): Record<string, unknown> {
+  const limit = recentLimit(browse.recent);
+  const strings = (list: unknown): string[] =>
+    Array.isArray(list)
+      ? list.filter((s): s is string => typeof s === 'string' && s !== '')
+      : [];
+  const titles: Record<string, string> = {};
+  for (const key of ['recent', 'favorites', 'more'] as const) {
+    const title = browse.titles?.[key];
+    if (typeof title === 'string' && title.trim() !== '') titles[key] = title;
+  }
+  return {
+    recent: limit,
+    favorites: [...new Set(strings(browse.favorites))].filter((id) =>
+      ids.has(id)
+    ),
+    rootOrder: strings(browse.rootOrder).map((name) =>
+      groupSegments(name).join('/')
+    ),
+    titles,
+  };
 }
 
 /**
@@ -222,7 +277,24 @@ export async function setCatalog(
   };
   if (options.playerOptions)
     nativeOptions.playerOptions = options.playerOptions;
+  if (options.browse)
+    nativeOptions.browse = serializeBrowse(options.browse, ids);
   await run(() => native().setCatalog(serialized, nativeOptions));
+}
+
+/**
+ * Replaces the Favorites folder of the car and watch browse tree with these
+ * catalog ids, in this order, without sending the catalog again (the same as
+ * `setCatalog(items, { browse: { favorites } })`). Ids that are not in the
+ * catalog are ignored; `[]` hides the folder.
+ */
+export async function setFavorites(ids: readonly string[]): Promise<void> {
+  if (!Array.isArray(ids))
+    throw invalid('setFavorites expects an array of ids.');
+  const unique = [
+    ...new Set(ids.filter((id) => typeof id === 'string' && id !== '')),
+  ];
+  await run(() => native().setFavorites(unique));
 }
 
 /** Searches the catalog as a voice request would; best match first. */

@@ -8,7 +8,11 @@ import com.facebook.react.module.model.ReactModuleInfoProvider
 
 class AnythingPlayerPackage : BaseReactPackage() {
   override fun getModule(name: String, reactContext: ReactApplicationContext): NativeModule? =
-    if (name == AnythingPlayerModule.NAME) AnythingPlayerModule(reactContext) else null
+    when (name) {
+      AnythingPlayerModule.NAME -> AnythingPlayerModule(reactContext)
+      AnythingPlayerSoundModule.NAME -> AnythingPlayerSoundModule(reactContext)
+      else -> null
+    }
 
   override fun getReactModuleInfoProvider() = ReactModuleInfoProvider {
     mapOf(
@@ -20,7 +24,16 @@ class AnythingPlayerPackage : BaseReactPackage() {
           needsEagerInit = false,
           isCxxModule = false,
           isTurboModule = true,
-        )
+        ),
+      AnythingPlayerSoundModule.NAME to
+        ReactModuleInfo(
+          name = AnythingPlayerSoundModule.NAME,
+          className = AnythingPlayerSoundModule.NAME,
+          canOverrideExistingModule = false,
+          needsEagerInit = false,
+          isCxxModule = false,
+          isTurboModule = true,
+        ),
     )
   }
 }

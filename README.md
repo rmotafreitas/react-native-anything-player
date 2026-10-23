@@ -34,9 +34,10 @@ Read from each library's published source; sizes, methodology and the gaps RNAP 
 - **Visualizer**: decoded-audio windows (`audioSample`) on iOS, Android and the web — including live HTTP streams on iOS, where AVPlayer's audio tap never runs.
 - **Outputs and casting**: where the audio goes (`status.route`), the system output picker (`<RoutePicker />`: AirPlay, Android's Output Switcher), and Google Cast as a build option (`<CastButton />`), with radio titles kept while casting.
 - **Voice assistants**: a catalog stored on the device answers "Hey Siri / Hey Google, play X on MyApp", even with the app closed; Siri shortcuts on iOS 16+; the same search on the web (`playFromSearch`).
+- **Cars & watches**: one browse tree from the catalog (`group`, favorites, recently played) in Android Auto, Android Automotive OS, Wear OS and CarPlay; opt-in with `car`. See [Cars & watches](docs/cars-and-watches.md).
 - **Song progress for radio**: give the current song's duration and the lock screen shows its progress, advanced natively.
 - **Web**: the same API in Expo web, React Native Web, React apps without React Native (`react-native-anything-player/react`: Vite, Next.js) and plain pages (`react-native-anything-player/web`), on a TypeScript twin of the engine that passes the same conformance suite: ICY metadata over fetch + MSE, splices, recovery, the Media Session, the visualizer.
-- **Observability**: a native ring buffer of structured engine traces, readable any time with `player.getDiagnostics()`, and a CLI (`doctor`) that checks an app's setup and its stream URLs.
+- **Observability**: a native ring buffer of structured engine traces, readable any time with `player.getDiagnostics()`, and a CLI (`rnap`) that lists and switches the build modules, estimates their size, checks an app's setup and its stream URLs, and rewrites the mechanical part of a migration.
 - **Small and fast**: a TurboModule with zero JS dependencies; progress is a synchronous JSI read (~10 µs), so a progress bar needs no events. Opt into `progress` events from a native timer (`progressInterval`) when JS must follow the audio where its own timers are frozen.
 
 ## Install
@@ -115,6 +116,7 @@ function NowPlaying() {
 | [Events](docs/events.md) | Status, events, ordering and threading guarantees |
 | [Feature matrix](docs/features.md) | What works where: iOS, Android and the web, feature by feature |
 | [Web](docs/web.md) | Expo web, React Native Web, React (Vite, Next.js), plain pages: setup, CORS, autoplay, browser support |
+| [Sound effects](docs/sound.md) | `Sound`: short effects with low latency, many at once, mixed with other audio, on iOS, Android and the web |
 | [Visualizer](docs/visualizer.md) | Decoded-audio windows for oscilloscopes and meters (iOS streams included) |
 | [Errors](docs/errors.md) | Normalized error codes |
 | [Configuration](docs/configuration.md) | Every `PlayerOptions` field |
@@ -122,7 +124,7 @@ function NowPlaying() {
 | [Debugging & troubleshooting](docs/debugging.md) | Diagnostics, logs, common problems, FAQ |
 | [Architecture](docs/architecture.md) | Design decisions and research |
 | [Testing](docs/testing.md) | Test layers, conformance suite, device tests, soak results |
-| [CLI](docs/cli.md) | `doctor` and `init`: check and fix an app's setup |
+| [CLI](docs/cli.md) | `modules`, `add`, `remove`, `size`, `info` and `migrate`: switch build modules, estimate their size, report a setup, rewrite a migration; `doctor` and `init` check and fix an app's setup |
 | [Roadmap](docs/roadmap.md) | What RNAP still needs, in priority order |
 | [Changelog](CHANGELOG.md), [Versioning & releases](docs/releases.md) | Every release; what a version number promises |
 

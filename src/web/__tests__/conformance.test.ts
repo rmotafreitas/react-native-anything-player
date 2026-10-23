@@ -15,7 +15,7 @@ import {
   type InterruptionReason,
   type NetworkState,
 } from '../engine/types';
-import { EngineHarness, type Motion } from './EngineHarness';
+import { EngineHarness, WALL_BASE, type Motion } from './EngineHarness';
 
 type Step = Record<string, unknown>;
 interface Scenario {
@@ -47,6 +47,8 @@ function engineOptions(o: Record<string, unknown> = {}): EngineOptions {
   }
   if ('liveMaxDriftMs' in o)
     options.liveMaxDriftMs = o.liveMaxDriftMs as number;
+  if ('fadeInMs' in o) options.fadeInMs = o.fadeInMs as number;
+  if ('fadeOutMs' in o) options.fadeOutMs = o.fadeOutMs as number;
   return options;
 }
 
@@ -84,6 +86,15 @@ function perform(call: string, step: Step, h: EngineHarness): void {
       return h.engine.setRate(value);
     case 'duck':
       return h.engine.setDucked(step.value === true);
+    case 'fadeTo':
+      return h.engine.fadeTo(value, step.ms as number, () => {
+        h.recorder.fades += 1;
+      });
+    case 'sleep':
+      return h.engine.sleep(
+        (step.after as number | null | undefined) ?? null,
+        (step.fadeOut as number | undefined) ?? null
+      );
     case 'foreground':
       return h.engine.appForegrounded();
     case 'handoff':
@@ -220,6 +231,21 @@ function check(
       case 'needsAudioFocus':
         expect_(label, h.engine.needsAudioFocus, v);
         break;
+      case 'volume':
+        expect_(label, s.volume, v);
+        break;
+      case 'sleepAt':
+        expect_(label, s.sleepAt == null ? null : s.sleepAt - WALL_BASE, v);
+        break;
+      case 'sleeps':
+        expect_(label, h.recorder.sleeps, v);
+        break;
+      case 'fades':
+        expect_(label, h.recorder.fades, v);
+        break;
+      case 'orderedCommands':
+        orderedCommands_(label, v as string[], h.driver.commands);
+        break;
       default:
         throw new Error(`${at}: unknown expectation ${key}`);
     }
@@ -228,6 +254,8 @@ function check(
   h.recorder.loads = [];
   h.recorder.errors = [];
   h.recorder.ended = 0;
+  h.recorder.sleeps = 0;
+  h.recorder.fades = 0;
 }
 
 function expect_(label: string, actual: unknown, expected: unknown): void {
@@ -235,6 +263,27 @@ function expect_(label: string, actual: unknown, expected: unknown): void {
     expect(actual).toEqual(expected);
   } catch (error) {
     throw new Error(`${label}\n${(error as Error).message}`);
+  }
+}
+
+/**
+ * Ordered commands: each entry must match (as a string prefix) a recorded
+ * command at or after the previous match — a subsequence, not a run.
+ */
+function orderedCommands_(
+  label: string,
+  expected: string[],
+  actual: string[]
+): void {
+  let cursor = 0;
+  for (const pattern of expected) {
+    while (cursor < actual.length && !actual[cursor]!.startsWith(pattern))
+      cursor += 1;
+    if (cursor === actual.length)
+      throw new Error(
+        `${label}: no command starting with "${pattern}" at or after index ${cursor} in [${actual.join(', ')}]`
+      );
+    cursor += 1;
   }
 }
 

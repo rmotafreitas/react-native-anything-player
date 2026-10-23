@@ -5,7 +5,7 @@ RNAP is tested at six layers. Everything below runs locally; the device layers n
 | Layer | What | Command |
 |---|---|---|
 | Engine conformance (iOS) | the Swift engine against the shared scenarios + ICY cases + catalog search cases + ICY de-interleave / re-frame / splice fuzzing | `yarn test:ios` (`cd ios && swift test`; the core also runs on Linux in the `swift` Docker image) |
-| Engine conformance (Android) | the Kotlin engine against the same scenarios + ICY and catalog cases; the platform layer's pure parts (catalog store, intents, routes, the Cast receiver mapping) | `yarn test:android` |
+| Engine conformance (Android) | the Kotlin engine against the same scenarios + ICY and catalog cases; the platform layer's pure parts (catalog store, intents, routes, the Cast receiver mapping), and the browse tree of cars and watches | `yarn test:android` |
 | Engine conformance (web) and JS | the TypeScript engine against the same scenarios + ICY cases; `Player`, hooks, errors, source validation against a fake native module; the browser layer against a scripted fake browser; the React DOM entry, including server rendering (coverage threshold enforced) | `yarn test --coverage` |
 | Web end-to-end | the browser engine in Chromium, Firefox and WebKit against the controllable server, including the integration scenarios below on Expo web | `yarn test:web` |
 | On-device integration | the real native player in the example apps against the controllable server | see below |
@@ -105,7 +105,7 @@ Verified on the iOS 27 simulator:
 - Now Playing publications (title/artist from ICY, live flag, rate, artwork attached asynchronously), read from the unified log;
 - five JS reloads while playing: no crash, old players released (a crash on reload was found and fixed here — events emitted into a torn-down TurboModule).
 
-**Not verified (no physical devices available):** real phone calls, Siri, Bluetooth/AirPods/CarPlay/Android Auto hardware, wired-headset unplug, AirPlay, Google Cast receivers, cellular handoff on a real radio, Now Playing on an Apple Watch and media controls on Wear OS. Hardware checklist for outputs and voice:
+**Not verified (no physical devices available):** real phone calls, Siri, Bluetooth/AirPods/CarPlay/Android Auto hardware (CarPlay's Swift is compiled by CI only), wired-headset unplug, AirPlay, Google Cast receivers, cellular handoff on a real radio, Now Playing on an Apple Watch and media controls on Wear OS. Hardware checklist for outputs and voice:
 
 - AirPlay: pick a receiver from `<RoutePicker />` while a stream plays (`status.route.kind === 'airplay'`); lock the phone; pick the phone again.
 - Google Cast (Android, iOS, Chrome): cast a playing radio stream and a file mid-way; check position, titles (from the phone), lock-screen controls, volume, a receiver-side stop, Wi-Fi loss on the phone only, and stopping from the phone (returns paused).
@@ -115,6 +115,25 @@ Verified on the iOS 27 simulator:
 
 The code paths are covered by the conformance scenarios (interruptions, focus, output-disconnect, handoff) and follow the platform APIs. They are exercised on hardware as devices become available; the [roadmap](roadmap.md#hardware-verification) tracks what is left.
 
+
+## Browse tree
+
+The browse tree of cars and watches (`docs/cars-and-watches.md`) is checked in three layers:
+
+- `BrowseTreeTest` (`yarn test:android`) and `BrowseTreeTests` (`swift test`) build trees from `conformance/catalog/browse.json` and compare ids, titles, order, tab overflow, slices of long folders, reserved ids, styles and folder artwork; `catalog.test.ts` runs the group helpers and the group-filtered search from the same file.
+- `BrowseTreeLibraryTest` is an instrumented test: it writes a grouped catalog, connects to `AnythingPlayerPlaybackService` the way Android Auto and Wear OS do (a media client), lists the root and the folders, reads the content-style hints, lists a 250-item folder whole and by pages, plays an item by its id and finds it in "Recently played". Run it on its own (the catalog is read once per process), with the stream files on the host:
+
+```sh
+python3 -m http.server 18765   # serving jazz.wav and news.wav
+cd example/android && ./gradlew :app:connectedDebugAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.class=anythingplayer.example.BrowseTreeLibraryTest
+```
+
+- The `catalog-groups` scenario checks `setCatalog` with groups, `setFavorites` and the group filter from JavaScript, natively and on the web.
+
+Checked on the Android 16 emulator: the 104 Kotlin unit tests pass; `BrowseTreeLibraryTest` passes 4 of 4 (a root of Favorites, Podcasts, Music, Zoo and More in that order; Music holding the Jazz subfolder before its own item; grid hint on the station folders and list hint on the podcast folder; a 250-item folder whole, and page 0 and page 2 of 100 when asked; `playFromMediaId` starts the item and "Recently played" then opens the root); `VoiceLibraryTest` still passes 4 of 4. The R8-shrunk release build of the bare example (`-Pr8=true`, with `rnapCar=true`) passes all 24 scenarios, `catalog-groups` included. The merged manifest has the Android Auto meta-data with `rnapCar=true` (alone, or with `rnapCast=true`) and none without it.
+
+It cannot be a real car: the instrumented client is not Android Auto, so the car-only rules (folders only at the root, four tabs, folders cut into slices of 100) are held by the unit tests. A head unit, CarPlay, Android Automotive OS and a watch are on the hardware list below.
 
 ## Soak
 

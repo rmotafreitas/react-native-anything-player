@@ -112,6 +112,57 @@ export function useProgress(player: Player, intervalMs = 1000): Progress {
   return progress;
 }
 
+/** What {@link useSleepTimer} returns. */
+export interface SleepTimerState {
+  /** Epoch ms when the timer pauses the player (`status.sleepAt`), or `null`. */
+  sleepAt: number | null;
+  /** Whole seconds left, counted down while the app is in the foreground; `null` without a timer. */
+  remaining: number | null;
+}
+
+/**
+ * The sleep timer (`Player.sleep`) and the seconds left on it, updated every
+ * second while a timer is set and the app is in the foreground. The timer
+ * itself runs natively; this only shows it.
+ */
+export function useSleepTimer(player: Player): SleepTimerState {
+  const subscribe = useCallback(
+    (onChange: () => void) => player.on('status', onChange),
+    [player]
+  );
+  const read = () => player.status.sleepAt ?? null;
+  const sleepAt = useSyncExternalStore(subscribe, read, read);
+  const [now, setNow] = useState(() => Date.now());
+  // The timer is allocated by start() and cleared by stop() and the effect
+  // cleanup, as in useProgress.
+  // react-doctor-disable-next-line react-doctor/effect-needs-cleanup
+  useEffect(() => {
+    if (sleepAt == null) return undefined;
+    let timer: ReturnType<typeof setInterval> | null = null;
+    const tick = () => setNow(Date.now());
+    const start = () => {
+      if (timer != null) return;
+      tick();
+      timer = setInterval(tick, 1000);
+    };
+    const stop = () => {
+      if (timer != null) clearInterval(timer);
+      timer = null;
+    };
+    if (host().isForeground()) start();
+    const foreground = host().onForegroundChange((active) =>
+      active ? start() : stop()
+    );
+    return () => {
+      stop();
+      foreground();
+    };
+  }, [sleepAt]);
+  const remaining =
+    sleepAt == null ? null : Math.max(0, Math.ceil((sleepAt - now) / 1000));
+  return { sleepAt, remaining };
+}
+
 /** Subscribes to a player event for the component's lifetime. */
 export function usePlayerEvent<E extends PlayerEvent>(
   player: Player,

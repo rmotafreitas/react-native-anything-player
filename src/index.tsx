@@ -1,3 +1,9 @@
+/**
+ * The Player, its hooks, errors, events and types:
+ * `import { Player } from 'react-native-anything-player'`.
+ *
+ * @module player
+ */
 export { Player } from './Player';
 export { PlayerError, isPlayerError } from './errors';
 export { configureHls } from './core/hls';
@@ -11,6 +17,7 @@ export {
   playFromSearch,
   searchCatalog,
   setCatalog,
+  setFavorites,
   setSearchHandler,
   showCastPicker,
   showRoutePicker,
@@ -30,7 +37,9 @@ export {
   usePlayerEvent,
   useCastStatus,
   useRoutePickerAvailable,
+  useSleepTimer,
 } from './hooks';
+export type { SleepTimerState } from './hooks';
 export { RoutePicker } from './components/RoutePicker';
 export type { RoutePickerProps } from './components/RoutePicker';
 export { CastButton } from './components/CastButton';
@@ -43,11 +52,13 @@ export type {
   AudioSample,
   AudioSamplingOptions,
   BlobInput,
+  BrowseOptions,
   CastState,
   CatalogItem,
   CatalogOptions,
   DiagnosticEntry,
   Discontinuity,
+  FadeOptions,
   Interruption,
   InterruptionReason,
   LoadOptions,
@@ -68,6 +79,8 @@ export type {
   SearchFocus,
   SearchPlayEvent,
   SearchRequest,
+  SleepEvent,
+  SleepTimer,
   Source,
   SourceInput,
 } from './types';

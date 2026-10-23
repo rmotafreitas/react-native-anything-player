@@ -7,5 +7,7 @@ export {
   usePlayerStatus,
   useProgress,
   useRoutePickerAvailable,
+  useSleepTimer,
   useStreamMetadata,
 } from './core/hooks';
+export type { SleepTimerState } from './core/hooks';

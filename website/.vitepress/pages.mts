@@ -102,10 +102,22 @@ export const SECTIONS: DocSection[] = [
           'Google Cast, AirPlay and the system output picker in React Native and on the web: where the audio goes, the Cast button, and what casting keeps working.',
       },
       {
+        link: '/docs/sound',
+        text: 'Sound effects',
+        description:
+          'Play short effects with low latency in React Native and on the web: many copies at once, volume, rate and pan, mixed with other audio, no media session.',
+      },
+      {
         link: '/docs/voice',
         text: 'Voice assistants',
         description:
           'Let Siri, Google Assistant and Gemini play your stations and episodes, even with the app closed, and the same catalog search on the web.',
+      },
+      {
+        link: '/docs/cars-and-watches',
+        text: 'Cars & watches',
+        description:
+          'Browse and play your catalog in CarPlay, Android Auto, Android Automotive OS and on watches: groups, favorites, recently played, and what each platform needs.',
       },
       {
         link: '/docs/web',

@@ -33,6 +33,8 @@ data class SearchableItem(
   val genre: String? = null,
   val keywords: List<String>? = null,
   val kind: String? = null,
+  /** The browse group; only filtered by [CatalogQuery.group], never matched by text. */
+  val group: String? = null,
 )
 
 /** A search request (`query` may be empty when structured fields are given). */
@@ -43,6 +45,8 @@ data class CatalogQuery(
   val album: String? = null,
   val genre: String? = null,
   val focus: String? = null,
+  /** Only items in this group or its subgroups are searched ([BrowseTree.isInGroup]). */
+  val group: String? = null,
 )
 
 /** The outcome of a search. */
@@ -285,7 +289,9 @@ object CatalogSearch {
     val hasStructured = structured.title.isNotEmpty() || structured.artist.isNotEmpty() ||
       structured.album.isNotEmpty() || structured.genre.isNotEmpty()
     val scored = mutableListOf<Pair<Int, Int>>()
+    val scoped = BrowseTree.groupSegments(request.group).isNotEmpty()
     items.forEachIndexed { index, raw ->
+      if (scoped && !BrowseTree.isInGroup(raw.group, request.group)) return@forEachIndexed
       val item = tokenizeItem(raw)
       val extra = structuredScores(structured, item)
       val score =

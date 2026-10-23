@@ -6,6 +6,7 @@ import type {
   AudioSamplingOptions,
   BlobInput,
   DiagnosticEntry,
+  FadeOptions,
   LoadOptions,
   MediaMetadata,
   NowPlayingMetadata,
@@ -17,6 +18,7 @@ import type {
   Progress,
   RemoteCommandEvent,
   SearchPlayEvent,
+  SleepTimer,
   SourceInput,
 } from '../types';
 
@@ -171,6 +173,34 @@ export function normalizeNowPlaying(
   return out;
 }
 
+/** Seconds that must be finite and ≥ 0. */
+function assertDuration(name: string, value: number): void {
+  assertFinite(name, value);
+  if (value < 0) {
+    throw new PlayerError({
+      code: 'INVALID_ARGUMENT',
+      message: `${name} must be ≥ 0 (seconds).`,
+      recoverable: false,
+    });
+  }
+}
+
+/** Validates `fade` options; exported for tests. */
+export function normalizeFade(
+  fade: FadeOptions | null | undefined
+): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (fade?.in != null) {
+    assertDuration('fade.in', fade.in);
+    out.in = fade.in;
+  }
+  if (fade?.out != null) {
+    assertDuration('fade.out', fade.out);
+    out.out = fade.out;
+  }
+  return out;
+}
+
 function assertFinite(name: string, value: number): void {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
     throw new PlayerError({
@@ -228,6 +258,7 @@ export class Player {
         });
       }
     }
+    if (options.fade != null) normalizeFade(options.fade);
     ensureSubscription();
     // With an id native already knows, this attaches to that player.
     this.id = native().createPlayer(options as object);
@@ -362,6 +393,49 @@ export class Player {
   async setRate(rate: number): Promise<void> {
     assertFinite('rate', rate);
     await this.run(() => native().setRate(this.id, rate));
+  }
+
+  /**
+   * Moves the volume to `volume` (0…1, clamped) over `seconds`. Resolves when
+   * it gets there, or when `setVolume` or another `fadeTo` takes over.
+   * `status.volume` is the target from the start. Runs natively, so it keeps
+   * going while JavaScript is frozen in the background. Instant on a Cast
+   * receiver.
+   */
+  async fadeTo(volume: number, seconds: number): Promise<void> {
+    assertFinite('volume', volume);
+    assertDuration('seconds', seconds);
+    await this.run(() => native().fadeTo(this.id, volume, seconds));
+  }
+
+  /**
+   * Pauses after `timer.after` seconds, fading out over the last
+   * `timer.fadeOut` seconds. `null` cancels. A new timer replaces the
+   * previous one. The timer runs natively (it fires while JavaScript is
+   * frozen); `status.sleepAt` shows when it fires, and a `sleep` event says it
+   * did. A paused live stream then releases its connection after 30 s, as
+   * after any pause.
+   */
+  async sleep(timer: SleepTimer | null): Promise<void> {
+    const request: Record<string, number | null> = { after: null };
+    if (timer != null) {
+      assertDuration('after', timer.after);
+      request.after = timer.after;
+      if (timer.fadeOut != null) {
+        assertDuration('fadeOut', timer.fadeOut);
+        request.fadeOut = timer.fadeOut;
+      }
+    }
+    await this.run(() => native().sleep(this.id, request));
+  }
+
+  /**
+   * Replaces the fades of play, pause and stop (`PlayerOptions.fade`); `null`
+   * turns them off. A fade under way keeps its course.
+   */
+  async setFade(fade: FadeOptions | null): Promise<void> {
+    const normalized = normalizeFade(fade);
+    await this.run(() => native().setFade(this.id, normalized));
   }
 
   /**
@@ -521,6 +595,12 @@ export class Player {
           request: event.request,
           item: event.item,
         } as SearchPlayEvent);
+        break;
+      case 'sleep':
+        this.emit('sleep', {
+          reason: 'fired',
+          timestamp: event.timestamp as number,
+        });
         break;
       case 'discontinuity':
         this.emit('discontinuity', {

@@ -7,10 +7,16 @@
 // - `cast` (true or `{ receiverApplicationId, localNetworkUsageDescription }`):
 //   builds Google Cast in (Gradle property `rnapCast`, Podfile property
 //   `rnap.cast`) and adds iOS's local network keys. See docs/routes-and-casting.md.
+// - `sound` (default false): builds the Sound API in (Gradle property
+//   `rnapSound`, Podfile property `rnap.sound`). See docs/sound.md.
 // - `siri` (true or `{ usageDescription, appIntents }`): the Siri capability,
 //   the Intents extension that hands requests to the app, and (unless
 //   `appIntents` is false) the App Intents of Siri shortcuts, Spotlight and the
 //   Shortcuts app (iOS 16+), compiled by the app target. See docs/voice.md.
+// - `car` (true): CarPlay and Android Auto browsing of the catalog (Gradle
+//   property `rnapCar`, Podfile property `rnap.car`), the CarPlay audio
+//   entitlement and CarPlay's scene in the Info.plist. Needs Apple's CarPlay
+//   audio entitlement approval. See docs/cars-and-watches.md.
 // - `assistant` (default true): Google Assistant and Gemini requests to the
 //   main activity (`MEDIA_PLAY_FROM_SEARCH` → `AnythingPlayer.handleIntent`).
 const fs = require('fs');
@@ -26,6 +32,7 @@ const {
   withMainActivity,
   withPodfileProperties,
   withXcodeProject,
+  WarningAggregator,
 } = require('expo/config-plugins');
 const pkg = require('./package.json');
 const helpers = require('./plugin/helpers');
@@ -43,11 +50,23 @@ function withIos(config, resolved) {
     cfg.modResults = helpers.applyPodfileProperties(cfg.modResults, resolved);
     return cfg;
   });
-  if (!resolved.siri) return config;
+  if (resolved.car) {
+    // Runs after the app's own scene setup (mods run last-added first).
+    config = withInfoPlist(config, (cfg) => {
+      if (!helpers.hasWindowScene(cfg.modResults))
+        WarningAggregator.addWarningIOS(
+          'react-native-anything-player',
+          "car: the Info.plist has no UIWindowSceneSessionRoleApplication scene, so CarPlay's scene would leave the phone without a window. Adopt the scene life cycle first (docs/cars-and-watches.md)."
+        );
+      return cfg;
+    });
+  }
+  if (!resolved.siri && !resolved.car) return config;
   config = withEntitlementsPlist(config, (cfg) => {
     cfg.modResults = helpers.applyEntitlements(cfg.modResults, resolved);
     return cfg;
   });
+  if (!resolved.siri) return config;
   config = withDangerousMod(config, [
     'ios',
     (cfg) => {

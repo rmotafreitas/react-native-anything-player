@@ -233,7 +233,8 @@ internal class SessionPlayer : SimpleBasePlayer(Looper.getMainLooper()) {
       Log.w("RNAP", "assistant set an item that is not in the catalog: ${chosen?.mediaId}")
       return Futures.immediateVoidFuture()
     }
-    val request = MediaLibrary.requestOf(chosen) ?: SearchRequest(entry.title, origin = "assistant")
+    // No search behind it: a person picked the item in a car or on a watch (`origin: 'browse'`).
+    val request = MediaLibrary.requestOf(chosen) ?: SearchRequest(entry.title, origin = "browse")
     try {
       val start = if (startPositionMs != C.TIME_UNSET && startPositionMs > 0) startPositionMs / 1000.0 else null
       Voice.load(Voice.voicePlayer(null), entry, request, autoplay = false, startSeconds = start, completion = null)

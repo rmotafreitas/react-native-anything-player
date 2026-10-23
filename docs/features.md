@@ -53,6 +53,8 @@ Supported: the current and previous version of each browser. Radio titles on iPh
 | Volume, mute, rate | ✓ | ✓ | ✓ | ✓ | ✓ | ◐ ⁶ |
 | Several players at once | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Progress events, `getProgress()` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Sleep timer (`sleep`, `status.sleepAt`) | ✓ | ✓ | ◐ ⁷ | ◐ ⁷ | ◐ ⁷ | ◐ ⁷ |
+| Fades on play, pause and stop, `fadeTo` | ✓ | ✓ | ◐ ⁷ | ◐ ⁷ | ◐ ⁷ | – ⁶ |
 | Queue (next / previous, gapless) | – | – | – | – | – | – |
 
 1. Leave it out with `rnapHls=false`.
@@ -60,7 +62,8 @@ Supported: the current and previous version of each browser. Radio titles on iPh
 3. `file://` URLs and paths; Android also takes `content://`.
 4. `File` / `Blob`, `blob:` and `data:` URLs.
 5. When RNAP reads the stream itself (MSE, hls.js), not on the plain `<audio>` element. On iPhone and iPad, from iOS 17.1.
-6. The system fixes the volume: `setVolume` has no effect, `setMuted` works.
+6. The system fixes the volume: `setVolume` has no effect, `setMuted` works. Fades have no effect either; the sleep timer pauses without one.
+7. In a hidden tab the browser runs timers less often: fades move in larger steps and the sleep timer can fire late.
 
 A queue is planned: see the [roadmap](roadmap.md).
 
@@ -120,6 +123,24 @@ One engine on every column, held to [the same conformance suite](../conformance/
 6. Files and streams; not HLS.
 7. Streams RNAP reads and local files.
 
+## Sound effects
+
+`Sound` ([guide](sound.md)): short effects decoded into memory, played with low latency, many at once.
+
+| | iOS | Android | Chromium | Firefox | Safari | iPhone, iPad |
+|---|---|---|---|---|---|---|
+| `Sound.load()`, `play()` with volume, rate, pan and loop | ✓ ¹ | ✓ ¹ | ✓ | ✓ | ✓ | ✓ |
+| Several copies at once, the oldest stopped when all are busy | ✓ ¹ | ✓ ¹ | ✓ | ✓ | ✓ | ✓ |
+| Mixes with other audio, no media session or audio focus | ✓ ¹ | ✓ ¹ | ✓ | ✓ | ✓ | ✓ |
+| `respectSilentSwitch` | ✓ ¹ | – | – | – | – | – ² |
+| Needs a user gesture (`AUTOPLAY_BLOCKED`) | – | – | ✓ | ✓ | ✓ | ✓ |
+| Loads a `Blob` or `File` | – | – | ✓ | ✓ | ✓ | ✓ |
+| Loads a `require()`d asset | ✓ ¹ | ✓ ¹ | ◐ ³ | ◐ ³ | ◐ ³ | ◐ ³ |
+
+1. Opt-in: a build option (`sound` in the Expo plugin), so apps that play no effects do not ship it. Built and unit-tested; not yet exercised on a device †.
+2. The browser decides: iPhone Safari silences Web Audio with the ringer switch.
+3. In Expo web and React Native Web, through the bundler's asset URL; not in plain pages (pass a URL).
+
 ## Outputs and casting
 
 | | iOS | Android | Chromium | Firefox | Safari | iPhone, iPad |
@@ -151,6 +172,26 @@ See [Casting & AirPlay](routes-and-casting.md).
 | Siri shortcuts, Spotlight, Shortcuts app, Action button | ✓ † ⁴ | – | – | – | – | – |
 | Speech in the page | – | – | ◐ ⁵ | – | ◐ ⁵ | ◐ ⁵ |
 
+## Cars and watches
+
+| | iOS | Android | Chromium | Firefox | Safari | iPhone, iPad |
+|---|---|---|---|---|---|---|
+| Groups in the catalog; `searchCatalog` by `group` | ✓ | ✓ | ✓ ¹ | ✓ ¹ | ✓ ¹ | ✓ ¹ |
+| Browse tree in the car: CarPlay, Android Auto, Android Automotive OS | ✓ † ² | ✓ † ³ | – | – | – | – |
+| Browse tree on a watch | – ⁴ | ✓ † ⁵ | – | – | – | – |
+| Recently played, favorites in the tree | ✓ † | ✓ † | – | – | – | – |
+| Playing from the tree reported to JS (`searchPlay`, `origin: 'browse'`) | ✓ † | ✓ † | – | – | – | – |
+| Now Playing on the watch | ✓ † ⁶ | ✓ † ⁵ | – | – | – | – |
+
+1. The same matcher and the same group rules as on the phone ([test cases](../conformance/catalog/browse.json)). The web keeps the groups and favorites; it has no car or watch screen.
+2. CarPlay: opt-in (`car` in the Expo plugin, `RNAP_CAR=1`), and it needs Apple's CarPlay audio entitlement.
+3. Android Auto: opt-in (`car`, `rnapCar=true`). Android Automotive OS needs an automotive build of the app. The tree is the same.
+4. Apple Watch has no media browser for another app's audio; start the station from the phone or CarPlay.
+5. Wear OS uses the phone's media library and session. Not tried on a watch.
+6. Through the phone's Now Playing.
+
+See [Cars & watches](cars-and-watches.md).
+
 1. The same matcher as on the phone, held to [the same test cases](../conformance/catalog/search.json).
 2. Siri.
 3. Google Assistant and Gemini.
@@ -164,7 +205,7 @@ See [Voice assistants](voice.md).
 | | iOS | Android | Web (every engine) |
 |---|---|---|---|
 | Expo config plugin | ✓ | ✓ | – (nothing to configure) |
-| `npx react-native-anything-player doctor` / `init` | ✓ | ✓ | ◐ stream URL checks (CORS, ICY) |
+| `npx rnap doctor` / `init` | ✓ | ✓ | ◐ stream URL checks (CORS, ICY) |
 | TypeScript types | ✓ | ✓ | ✓ |
 | Zero runtime JS dependencies | ✓ | ✓ | ✓ (hls.js is optional and yours to add) |
-| Size in a release build | not measured yet | about 1.2 MB of a release APK, with R8 ([measured](comparison.md#added-to-a-release-apk)) | about 28 KB of JS on page load ([measured](comparison.md#react-and-plain-web-pages)) |
+| Size in a release build | not measured yet | about 1.2 MB of a release APK, with R8 ([measured](comparison.md#added-to-a-release-apk)) | about 30 KB of JS on page load ([measured](comparison.md#react-and-plain-web-pages)) |

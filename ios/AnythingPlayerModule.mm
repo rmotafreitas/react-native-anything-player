@@ -4,6 +4,9 @@
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 
+// The generated Swift header can name CarPlay types (with RNAP_CAR).
+#import <CarPlay/CarPlay.h>
+
 #if __has_include("AnythingPlayer/AnythingPlayer-Swift.h")
 #import "AnythingPlayer/AnythingPlayer-Swift.h"
 #else
@@ -182,6 +185,31 @@ static void RNAPInstallIntentHandler(void)
   [_bridge command:@"setRate" id:playerId value:@(rate) resolve:resolve reject:reject];
 }
 
+- (void)fadeTo:(NSString *)playerId
+        volume:(double)volume
+       seconds:(double)seconds
+       resolve:(RCTPromiseResolveBlock)resolve
+        reject:(RCTPromiseRejectBlock)reject
+{
+  [_bridge fadeTo:playerId volume:volume seconds:seconds resolve:resolve reject:reject];
+}
+
+- (void)sleep:(NSString *)playerId
+        timer:(NSDictionary *)timer
+      resolve:(RCTPromiseResolveBlock)resolve
+       reject:(RCTPromiseRejectBlock)reject
+{
+  [_bridge sleepTimer:playerId timer:timer resolve:resolve reject:reject];
+}
+
+- (void)setFade:(NSString *)playerId
+           fade:(NSDictionary *)fade
+        resolve:(RCTPromiseResolveBlock)resolve
+         reject:(RCTPromiseRejectBlock)reject
+{
+  [_bridge setFade:playerId fade:fade resolve:resolve reject:reject];
+}
+
 - (void)updateNowPlaying:(NSString *)playerId
                 metadata:(NSDictionary *)metadata
                  resolve:(RCTPromiseResolveBlock)resolve
@@ -262,6 +290,11 @@ static void RNAPInstallIntentHandler(void)
             reject:(RCTPromiseRejectBlock)reject
 {
   [_bridge setCatalog:items options:options resolve:resolve reject:reject];
+}
+
+- (void)setFavorites:(NSArray *)ids resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject
+{
+  [_bridge setFavorites:ids resolve:resolve reject:reject];
 }
 
 - (void)searchCatalog:(NSDictionary *)request resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject

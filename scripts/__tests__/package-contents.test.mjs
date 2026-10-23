@@ -56,20 +56,19 @@ test('ships the native build files', () => {
 test('ships every file the exports map points to (after a build)', (t) => {
   if (!fs.existsSync(path.join(ROOT, 'lib/module/index.js')))
     return t.skip('lib/ is not built');
-  for (const entry of Object.values(pkg.exports)) {
-    const targets =
-      typeof entry === 'string'
-        ? [entry]
-        : Object.entries(entry)
-            .filter(
-              ([condition]) =>
-                condition !== 'react-native-anything-player-source'
-            )
-            .map(([, target]) => target);
-    for (const target of targets)
+  // Conditions nest (`./sound` picks a file per platform): follow them all.
+  const targets = (entry) =>
+    typeof entry === 'string'
+      ? [entry]
+      : Object.entries(entry)
+          .filter(
+            ([condition]) => condition !== 'react-native-anything-player-source'
+          )
+          .flatMap(([, target]) => targets(target));
+  for (const entry of Object.values(pkg.exports))
+    for (const target of targets(entry))
       assert.ok(
         packed.has(target.replace(/^\.\//, '')),
         `${target} is not packed`
       );
-  }
 });

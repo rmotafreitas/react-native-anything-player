@@ -28,16 +28,34 @@ const player = new Player({
   android: {
     stopOnTaskRemoved: false, // stop when the app is swiped away from recents
   },
+  fade: {
+    in: 0,                   // s: play() fades in from silence; 0 = off
+    out: 0,                  // s: pause() and stop() fade out first; also the sleep timer's default fade-out
+  },
   diagnostics: false,        // stream engine traces as 'diagnostic' events and to the native log
   progressInterval: 0,       // ms between 'progress' events from a native timer while playing; 0 = off
 });
 ```
 
-Options are fixed for the player's lifetime. The audio-session configuration (iOS category/mode) follows the player that last requested playback.
+Options are fixed for the player's lifetime, except `fade`, which `setFade()` replaces ([Sleep timer and fades](playback.md#sleep-timer-and-fades)). The audio-session configuration (iOS category/mode) follows the player that last requested playback.
 
 With an `id`, a player outlives the JavaScript that created it, and `new Player({ id })` attaches to the native player with that id (one Siri or Google Assistant started, or one that kept playing across a reload), keeping its options. See [Voice assistants](voice.md#playing-a-request).
 
-App-wide settings live outside `Player`: the voice catalog (`setCatalog`, [Voice assistants](voice.md)), Cast (`configureCast` on the web, [Casting & AirPlay](routes-and-casting.md)) and hls.js on the web (`configureHls`, [Web](web.md#hls)).
+App-wide settings live outside `Player`: the voice catalog and its browse tree (`setCatalog`, `setFavorites`, [Voice assistants](voice.md), [Cars & watches](cars-and-watches.md)), Cast (`configureCast` on the web, [Casting & AirPlay](routes-and-casting.md)) and hls.js on the web (`configureHls`, [Web](web.md#hls)).
+
+## Modules
+
+Some parts of RNAP are chosen at build time, not at runtime: HLS, Cast, Siri, Assistant, the iOS background mode, the Sound API and the car integrations. `npx rnap modules` prints each one with the state of this project, `npx rnap add` and `npx rnap remove` write the switch, and [CLI](cli.md#modules) has the table with the platforms and the defaults.
+
+The switch is a native file — `android/gradle.properties`, `ios/Podfile.properties.json`, the app's `Info.plist` — or an option of the Expo config plugin, described in [Build-time options](#build-time-options). `rnap add sound` and `rnap add car` write the Sound API and Android Auto / CarPlay switches ([Sound](sound.md#enabling-it), [Cars & watches](cars-and-watches.md)); CarPlay's entitlement and scene stay with the app, and the CLI prints them.
+
+Three more switches were measured and left out, because they would save little or cost a core feature (code sizes in the dex of a release APK built with R8, before compression):
+
+| Candidate | What it would remove | Size | Decision |
+|---|---|--:|---|
+| Visualizer off | the audio tap (`AudioSampler`, `TeeAudioProcessor`) | about 2 KB | not worth a switch: an app that never turns sampling on pays almost nothing |
+| Local files only | Media3's OkHttp data source and the network monitor | about 3 KB | not worth a switch: OkHttp itself ships with React Native |
+| No media session | Media3 session | about 297 KB | not possible: on Android the media session's service is what keeps playback alive in the background and on the lock screen |
 
 ## Build-time options
 
@@ -48,10 +66,14 @@ App-wide settings live outside `Player`: the voice catalog (`setCatalog`, [Voice
 | `AndroidManifest.xml` `<application>` | `<meta-data android:name="com.anythingplayer.FOREGROUND_TIMEOUT_MS" android:value="…"/>` | how long a paused session stays in the foreground (Media3 default and max: 10 min) |
 | `android/gradle.properties` | `rnapCast=true` | build Google Cast in (Media3 Cast and the Cast framework: 1.4 MB more in a release APK with R8) |
 | `AndroidManifest.xml` `<application>` | `<meta-data android:name="com.anythingplayer.CAST_RECEIVER_ID" android:value="…"/>` | your own Cast receiver (default: the Default Media Receiver) |
+| `android/gradle.properties` | `rnapCar=true` | declare the app a media app for Android Auto ([Cars & watches](cars-and-watches.md#android-auto)); the browse tree itself needs no option |
 | `pod install` | `RNAP_CAST=1` (or `"rnap.cast": "true"` in `ios/Podfile.properties.json`) | build Google Cast in on iOS |
+| `pod install` | `RNAP_CAR=1` (or `"rnap.car": "true"` in `ios/Podfile.properties.json`) | build the CarPlay scene in; needs Apple's CarPlay audio entitlement ([Cars & watches](cars-and-watches.md#carplay)) |
 | `Info.plist` | `RNAPCastReceiverId` | your own Cast receiver on iOS |
+| `android/gradle.properties` | `rnapSound=true` | build the [Sound API](sound.md) in (a `SoundPool`: no extra library) |
+| `pod install` | `RNAP_SOUND=1` (or `"rnap.sound": "true"` in `ios/Podfile.properties.json`) | build the Sound API in on iOS |
 | Expo config plugin | `["react-native-anything-player", { "backgroundAudio": false }]` | do not add the iOS `audio` background mode |
-| Expo config plugin | `cast`, `siri`, `assistant` | Google Cast, Siri (extension and shortcuts), Google Assistant / Gemini: see [Getting started](getting-started.md#expo) |
+| Expo config plugin | `cast`, `siri`, `assistant`, `sound`, `car` | Google Cast, Siri (extension and shortcuts), Google Assistant / Gemini, the Sound API, CarPlay and Android Auto: see [Getting started](getting-started.md#expo) |
 
 The recovery timings that are *not* configurable are fixed on purpose; [recovery.md](recovery.md) explains each.
 
@@ -59,4 +81,4 @@ The recovery timings that are *not* configurable are fixed on purpose; [recovery
 
 Nothing to add to your R8 (ProGuard) rules: RNAP's own are applied to the app automatically. Turn R8 on for release builds (`minifyEnabled true` and `shrinkResources true` in `android/app/build.gradle`) and it removes most of what RNAP's libraries ship and RNAP does not use. RNAP builds ExoPlayer with only the audio and metadata renderers, so the video, subtitle and image code goes, and Android compiles only the C++ of RNAP's module, not that of the iOS-only AirPlay button.
 
-Measured in a React Native 0.86 release APK (arm64-v8a), RNAP adds 1,176 KB with R8 and 3,758 KB without it. [Comparison & benchmarks](comparison.md#added-to-a-release-apk) has the other libraries.
+Measured in a React Native 0.86 release APK (arm64-v8a), RNAP adds 1,192 KB with R8 and 3,790 KB without it. [Comparison & benchmarks](comparison.md#added-to-a-release-apk) has the other libraries.

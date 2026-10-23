@@ -172,3 +172,82 @@ export function addPlistArrayItem(text, key, item) {
     `${keyIndent}</array>\n`;
   return `${text.slice(0, lineStart)}${block}${text.slice(lineStart)}`;
 }
+
+/**
+ * Sets a top-level string value in an XML plist. Returns the new text, or
+ * `null` when it already has that value. Only the touched lines change.
+ */
+export function setPlistString(text, key, value) {
+  const parsed = parsePlist(text);
+  if (!isPlistDict(parsed)) throw new Error('The plist root is not a dict');
+  if (parsed[key] === value) return null;
+  if (parsed[key] !== undefined && typeof parsed[key] !== 'string')
+    throw new Error(`\`${key}\` is not a string`);
+  const escaped = String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+  const keyTag = `<key>${key}</key>`;
+  const keyAt = text.indexOf(keyTag);
+  if (keyAt !== -1) {
+    const open = text.indexOf('<string>', keyAt + keyTag.length);
+    const close = text.indexOf('</string>', open + '<string>'.length);
+    const nextKey = text.indexOf('<key>', keyAt + keyTag.length);
+    if (open === -1 || close === -1 || (nextKey !== -1 && nextKey < open))
+      throw new Error(`\`${key}\` has no <string> value`);
+    return (
+      text.slice(0, open + '<string>'.length) +
+      escaped +
+      text.slice(close)
+    );
+  }
+
+  const dictClose = text.lastIndexOf('</dict>');
+  if (dictClose === -1) throw new Error('No closing </dict>');
+  const lineStart = text.lastIndexOf('\n', dictClose) + 1;
+  const keyIndent = `${text.slice(lineStart, dictClose)}\t`;
+  const block = `${keyIndent}${keyTag}\n${keyIndent}<string>${escaped}</string>\n`;
+  return `${text.slice(0, lineStart)}${block}${text.slice(lineStart)}`;
+}
+
+/**
+ * Removes `item` from the top-level array `key` of an XML plist, and the key
+ * itself when the array ends up empty. Returns the new text, or `null` when
+ * the item was not there. Only the removed lines change.
+ */
+export function removePlistArrayItem(text, key, item) {
+  const value = parsePlist(text);
+  if (!isPlistDict(value)) throw new Error('The plist root is not a dict');
+  const current = value[key];
+  if (!Array.isArray(current) || !current.includes(item)) return null;
+
+  const keyTag = `<key>${key}</key>`;
+  const keyAt = text.indexOf(keyTag);
+  if (keyAt === -1) throw new Error(`\`${key}\` has no <key> entry`);
+  const arrayOpen = text.indexOf('<array>', keyAt + keyTag.length);
+  const arrayClose = text.indexOf('</array>', arrayOpen);
+  if (arrayOpen === -1 || arrayClose === -1)
+    throw new Error(`\`${key}\` has no <array> value`);
+
+  const itemLine = /^\s*<string>.*<\/string>\s*$/;
+  const inner = text.slice(arrayOpen + '<array>'.length, arrayClose);
+  const lines = inner.split('\n');
+  const kept = lines.filter(
+    (line) =>
+      !(itemLine.test(line) && line.trim() === `<string>${item}</string>`)
+  );
+  const remaining = kept.filter((line) => line.trim() !== '');
+
+  if (remaining.length > 0)
+    return (
+      text.slice(0, arrayOpen + '<array>'.length) +
+      kept.join('\n') +
+      text.slice(arrayClose)
+    );
+
+  // Nothing left in the array: drop the whole key and its empty array.
+  const lineStart = text.lastIndexOf('\n', keyAt) + 1;
+  const end = text.indexOf('\n', arrayClose + '</array>'.length);
+  return text.slice(0, lineStart) + text.slice(end === -1 ? text.length : end + 1);
+}

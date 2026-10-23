@@ -7,6 +7,13 @@ const DEFAULT_RECEIVER_ID = 'CC1AD845';
 const PLAY_FROM_SEARCH = 'android.media.action.MEDIA_PLAY_FROM_SEARCH';
 const HANDLE_INTENT = 'AnythingPlayer.handleIntent(this, intent)';
 const DEV_LAUNCHER_TEXT = /Expo Dev Launcher/;
+const CARPLAY_ROLE = 'CPTemplateApplicationSceneSessionRoleApplication';
+const WINDOW_ROLE = 'UIWindowSceneSessionRoleApplication';
+const CARPLAY_SCENE = {
+  UISceneClassName: 'CPTemplateApplicationScene',
+  UISceneConfigurationName: 'RNAP CarPlay',
+  UISceneDelegateClassName: 'RNAPCarPlaySceneDelegate',
+};
 
 /** Normalizes the plugin's options (see app.plugin.js). */
 function resolveOptions(options = {}) {
@@ -34,7 +41,9 @@ function resolveOptions(options = {}) {
           appIntents: siriOptions.appIntents !== false,
         }
       : null,
+    sound: options.sound === true,
     assistant: options.assistant !== false,
+    car: Boolean(options.car),
   };
 }
 
@@ -72,13 +81,48 @@ function applyInfoPlist(plist, resolved) {
       'INPlayMediaIntent',
     ]);
   }
+  if (resolved.car) out.UIApplicationSceneManifest = addCarPlayScene(out);
   return out;
 }
 
-/** iOS entitlements: the Siri capability. */
+/**
+ * The scene manifest with CarPlay's scene (a `CPTemplateApplicationScene`
+ * handled by RNAP's delegate) added, and multiple scenes allowed. Everything
+ * else in the manifest (the phone's window scene) is kept.
+ */
+function addCarPlayScene(plist) {
+  const manifest = plist.UIApplicationSceneManifest ?? {};
+  const configurations = manifest.UISceneConfigurations ?? {};
+  const others = (configurations[CARPLAY_ROLE] ?? []).filter(
+    (c) => c.UISceneConfigurationName !== CARPLAY_SCENE.UISceneConfigurationName
+  );
+  return {
+    ...manifest,
+    UIApplicationSupportsMultipleScenes: true,
+    UISceneConfigurations: {
+      ...configurations,
+      [CARPLAY_ROLE]: [...others, CARPLAY_SCENE],
+    },
+  };
+}
+
+/**
+ * Whether the phone has a window scene in the manifest. Without one, adding
+ * CarPlay's scene would make the app scene-based with no scene for the phone's
+ * window; the app must adopt the scene life cycle first (iOS 27 requires it).
+ */
+function hasWindowScene(plist) {
+  const configurations =
+    plist.UIApplicationSceneManifest?.UISceneConfigurations ?? {};
+  return (configurations[WINDOW_ROLE] ?? []).length > 0;
+}
+
+/** iOS entitlements: the Siri capability, the CarPlay audio capability. */
 function applyEntitlements(entitlements, resolved) {
-  if (!resolved.siri) return entitlements;
-  return { ...entitlements, 'com.apple.developer.siri': true };
+  const out = { ...entitlements };
+  if (resolved.siri) out['com.apple.developer.siri'] = true;
+  if (resolved.car) out['com.apple.developer.carplay-audio'] = true;
+  return out;
 }
 
 /** `ios/Podfile.properties.json`: read by AnythingPlayer.podspec. */
@@ -86,16 +130,28 @@ function applyPodfileProperties(properties, resolved) {
   const out = { ...properties };
   if (resolved.cast) out['rnap.cast'] = 'true';
   else delete out['rnap.cast'];
+  if (resolved.sound) out['rnap.sound'] = 'true';
+  else delete out['rnap.sound'];
+  if (resolved.car) out['rnap.car'] = 'true';
+  else delete out['rnap.car'];
   return out;
 }
 
 /** `android/gradle.properties` entries: read by android/build.gradle. */
 function applyGradleProperties(entries, resolved) {
   const out = entries.filter(
-    (e) => !(e.type === 'property' && e.key === 'rnapCast')
+    (e) =>
+      !(
+        e.type === 'property' &&
+        (e.key === 'rnapCast' || e.key === 'rnapSound' || e.key === 'rnapCar')
+      )
   );
   if (resolved.cast)
     out.push({ type: 'property', key: 'rnapCast', value: 'true' });
+  if (resolved.sound)
+    out.push({ type: 'property', key: 'rnapSound', value: 'true' });
+  if (resolved.car)
+    out.push({ type: 'property', key: 'rnapCar', value: 'true' });
   return out;
 }
 
@@ -157,11 +213,13 @@ function injectHandleIntent(source) {
 
 module.exports = {
   DEFAULT_RECEIVER_ID,
+  addCarPlayScene,
   addPlayFromSearchFilter,
   applyEntitlements,
   applyGradleProperties,
   applyInfoPlist,
   applyPodfileProperties,
+  hasWindowScene,
   injectHandleIntent,
   resolveOptions,
 };

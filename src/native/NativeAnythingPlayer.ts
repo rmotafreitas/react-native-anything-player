@@ -41,6 +41,22 @@ export interface Spec extends TurboModule {
     muted: boolean
   ): Promise<CodegenTypes.UnsafeObject>;
   setRate(playerId: string, rate: number): Promise<CodegenTypes.UnsafeObject>;
+  /** Resolves when the volume got there (or a later volume command replaced the fade). */
+  fadeTo(
+    playerId: string,
+    volume: number,
+    seconds: number
+  ): Promise<CodegenTypes.UnsafeObject>;
+  /** `{ after: seconds, fadeOut?: seconds }`; `{ after: null }` cancels. */
+  sleep(
+    playerId: string,
+    timer: CodegenTypes.UnsafeObject
+  ): Promise<CodegenTypes.UnsafeObject>;
+  /** `{ in?: seconds, out?: seconds }` replaces the play/pause/stop fades. */
+  setFade(
+    playerId: string,
+    fade: CodegenTypes.UnsafeObject
+  ): Promise<CodegenTypes.UnsafeObject>;
   /** Replaces the app's now-playing overrides (`{}` clears them). */
   updateNowPlaying(
     playerId: string,
@@ -74,6 +90,8 @@ export interface Spec extends TurboModule {
     items: CodegenTypes.UnsafeObject[],
     options: CodegenTypes.UnsafeObject
   ): Promise<void>;
+  /** Replaces the ids in the browse tree's Favorites folder, without touching the catalog. */
+  setFavorites(ids: string[]): Promise<void>;
   /** Ranked matches, best first. */
   searchCatalog(
     request: CodegenTypes.UnsafeObject

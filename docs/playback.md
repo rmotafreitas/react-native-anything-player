@@ -46,6 +46,9 @@ All commands are applied by native code **in call order** and resolve with the s
 | `setVolume(0…1)` | Per-player volume, independent of `setMuted`. |
 | `setMuted(bool)` | Mute without losing the volume. |
 | `setRate(rate)` | Playback rate (files; live streams will run out of buffer above 1). |
+| `fadeTo(volume, seconds)` | Moves the volume to `volume` over `seconds`. Resolves when it gets there. See [Sleep timer and fades](#sleep-timer-and-fades). |
+| `sleep({ after, fadeOut? })` | Pauses after `after` seconds; `sleep(null)` cancels. See [Sleep timer and fades](#sleep-timer-and-fades). |
+| `setFade({ in?, out? })` | Replaces the fades on play, pause and stop; `setFade(null)` turns them off. |
 | `release()` | Stops and frees every native resource. Commands afterwards reject `PLAYER_RELEASED`. |
 
 Rapid sequences are safe: `play(); pause(); play(); pause();` ends paused; `load(A); load(B); load(C);` plays C, and A/B resolve as superseded. Events from A or B that arrive late are dropped natively (each open has a *generation*).
@@ -84,6 +87,62 @@ player.on('progress', ({ position, liveOffset }) => { /* e.g. switch the lock sc
 ```
 
 For live streams `position` is the time played since the stream was (re-)opened, `duration` is `null`, `bufferedAhead` is how much audio is buffered past the playhead, and `liveOffset` is how far behind the live edge playback is, when it can be measured: HLS program dates (`EXT-X-PROGRAM-DATE-TIME`), ExoPlayer's live window, and on iOS any live HTTP stream, from the audio the stream proxy has handed the player. Otherwise it is `null`; use `bufferedAhead`.
+
+## Sleep timer and fades
+
+The sleep timer and every fade run in native code, on the player's own clock. They keep going while JavaScript is frozen in the background, and the screen can be off.
+
+### Sleep timer
+
+```ts
+await player.sleep({ after: 30 * 60, fadeOut: 10 }); // pause in 30 min, fading out over the last 10 s
+player.status.sleepAt; // epoch ms when it fires, or null
+await player.sleep(null); // cancel
+```
+
+- `after` is in seconds of wall time. It counts while the player is paused too.
+- `fadeOut` lowers the volume over the last seconds before the pause. Without it, the timer uses `fade.out` (below), or no fade.
+- When the timer fires, the player pauses as if the user had paused it: a pending system resume (after a call, for example) is cancelled. If the player was not playing, the timer just ends.
+- A new `sleep()` replaces the timer. Cancelling it during its fade-out brings the volume back at the same speed.
+- The timer keeps its time across reconnects, source changes and Cast handoffs.
+- `status.sleepAt` changes when the timer is set, cancelled or fires, and a `sleep` event is emitted when it fires.
+- A live stream paused by the timer releases its network connection after 30 s, as after any pause. `play()` re-opens it at the live edge.
+
+`useSleepTimer(player)` returns `{ sleepAt, remaining }`, with `remaining` in whole seconds, counted down while the app is in the foreground:
+
+```tsx
+const { remaining } = useSleepTimer(player);
+return remaining == null ? null : <Text>Stops in {Math.ceil(remaining / 60)} min</Text>;
+```
+
+### Fades on play, pause and stop
+
+Off by default. Durations are in seconds:
+
+```ts
+const player = new Player({ fade: { in: 1, out: 2 } });
+await player.setFade({ out: 0.5 }); // change them later; setFade(null) turns them off
+```
+
+- `in`: `play()`, a resume after an interruption, and a `load()` that starts playback begin silent and fade in once the audio flows. Switching sources while playing does not fade.
+- `out`: `pause()` and `stop()` fade out, then pause or stop. `status.playWhenReady` turns `false` at once (the play button changes), while `status.state` stays `playing` until the fade ends.
+- `pause()` during a fade-out pauses at once. `play()` during a fade-out cancels it: the audio never stopped.
+- A stall, an error, an interruption or a new `load()` during a fade-out ends it at once.
+- A fade starts from where the volume is: a pause halfway through a fade-in fades out from there, in proportion.
+
+### `fadeTo`
+
+```ts
+await player.fadeTo(0.2, 3); // to 20 % over 3 s
+```
+
+`status.volume` is the target from the start. The promise resolves when the volume gets there, or when `setVolume` or another `fadeTo` takes over.
+
+### How fades combine
+
+The volume the platform player gets is the app's volume × the system's ducking × the fades (0 when muted). Fades never change `status.volume`, except `fadeTo`, whose target is the new volume. Ducking, muting and `setVolume` during a fade apply at once and the fade carries on. The volume moves in steps every 50 ms.
+
+On a Cast receiver, fades and `fadeTo` are instant and the sleep timer pauses without a fade-out: the receiver sets its own volume. In a browser tab that is hidden, timers run less often, so fades move in larger steps and the timer can fire late. On iPhone and iPad browsers the system fixes the volume: fades have no effect there, and the sleep timer pauses without one.
 
 ## Several players
 

@@ -85,8 +85,8 @@ jobs:
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
       - name: Android lint and Kotlin engine conformance + ICY tests
         run: cd example/android && ./gradlew :react-native-anything-player:lintDebug :react-native-anything-player:testDebugUnitTest --no-daemon --build-cache
-      - name: Android lint and tests with Cast built in
-        run: cd example/android && ./gradlew :react-native-anything-player:lintDebug :react-native-anything-player:testDebugUnitTest -PrnapCast=true --no-daemon --build-cache
+      - name: Android lint and tests with Cast, Sound and Android Auto built in
+        run: cd example/android && ./gradlew :react-native-anything-player:lintDebug :react-native-anything-player:testDebugUnitTest -PrnapCast=true -PrnapSound=true -PrnapCar=true --no-daemon --build-cache
 
   build-android:
     timeout-minutes: 45
@@ -144,13 +144,13 @@ jobs:
       # The Cast SDKs are opt-in (`rnapCast`): build with them linked too, so
       # neither configuration breaks. Skipped when turbo already proved the
       # sources unchanged.
-      - name: Build example for Android with Google Cast
+      - name: Build example for Android with Google Cast, Sound and Android Auto
         if: env.turbo_cache_hit != 1
         working-directory: example/android
         env:
           JAVA_OPTS: "-XX:MaxHeapSize=6g"
         run: |
-          ./gradlew assembleDebug -PrnapCast=true -PreactNativeArchitectures=arm64-v8a --no-daemon --console=plain
+          ./gradlew assembleDebug -PrnapCast=true -PrnapSound=true -PrnapCar=true -PreactNativeArchitectures=arm64-v8a --no-daemon --console=plain
 
   build-ios:
     timeout-minutes: 60
@@ -160,13 +160,17 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Google Cast is opt-in at `pod install` (RNAP_CAST=1): build both.
+        # Google Cast and CarPlay are opt-in at `pod install` (RNAP_CAST=1,
+        # RNAP_CAR=1): build both configurations, the "on" leg with both.
         cast: ['off', 'on']
 
     env:
       XCODE_VERSION: 26
       TURBO_CACHE_DIR: .turbo/ios-cast-${{ matrix.cast }}
       RNAP_CAST: ${{ matrix.cast == 'on' && '1' || '0' }}
+      # The Sound API and CarPlay are opt-in too: built in the same leg as Cast.
+      RNAP_SOUND: ${{ matrix.cast == 'on' && '1' || '0' }}
+      RNAP_CAR: ${{ matrix.cast == 'on' && '1' || '0' }}
       RCT_USE_RN_DEP: 1
       RCT_USE_PREBUILT_RNCORE: 1
 
@@ -253,6 +257,10 @@ jobs:
           if [ "$RNAP_CAST" = 1 ] && [ "$compiled" != 1 ]; then echo "Cast sources missing from the Pods project"; exit 1; fi
           if [ "$RNAP_CAST" != 1 ] && [ "$compiled" = 1 ]; then echo "Cast sources present with RNAP_CAST off"; exit 1; fi
           echo "Cast compiled: $compiled"
+          if grep -q "RNAPCarPlay.swift" example/ios/Pods/Pods.xcodeproj/project.pbxproj; then car=1; else car=0; fi
+          if [ "$RNAP_CAR" = 1 ] && [ "$car" != 1 ]; then echo "CarPlay sources missing from the Pods project"; exit 1; fi
+          if [ "$RNAP_CAR" != 1 ] && [ "$car" = 1 ]; then echo "CarPlay sources present with RNAP_CAR off"; exit 1; fi
+          echo "CarPlay compiled: $car"
 
 
   build-docs:

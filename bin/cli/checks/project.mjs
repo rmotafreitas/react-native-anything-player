@@ -2,6 +2,7 @@
 // config plugin (listed, and its options valid).
 
 import { compareVersions, versionParts } from '../project.mjs';
+import { expoOptions, moduleStates } from '../modules.mjs';
 import { finding } from '../findings.mjs';
 import { relative } from '../util.mjs';
 
@@ -169,8 +170,14 @@ function checkAndroidNewArch(ctx, findings) {
   );
 }
 
-const BOOLEAN_OPTIONS = new Set(['backgroundAudio', 'assistant']);
-const KNOWN_OPTIONS = new Set(['backgroundAudio', 'cast', 'siri', 'assistant']);
+const EXPO_OPTIONS = expoOptions();
+const KNOWN_OPTIONS = new Set(EXPO_OPTIONS.map((option) => option.key));
+const STRING_OPTIONS = new Set(
+  EXPO_OPTIONS.filter((option) => option.type === 'string').map(
+    (option) => option.key
+  )
+);
+const OPTION_LIST = EXPO_OPTIONS.map((option) => option.key).join(', ');
 
 function isPlainObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -204,7 +211,7 @@ function checkOptions(ctx, findings) {
         finding(
           'expo-plugin-options',
           'warning',
-          `Unknown plugin option \`${key}\`: it is ignored. Options are backgroundAudio, cast, siri and assistant (docs/getting-started.md).`,
+          `Unknown plugin option \`${key}\`: it is ignored. Options are ${OPTION_LIST} (docs/getting-started.md).`,
           {
             file: 'app.json',
             change: `remove \`${key}\` or rename it to a documented option`,
@@ -213,7 +220,7 @@ function checkOptions(ctx, findings) {
       );
       continue;
     }
-    if (BOOLEAN_OPTIONS.has(key) && typeof value !== 'boolean') {
+    if (!STRING_OPTIONS.has(key) && typeof value !== 'boolean') {
       findings.push(
         finding(
           'expo-plugin-options',
@@ -224,7 +231,7 @@ function checkOptions(ctx, findings) {
       );
       continue;
     }
-    if (key === 'cast' || key === 'siri') {
+    if (STRING_OPTIONS.has(key)) {
       if (typeof value === 'boolean') continue;
       if (!isPlainObject(value)) {
         findings.push(
@@ -243,7 +250,7 @@ function checkOptions(ctx, findings) {
       const allowed =
         key === 'cast'
           ? ['receiverApplicationId', 'localNetworkUsageDescription']
-          : ['usageDescription'];
+          : ['usageDescription', 'appIntents'];
       for (const [inner, innerValue] of Object.entries(value)) {
         if (!allowed.includes(inner)) {
           findings.push(
@@ -257,20 +264,57 @@ function checkOptions(ctx, findings) {
               }
             )
           );
-        } else if (typeof innerValue !== 'string' || innerValue === '') {
+        } else if (
+          inner === 'appIntents'
+            ? typeof innerValue !== 'boolean'
+            : typeof innerValue !== 'string' || innerValue === ''
+        ) {
           findings.push(
             finding(
               'expo-plugin-options',
               'error',
-              `Plugin option \`${key}.${inner}\` must be a non-empty string.`,
+              `Plugin option \`${key}.${inner}\` must be a ${inner === 'appIntents' ? 'boolean' : 'non-empty string'}.`,
               {
                 file: 'app.json',
-                change: `set \`${key}.${inner}\` to a string`,
+                change: `set \`${key}.${inner}\` to a ${inner === 'appIntents' ? 'boolean' : 'string'}`,
               }
             )
           );
         }
       }
+    }
+  }
+}
+
+/**
+ * The Expo plugin and the native files must agree: `expo prebuild` rewrites
+ * them from app.json, so a switch set the other way is lost on the next build.
+ */
+function checkModuleConflicts(ctx, findings) {
+  if (!ctx.expo.rnapPlugin || ctx.jsConfigFile) return;
+  for (const state of moduleStates(ctx)) {
+    if (state.expo === null) continue;
+    const native = [];
+    if (state.written.includes('android/gradle.properties'))
+      native.push({ file: 'android/gradle.properties', value: state.android });
+    if (state.written.includes('ios/Podfile.properties.json'))
+      native.push({ file: 'ios/Podfile.properties.json', value: state.ios });
+    if (state.written.includes('Info.plist'))
+      native.push({ file: 'Info.plist', value: state.ios });
+
+    for (const place of native) {
+      if (place.value === null || place.value === state.expo) continue;
+      findings.push(
+        finding(
+          'module-conflict',
+          'warning',
+          `\`${state.id}\` is ${state.expo ? 'on' : 'off'} in the Expo plugin but ${place.value ? 'on' : 'off'} in ${place.file}: \`expo prebuild\` writes the native files from app.json, so one of the two wins by accident.`,
+          {
+            file: 'app.json',
+            change: `set \`${state.id}\` to ${place.value} in the plugin options, or change ${place.file} to match`,
+          }
+        )
+      );
     }
   }
 }
@@ -316,7 +360,7 @@ export function projectChecks(ctx) {
         'No package.json here: run the CLI from the app directory, or pass `--cwd <dir>`.',
         {
           file: 'package.json',
-          change: 'run `npx react-native-anything-player doctor --cwd <app>`',
+          change: 'run `npx rnap doctor --cwd <app>`',
         }
       )
     );
@@ -327,6 +371,7 @@ export function projectChecks(ctx) {
   checkExpoSdk(ctx, findings);
   checkExpoPlugin(ctx, findings);
   checkOptions(ctx, findings);
+  checkModuleConflicts(ctx, findings);
   checkIosNewArch(ctx, findings);
   checkAndroidNewArch(ctx, findings);
   return findings;
