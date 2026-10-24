@@ -174,7 +174,7 @@ class BrowseTree(items: List<BrowseItem>, private val options: BrowseOptions = B
 
   /** The children of a folder (`rnap:root` included); null when there is no such folder. */
   fun children(id: String): List<BrowseNode>? {
-    val kids = (if (id == ROOT_ID) rootChildren else folders[id]?.children) ?: return null
+    val kids = if (id == ROOT_ID) rootChildren else folders[id]?.children ?: return null
     return kids.map { node(it) }
   }
 
