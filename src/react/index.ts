@@ -18,9 +18,12 @@ export {
   useRoutePickerAvailable,
   useSleepTimer,
   useStreamMetadata,
+  useCues,
 } from '../core/hooks';
 export type { SleepTimerState } from '../core/hooks';
 export { RoutePicker } from './RoutePicker';
 export type { RoutePickerProps } from './RoutePicker';
 export { CastButton } from './CastButton';
 export type { CastButtonProps } from './CastButton';
+export { VideoView } from './VideoView';
+export type { VideoViewProps } from './VideoView';

@@ -26,7 +26,9 @@
 //               GET /hls/stream     the live playlist without the extension
 //                                   (found by its Content-Type)
 //               GET /hls/seg-N.mp3  one segment (N counts on, looping)
-// Files:        GET /file.mp3, /program.mp3, /artwork.png, /artwork2.png
+// Files:        GET /file.mp3, /program.mp3, /artwork.png, /artwork2.png,
+//               /video-360.mp4, /video-720.mp4, /video-audio.m4a, /subs.srt,
+//               /subs.vtt (the video ones when generated)
 //               (Range supported; `?delay=MS` slows the response)
 // Control:      GET /control?down=1|0     refuse every new stream connection
 //               GET /control?stall=1|0    freeze every open stream
@@ -54,6 +56,18 @@ const FILES = {
   '/artwork.png': { body: media('artwork.png'), type: 'image/png' },
   '/artwork2.png': { body: media('artwork2.png'), type: 'image/png' },
 };
+/** Optional (generate-media.sh): the video fixtures. */
+const VIDEO_FILES = {
+  '/video-360.mp4': 'video/mp4',
+  '/video-720.mp4': 'video/mp4',
+  '/video-audio.m4a': 'audio/mp4',
+  '/subs.srt': 'application/x-subrip; charset=utf-8',
+  '/subs.vtt': 'text/vtt; charset=utf-8',
+};
+for (const [path, type] of Object.entries(VIDEO_FILES)) {
+  if (existsSync(join(here, 'media', path.slice(1))))
+    FILES[path] = { body: media(path.slice(1)), type };
+}
 const BYTES_PER_SECOND = 128_000 / 8;
 const LIVE_STREAMS = {
   '/live.mp3': { body: PROGRAM, type: 'audio/mpeg', rate: BYTES_PER_SECOND },

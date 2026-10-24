@@ -24,4 +24,39 @@ ffmpeg -loglevel error -y -f lavfi -i "sine=frequency=440:duration=30:sample_rat
 # Cover art.
 ffmpeg -loglevel error -y -f lavfi -i "color=c=0x6c5ce7:s=512x512:d=1" -frames:v 1 media/artwork.png
 ffmpeg -loglevel error -y -f lavfi -i "color=c=0x00b894:s=512x512:d=1" -frames:v 1 media/artwork2.png
+# Video: 20 s of a test pattern with a running clock, as two renditions of
+# one video and its sound alone, plus subtitles (renditions, quality switches,
+# subtitles and the audio-only fallback in the browser tests).
+for size in 360 720; do
+  width=$((size * 16 / 9))
+  rate=$([ "$size" = 360 ] && echo 400k || echo 1200k)
+  ffmpeg -loglevel error -y -f lavfi -i "testsrc2=size=${width}x${size}:rate=25:duration=20" \
+    -f lavfi -i "sine=frequency=330:duration=20:sample_rate=44100" \
+    -vf "drawtext=text='%{pts\\:hms} ${size}p':x=20:y=20:fontsize=$((size / 10)):fontcolor=white:box=1:boxcolor=black" \
+    -c:v libx264 -profile:v baseline -pix_fmt yuv420p -b:v "$rate" -g 25 \
+    -c:a aac -b:a 96k -ac 2 -shortest -movflags +faststart "media/video-${size}.mp4"
+done
+ffmpeg -loglevel error -y -i media/video-360.mp4 -vn -c:a copy -movflags +faststart media/video-audio.m4a
+cat > media/subs.srt <<'SRT'
+1
+00:00:00,500 --> 00:00:04,000
+First line
+
+2
+00:00:04,000 --> 00:00:08,000
+<i>Second</i> line
+
+3
+00:00:08,000 --> 00:00:20,000
+{\an8}Third line, at the top
+SRT
+cat > media/subs.vtt <<'VTT'
+WEBVTT
+
+00:00.500 --> 00:04.000
+Primeira linha
+
+00:04.000 --> 00:20.000 line:10%
+Segunda linha
+VTT
 ls -la media

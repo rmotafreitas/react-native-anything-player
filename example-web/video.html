@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>RNAP video on the web</title>
+    <!-- The plain-web build: the import map points the package specifier at the local build. -->
+    <script type="importmap">
+      { "imports": { "react-native-anything-player/web": "/lib/module/web/index.js" } }
+    </script>
+    <style>
+      body { font: 15px/1.5 system-ui, sans-serif; max-width: 70rem; margin: 2rem auto; padding: 0 1rem; color: #2b1712; background: #fff8f2; }
+      button { font: inherit; margin: 0 .4rem .4rem 0; padding: .35rem .8rem; border: 1px solid #c8613d; border-radius: .5rem; background: #fff; cursor: pointer; }
+      #stage { width: 1280px; max-width: 100%; aspect-ratio: 16 / 9; }
+    </style>
+  </head>
+  <body>
+    <h1>Video in a plain web page</h1>
+    <p>A video player with two renditions of one video, SubRip subtitles, and the system's fullscreen and Picture in Picture.</p>
+    <div id="stage"></div>
+    <p>
+      <button id="load">Load</button>
+      <button id="play">Play</button>
+      <button id="pause">Pause</button>
+      <button id="low">360p</button>
+      <button id="high">720p</button>
+      <button id="auto">Auto</button>
+      <button id="subs">Subtitles on/off</button>
+      <button id="fullscreen">Fullscreen</button>
+      <button id="pip">Picture in Picture</button>
+    </p>
+    <pre id="log"></pre>
+    <script type="module" src="./video.js"></script>
+  </body>
+</html>

@@ -5,6 +5,18 @@
 
 Video follows the rest of RNAP: **lightweight, bulletproof, best DX**. It is not a second library inside the package. A video is a `Player` with a picture, so it gets everything a stream already has: the native engine, recovery while JavaScript is frozen, the conformance suite, the lock screen, AirPlay and Cast. What video adds is the picture, the subtitles and the bandwidth: the parts below.
 
+## Status
+
+| Part | State |
+|---|---|
+| Engine rules (background, PiP, ambient, muted focus, keep-awake, quality caps, renditions and switches, audio-only fallback, refresh, loop, tracks, delay, fullscreen, stats) | **Done** in the three engines, 178 shared scenarios (`conformance/video.json`) |
+| Subtitles: SubRip, WebVTT, basic ASS, TTML parsing; encoding detection; cue timing; track choice | **Done** (parsing in TypeScript; encoding, timing and track choice also in Kotlin and Swift, held to `conformance/subtitles/` and `conformance/tracks/`) |
+| The API: `video` option, `status.video`, the commands and events, `attachTo`, `<VideoView>` (React DOM, React Native Web) | **Done** |
+| Web: `<video>`, hls.js variants and caps, renditions switched behind the picture, subtitle overlay, fullscreen, Picture in Picture, wake lock, hidden tabs | **Done**, Playwright on Chromium, Firefox and WebKit (`e2e/video.spec.ts`) |
+| Android and iOS: loop, exact seeks, refresh, `fetchText` | **Done**; the picture (surface, view, PiP, fullscreen) is next and answers `VIDEO_UNAVAILABLE` until then |
+| Web: the source's own tracks (hls.js audio and subtitle groups, `<track>`), Cast video | Next |
+| Remux (MKV, WebM, TS), DASH, software decoders, DRM | In the release plan below |
+
 ## Decisions
 
 | Topic | Decision |

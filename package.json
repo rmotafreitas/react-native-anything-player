@@ -34,6 +34,11 @@
       "types": "./lib/typescript/src/sound/web.d.ts",
       "default": "./lib/module/sound/web.js"
     },
+    "./video": {
+      "react-native-anything-player-source": "./src/video/index.ts",
+      "types": "./lib/typescript/src/video/index.d.ts",
+      "default": "./lib/module/video/index.js"
+    },
     "./app.plugin.js": "./app.plugin.js",
     "./package.json": "./package.json"
   },

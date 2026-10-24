@@ -246,6 +246,8 @@ class PlaybackEngine(
   // ── Video: the picture ──
   private var listenOnly = false
   private var videoInfo: VideoInfo? = null
+  /** What a quality switch's new file said about its picture, for when it takes over. */
+  private var swapVideoInfo: VideoInfo? = null
   private var firstFrame = false
   private var variants: List<VideoVariant> = emptyList()
   /** What the driver was last told (`null`: nothing yet; drivers start with the picture on). */
@@ -1189,6 +1191,11 @@ class PlaybackEngine(
   }
 
   fun onVideoInfo(generation: Int, info: VideoInfo) {
+    // A switch's new file: its picture is the one once it takes over.
+    if (isSwapGeneration(generation)) {
+      swapVideoInfo = info
+      return
+    }
     if (!accepts(generation)) return logStale("video info", generation)
     videoInfo = info
     val index = currentRendition
@@ -2002,6 +2009,8 @@ class PlaybackEngine(
     abrLowSince = null
     abrUpSince = null
     counters = counters.copy(qualitySwitches = counters.qualitySwitches + 1)
+    swapVideoInfo?.let { videoInfo = it }
+    swapVideoInfo = null
     log("quality switched", mapOf("to" to "r${swap.rendition}"))
     appliedTracks = null
     applyTracks("quality switched")

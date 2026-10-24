@@ -38,6 +38,7 @@ export {
   useCastStatus,
   useRoutePickerAvailable,
   useSleepTimer,
+  useCues,
 } from './hooks';
 export type { SleepTimerState } from './hooks';
 export { RoutePicker } from './components/RoutePicker';
@@ -45,6 +46,26 @@ export type { RoutePickerProps } from './components/RoutePicker';
 export { CastButton } from './components/CastButton';
 export type { CastButtonProps } from './components/CastButton';
 export type {
+  ArtworkInput,
+  AudioFallbackOptions,
+  AudioOnlyReason,
+  CueAlign,
+  CueSpan,
+  CueVertical,
+  DrmConfig,
+  MediaTrack,
+  PlaybackStats,
+  Rendition,
+  SourceRefreshRequest,
+  SubtitleCue,
+  SubtitleFormat,
+  SubtitleSource,
+  Thumbnail,
+  TrackKind,
+  VideoOptions,
+  VideoQuality,
+  VideoQualityOptions,
+  VideoStatus,
   Artwork,
   AssetModule,
   AudioRoute,

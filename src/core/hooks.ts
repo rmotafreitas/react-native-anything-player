@@ -20,6 +20,7 @@ import {
   isRoutePickerAvailable,
   type CastStatus,
 } from './system';
+import type { SubtitleCue } from './subtitles/types';
 import type {
   MediaMetadata,
   PlaybackState,
@@ -232,4 +233,17 @@ export function usePlaysElsewhere(player: Player | undefined): boolean {
   const read = () => player?.status.route.kind ?? null;
   const kind = useSyncExternalStore(subscribe, read, read);
   return kind != null && REMOTE.has(kind);
+}
+
+/**
+ * The subtitles on screen now (the selected text track's), for an app that
+ * draws its own; re-renders when they change.
+ */
+export function useCues(player: Player): SubtitleCue[] {
+  const subscribe = useCallback(
+    (onChange: () => void) => player.on('cues', onChange),
+    [player]
+  );
+  const read = () => player.getCues();
+  return useSyncExternalStore(subscribe, read, read);
 }

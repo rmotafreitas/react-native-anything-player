@@ -233,6 +233,8 @@ final class PlaybackEngine {
   // ── Video: the picture ──
   private var listenOnly = false
   private var videoInfo: VideoInfo?
+  /// What a quality switch's new file said about its picture, for when it takes over.
+  private var swapVideoInfo: VideoInfo?
   private var firstFrame = false
   private var variants: [VideoVariant] = []
   /// What the driver was last told (`nil`: nothing yet; drivers start with the picture on).
@@ -1930,6 +1932,11 @@ extension PlaybackEngine {
   }
 
   func onVideoInfo(generation gen: Int, info: VideoInfo) {
+    // A switch's new file: its picture is the one once it takes over.
+    if isSwapGeneration(gen) {
+      swapVideoInfo = info
+      return
+    }
     guard accepts(gen) else { return logStale("video info", gen) }
     videoInfo = info
     if let index = currentRendition, var table = renditions, table[index].height == nil, info.height > 0 {
@@ -2016,6 +2023,8 @@ extension PlaybackEngine {
     abrLowSince = nil
     abrUpSince = nil
     counters.qualitySwitches += 1
+    if let info = swapVideoInfo { videoInfo = info }
+    swapVideoInfo = nil
     log("quality switched", ["to": "r\(swap.rendition)"])
     appliedTracks = nil
     applyTracks("quality switched")

@@ -537,7 +537,7 @@ function apply(step: Step, h: EngineHarness, at: string): void {
 
 describe('engine conformance (web twin)', () => {
   it('loads every shared scenario', () => {
-    expect(scenarios.length).toBeGreaterThanOrEqual(177);
+    expect(scenarios.length).toBeGreaterThanOrEqual(178);
   });
 
   it.each(scenarios)('%s', (name, scenario) => {

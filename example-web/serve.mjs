@@ -28,6 +28,7 @@ const TYPES = {
   '.png': 'image/png',
   '.ico': 'image/x-icon',
   '.mp3': 'audio/mpeg',
+  '.mp4': 'video/mp4',
 };
 
 /** hls.js, from node_modules: the example's HLS player outside Safari (an app would bundle it). */

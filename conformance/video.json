@@ -835,5 +835,21 @@
       { "fullscreen": false },
       { "expect": { "video": { "fullscreen": false } } }
     ]
+  },
+  {
+    "name": "video: a switch's new file says its picture while it prepares; that picture is the status once it takes over",
+    "options": { "video": true },
+    "steps": [
+      { "view": {} },
+      { "call": "load", "uri": "https://cdn.example/ep01", "autoplay": true, "renditions": [{ "uri": "https://cdn.example/360.mp4", "height": 360, "bitrate": 500000 }, { "uri": "https://cdn.example/720.mp4", "height": 720, "bitrate": 1300000 }] },
+      { "native": "ready", "duration": 600, "seekable": true },
+      { "native": "playing" },
+      { "native": "videoInfo", "width": 1280, "height": 720 },
+      { "call": "selectQuality", "id": "r0" },
+      { "native": "videoInfo", "gen": 2, "width": 640, "height": 360 },
+      { "expect": { "gen": 1, "video": { "width": 1280, "height": 720 } } },
+      { "native": "playing", "gen": 2 },
+      { "expect": { "gen": 2, "video": { "width": 640, "height": 360, "quality": "r0" } } }
+    ]
   }
 ]

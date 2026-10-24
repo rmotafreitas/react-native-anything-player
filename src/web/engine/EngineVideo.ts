@@ -64,6 +64,8 @@ export abstract class EngineVideo extends EngineQuality {
 
   // ── The picture ──
   protected firstFrame = false;
+  /** What a quality switch's new file said about its picture, for when it takes over. */
+  protected swapVideoInfo: VideoInfo | null = null;
   /** What the driver was last told (`null`: nothing yet; drivers start with the picture on). */
   protected appliedVideoEnabled: boolean | null = null;
   protected lastAudioOnly: AudioOnlyReason | null = null;
@@ -275,6 +277,11 @@ export abstract class EngineVideo extends EngineQuality {
   // ── Driver observations ──
 
   onVideoInfo(generation: number, info: VideoInfo): void {
+    // A switch's new file: its picture is the one once it takes over.
+    if (this.isSwapGeneration(generation)) {
+      this.swapVideoInfo = { ...info };
+      return;
+    }
     if (!this.accepts(generation))
       return this.logStale('video info', generation);
     this.videoInfo = { ...info };
@@ -379,6 +386,8 @@ export abstract class EngineVideo extends EngineQuality {
   protected completeSwap(): void {
     super.completeSwap();
     this.openedRevision = this.sourceRevision;
+    if (this.swapVideoInfo != null) this.videoInfo = this.swapVideoInfo;
+    this.swapVideoInfo = null;
     this.appliedTracks = null;
     this.applyTracks('quality switched');
   }
