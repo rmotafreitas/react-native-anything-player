@@ -9,17 +9,39 @@ open release pull request.
 
 ## [1.2.1](https://github.com/rmotafreitas/react-native-anything-player/compare/v1.2.0...v1.2.1) (2026-10-24)
 
+Reliability fixes across the three engines and the iOS, Android and web hosts. Late callbacks, timeouts, stalls and `reconnect: false` now behave the same everywhere (22 new conformance scenarios, 127 in all). Three behaviours are stricter (see **Upgrading**).
 
 ### Fixed
 
-* **android:** keep ICY metadata on, honour live:false and reconnect:false ([b45e9fb](https://github.com/rmotafreitas/react-native-anything-player/commit/b45e9fb6edc478f03e0a6299ffb92c055155553c))
-* **build:** declare esbuild, which the CLI build imports ([c51d6f1](https://github.com/rmotafreitas/react-native-anything-player/commit/c51d6f17481550d9ecc5ba91509b268c489de15a))
-* **build:** declare esbuild, which the CLI build imports ([db32824](https://github.com/rmotafreitas/react-native-anything-player/commit/db32824c9ce2001e0a4ea50e2505da0f85dbb651))
-* **engine:** settle stale callbacks, timeouts and recovery in all three engines ([f63d64c](https://github.com/rmotafreitas/react-native-anything-player/commit/f63d64c013855cb11ff1c7103854ee927db9e547))
-* **ios:** HLS behind the proxy, finite chunked files, session ownership, tap ([12ef393](https://github.com/rmotafreitas/react-native-anything-player/commit/12ef393098aa3b1809a4d21de063013920352ee3))
-* **package:** ship the Codegen specs from yarn pack and test the real build ([b7c65ab](https://github.com/rmotafreitas/react-native-anything-player/commit/b7c65ab4a5be418e2a6333b6f4713772048291bb))
-* **security:** patch the Expo CLI's zod, escape pbxproj paths ([0ec3777](https://github.com/rmotafreitas/react-native-anything-player/commit/0ec37777a20dd805b80356f470c07f4115e0e7b8))
-* **web:** autoplay attribution, AudioContext release, Cast retry, MSE edge cases ([2b0746b](https://github.com/rmotafreitas/react-native-anything-player/commit/2b0746be31c6f1b59ac4918cb2223e453316c4ab))
+- **Engine (iOS, Android, web)**
+  - A late end or failure from an item that was stopped, failed or released no longer turns the player into `ended` or `error`. An item that ends during a stop's fade-out stays `stopped`, and a repeated end is reported once.
+  - `load()` without autoplay (or paused while loading, or refused audio focus) times out after 12 s instead of waiting forever.
+  - A silent stall (the playhead freezes while the native player says it is playing) ends as soon as audio moves again, instead of being re-opened from the start. A re-opened file resumes where the playhead got to.
+  - `recovery.reconnect: false` is honoured everywhere. Stalls, network changes, returning to the foreground, media-services resets and the drivers' own connection splicing no longer re-open on their own.
+  - A source loaded with `live: false` ends at its end even when its duration is unknown, instead of reconnecting.
+  - Returning to the foreground at the same moment as a network restore no longer aborts the fresh connection.
+  - A sleep timer or fade longer than 24 h is rejected instead of crashing (iOS) or firing at once (Android).
+  - ICY: whitespace between fields (`StreamTitle='…'; StreamUrl='…';`) no longer leaks into the title, and the artwork URL is read.
+- **iOS**
+  - HLS streams whose URL does not end in `.m3u8` play: the stream proxy hands the playlist to AVFoundation instead of breaking its relative segment URLs.
+  - A file served without `Content-Length` and loaded with `live: false` ends instead of starting over.
+  - The Sound API no longer switches a Player's audio session to `ambient`, which would make the Player obey the silent switch and lose background audio. A Player restores its category when something changed it.
+  - The visualizer no longer works on the audio render thread, and it stops with its item.
+- **Android:** the Cast title reader keeps asking for ICY metadata, even when the source's headers say `Icy-MetaData: 0`.
+- **Web**
+  - A play refused by the browser's autoplay policy (from a media key, for instance) no longer makes the next, unrelated command reject with `AUTOPLAY_BLOCKED`.
+  - Releasing a player closes its visualizer's `AudioContext` (browsers limit how many a page may have).
+  - Google Cast tries to load its SDK again after a failure (offline at page load, for instance).
+  - A stream whose buffer stays full is ended and recovered, instead of silently skipping audio.
+- **Packaging:** tarballs packed with Yarn include the Codegen specs (`src/native`), and the `exports` map lists `./app.plugin.js`.
+- **Expo plugin:** a project name containing a backslash or a quote no longer breaks the App Intents entry in the Xcode project.
+
+### Upgrading
+
+- **`reconnect: false` is now strict.** A stall or a lost connection ends in a fatal `NETWORK_ERROR` instead of recovering; call `play()` to retry. With `reconnect` left on (the default) nothing changes.
+- **`load()` with `autoplay: false` can reject with `TIMEOUT`** when the source does not answer within 12 s.
+- **Durations over 24 h** in `sleep()`, `fadeTo()` and `fade` reject with `INVALID_ARGUMENT`.
+- Files served without `Content-Length`: load them with `live: false` so they end at their end (iOS used to treat them as radio).
 
 ## [1.2.0](https://github.com/rmotafreitas/react-native-anything-player/compare/v1.1.1...v1.2.0) (2026-10-23)
 
