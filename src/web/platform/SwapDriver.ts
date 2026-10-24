@@ -245,6 +245,8 @@ export class SwapDriver implements LocalDriver {
       onBandwidth: (g, bps) => f.onBandwidth?.(g, bps),
       onTracks: (g, tracks) => f.onTracks?.(g, tracks),
       onSourceCues: (g, cues) => f.onSourceCues?.(g, cues),
+      onUserCommand: (g, command, position) =>
+        f.onUserCommand?.(g, command, position),
     };
   }
 

@@ -50,11 +50,16 @@ installHost({
   // (`<VideoView>` gives it its own). A device shows it in a native view.
   get attachVideo() {
     const web = NativeAnythingPlayer as unknown as {
-      attachVideo?: (id: string, element: unknown, fit?: string) => void;
+      attachVideo?: (
+        id: string,
+        element: unknown,
+        fit?: string,
+        controls?: boolean
+      ) => void;
     } | null;
     return Platform.OS === 'web' && web?.attachVideo
-      ? (id: string, element: unknown, fit?: string) =>
-          web.attachVideo!(id, element, fit)
+      ? (id: string, element: unknown, fit?: string, controls = false) =>
+          web.attachVideo!(id, element, fit, controls)
       : undefined;
   },
 });

@@ -1,0 +1,14 @@
+#EXTM3U
+#EXT-X-VERSION:7
+#EXT-X-TARGETDURATION:5
+#EXT-X-MEDIA-SEQUENCE:1
+#EXT-X-INDEPENDENT-SEGMENTS
+#EXT-X-PLAYLIST-TYPE:VOD
+#EXT-X-MAP:URI="https://cdn.example/ep1/init-2.m4s"
+#EXTINF:3.994,
+https://cdn.example/ep1/chunk-2-00001.m4s
+#EXTINF:4.017,
+https://cdn.example/ep1/chunk-2-00002.m4s
+#EXTINF:3.989,
+https://cdn.example/ep1/chunk-2-00003.m4s
+#EXT-X-ENDLIST

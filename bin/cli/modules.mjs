@@ -138,6 +138,22 @@ export const MODULES = [
       'Remove the `RNAP CarPlay` scene from `UIApplicationSceneManifest` and the `com.apple.developer.carplay-audio` entitlement by hand (the CLI does not edit them).',
     docs: 'docs/cars-and-watches.md',
   },
+  {
+    id: 'video',
+    label: 'Video',
+    description:
+      'Video players and <VideoView> (react-native-anything-player/video). The web needs no switch.',
+    defaultOn: false,
+    platforms: ['android', 'ios'],
+    gradle: { key: 'rnapVideo', on: 'true', off: 'false' },
+    pod: { key: 'rnap.video' },
+    expo: { key: 'video', type: 'string' },
+    manual: {
+      android:
+        'For Picture in Picture, mark the main activity in AndroidManifest.xml: android:supportsPictureInPicture="true", with screenSize|smallestScreenSize|screenLayout|orientation in its android:configChanges (docs/video.md#picture-in-picture). The Expo plugin\'s `video` option does it.',
+    },
+    docs: 'docs/video.md#enabling-it',
+  },
 ];
 
 export const MODULE_IDS = MODULES.map((module) => module.id);

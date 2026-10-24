@@ -35,6 +35,7 @@ test('defaults: background audio and the assistant, no Cast, no Siri', () => {
     sound: false,
     assistant: true,
     car: false,
+    video: null,
   });
   assert.equal(
     helpers.resolveOptions({ backgroundAudio: false }).backgroundAudio,
@@ -150,6 +151,61 @@ test('the sound option sets and clears its Podfile and Gradle properties', () =>
     { type: 'property', key: 'rnapSound', value: 'true' },
   ]);
   assert.deepEqual(helpers.applyGradleProperties(entries, off), []);
+});
+
+test('video: the build flags, and Picture in Picture unless turned off', () => {
+  const on = helpers.resolveOptions({ video: true });
+  assert.deepEqual(on.video, { pictureInPicture: true });
+  assert.deepEqual(
+    helpers.resolveOptions({ video: { pictureInPicture: false } }).video,
+    { pictureInPicture: false }
+  );
+  assert.deepEqual(helpers.applyPodfileProperties({}, on), {
+    'rnap.video': 'true',
+  });
+  const off = helpers.resolveOptions({});
+  assert.deepEqual(
+    helpers.applyPodfileProperties({ 'rnap.video': 'true' }, off),
+    {}
+  );
+  const entries = helpers.applyGradleProperties([], on);
+  assert.deepEqual(entries, [
+    { type: 'property', key: 'rnapVideo', value: 'true' },
+  ]);
+  assert.deepEqual(helpers.applyGradleProperties(entries, off), []);
+  // Picture in Picture needs iOS's audio mode, even with background audio off.
+  const pip = helpers.resolveOptions({ video: true, backgroundAudio: false });
+  assert.deepEqual(helpers.applyInfoPlist({}, pip).UIBackgroundModes, [
+    'audio',
+  ]);
+  const noPip = helpers.resolveOptions({
+    video: { pictureInPicture: false },
+    backgroundAudio: false,
+  });
+  assert.deepEqual(helpers.applyInfoPlist({}, noPip).UIBackgroundModes, []);
+});
+
+test("video: the main activity supports Picture in Picture and handles its resizes, keeping what it had", () => {
+  const activity = {
+    $: {
+      'android:name': '.MainActivity',
+      'android:configChanges': 'keyboard|orientation|screenSize|uiMode',
+    },
+    'intent-filter': [],
+  };
+  const once = helpers.applyPictureInPicture(activity);
+  assert.equal(once.$['android:supportsPictureInPicture'], 'true');
+  assert.equal(
+    once.$['android:configChanges'],
+    'keyboard|orientation|screenSize|uiMode|smallestScreenSize|screenLayout'
+  );
+  assert.equal(once.$['android:name'], '.MainActivity');
+  assert.deepEqual(once['intent-filter'], []);
+  assert.deepEqual(helpers.applyPictureInPicture(once), once);
+  assert.equal(
+    helpers.applyPictureInPicture({ $: {} }).$['android:configChanges'],
+    'screenSize|smallestScreenSize|screenLayout|orientation'
+  );
 });
 
 test('the play-from-search intent filter is added once', () => {

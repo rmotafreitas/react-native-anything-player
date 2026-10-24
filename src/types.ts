@@ -227,6 +227,7 @@ export interface VideoQuality {
   height: number | null;
   /** Bits per second, `null` when unknown. */
   bitrate: number | null;
+  /** The name the manifest or the rendition gave it, `null` when none. */
   label: string | null;
   /** Sound only. */
   audioOnly: boolean;
@@ -236,14 +237,19 @@ export interface VideoQuality {
 export interface VideoStatus {
   /** The picture's size in pixels, `null` until known. */
   width: number | null;
+  /** The picture's height in pixels, `null` until known. */
   height: number | null;
+  /** A high-dynamic-range picture. */
   hdr: boolean;
   /** A frame of the current source has been shown (hide the poster). */
   firstFrame: boolean;
   /** Why the sound plays alone, `null` while the picture plays. */
   audioOnly: AudioOnlyReason | null;
+  /** The picture is in Picture in Picture. */
   pictureInPicture: boolean;
+  /** The system's fullscreen player is up. */
   fullscreen: boolean;
+  /** The qualities to pick from (`selectQuality`); empty for a single file. */
   qualities: VideoQuality[];
   /** The quality playing, `null` when unknown. */
   quality: string | null;
@@ -251,6 +257,7 @@ export interface VideoStatus {
   selectedQuality: string | null;
   /** The source's audio and text tracks, then the app's subtitle files. */
   tracks: MediaTrack[];
+  /** The audio track playing, `null` when the source has none to pick from. */
   audioTrack: string | null;
   /** The subtitles shown, `null` for none. */
   textTrack: string | null;
@@ -398,10 +405,13 @@ export interface SourceOptions {
  * you do not know: RNAP reads the height and bitrate from the file.
  */
 export interface Rendition {
+  /** The file. */
   uri: string;
   /** Default: the source's headers. */
   headers?: Record<string, string>;
+  /** The picture's height in pixels (read from the file when absent). */
   height?: number;
+  /** Bits per second (estimated from the height when absent). */
   bitrate?: number;
   /** Shown in quality menus, e.g. `'1080p'`. */
   label?: string;
@@ -419,6 +429,7 @@ export interface SubtitleSource {
   text?: string;
   /** BCP 47 (`pt-BR`) or ISO 639 (`por`). */
   language?: string;
+  /** What a menu shows (default: the language). */
   label?: string;
   /** Default: from the file name, else from the contents. */
   format?: SubtitleFormat;
@@ -426,6 +437,7 @@ export interface SubtitleSource {
   kind?: 'subtitles' | 'captions';
   /** Only what is not in the audio's language (signs, foreign lines). */
   forced?: boolean;
+  /** The file to show when the user's choice does not decide. */
   default?: boolean;
   /** The file's text encoding (`windows-1252`, `shift_jis`…). Default: detected. */
   encoding?: string;
@@ -444,14 +456,36 @@ export interface SourceRefreshRequest {
  * DRM ships, a source with `drm` is rejected with `DRM_UNSUPPORTED`.
  */
 export interface DrmConfig {
+  /** Apple FairPlay Streaming (iOS, Safari). */
   fairplay?: {
+    /** Where the license (CKC) is requested. */
     licenseUrl: string;
+    /** The application certificate. */
     certificateUrl: string;
+    /** Headers for both requests. */
     headers?: Record<string, string>;
   };
-  widevine?: { licenseUrl: string; headers?: Record<string, string> };
-  playready?: { licenseUrl: string; headers?: Record<string, string> };
-  clearkey?: { keys?: Record<string, string>; licenseUrl?: string };
+  /** Google Widevine (Android, Chromium, Firefox). */
+  widevine?: {
+    /** Where the license is requested. */
+    licenseUrl: string;
+    /** Headers for the license request. */
+    headers?: Record<string, string>;
+  };
+  /** Microsoft PlayReady (Edge, some Android TVs). */
+  playready?: {
+    /** Where the license is requested. */
+    licenseUrl: string;
+    /** Headers for the license request. */
+    headers?: Record<string, string>;
+  };
+  /** W3C Clear Key (testing, light protection). */
+  clearkey?: {
+    /** Key id → key, hex. */
+    keys?: Record<string, string>;
+    /** Or where the keys are requested. */
+    licenseUrl?: string;
+  };
 }
 
 /** What `load()` accepts: a {@link Source}, a URI, or `require('./file.mp3')`. */
@@ -670,7 +704,9 @@ export interface VideoOptions {
    * thresholds.
    */
   fallbackToAudio?: boolean | AudioFallbackOptions;
+  /** Caps on the quality, and where automatic starts. */
   quality?: VideoQualityOptions;
+  /** How the starting audio and text tracks are chosen. */
   tracks?: {
     /** The user's languages, in order (default: the device's). */
     languages?: string[];
@@ -702,7 +738,12 @@ export interface VideoQualityOptions {
   /** Bits per second. */
   maxBitrate?: number;
   /** Caps on cellular and other metered networks. */
-  cellular?: { maxResolution?: number; maxBitrate?: number };
+  cellular?: {
+    /** The tallest picture on a metered network, pixels. */
+    maxResolution?: number;
+    /** Bits per second on a metered network. */
+    maxBitrate?: number;
+  };
   /** Where automatic quality starts (default `auto`: by the network). */
   startQuality?: 'auto' | 'lowest' | 'highest' | number;
   /** Data Saver, Low Data Mode, `saveData`: at most 480p. Default `true`. */
@@ -715,9 +756,13 @@ export interface VideoQualityOptions {
 export interface PlaybackStats {
   /** `load()` to the first sound, ms; `null` until then. */
   startupMs: number | null;
+  /** Times playback stalled after it had started. */
   rebufferCount: number;
+  /** Time spent stalled, ms. */
   rebufferMs: number;
+  /** Quality changes (renditions and pinned variants). */
   qualitySwitches: number;
+  /** Times the sound went on alone (listen-only, background, fallback). */
   audioOnlySwitches: number;
   /** Frames the platform dropped, when it says. */
   droppedFrames: number | null;
@@ -727,10 +772,15 @@ export interface PlaybackStats {
 
 /** A seek-preview image (`getThumbnail`): `uri`, cropped to the rectangle when one is given. */
 export interface Thumbnail {
+  /** The image (a sprite sheet when a rectangle is given). */
   uri: string;
+  /** The rectangle's left edge in the image, pixels (`null`: the whole image). */
   x: number | null;
+  /** The rectangle's top edge, pixels. */
   y: number | null;
+  /** The rectangle's width, pixels. */
   width: number | null;
+  /** The rectangle's height, pixels. */
   height: number | null;
 }
 

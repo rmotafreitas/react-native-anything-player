@@ -71,8 +71,13 @@
           "values": { "rnap": "no", "howler": "no", "plyr": "yes", "vidstack": "yes", "reactPlayer": "partial", "icecast": "no" }
         },
         {
-          "label": "Video, YouTube and Vimeo",
-          "evidence": "Plyr, Vidstack and react-player play video and embed YouTube and Vimeo. RNAP and howler.js are audio only.",
+          "label": "Video (files, HLS, subtitles)",
+          "evidence": "RNAP: the same Player with a picture (react-native-anything-player/video): quality files switched behind the picture, hls.js tracks, SubRip, WebVTT, TTML and ASS subtitles, Picture in Picture, fullscreen. Plyr, Vidstack and react-player play video. howler.js and icecast-metadata-player are audio only.",
+          "values": { "rnap": "yes", "howler": "no", "plyr": "yes", "vidstack": "yes", "reactPlayer": "yes", "icecast": "no" }
+        },
+        {
+          "label": "YouTube and Vimeo embeds",
+          "evidence": "Plyr, Vidstack and react-player embed YouTube and Vimeo players. RNAP plays media it can fetch, not other sites' embeds.",
           "values": { "rnap": "no", "howler": "no", "plyr": "yes", "vidstack": "yes", "reactPlayer": "yes", "icecast": "no" }
         },
         {

@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<MPD xmlns="urn:mpeg:dash:schema:mpd:2011" type="dynamic" availabilityStartTime="2026-10-24T00:00:00Z" minimumUpdatePeriod="PT2S">
+  <BaseURL>https://live.example/stream/</BaseURL>
+  <Period id="p" start="PT0S">
+    <AdaptationSet mimeType="video/mp4" codecs="avc1.640028">
+      <SegmentTemplate timescale="90000" initialization="$RepresentationID$/init.mp4" media="$RepresentationID$/$Time$.m4s">
+        <SegmentTimeline>
+          <S t="900000" d="180000" r="1"/>
+        </SegmentTimeline>
+      </SegmentTemplate>
+      <Representation id="hd" bandwidth="3000000" width="1920" height="1080"/>
+    </AdaptationSet>
+    <AdaptationSet mimeType="audio/mp4" codecs="mp4a.40.2" lang="en">
+      <SegmentList timescale="1000" duration="2000">
+        <Initialization sourceURL="audio/init.mp4"/>
+        <SegmentURL media="audio/10.m4s"/>
+        <SegmentURL media="audio/11.m4s"/>
+      </SegmentList>
+      <Representation id="a" bandwidth="128000"/>
+    </AdaptationSet>
+  </Period>
+</MPD>

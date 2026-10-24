@@ -67,6 +67,12 @@ const LIBRARIES = [
     install: ['@rnap'],
     gradle: { rnapCar: 'true' },
   },
+  {
+    id: 'rnapVideo',
+    label: 'RNAP with video',
+    install: ['@rnap'],
+    gradle: { rnapVideo: 'true' },
+  },
   { id: 'rntp5', label: 'RNTP 5', install: ['@rntp/player'] },
   { id: 'rntp4', label: 'RNTP 4', install: ['react-native-track-player@4'] },
   { id: 'video', label: 'react-native-video', install: ['react-native-video'] },

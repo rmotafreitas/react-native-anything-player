@@ -115,4 +115,13 @@ v360.m3u8
 #EXT-X-STREAM-INF:BANDWIDTH=1500000,AVERAGE-BANDWIDTH=1320000,RESOLUTION=1280x720,CODECS="avc1.42c01f,mp4a.40.2",AUDIO="aud",SUBTITLES="subs"
 v720.m3u8
 M3U8
-ls -la media media/hls-video | head -20
+# The same video as DASH (CMAF: fragmented MP4 segments, a SegmentTimeline
+# template): two pictures and the sound (ExoPlayer's DASH module, Shaka on the
+# web, iOS's DASH to HLS rewrite).
+rm -rf media/dash-video && mkdir -p media/dash-video
+ffmpeg -loglevel error -y -i media/video-360.mp4 -i media/video-720.mp4 \
+  -map 0:v -map 1:v -map 0:a -c copy -f dash -seg_duration 4 -use_template 1 -use_timeline 1 \
+  -adaptation_sets "id=0,streams=v id=1,streams=a" \
+  -init_seg_name 'init-$RepresentationID$.m4s' -media_seg_name 'chunk-$RepresentationID$-$Number%05d$.m4s' \
+  media/dash-video/manifest.mpd
+ls -la media media/hls-video media/dash-video | head -24

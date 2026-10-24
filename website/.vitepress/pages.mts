@@ -102,6 +102,18 @@ export const SECTIONS: DocSection[] = [
           'Google Cast, AirPlay and the system output picker in React Native and on the web: where the audio goes, the Cast button, and what casting keeps working.',
       },
       {
+        link: '/docs/video',
+        text: 'Video',
+        description:
+          'Video in React Native and on the web: a picture for the same Player, qualities on bad networks, Picture in Picture, fullscreen, AirPlay and Cast.',
+      },
+      {
+        link: '/docs/subtitles',
+        text: 'Subtitles',
+        description:
+          "Subtitles in React Native and on the web: SubRip, WebVTT, TTML and ASS files, a stream's own tracks, the user's caption style, and drawing them yourself.",
+      },
+      {
         link: '/docs/sound',
         text: 'Sound effects',
         description:

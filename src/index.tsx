@@ -7,7 +7,20 @@
 export { Player } from './Player';
 export { PlayerError, isPlayerError } from './errors';
 export { configureHls } from './core/hls';
-export type { HlsConstructor, HlsLike } from './core/hls';
+export { configureShaka } from './core/shaka';
+export type {
+  ShakaLike,
+  ShakaPlayerLike,
+  ShakaTrack,
+  ShakaAudioTrack,
+  ShakaError,
+} from './core/shaka';
+export type {
+  HlsConstructor,
+  HlsLevel,
+  HlsLike,
+  HlsMediaTrack,
+} from './core/hls';
 export {
   addCastStateListener,
   addRoutePickerAvailabilityListener,

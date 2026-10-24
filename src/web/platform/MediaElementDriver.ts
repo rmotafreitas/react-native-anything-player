@@ -44,6 +44,8 @@ import {
 import { HLS_HINT, HLS_MISSING, isHlsType, isHlsUri } from './hlsFormats';
 import type { HlsStream } from './HlsStream';
 import { MediaTracks } from './MediaTracks';
+import { isDashUri, shakaNamespace, type ShakaLike } from '../../core/shaka';
+import type { DashStream } from './DashStream';
 import { MseStream, mediaSourceConstructor } from './MseStream';
 import type { MediaTrack } from '../../core/subtitles/tracks';
 import type { SubtitleCue } from '../../core/subtitles/types';
@@ -76,6 +78,12 @@ export interface DriverObserver {
   onTracks?(generation: number, tracks: MediaTrack[]): void;
   /** Video: the cues of the source's text track on screen now. */
   onSourceCues?(generation: number, cues: SubtitleCue[]): void;
+  /** Video: the user played, paused or sought with the browser's own controls. */
+  onUserCommand?(
+    generation: number,
+    command: 'play' | 'pause' | 'seek',
+    position: number
+  ): void;
 }
 
 /** What the driver plays: sound alone, or a picture too. */
@@ -85,6 +93,25 @@ export type MediaKind = 'audio' | 'video';
 const DOWNLINK_EVERY_MS = 2000;
 
 type HlsParts = typeof import('./HlsStream');
+type DashParts = typeof import('./DashStream');
+
+/** The Shaka glue, once loaded (it is only needed for DASH). */
+let dashLoading: Promise<DashParts | null> | null = null;
+
+/** Loads the Shaka glue once; a failed load is tried again next time. */
+function loadDashParts(): Promise<DashParts | null> {
+  dashLoading ??= import('./DashStream').then(
+    (parts) => parts,
+    () => {
+      dashLoading = null;
+      return null;
+    }
+  );
+  return dashLoading;
+}
+
+const DASH_MISSING =
+  'DASH needs Shaka Player on the web: `import shaka from "shaka-player"` and `configureShaka(shaka)` (or load it with a <script>).';
 
 /** The hls.js glue, once loaded (it is only needed with hls.js). */
 let hlsParts: HlsParts | null = null;
@@ -149,6 +176,9 @@ export class MediaElementDriver implements EngineDriver {
   private listeners: AbortControllerLike | null = null;
   private stream: MseStream | null = null;
   private hls: HlsStream | null = null;
+  /** A DASH source's Shaka player, and whether it is still loading. */
+  private dash: DashStream | null = null;
+  private dashPending = false;
   /** The HLS part is loading (the module, then hls.js): `play()` waits for it. */
   private hlsPending = false;
   /** Items torn down so far: a loading HLS part knows whether its item is gone. */
@@ -188,6 +218,13 @@ export class MediaElementDriver implements EngineDriver {
     null;
   /** The source's tracks so far: a quality switch's new file reports them again. */
   sourceTracks: MediaTrack[] = [];
+  /** A seek RNAP made (the element's `seeking` that follows is not the user's). */
+  private ownSeek = false;
+
+  /** The browser's own controls are on the picture: what the element does unasked is the user. */
+  private get userControlled(): boolean {
+    return this.videoElement?.controls === true;
+  }
 
   constructor(
     private readonly observer: DriverObserver,
@@ -212,17 +249,16 @@ export class MediaElementDriver implements EngineDriver {
    * Audio, and out of a Remote Playback receiver's reach.
    */
   get isStreamed(): boolean {
-    return (
-      this.stream != null ||
-      this.hls != null ||
-      this.hlsPending ||
-      LOCAL_URI.test(this.source?.uri ?? '')
-    );
+    const fed = this.stream != null || this.hls != null || this.dash != null;
+    const loading = this.hlsPending || this.dashPending;
+    return fed || loading || LOCAL_URI.test(this.source?.uri ?? '');
   }
 
   /** Whether the current item is live (read through MSE, or an HLS playlist without an end). */
   private get isLive(): boolean {
-    return this.stream != null || this.hls?.live === true;
+    return (
+      this.stream != null || this.hls?.live === true || this.dash?.live === true
+    );
   }
 
   private createElement(): AudioElementLike {
@@ -288,7 +324,7 @@ export class MediaElementDriver implements EngineDriver {
     // hls.js is still loading: the element has no source to play yet. The
     // request is kept and runs when the stream starts (see loadHls), so the
     // play() is not lost and the element is not asked twice.
-    if (this.hlsPending) return;
+    if (this.hlsPending || this.dashPending) return;
     const generation = this.generation;
     this.playToken += 1;
     const token = this.playToken;
@@ -328,6 +364,7 @@ export class MediaElementDriver implements EngineDriver {
     }
     const video = this.videoElement;
     // A scrub lands on the nearest keyframe (fast); `exact` on the frame.
+    this.ownSeek = true;
     if (!exact && video?.fastSeek) video.fastSeek(seconds);
     else this._element.currentTime = seconds;
     this.pumpTimed();
@@ -346,6 +383,7 @@ export class MediaElementDriver implements EngineDriver {
   setQuality(constraints: QualityConstraints): void {
     this.quality = constraints;
     this.hls?.setQuality(constraints);
+    this.dash?.setQuality(constraints);
   }
 
   selectTracks(audio: string | null, text: string | null): void {
@@ -445,8 +483,23 @@ export class MediaElementDriver implements EngineDriver {
         !this._element.ended
       ) {
         this.playRequested = false;
-        this.observer.onPausedExternally(generation, 'system');
+        // The browser's pause button: the user's pause, not the system's.
+        if (this.userControlled)
+          this.observer.onUserCommand?.(generation, 'pause', this.position());
+        else this.observer.onPausedExternally(generation, 'system');
       }
+    });
+    on('play', () => {
+      // The browser's play button (RNAP's own play() asked first).
+      if (this.userControlled && !this.playRequested)
+        this.observer.onUserCommand?.(generation, 'play', this.position());
+    });
+    on('seeking', () => {
+      if (this.userControlled && !this.ownSeek)
+        this.observer.onUserCommand?.(generation, 'seek', this.position());
+    });
+    on('seeked', () => {
+      this.ownSeek = false;
     });
     on('timeupdate', () => this.pumpTimed());
     on('seeked', () => this.pumpTimed());
@@ -499,7 +552,7 @@ export class MediaElementDriver implements EngineDriver {
 
   /** Chromium's Network Information estimate, for files (hls.js has its own). */
   private readDownlink(generation: number): void {
-    if (this.hls != null) return;
+    if (this.hls != null || this.dash != null) return;
     const now = Date.now();
     if (now - this.downlinkAt < DOWNLINK_EVERY_MS) return;
     this.downlinkAt = now;
@@ -538,6 +591,15 @@ export class MediaElementDriver implements EngineDriver {
     source: SourceDescriptor,
     contentType: string | null = null
   ): void {
+    if (isDashUri(source.uri)) {
+      this.attach();
+      if (this._element.src !== '') {
+        this._element.removeAttribute('src');
+        this._element.load();
+      }
+      this.startDash(source);
+      return;
+    }
     const hls = this.needsHls(source, contentType);
     this.nativeHls = !hls && (isHlsUri(source.uri) || isHlsType(contentType));
     // hls.js feeds the element from a MediaSource: the audio is same-origin.
@@ -589,6 +651,100 @@ export class MediaElementDriver implements EngineDriver {
     // Loading the element anew dropped the play() that was pending.
     if (this.playRequested) this.play();
     return true;
+  }
+
+  /** DASH: no browser plays it itself, Shaka Player does (registered by the app). */
+  private startDash(source: SourceDescriptor): void {
+    const generation = this.generation;
+    const shaka = shakaNamespace();
+    if (!shaka?.Player.isBrowserSupported()) {
+      const message = shaka
+        ? 'Shaka Player is not supported in this browser (it needs Media Source Extensions).'
+        : DASH_MISSING;
+      this.failHls(generation, message, false);
+      return;
+    }
+    this.dashPending = true;
+    const item = this.itemSerial;
+    loadDashParts().then(
+      (parts) => {
+        if (
+          generation !== this.generation ||
+          item !== this.itemSerial ||
+          source !== this.source
+        )
+          return;
+        if (!parts) {
+          this.dashPending = false;
+          this.failHls(
+            generation,
+            'The DASH glue code did not load. Check the connection and try again.',
+            true
+          );
+          return;
+        }
+        this.startDashStream(source, generation, shaka, parts);
+      },
+      () => undefined
+    );
+  }
+
+  private startDashStream(
+    source: SourceDescriptor,
+    generation: number,
+    shaka: ShakaLike,
+    parts: DashParts
+  ): void {
+    const live = () => generation === this.generation && this.dash === dash;
+    const dash: DashStream = new parts.DashStream(
+      this._element,
+      source,
+      shaka,
+      {
+        onFailure: (error) => {
+          if (!live()) return;
+          this.dashPending = false;
+          this.observer.onFailed(generation, error);
+        },
+        onNote: (event, details) => {
+          if (live()) this.observer.onNote(generation, event, details);
+        },
+        onVariants: (variants) => {
+          if (live()) this.observer.onVariants?.(generation, variants);
+        },
+        onVariantSwitched: (id) => {
+          if (!live()) return;
+          this.variantId = id;
+          const video = this.videoElement;
+          if (video && video.videoWidth > 0)
+            this.observer.onVideoInfo?.(generation, {
+              width: video.videoWidth,
+              height: video.videoHeight,
+              hdr: false,
+              variantId: id,
+            });
+        },
+        onBandwidth: (bps) => {
+          if (live()) this.observer.onBandwidth?.(generation, bps);
+        },
+        onTracks: () => {
+          if (live()) this.tracks?.useHls(dash);
+        },
+        onLoaded: () => {
+          if (!live()) return;
+          this.dashPending = false;
+          // Asked to play while Shaka loaded the manifest.
+          if (this.playRequested) this.play();
+        },
+      }
+    );
+    this.dash = dash;
+    this.observer.onNote(generation, 'shaka', { reason: 'DASH' });
+    if (this.quality) dash.setQuality(this.quality);
+    // Shaka starts where it was asked: the element's metadata needs no seek.
+    const start = this.pendingStart;
+    this.pendingStart = null;
+    dash.start(start).catch(() => undefined);
   }
 
   private startHls(source: SourceDescriptor): void {
@@ -787,12 +943,16 @@ export class MediaElementDriver implements EngineDriver {
     const element = this._element;
     // An HLS playlist says whether it is live (the element's duration alone
     // cannot, before the first segments); everything else is the element's.
-    const info = this.hls?.readyInfo() ?? this.elementReadyInfo();
+    const info =
+      this.hls?.readyInfo() ??
+      this.dash?.readyInfo() ??
+      this.elementReadyInfo();
     if (
       info.duration != null &&
       this.pendingStart != null &&
       this.pendingStart > 0
     ) {
+      this.ownSeek = true;
       element.currentTime = Math.min(this.pendingStart, info.duration);
     }
     this.pendingStart = null;
@@ -812,7 +972,7 @@ export class MediaElementDriver implements EngineDriver {
     const error = this._element.error;
     if (!error || error.code === MEDIA_ERR_ABORTED) return;
     // hls.js already reported the failure that stopped the element.
-    if (this.hls?.failed) return;
+    if (this.hls?.failed || this.dash?.failed) return;
     if (
       error.code === MEDIA_ERR_SRC_NOT_SUPPORTED &&
       this.retryWithHls(generation)
@@ -884,6 +1044,9 @@ export class MediaElementDriver implements EngineDriver {
     this.hls?.close();
     this.hls = null;
     this.hlsPending = false;
+    this.dash?.close();
+    this.dash = null;
+    this.dashPending = false;
     this.itemSerial += 1;
     this.nativeHls = false;
     this.timed = [];

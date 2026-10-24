@@ -17,17 +17,18 @@ export function VideoView({
   player,
   contentFit = 'contain',
   style,
+  nativeControls = false,
 }: Readonly<VideoViewProps>) {
   const view = useRef<ComponentRef<typeof View>>(null);
   useEffect(() => {
     // React Native Web: the view's ref is its element.
     const element = view.current as unknown;
     if (element == null || player.isReleased) return undefined;
-    player.attachTo(element, { contentFit });
+    player.attachTo(element, { contentFit, nativeControls });
     return () => {
       if (!player.isReleased) player.attachTo(null);
     };
-  }, [player, contentFit]);
+  }, [player, contentFit, nativeControls]);
   return <View ref={view} style={[styles.box, style]} />;
 }
 

@@ -90,8 +90,8 @@ test('the project total is the default build plus what this app changed', () => 
 
   const withCast = projectSize(states({ hls: true, cast: true }), data);
   assert.deepEqual(withCast.total, {
-    r8: data.android.base.r8 + 1467731,
-    noR8: data.android.base.noR8 + 7391451,
+    r8: data.android.base.r8 + 1484123,
+    noR8: data.android.base.noR8 + 7391455,
   });
 
   assert.equal(
@@ -168,10 +168,10 @@ test('size --json reports this project against the default build', (t) => {
   assert.equal(result.json.measured.abi, 'arm64-v8a');
   assert.deepEqual(result.json.android.base, data.android.base);
   assert.deepEqual(result.json.android.total, data.android.base);
-  assert.equal(result.json.android.modules.length, 7);
+  assert.equal(result.json.android.modules.length, 8);
   assert.equal(
     result.json.android.modules.find((item) => item.id === 'cast').cost.r8,
-    1467731
+    1484123
   );
   assert.equal(result.json.web.length, 3);
   assert.match(result.json.note, /An estimate for your app/);

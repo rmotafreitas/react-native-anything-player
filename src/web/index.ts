@@ -31,14 +31,32 @@ installHost({
   resolveAsset: () => null,
   acceptsScheme: (scheme) => WEB_ONLY_SCHEMES.has(scheme),
   acceptsBlobs: true,
-  attachVideo: (playerId, element, fit) =>
-    webModule().attachVideo(playerId, element, fit as ContentFit | undefined),
+  attachVideo: (playerId, element, fit, controls) =>
+    webModule().attachVideo(
+      playerId,
+      element,
+      fit as ContentFit | undefined,
+      controls
+    ),
 });
 
 export { Player } from '../core/Player';
 export { PlayerError, isPlayerError } from '../errors';
 export { configureHls } from '../core/hls';
-export type { HlsConstructor, HlsLike } from '../core/hls';
+export { configureShaka } from '../core/shaka';
+export type {
+  ShakaLike,
+  ShakaPlayerLike,
+  ShakaTrack,
+  ShakaAudioTrack,
+  ShakaError,
+} from '../core/shaka';
+export type {
+  HlsConstructor,
+  HlsLevel,
+  HlsLike,
+  HlsMediaTrack,
+} from '../core/hls';
 export {
   addCastStateListener,
   addRoutePickerAvailabilityListener,

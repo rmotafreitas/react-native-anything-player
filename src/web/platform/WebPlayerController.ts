@@ -342,7 +342,11 @@ export class WebPlayerController
   }
 
   /** `attachTo` / `<VideoView>`: the page element the picture goes in. */
-  attachVideo(element: unknown, fit: ContentFit = 'contain'): void {
+  attachVideo(
+    element: unknown,
+    fit: ContentFit = 'contain',
+    controls = false
+  ): void {
     if (this.video == null) {
       throw engineError(
         'INVALID_ARGUMENT',
@@ -350,7 +354,7 @@ export class WebPlayerController
         false
       );
     }
-    this.video.attach(element as never, fit);
+    this.video.attach(element as never, fit, controls);
   }
 
   /** `getStats()`: the engine's counters, the dropped frames and the bandwidth. */
@@ -721,6 +725,22 @@ export class WebPlayerController
 
   onTracks(generation: number, tracks: MediaTrack[]): void {
     this.engine.onTracks(generation, tracks);
+  }
+
+  /** The browser's own controls: the user's command, as if the app had sent it. */
+  onUserCommand(
+    generation: number,
+    command: 'play' | 'pause' | 'seek',
+    position: number
+  ): void {
+    if (!this.engine.accepts(generation)) return;
+    try {
+      if (command === 'play') this.engine.play();
+      else if (command === 'pause') this.engine.pause();
+      else this.engine.seek(position, true);
+    } catch {
+      // Nothing to play or not seekable: the element's own state stays.
+    }
   }
 
   onSourceCues(generation: number, cues: SubtitleCue[]): void {

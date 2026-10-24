@@ -183,6 +183,91 @@ test("an HLS source's own audio and subtitle groups are tracks: picked ones play
   expect(await page.evaluate(() => window.videoTest.errors)).toEqual([]);
 });
 
+test("the browser's own controls: their play, pause and seek are the user's", async ({
+  page,
+}) => {
+  await open(page);
+  await page.evaluate(() => {
+    const t = window.videoTest;
+    t.player.attachTo(document.getElementById('stage'), {
+      nativeControls: true,
+    });
+    return t.player.load(`${t.MEDIA}/video-360.mp4`, { autoplay: true });
+  });
+  await expect
+    .poll(async () => (await status(page)).state, { timeout: 15_000 })
+    .toBe('playing');
+  const video = page.locator('#stage video');
+  expect(await video.evaluate((v) => (v as HTMLVideoElement).controls)).toBe(
+    true
+  );
+  // What the pause button does: a pause the user asked for, not the system's.
+  await video.evaluate((v) => (v as HTMLVideoElement).pause());
+  await expect.poll(async () => (await status(page)).state).toBe('paused');
+  expect(await status(page)).toMatchObject({
+    playWhenReady: false,
+    interruption: null,
+  });
+  await video.evaluate((v) => {
+    (v as HTMLVideoElement).currentTime = 30;
+  });
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.videoTest.player.getProgress().position)
+    )
+    .toBeGreaterThanOrEqual(29.5);
+  await video.evaluate((v) => (v as HTMLVideoElement).play());
+  await expect.poll(async () => (await status(page)).state).toBe('playing');
+  expect((await status(page)).playWhenReady).toBe(true);
+  // Turned off again: the element has none.
+  await page.evaluate(() =>
+    window.videoTest.player.attachTo(document.getElementById('stage'))
+  );
+  expect(await video.evaluate((v) => (v as HTMLVideoElement).controls)).toBe(
+    false
+  );
+});
+
+test('DASH plays through Shaka Player: its pictures are qualities, caps and pins apply', async ({
+  page,
+}) => {
+  await open(page);
+  await page.evaluate(() =>
+    window.videoTest.player.load(
+      `${window.videoTest.MEDIA}/video-dash/manifest.mpd`,
+      { autoplay: true }
+    )
+  );
+  await expect
+    .poll(async () => (await status(page)).state, { timeout: 20_000 })
+    .toBe('playing');
+  await expect
+    .poll(async () =>
+      (await status(page)).video?.qualities.map((q) => q.height)
+    )
+    .toEqual([360, 720]);
+  const qualities = (await status(page)).video!.qualities;
+  expect((await status(page)).duration).toBeCloseTo(60, 0);
+  // Pinning the 360p picture plays it.
+  await page.evaluate(
+    (id) => window.videoTest.player.selectQuality(id),
+    qualities[0]!.id
+  );
+  await expect
+    .poll(async () => (await status(page)).video?.quality, { timeout: 15_000 })
+    .toBe(qualities[0]!.id);
+  await expect
+    .poll(async () => (await status(page)).video?.height, { timeout: 15_000 })
+    .toBe(360);
+  await page.evaluate(() => window.videoTest.player.seekTo(40));
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.videoTest.player.getProgress().position)
+    )
+    .toBeGreaterThanOrEqual(40);
+  expect(await page.evaluate(() => window.videoTest.errors)).toEqual([]);
+});
+
 test('an audio player has no picture to attach', async ({ page }) => {
   await open(page);
   const code = await page.evaluate(async () => {

@@ -41,13 +41,13 @@ Options are fixed for the player's lifetime, except `fade`, which `setFade()` re
 
 With an `id`, a player outlives the JavaScript that created it, and `new Player({ id })` attaches to the native player with that id (one Siri or Google Assistant started, or one that kept playing across a reload), keeping its options. See [Voice assistants](voice.md#playing-a-request).
 
-App-wide settings live outside `Player`: the voice catalog and its browse tree (`setCatalog`, `setFavorites`, [Voice assistants](voice.md), [Cars & watches](cars-and-watches.md)), Cast (`configureCast` on the web, [Casting & AirPlay](routes-and-casting.md)) and hls.js on the web (`configureHls`, [Web](web.md#hls)).
+App-wide settings live outside `Player`: the voice catalog and its browse tree (`setCatalog`, `setFavorites`, [Voice assistants](voice.md), [Cars & watches](cars-and-watches.md)), Cast (`configureCast` on the web, [Casting & AirPlay](routes-and-casting.md)) hls.js and Shaka Player on the web (`configureHls`, `configureShaka`, [Web](web.md#hls)).
 
 ## Modules
 
-Some parts of RNAP are chosen at build time, not at runtime: HLS, Cast, Siri, Assistant, the iOS background mode, the Sound API and the car integrations. `npx rnap modules` prints each one with the state of this project, `npx rnap add` and `npx rnap remove` write the switch, and [CLI](cli.md#modules) has the table with the platforms and the defaults.
+Some parts of RNAP are chosen at build time, not at runtime: HLS, Cast, Siri, Assistant, the iOS background mode, the Sound API, the car integrations and video. `npx rnap modules` prints each one with the state of this project, `npx rnap add` and `npx rnap remove` write the switch, and [CLI](cli.md#modules) has the table with the platforms and the defaults.
 
-The switch is a native file — `android/gradle.properties`, `ios/Podfile.properties.json`, the app's `Info.plist` — or an option of the Expo config plugin, described in [Build-time options](#build-time-options). `rnap add sound` and `rnap add car` write the Sound API and Android Auto / CarPlay switches ([Sound](sound.md#enabling-it), [Cars & watches](cars-and-watches.md)); CarPlay's entitlement and scene stay with the app, and the CLI prints them.
+The switch is a native file — `android/gradle.properties`, `ios/Podfile.properties.json`, the app's `Info.plist` — or an option of the Expo config plugin, described in [Build-time options](#build-time-options). `rnap add sound`, `rnap add car` and `rnap add video` write the Sound API, Android Auto / CarPlay and video switches ([Sound](sound.md#enabling-it), [Cars & watches](cars-and-watches.md), [Video](video.md#enabling-it)); CarPlay's entitlement and scene and Android's Picture in Picture activity attributes stay with the app, and the CLI prints them.
 
 Three more switches were measured and left out, because they would save little or cost a core feature (code sizes in the dex of a release APK built with R8, before compression):
 
@@ -72,8 +72,11 @@ Three more switches were measured and left out, because they would save little o
 | `Info.plist` | `RNAPCastReceiverId` | your own Cast receiver on iOS |
 | `android/gradle.properties` | `rnapSound=true` | build the [Sound API](sound.md) in (a `SoundPool`: no extra library) |
 | `pod install` | `RNAP_SOUND=1` (or `"rnap.sound": "true"` in `ios/Podfile.properties.json`) | build the Sound API in on iOS |
+| `android/gradle.properties` | `rnapVideo=true` | build [video](video.md) in: the views, the video and text renderers and, unless `rnapDash=false`, Media3's DASH module (126 KB more in a release APK with R8) |
+| `android/gradle.properties` | `rnapDash=true` / `rnapDash=false` | DASH (`.mpd`) for an audio-only app, or none for a video app |
+| `pod install` | `RNAP_VIDEO=1` (or `"rnap.video": "true"` in `ios/Podfile.properties.json`) | build video in on iOS (DASH needs nothing: RNAP rewrites CMAF DASH as HLS for AVPlayer) |
 | Expo config plugin | `["react-native-anything-player", { "backgroundAudio": false }]` | do not add the iOS `audio` background mode |
-| Expo config plugin | `cast`, `siri`, `assistant`, `sound`, `car` | Google Cast, Siri (extension and shortcuts), Google Assistant / Gemini, the Sound API, CarPlay and Android Auto: see [Getting started](getting-started.md#expo) |
+| Expo config plugin | `cast`, `siri`, `assistant`, `sound`, `car`, `video` | Google Cast, Siri (extension and shortcuts), Google Assistant / Gemini, the Sound API, CarPlay and Android Auto, video with Picture in Picture: see [Getting started](getting-started.md#expo) |
 
 The recovery timings that are *not* configurable are fixed on purpose; [recovery.md](recovery.md) explains each.
 
@@ -81,4 +84,4 @@ The recovery timings that are *not* configurable are fixed on purpose; [recovery
 
 Nothing to add to your R8 (ProGuard) rules: RNAP's own are applied to the app automatically. Turn R8 on for release builds (`minifyEnabled true` and `shrinkResources true` in `android/app/build.gradle`) and it removes most of what RNAP's libraries ship and RNAP does not use. RNAP builds ExoPlayer with only the audio and metadata renderers, so the video, subtitle and image code goes, and Android compiles only the C++ of RNAP's module, not that of the iOS-only AirPlay button.
 
-Measured in a React Native 0.86 release APK (arm64-v8a), RNAP adds 1,192 KB with R8 and 3,790 KB without it. [Comparison & benchmarks](comparison.md#added-to-a-release-apk) has the other libraries.
+Measured in a React Native 0.86 release APK (arm64-v8a), RNAP adds 1,208 KB with R8 and 3,854 KB without it. [Comparison & benchmarks](comparison.md#added-to-a-release-apk) has the other libraries.

@@ -11,6 +11,8 @@ export interface VideoViewProps {
   className?: string;
   /** Style of the `<div>`; give it a size (e.g. `aspectRatio: '16 / 9'`). */
   style?: CSSProperties;
+  /** The browser's own playback controls. Default `false`: build your own. */
+  nativeControls?: boolean;
 }
 
 /**
@@ -24,16 +26,17 @@ export function VideoView({
   contentFit = 'contain',
   className,
   style,
+  nativeControls = false,
 }: Readonly<VideoViewProps>) {
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const element = box.current;
     if (element == null || player.isReleased) return undefined;
-    player.attachTo(element, { contentFit });
+    player.attachTo(element, { contentFit, nativeControls });
     return () => {
       if (!player.isReleased) player.attachTo(null);
     };
-  }, [player, contentFit]);
+  }, [player, contentFit, nativeControls]);
   return <div ref={box} className={className} style={{ ...BOX, ...style }} />;
 }
 

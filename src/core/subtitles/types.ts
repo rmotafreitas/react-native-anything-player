@@ -3,9 +3,13 @@
 
 /** A run of a cue's text with one style. */
 export interface CueSpan {
+  /** The run's text. */
   text: string;
+  /** Bold. */
   bold?: boolean;
+  /** Italic. */
   italic?: boolean;
+  /** Underlined. */
   underline?: boolean;
   /** `#rrggbb`. */
   color?: string;
@@ -21,12 +25,15 @@ export type CueVertical = 'top' | 'middle' | 'bottom';
 export interface SubtitleCue {
   /** Seconds on the media timeline. */
   start: number;
+  /** Seconds on the media timeline (the cue is gone from then). */
   end: number;
   /** The text without styling, lines joined with `\n`. */
   text: string;
   /** The same text, in styled runs (their texts joined are `text`). */
   spans: CueSpan[];
+  /** How the lines align. */
   align: CueAlign;
+  /** Where the cue sits when it has no `y`. */
   vertical: CueVertical;
   /**
    * The cue's anchor as a fraction of the picture's width and height (ASS
@@ -36,6 +43,7 @@ export interface SubtitleCue {
    * corner).
    */
   x: number | null;
+  /** The anchor's height, as a fraction of the picture's (see `x`). */
   y: number | null;
 }
 

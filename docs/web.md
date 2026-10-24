@@ -152,6 +152,25 @@ RNAP uses hls.js for a source whose path ends in `.m3u8`, or whose response says
 - **Live offset.** `liveOffset` is hls.js's latency to the live edge.
 - **Teardown.** The hls.js instance is destroyed on `stop()`, `reset()`, the next `load()` and `release()`.
 
+## DASH
+
+No browser plays DASH (`.mpd`) itself. A [video player](video.md) plays it with [Shaka Player](https://github.com/shaka-project/shaka-player) (4.x or 5.x), which RNAP does not bundle either: install it and register it once at startup.
+
+```sh
+npm install shaka-player
+```
+
+```ts
+import shaka from 'shaka-player';
+import { configureShaka } from 'react-native-anything-player'; // or '…/web'
+
+configureShaka(shaka);
+```
+
+With Shaka loaded by a `<script>` (it then sits on `window.shaka`), the call is optional. Without it, a DASH load fails with `UNSUPPORTED_FORMAT` and a message that says to install Shaka and call `configureShaka`. RNAP's DASH code is loaded on first use, so a page that never plays DASH does not carry it.
+
+What hls.js does for HLS, Shaka does for DASH, under the same rules: Shaka's ABR picks the picture under RNAP's [caps](video.md#quality) and `selectQuality` pins one; the manifest's audio languages and text tracks are the [source's tracks](subtitles.md#the-sources-own-tracks), drawn by RNAP's overlay; the source's `headers` go on every request; a critical Shaka error is a failure the engine recovers from with a new Shaka instance under its [backoff](recovery.md) (an HTTP 404/410 is `SOURCE_NOT_FOUND`).
+
 ## Local files
 
 A file the user picked or dropped plays by passing it straight to `load()`:

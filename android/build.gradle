@@ -67,6 +67,10 @@ def includeVideo = ["rnapVideo"].any { name ->
   def value = project.hasProperty(name) ? project.property(name) : (rootProject.ext.has(name) ? rootProject.ext.get(name) : null)
   value != null && value.toString() == "true"
 }
+// DASH (`.mpd`, Media3's DASH module): built in with video unless
+// `rnapDash=false`, and into an audio-only app with `rnapDash=true`.
+def dashProperty = project.hasProperty("rnapDash") ? project.property("rnapDash") : (rootProject.ext.has("rnapDash") ? rootProject.ext.get("rnapDash") : null)
+def includeDash = dashProperty != null ? dashProperty.toString() == "true" : includeVideo
 // Android Auto is opt-in: `rnapCar=true` (or -PrnapCar=true, or `rnapCar` in
 // the root `ext`) declares the app a media app for Android Auto. The browse
 // tree itself (Wear OS, Android Automotive OS, Assistant) needs no flag.
@@ -132,6 +136,9 @@ dependencies {
   implementation "androidx.mediarouter:mediarouter:$mediaRouterVersion"
   if (includeHls) {
     implementation "androidx.media3:media3-exoplayer-hls:$media3Version"
+  }
+  if (includeDash) {
+    implementation "androidx.media3:media3-exoplayer-dash:$media3Version"
   }
 
   if (includeCast) {

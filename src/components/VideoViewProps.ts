@@ -9,6 +9,10 @@ export interface VideoViewProps {
   contentFit?: 'contain' | 'cover' | 'fill';
   /** Give it a size (e.g. `{ aspectRatio: 16 / 9 }`). */
   style?: StyleProp<ViewStyle>;
-  /** The system's own playback controls (iOS: AVKit's). Default `false`: build your own. */
+  /**
+   * The platform's own playback controls: AVKit's on iOS, the browser's on
+   * the web, RNAP's light ones on Android (which has none). Default `false`:
+   * build your own.
+   */
   nativeControls?: boolean;
 }

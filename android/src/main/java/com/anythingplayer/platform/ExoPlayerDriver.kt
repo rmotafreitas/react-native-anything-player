@@ -34,6 +34,7 @@ import androidx.media3.extractor.DefaultExtractorsFactory
 import androidx.media3.extractor.metadata.icy.IcyInfo
 import androidx.media3.extractor.metadata.id3.TextInformationFrame
 import com.anythingplayer.core.EngineDriver
+import com.anythingplayer.core.ErrorCode
 import com.anythingplayer.core.InterruptionReason
 import com.anythingplayer.core.MediaTrack
 import com.anythingplayer.core.OpenRequest
@@ -537,6 +538,21 @@ internal class ExoPlayerDriver(
     stationName = null
     stationGenre = null
     mapped = null
+    // Without Media3's DASH module a manifest would be read as a file and
+    // fail as unreadable: say what is missing instead.
+    if (isDashUri(request.source.uri) && !dashBuiltIn) {
+      p.stop()
+      p.clearMediaItems()
+      val gen = request.generation
+      val error =
+        PlayerError(
+          ErrorCode.UNSUPPORTED_FORMAT,
+          "DASH is not built into this app: video apps have it, or set `rnapDash=true` in android/gradle.properties and rebuild.",
+          false,
+        )
+      report { observer.onFailed(gen, error) }
+      return
+    }
     val mediaSource = buildMediaSource(request, "$MEDIA_ID_PREFIX${request.generation}")
     val start = request.startPosition
     if (start != null && start > 0) {
@@ -549,6 +565,7 @@ internal class ExoPlayerDriver(
   }
 
   private fun buildMediaSource(request: OpenRequest, mediaId: String): MediaSource {
+
     val headers = request.source.headers
     val userAgent = headers.entries.firstOrNull { it.key.equals("User-Agent", ignoreCase = true) }?.value
     val calls = CallRegistry().also { itemCalls[mediaId] = it }
@@ -694,4 +711,12 @@ internal class ExoPlayerDriver(
       }
     }
   }
+}
+
+/** A DASH manifest, by its extension (Media3 picks its source the same way). */
+internal fun isDashUri(uri: String): Boolean = uri.substringBefore('#').substringBefore('?').lowercase().endsWith(".mpd")
+
+/** Whether Media3's DASH module is in this build (`rnapDash`). */
+private val dashBuiltIn: Boolean by lazy {
+  runCatching { Class.forName("androidx.media3.exoplayer.dash.DashMediaSource") }.isSuccess
 }

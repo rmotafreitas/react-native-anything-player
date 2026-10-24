@@ -605,6 +605,7 @@ export class Player {
     });
   }
 
+  /** Closes the system's fullscreen player. */
   async dismissFullscreen(): Promise<void> {
     await this.video({ op: 'fullscreen', active: false });
   }
@@ -614,6 +615,7 @@ export class Player {
     await this.video({ op: 'pictureInPicture', active: true });
   }
 
+  /** Closes Picture in Picture and brings the app back. */
   async stopPictureInPicture(): Promise<void> {
     await this.video({ op: 'pictureInPicture', active: false });
   }
@@ -640,7 +642,11 @@ export class Player {
    */
   attachTo(
     element: unknown,
-    options: { contentFit?: 'contain' | 'cover' | 'fill' } = {}
+    options: {
+      contentFit?: 'contain' | 'cover' | 'fill';
+      /** The browser's own controls on the picture. */
+      nativeControls?: boolean;
+    } = {}
   ): void {
     this.ensureAlive();
     const attach = host().attachVideo;
@@ -652,7 +658,12 @@ export class Player {
         recoverable: false,
       });
     }
-    attach(this.id, element, options.contentFit);
+    attach(
+      this.id,
+      element,
+      options.contentFit,
+      options.nativeControls === true
+    );
   }
 
   private async video(command: Record<string, unknown>): Promise<void> {

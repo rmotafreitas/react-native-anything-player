@@ -50,6 +50,13 @@ export const VIDEO_SOURCES: Array<{ label: string; source: () => Source }> = [
     }),
   },
   {
+    label: 'DASH',
+    source: () => ({
+      uri: `${STREAM_HOST}/video-dash/manifest.mpd`,
+      metadata: { title: 'Test pattern (DASH)', artist: 'RNAP' },
+    }),
+  },
+  {
     label: 'HLS + tracks',
     source: () => ({
       uri: `${STREAM_HOST}/video-hls/master.m3u8`,

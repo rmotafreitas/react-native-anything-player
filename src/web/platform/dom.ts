@@ -102,6 +102,8 @@ export interface VideoElementLike extends AudioElementLike, BoxLike {
   poster: string;
   loop: boolean;
   playsInline: boolean;
+  /** The browser's own controls. */
+  controls: boolean;
   requestPictureInPicture?(): Promise<unknown>;
   /** Safari's Picture in Picture and fullscreen. */
   webkitSupportsPresentationMode?(mode: string): boolean;

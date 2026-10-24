@@ -44,6 +44,13 @@ function resolveOptions(options = {}) {
     sound: options.sound === true,
     assistant: options.assistant !== false,
     car: Boolean(options.car),
+    video: options.video
+      ? {
+          pictureInPicture:
+            typeof options.video !== 'object' ||
+            options.video.pictureInPicture !== false,
+        }
+      : null,
   };
 }
 
@@ -58,7 +65,9 @@ function union(list, values) {
 function applyInfoPlist(plist, resolved) {
   const out = { ...plist };
   const modes = new Set(out.UIBackgroundModes ?? []);
-  if (resolved.backgroundAudio) modes.add('audio');
+  // Picture in Picture needs the `audio` mode too.
+  if (resolved.backgroundAudio || resolved.video?.pictureInPicture)
+    modes.add('audio');
   else modes.delete('audio');
   out.UIBackgroundModes = [...modes];
   if (resolved.cast) {
@@ -134,6 +143,8 @@ function applyPodfileProperties(properties, resolved) {
   else delete out['rnap.sound'];
   if (resolved.car) out['rnap.car'] = 'true';
   else delete out['rnap.car'];
+  if (resolved.video) out['rnap.video'] = 'true';
+  else delete out['rnap.video'];
   return out;
 }
 
@@ -143,7 +154,7 @@ function applyGradleProperties(entries, resolved) {
     (e) =>
       !(
         e.type === 'property' &&
-        (e.key === 'rnapCast' || e.key === 'rnapSound' || e.key === 'rnapCar')
+        ['rnapCast', 'rnapSound', 'rnapCar', 'rnapVideo'].includes(e.key)
       )
   );
   if (resolved.cast)
@@ -152,7 +163,34 @@ function applyGradleProperties(entries, resolved) {
     out.push({ type: 'property', key: 'rnapSound', value: 'true' });
   if (resolved.car)
     out.push({ type: 'property', key: 'rnapCar', value: 'true' });
+  if (resolved.video)
+    out.push({ type: 'property', key: 'rnapVideo', value: 'true' });
   return out;
+}
+
+/** What Picture in Picture resizes: the activity keeps running through it. */
+const PIP_CONFIG_CHANGES = [
+  'screenSize',
+  'smallestScreenSize',
+  'screenLayout',
+  'orientation',
+];
+
+/**
+ * The main activity in Picture in Picture: `supportsPictureInPicture`, and
+ * the size and orientation changes it handles itself (no restart when the
+ * window shrinks).
+ */
+function applyPictureInPicture(activity) {
+  const attributes = { ...(activity.$ ?? {}) };
+  attributes['android:supportsPictureInPicture'] = 'true';
+  const current = (attributes['android:configChanges'] ?? '')
+    .split('|')
+    .filter(Boolean);
+  attributes['android:configChanges'] = union(current, PIP_CONFIG_CHANGES).join(
+    '|'
+  );
+  return { ...activity, $: attributes };
 }
 
 /** The main activity's `MEDIA_PLAY_FROM_SEARCH` intent filter (Google Assistant, Gemini). */
@@ -218,6 +256,7 @@ module.exports = {
   applyEntitlements,
   applyGradleProperties,
   applyInfoPlist,
+  applyPictureInPicture,
   applyPodfileProperties,
   hasWindowScene,
   injectHandleIntent,

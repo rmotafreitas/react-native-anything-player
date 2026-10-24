@@ -153,6 +153,7 @@
     "react-dom": "19.2.3",
     "react-native": "0.86.3",
     "react-native-builder-bob": "^0.43.2",
+    "shaka-player": "^5.3.2",
     "test-renderer": "1.2.0",
     "turbo": "^2.11.10",
     "typedoc": "^0.28.20",

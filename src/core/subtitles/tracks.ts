@@ -5,13 +5,18 @@
 // `ios/Core/TrackSelection.swift`, `android/.../core/TrackSelection.kt`, held
 // to `conformance/tracks/select.json`.
 
+/** What a track carries: sound, subtitles, or captions for the deaf and hard of hearing. */
 export type TrackKind = 'audio' | 'subtitles' | 'captions';
 
+/** An audio or text track of a video (`status.video.tracks`). */
 export interface MediaTrack {
+  /** Pass it to `selectAudioTrack` or `selectSubtitles`: `track:…` for the source's own, `sub:<n>` for the app's files. */
   id: string;
+  /** Sound, subtitles or captions. */
   kind: TrackKind;
   /** BCP 47 or ISO 639 (`pt-BR`, `jpn`); `null` when unknown. */
   language: string | null;
+  /** The name the source or the app gave it, `null` when none. */
   label: string | null;
   /** Subtitles only for what is not in the audio's language (signs, foreign lines). */
   forced: boolean;

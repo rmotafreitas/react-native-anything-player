@@ -9,6 +9,11 @@
 //   `rnap.cast`) and adds iOS's local network keys. See docs/routes-and-casting.md.
 // - `sound` (default false): builds the Sound API in (Gradle property
 //   `rnapSound`, Podfile property `rnap.sound`). See docs/sound.md.
+// - `video` (true or `{ pictureInPicture }`): builds video players and
+//   `<VideoView>` in (Gradle property `rnapVideo`, Podfile property
+//   `rnap.video`). Picture in Picture (default on) marks the main activity
+//   `supportsPictureInPicture` with the config changes it handles, and keeps
+//   iOS's `audio` background mode it needs. See docs/video.md.
 // - `siri` (true or `{ usageDescription, appIntents }`): the Siri capability,
 //   the Intents extension that hands requests to the app, and (unless
 //   `appIntents` is false) the App Intents of Siri shortcuts, Spotlight and the
@@ -143,6 +148,10 @@ function withAndroid(config, resolved) {
     if (resolved.assistant) {
       const activity = AndroidConfig.Manifest.getMainActivityOrThrow(manifest);
       Object.assign(activity, helpers.addPlayFromSearchFilter(activity));
+    }
+    if (resolved.video?.pictureInPicture) {
+      const activity = AndroidConfig.Manifest.getMainActivityOrThrow(manifest);
+      Object.assign(activity, helpers.applyPictureInPicture(activity));
     }
     return cfg;
   });

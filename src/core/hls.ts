@@ -63,9 +63,13 @@ export interface HlsLike {
 
 /** An audio or subtitle rendition, as hls.js describes it. */
 export interface HlsMediaTrack {
+  /** `NAME`. */
   readonly name?: string;
+  /** `LANGUAGE`. */
   readonly lang?: string;
+  /** `DEFAULT=YES`. */
   readonly default?: boolean;
+  /** `FORCED=YES` (subtitles). */
   readonly forced?: boolean;
   /** `CHARACTERISTICS` (`public.accessibility.describes-video`, …). */
   readonly characteristics?: string;
@@ -73,11 +77,17 @@ export interface HlsMediaTrack {
 
 /** A variant, as hls.js describes it. */
 export interface HlsLevel {
+  /** The picture's height, pixels (none for audio only). */
   readonly height?: number;
+  /** The picture's width, pixels. */
   readonly width?: number;
+  /** Bits per second (`BANDWIDTH`). */
   readonly bitrate?: number;
+  /** The playlist's `NAME`, when it has one. */
   readonly name?: string;
+  /** The video codec (`avc1…`), none for audio only. */
   readonly videoCodec?: string;
+  /** The audio codec (`mp4a…`). */
   readonly audioCodec?: string;
 }
 

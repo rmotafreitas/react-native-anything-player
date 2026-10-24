@@ -47,6 +47,9 @@ Native details are never dropped: `AVFoundationErrorDomain -11800` comes with th
 | `CAST_UNAVAILABLE` | no | `showCastPicker()` where Cast is not built in (no `cast` plugin option) or not supported (browsers other than Chrome), or before the web's Cast SDK is ready ([Casting & AirPlay](routes-and-casting.md#google-cast)) |
 | `CAST_UNSUPPORTED_SOURCE` | no | non-fatal `error` event: a Cast session started but the player's source cannot be reached by a receiver (a local file, `content://`, a bundled asset, `blob:`); the player stays on the device ([Casting & AirPlay](routes-and-casting.md#what-casting-does)) |
 | `SOUND_UNAVAILABLE` | no | `Sound.load()` or `Sound.configure()` on iOS or Android in an app built without the `sound` option ([Sound](sound.md#enabling-it)) |
+| `VIDEO_UNAVAILABLE` | no | `new Player({ video })` on iOS or Android in an app built without the video module ([Video](video.md#enabling-it)) |
+| `DRM_UNSUPPORTED` | no | `load()` of a source with `drm`: DRM is designed, not shipped yet ([Video design](video-design.md)) |
+| `SUBTITLE_LOAD_FAILED` | no | non-fatal `error` event: a subtitle file could not be fetched or read; the video plays on ([Subtitles](subtitles.md#files)) |
 | `INTERNAL_ERROR` | no | a bug — please report with `player.getDiagnostics()` |
 
 ## Recoverable vs fatal

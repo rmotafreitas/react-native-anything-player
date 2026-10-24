@@ -127,6 +127,29 @@ One engine on every column, held to [the same conformance suite](../conformance/
 6. Files and streams; not HLS.
 7. Streams RNAP reads and local files.
 
+## Video
+
+A `Player` with a picture ([guide](video.md), [subtitles](subtitles.md)).
+
+| | iOS | Android | Chromium | Firefox | Safari | iPhone, iPad |
+|---|---|---|---|---|---|---|
+| `<VideoView>` / `attachTo`, files and HLS | ✓ ² | ✓ ¹ | ✓ ³ | ✓ ³ | ✓ | ✓ † |
+| Quality caps (the view, metered networks, Data Saver) and `selectQuality` | ✓ ² | ✓ ¹ | ✓ ³ | ✓ ³ | ◐ ⁴ | ◐ ⁴ † |
+| Separate quality files switched behind the picture | ✓ ² | ✓ ¹ | ✓ | ✓ | ✓ | ✓ † |
+| The source's audio languages and subtitles | ✓ ² | ✓ ¹ | ✓ ³ | ✓ ³ | ✓ | ✓ † |
+| Subtitle files (SubRip, WebVTT, TTML, ASS) in one overlay, `useCues()` | ✓ ² | ✓ ¹ | ✓ | ✓ | ✓ | ✓ † |
+| The OS's caption style | ✓ ² | ✓ ¹ | – | – | – | – |
+| Fullscreen | ✓ ² | ✓ ¹ | ✓ | ✓ | ✓ | ◐ ⁵ † |
+| Picture in Picture, `whenBackgrounded: 'pip'` | ✓ ² | ✓ ¹ | ✓ | – | ✓ | ✓ † |
+| `nativeControls` | ✓ ² (AVKit's) | ✓ ¹ (RNAP's) | ✓ | ✓ | ✓ | ✓ † |
+| On a Cast receiver, with the app's subtitle files | ✓ ² † | ✓ ¹ † | ✓ † | – | – | – |
+
+1. Opt-in: a build option (`video` in the Expo plugin, `npx rnap add video`). Tried on the Android emulator (a file, separate quality files with SubRip, HLS with two audio languages and WebVTT subtitles, Picture in Picture, fullscreen, controls); not yet on a device †.
+2. Opt-in, as on Android. Written and compiled in CI; not yet run on a simulator or device †.
+3. HLS with hls.js ([`configureHls`](web.md#hls)); a video player takes it over Chromium's own HLS, which lists no tracks or qualities.
+4. Safari's own HLS picks its quality itself: no caps or pins there. Separate quality files are RNAP's to switch, under every cap.
+5. iPhone Safari's fullscreen is the system player, with its own controls and captions.
+
 ## Sound effects
 
 `Sound` ([guide](sound.md)): short effects decoded into memory, played with low latency, many at once.

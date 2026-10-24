@@ -27,6 +27,7 @@ test('every module has an id, a description, a platform and a docs anchor', () =
     'background-audio',
     'sound',
     'car',
+    'video',
   ]);
   for (const id of MODULE_IDS) {
     const module = findModule(id);
@@ -41,7 +42,7 @@ test('every module has an id, a description, a platform and a docs anchor', () =
 test('the Expo plugin options come from the registry', () => {
   assert.deepEqual(
     expoOptions().map((option) => option.key),
-    ['cast', 'siri', 'assistant', 'backgroundAudio', 'sound', 'car']
+    ['cast', 'siri', 'assistant', 'backgroundAudio', 'sound', 'car', 'video']
   );
 });
 
@@ -58,7 +59,7 @@ test('modules lists every module and where its state comes from', (t) => {
     android: true,
   });
   assert.equal(result.json.summary.on, 3);
-  assert.equal(result.json.summary.total, 7);
+  assert.equal(result.json.summary.total, 8);
 
   const hls = byId(result.json, 'hls');
   assert.equal(hls.effective, true);
@@ -69,7 +70,7 @@ test('modules lists every module and where its state comes from', (t) => {
   const cast = byId(result.json, 'cast');
   assert.equal(cast.effective, false);
   assert.equal(cast.source, 'default');
-  assert.deepEqual(cast.size, { r8: 1467731, noR8: 7391451 });
+  assert.deepEqual(cast.size, { r8: 1484123, noR8: 7391455 });
 
   // iOS-only modules still carry their platform note.
   assert.equal(byId(result.json, 'siri').size, null);
@@ -89,7 +90,7 @@ test('modules prints the one-line summary and the next commands', (t) => {
   const root = bareGood(t);
   const result = runCli(['modules'], { cwd: root });
   assert.equal(result.status, 0);
-  assert.match(result.stdout, /3 of 7 on/);
+  assert.match(result.stdout, /3 of 8 on/);
   assert.match(result.stdout, /npx rnap add <module>/);
   assert.match(result.stdout, /npx rnap size/);
   assert.match(result.stdout, /64 KB of the default build/);

@@ -217,6 +217,8 @@ export class MediaTracks {
 
   /** The text track whose cues load (hidden, or showing before RNAP hid it). */
   private runningText(): TextTrackLike | null {
+    // hls.js and Shaka keep a hidden track loading: subtitles off shows none of it.
+    if (this.hls && this.chosen?.text == null) return null;
     return this.textTracks().find((t) => t.mode !== 'disabled') ?? null;
   }
 

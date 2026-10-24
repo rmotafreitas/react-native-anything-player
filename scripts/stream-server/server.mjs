@@ -31,6 +31,7 @@
 //               /subs.vtt (the video ones when generated)
 // Video HLS:    GET /video-hls/master.m3u8  360p + 720p, audio in English and
 //               Spanish, WebVTT subtitles in English and Portuguese
+// Video DASH:   GET /video-dash/manifest.mpd  the same as CMAF DASH (360p, 720p)
 //               (Range supported; `?delay=MS` slows the response)
 // Control:      GET /control?down=1|0     refuse every new stream connection
 //               GET /control?stall=1|0    freeze every open stream
@@ -81,6 +82,18 @@ if (existsSync(join(here, 'media', 'hls-video'))) {
     const type = HLS_VIDEO_TYPES[extname(name)];
     if (type)
       FILES[`/video-hls/${name}`] = { body: media(`hls-video/${name}`), type };
+  }
+}
+/** Optional (generate-media.sh): the video as CMAF DASH, at /video-dash/. */
+const DASH_VIDEO_TYPES = {
+  '.mpd': 'application/dash+xml',
+  '.m4s': 'video/iso.segment',
+};
+if (existsSync(join(here, 'media', 'dash-video'))) {
+  for (const name of readdirSync(join(here, 'media', 'dash-video'))) {
+    const type = DASH_VIDEO_TYPES[extname(name)];
+    if (type)
+      FILES[`/video-dash/${name}`] = { body: media(`dash-video/${name}`), type };
   }
 }
 const BYTES_PER_SECOND = 128_000 / 8;

@@ -76,7 +76,12 @@ export interface PlayerHost {
    * The web: puts a video player's picture in `element` (`null` takes it
    * out). React Native shows it with `<VideoView>` instead.
    */
-  attachVideo?(playerId: string, element: unknown, fit?: string): void;
+  attachVideo?(
+    playerId: string,
+    element: unknown,
+    fit?: string,
+    controls?: boolean
+  ): void;
 }
 
 let installed: PlayerHost | null = null;

@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<MPD xmlns="urn:mpeg:dash:schema:mpd:2011" profiles="urn:mpeg:dash:profile:isoff-live:2011" type="static" mediaPresentationDuration="PT12.0S" minBufferTime="PT8.0S">
+	<Period id="0" start="PT0.0S">
+		<AdaptationSet id="0" contentType="video" segmentAlignment="true" frameRate="25/1" maxWidth="1280" maxHeight="720" par="16:9" lang="und">
+			<Representation id="0" mimeType="video/mp4" codecs="avc1.42c01e" bandwidth="405186" width="640" height="360" sar="1:1">
+				<SegmentTemplate timescale="12800" initialization="init-$RepresentationID$.m4s" media="chunk-$RepresentationID$-$Number%05d$.m4s" startNumber="1">
+					<SegmentTimeline>
+						<S t="0" d="51200" r="2" />
+					</SegmentTimeline>
+				</SegmentTemplate>
+			</Representation>
+			<Representation id="1" mimeType="video/mp4" codecs="avc1.42c01f" bandwidth="1211407" width="1280" height="720" sar="1:1">
+				<SegmentTemplate timescale="12800" initialization="init-$RepresentationID$.m4s" media="chunk-$RepresentationID$-$Number%05d$.m4s" startNumber="1">
+					<SegmentTimeline>
+						<S t="0" d="51200" r="2" />
+					</SegmentTimeline>
+				</SegmentTemplate>
+			</Representation>
+		</AdaptationSet>
+		<AdaptationSet id="1" contentType="audio" segmentAlignment="true" lang="en">
+			<Role schemeIdUri="urn:mpeg:dash:role:2011" value="main"/>
+			<Representation id="2" mimeType="audio/mp4" codecs="mp4a.40.2" bandwidth="96166" audioSamplingRate="44100">
+				<SegmentTemplate timescale="44100" initialization="init-$RepresentationID$.m4s" media="chunk-$RepresentationID$-$Number%05d$.m4s" startNumber="1">
+					<SegmentTimeline>
+						<S t="0" d="176128" />
+						<S d="177152" />
+						<S d="175924" />
+					</SegmentTimeline>
+				</SegmentTemplate>
+			</Representation>
+		</AdaptationSet>
+		<AdaptationSet id="2" contentType="audio" lang="es" label="Español">
+			<Role schemeIdUri="urn:mpeg:dash:role:2011" value="description"/>
+			<Representation id="3" mimeType="audio/mp4" codecs="mp4a.40.2" bandwidth="64000">
+				<SegmentTemplate timescale="1000" duration="4000" initialization="es/init.mp4" media="es/$Number$.m4s" startNumber="0"/>
+			</Representation>
+		</AdaptationSet>
+		<AdaptationSet id="3" contentType="text" mimeType="text/vtt" lang="pt">
+			<Representation id="sub-pt" bandwidth="256">
+				<BaseURL>subs/pt.vtt</BaseURL>
+			</Representation>
+		</AdaptationSet>
+	</Period>
+</MPD>

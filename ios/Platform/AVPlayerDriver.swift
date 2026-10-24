@@ -130,6 +130,8 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
   private var pendingSeek: Double?
   /// The proxied URL of the current item (see StreamProxy), retired on teardown.
   private var proxied: URL?
+  /// A DASH item's manifest rewriter (AVPlayer reads its HLS playlists).
+  private var dashLoader: DashLoader?
   /// The upstream response had no length (or ICY): a live stream.
   private var unbounded = false
   /// The proxy found an HLS playlist and redirected AVPlayer to it: the
@@ -288,7 +290,15 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
     // if the proxy redirects it to an HLS playlist (the proxy also sets them).
     var options: [String: Any] = [:]
     if !request.source.headers.isEmpty { options["AVURLAssetHTTPHeaderFieldsKey"] = request.source.headers }
-    asset = AVURLAsset(url: proxied ?? url, options: options)
+    if DashLoader.isDash(url) {
+      // AVPlayer plays HLS, not DASH: the manifest is rewritten (DashToHls).
+      let loader = DashLoader(manifest: url, headers: request.source.headers)
+      dashLoader = loader
+      asset = AVURLAsset(url: loader.masterURL, options: options)
+      asset.resourceLoader.setDelegate(loader, queue: loader.queue)
+    } else {
+      asset = AVURLAsset(url: proxied ?? url, options: options)
+    }
     let newItem = AVPlayerItem(asset: asset)
     let output = AVPlayerItemMetadataOutput(identifiers: nil)
     output.setDelegate(self, queue: .main)
@@ -571,6 +581,8 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
     // Closes every HTTP connection of the item, whatever AVFoundation does.
     if let proxied { StreamProxy.shared.retire(proxied) }
     proxied = nil
+    dashLoader?.cancel()
+    dashLoader = nil
     // Abort the asset's loading now: otherwise AVFoundation can keep the
     // stream's HTTP connection open (and downloading) after the item is gone.
     item?.cancelPendingSeeks()
@@ -645,6 +657,11 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
   }
 
   private func fail(_ gen: Int, _ error: Error?) {
+    // A DASH manifest that could not be fetched or rewritten says why.
+    if let failure = dashLoader?.failure {
+      observer?.driverFailed(generation: gen, error: failure)
+      return
+    }
     // An upstream failure is the real cause: the status AVPlayer logged is
     // then the proxy's synthetic 502, not the station's.
     let mapped = ErrorMapping.map(
@@ -690,7 +707,7 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
   /// HTTP(S) except HLS (playlists and segments stay with AVFoundation).
   static func proxies(_ url: URL) -> Bool {
     guard let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" else { return false }
-    return url.pathExtension.lowercased() != "m3u8"
+    return url.pathExtension.lowercased() != "m3u8" && !DashLoader.isDash(url)
   }
 
   private func upstreamResponse(_ status: Int, _ headers: [String: String], _ gen: Int) {

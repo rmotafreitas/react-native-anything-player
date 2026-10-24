@@ -92,6 +92,8 @@ export class WebVideo implements SwapStage {
   private width = 0;
   private height = 0;
   private fit: ContentFit = 'contain';
+  /** The browser's own controls on the picture (`nativeControls`). */
+  private controls = false;
   private observers: ObserverLike[] = [];
   private readonly listening = new Set<AudioElementLike>();
   private wakeLock: Promise<WakeLockSentinelLike | null> | null = null;
@@ -135,9 +137,17 @@ export class WebVideo implements SwapStage {
   // ── The page ──
 
   /** Puts the stage in `container` (`null` takes it out). */
-  attach(container: ElementLike | null, fit: ContentFit = this.fit): void {
+  attach(
+    container: ElementLike | null,
+    fit: ContentFit = this.fit,
+    controls = this.controls
+  ): void {
     this.fit = fit;
     this.applyFit();
+    this.controls = controls;
+    const current = this.host.element() as VideoElementLike;
+    for (const e of this.listening)
+      (e as VideoElementLike).controls = controls && e === current;
     if (container === this.container) return this.report();
     this.disconnect();
     this.stage.parentNode?.removeChild(this.stage);
@@ -162,6 +172,7 @@ export class WebVideo implements SwapStage {
         visibility: video === element ? 'visible' : 'hidden',
         zIndex: video === element ? '1' : '0',
       });
+      video.controls = this.controls && video === element;
       this.listen(video);
     }
     this.applyFit();

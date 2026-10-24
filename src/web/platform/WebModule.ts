@@ -329,10 +329,15 @@ export class WebModule implements PlayerModule {
   }
 
   /** Puts a video player's picture in a page element (`attachTo`, `<VideoView>`). */
-  attachVideo(playerId: string, element: unknown, fit?: ContentFit): void {
+  attachVideo(
+    playerId: string,
+    element: unknown,
+    fit?: ContentFit,
+    controls = false
+  ): void {
     const controller = this.runtime.players.get(playerId);
     if (!controller) throw released();
-    controller.attachVideo(element, fit);
+    controller.attachVideo(element, fit, controls);
   }
 
   async fetchText(
