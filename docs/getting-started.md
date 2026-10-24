@@ -9,7 +9,7 @@
 | Android | 7.0 (API 24) | Android 16 (API 36) emulator |
 | Expo | SDK with RN ≥ 0.80, development build (or Expo web) | SDK 57 |
 | Web | a browser with Media Source Extensions for ICY metadata | Chromium, Firefox, WebKit ([Web](web.md)) |
-| React without React Native | React 18+ (react-dom: Vite, Next.js) | React 19.2, Vite 6 ([Web](web.md#react-react-dom-vite-next-js-create-react-app)) |
+| React without React Native | React 18+ (react-dom: Vite, Next.js) | React 19.2, Vite 8 ([Web](web.md#react-react-dom-vite-next-js-create-react-app)) |
 | CLI (`modules`, `doctor`, `migrate`) | Node 20 | Node 24 |
 
 RNAP is a TurboModule. The legacy architecture (bridge) is not supported.
