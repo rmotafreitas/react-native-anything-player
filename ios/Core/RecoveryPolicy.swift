@@ -171,6 +171,23 @@ struct VideoEngineOptions: Equatable {
   /// `nil`: no audio-only fallback.
   var fallback: FallbackPolicy? = nil
   var quality = QualityPolicy()
+  var tracks = TrackPolicy()
+}
+
+/// How the starting audio and text tracks are chosen (`PlayerOptions.video.tracks`).
+struct TrackPolicy: Equatable {
+  /// The user's languages, in order.
+  var languages: [String] = []
+  /// Follow the OS's captions and audio-description settings.
+  var followSystem = true
+}
+
+/// What the OS says about the user (`systemPreferencesChanged`).
+struct SystemPreferences: Equatable {
+  /// The device's languages, in order.
+  var languages: [String] = []
+  var captions = false
+  var audioDescriptions = false
 }
 
 /// Deterministic exponential backoff with injectable jitter.

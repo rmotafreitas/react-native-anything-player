@@ -66,6 +66,10 @@ final class ConformanceTests: XCTestCase {
       if let ms = f["dropAfterMs"] as? NSNumber { policy.dropAfterMs = ms.int64Value }
       v.fallback = policy
     }
+    if let t = o["tracks"] as? [String: Any] {
+      v.tracks.languages = t["languages"] as? [String] ?? []
+      v.tracks.followSystem = t["followSystem"] as? Bool ?? true
+    }
     if let q = o["quality"] as? [String: Any] {
       v.quality.maxHeight = (q["maxHeight"] as? NSNumber)?.intValue
       v.quality.maxBitrate = (q["maxBitrate"] as? NSNumber)?.int64Value
@@ -89,6 +93,16 @@ final class ConformanceTests: XCTestCase {
       Rendition(
         uri: r["uri"] as? String ?? "", height: (r["height"] as? NSNumber)?.intValue,
         bitrate: (r["bitrate"] as? NSNumber)?.int64Value, audioOnly: r["audioOnly"] as? Bool ?? false)
+    }
+  }
+
+  static func tracks(_ value: Any?) -> [MediaTrack] {
+    (value as? [[String: Any]] ?? []).map { t in
+      MediaTrack(
+        id: t["id"] as? String ?? "", kind: TrackKind(rawValue: t["kind"] as? String ?? "") ?? .subtitles,
+        language: t["language"] as? String, forced: t["forced"] as? Bool ?? false,
+        isDefault: t["default"] as? Bool ?? false, sdh: t["sdh"] as? Bool ?? false,
+        describesVideo: t["describesVideo"] as? Bool ?? false)
     }
   }
 
@@ -165,6 +179,8 @@ final class ConformanceTests: XCTestCase {
             variantId: step["variant"] as? String))
       case "firstFrame":
         h.engine.onFirstFrame(generation: gen)
+      case "tracks":
+        h.engine.onTracks(generation: gen, tracks: Self.tracks(step["tracks"]))
       case "renditionInfo":
         h.engine.renditionInfo(
           index: (step["index"] as? NSNumber)?.intValue ?? 0, height: (step["height"] as? NSNumber)?.intValue,
@@ -204,6 +220,13 @@ final class ConformanceTests: XCTestCase {
         ViewState(
           attached: view["attached"] as? Bool ?? true, visible: view["visible"] as? Bool ?? true,
           width: (view["width"] as? NSNumber)?.intValue ?? 0, height: (view["height"] as? NSNumber)?.intValue ?? 0))
+    } else if let system = step["system"] as? [String: Any] {
+      h.engine.systemPreferencesChanged(
+        SystemPreferences(
+          languages: system["languages"] as? [String] ?? [], captions: system["captions"] as? Bool ?? false,
+          audioDescriptions: system["audioDescriptions"] as? Bool ?? false))
+    } else if let fullscreen = step["fullscreen"] as? Bool {
+      h.engine.fullscreenChanged(fullscreen)
     } else if let pip = step["pip"] as? Bool {
       h.engine.pictureInPictureChanged(pip)
     } else if let cost = step["networkCost"] as? [String: Any] {
@@ -235,6 +258,10 @@ final class ConformanceTests: XCTestCase {
     case "sourceRefreshed":
       h.engine.sourceRefreshed(loadId: h.engine.loadId, source: Self.source(step, h, refreshable: true))
     case "sourceRefreshFailed": h.engine.sourceRefreshFailed(loadId: h.engine.loadId)
+    case "appTracks": h.engine.setAppTracks(Self.tracks(step["tracks"]))
+    case "selectAudioTrack": try h.engine.selectAudioTrack(step["id"] as? String)
+    case "selectTextTrack": try h.engine.selectTextTrack(step["id"] as? String)
+    case "subtitleDelay": try h.engine.setSubtitleDelay(value)
     case "play": try h.engine.play()
     case "pause": try h.engine.pause()
     case "stop": try h.engine.stop()
@@ -341,6 +368,11 @@ final class ConformanceTests: XCTestCase {
       case "quality": XCTAssertEqual(video.quality, want as? String, label)
       case "selectedQuality": XCTAssertEqual(video.selectedQuality, want as? String, label)
       case "qualities": XCTAssertEqual(video.qualities.map(\.id), want as? [String], label)
+      case "tracks": XCTAssertEqual(video.tracks.map(\.id), want as? [String], label)
+      case "audioTrack": XCTAssertEqual(video.audioTrack, want as? String, label)
+      case "textTrack": XCTAssertEqual(video.textTrack, want as? String, label)
+      case "subtitleDelay": XCTAssertEqual(video.subtitleDelay, (want as? NSNumber)?.doubleValue, label)
+      case "fullscreen": XCTAssertEqual(video.fullscreen, want as? Bool, label)
       default: XCTFail("\(at): unknown video expectation \(key)")
       }
     }

@@ -38,13 +38,17 @@ function videoEquals(
   b: EngineVideoStatus | null
 ): boolean {
   if (a == null || b == null) return a === b;
-  const { qualities, ...scalars } = a;
-  const { qualities: bQualities, ...bScalars } = b;
+  const { qualities, tracks, ...scalars } = a;
+  const { qualities: bQualities, tracks: bTracks, ...bScalars } = b;
   return (
     sameFields(scalars, bScalars) &&
-    qualities.length === bQualities.length &&
-    qualities.every((q, i) => sameFields(q, bQualities[i]!))
+    sameList(qualities, bQualities) &&
+    sameList(tracks, bTracks)
   );
+}
+
+function sameList(a: readonly object[], b: readonly object[]): boolean {
+  return a.length === b.length && a.every((x, i) => sameFields(x, b[i]!));
 }
 
 /** States in which a new source or `play()` keeps the current play intent. */

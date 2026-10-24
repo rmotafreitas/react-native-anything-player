@@ -4,6 +4,7 @@
 // semantics identical.
 
 import { PlayerError } from '../../errors';
+import type { MediaTrack } from '../../core/subtitles/tracks';
 import type {
   AudioRoute,
   InterruptionReason,
@@ -158,7 +159,26 @@ export interface VideoEngineOptions {
   /** `null`: no audio-only fallback. */
   fallback: FallbackPolicy | null;
   quality: QualityPolicy;
+  tracks: TrackPolicy;
 }
+
+/** How the starting audio and text tracks are chosen (`PlayerOptions.video.tracks`). */
+export interface TrackPolicy {
+  /** The user's languages, in order. */
+  languages: string[];
+  /** Follow the OS's captions and audio-description settings. */
+  followSystem: boolean;
+}
+
+/** What the OS says about the user (`systemPreferencesChanged`). */
+export interface SystemPreferences {
+  /** The device's languages, in order. */
+  languages: string[];
+  captions: boolean;
+  audioDescriptions: boolean;
+}
+
+export type { MediaTrack };
 
 /** The view showing a video player (`viewChanged`). */
 export interface ViewState {
@@ -193,6 +213,14 @@ export interface EngineVideoStatus {
   quality: string | null;
   /** The app's pick; `null` = automatic. */
   selectedQuality: string | null;
+  /** The audio and text tracks: the source's, then the app's subtitle files. */
+  tracks: MediaTrack[];
+  audioTrack: string | null;
+  /** `null`: no subtitles. */
+  textTrack: string | null;
+  /** Seconds the subtitles are shown later (negative: earlier). */
+  subtitleDelay: number;
+  fullscreen: boolean;
 }
 
 export function isNetworkSource(source: SourceDescriptor): boolean {

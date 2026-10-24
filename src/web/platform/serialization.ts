@@ -85,7 +85,16 @@ export function parseVideo(value: unknown): VideoEngineOptions | null {
     focusWhenMuted: bool(map.focusWhenMuted) ?? false,
     fallback: parseFallback(map.fallbackToAudio),
     quality: parseQuality(map.quality),
+    tracks: parseTracks(map.tracks),
   };
+}
+
+function parseTracks(value: unknown): VideoEngineOptions['tracks'] {
+  const map = dict(value) ?? {};
+  const languages = Array.isArray(map.languages)
+    ? map.languages.filter((l): l is string => typeof l === 'string')
+    : [];
+  return { languages, followSystem: bool(map.followSystem) ?? true };
 }
 
 function parseFallback(value: unknown): FallbackPolicy | null {

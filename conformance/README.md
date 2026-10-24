@@ -65,6 +65,12 @@ Each file holds an array of scenarios:
 | `{"native": "variants", "variants": [{"id": "v720", "height": 720, "bitrate": 2500000, "audioOnly": false}]}` | an adaptive source's qualities |
 | `{"native": "videoInfo", "width": 1920, "height": 1080, "hdr": false, "variant": "v720"}` | the picture's facts |
 | `{"native": "firstFrame"}` | the first frame was shown |
+| `{"native": "tracks", "tracks": [{"id": "track:0", "kind": "audio", "language": "jpn", "default": true}]}` | the source's own tracks (`kind`: `audio`, `subtitles`, `captions`; `forced`, `default`, `sdh`, `describesVideo` optional) |
+| `{"call": "appTracks", "tracks": […]}` | the app's subtitle files |
+| `{"call": "selectAudioTrack", "id": "…"}` / `{"call": "selectTextTrack", "id": null}` | the app's pick (`null` audio: automatic; `null` text: off) |
+| `{"call": "subtitleDelay", "value": 0.5}` | the subtitle delay |
+| `{"system": {"languages": ["en-US"], "captions": false, "audioDescriptions": false}}` | the OS's languages and accessibility settings |
+| `{"fullscreen": true}` | fullscreen started / ended |
 | `{"native": "failed", …, "httpStatus": 403}` | a failure with the server's status |
 | `{"platformReset": true}` | media services were reset |
 | `{"advance": 1500}` | advance the clock, firing due wake-ups in order |
@@ -95,7 +101,7 @@ happened since the previous one.
 | `sleeps`, `fades` | sleep timers fired / `fadeTo` calls settled since the previous expect |
 | `orderedCommands` | ordered driver commands, each entry matched by string prefix at or after the previous match (subsequence): a fade-out that lands on a pause must send its last `volume(0.00)` before the `pause` |
 | `route`, `routeName` | `status.route.kind` / `status.route.name` |
-| `video` | `null`, or the listed fields of `status.video` (`width`, `height`, `hdr`, `firstFrame`, `audioOnly`, `pictureInPicture`, `quality`, `selectedQuality`, and `qualities` as the list of ids) |
+| `video` | `null`, or the listed fields of `status.video` (`width`, `height`, `hdr`, `firstFrame`, `audioOnly`, `pictureInPicture`, `quality`, `selectedQuality`, `audioTrack`, `textTrack`, `subtitleDelay`, `fullscreen`, and `qualities` and `tracks` as lists of ids) |
 | `wantsMediaSession`, `wantsScreenAwake` | engine queries |
 | `refreshes` | refresh requests since the previous expect, `loadId:reason` |
 | `gen` | the current generation |
@@ -106,7 +112,7 @@ Command formats: `open(gen=N,start=-|S.S,play=B)`, `play`, `pause`,
 `switchOutput(ID)`; for video `open(…,r=N)` (a rendition), `open(…,swap)` (a
 quality switch prepared behind the current item), `seek(S.S,exact)`,
 `video(on|off)`, `quality(maxH=H|-,maxBps=B|-,pin=ID|-,audioOnly=B)`,
-`loop(B)`, `cancelSwap(gen=N)`. The fake driver's playhead freezes on
+`loop(B)`, `cancelSwap(gen=N)`, `tracks(audio=ID|-,text=ID|-)`. The fake driver's playhead freezes on
 `switchOutput`. A swap's `open` leaves the current playhead alone; the swap's
 `playing` makes its start position the playhead.
 
@@ -178,6 +184,20 @@ receiver reports, and a stall longer than `STALL_MAX_MS`, drive recovery.
   a later 401/403 uses the new source at once.
 - **Loop**: an item that ends while looping restarts (`seek(0.0)`, `play`)
   without `ended`.
+- **Tracks**: the source's tracks then the app's subtitle files; the
+  automatic choice is `tracks/select.json`'s, the app's pick wins (a text pick
+  of `null` stays off). The driver is told only about the source's own tracks
+  (`tracks(…)`, an app file is `text=-`), once per item: again after every
+  open and quality switch. A load clears the tracks, the picks and the delay.
+
+## Subtitles and tracks (`subtitles/`, `tracks/`)
+
+`subtitles/parse.json` (text → cues, TypeScript only: every platform parses
+in JS), `subtitles/charset.json` (bytes → encoding), `subtitles/schedule.json`
+(the cues showing at a position with a delay, and the next change) and
+`tracks/select.json` (tracks and preferences → the starting audio and text
+tracks) are run by `src/__tests__/subtitles.test.ts`, `SubtitleTest.kt` and
+`SubtitleTests.swift`.
 
 ## Fades and the sleep timer (`fades.json`)
 

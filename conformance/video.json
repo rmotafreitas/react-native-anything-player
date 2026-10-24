@@ -734,5 +734,106 @@
       { "native": "playing" },
       { "expect": { "stats": { "startupMs": 1500, "rebufferCount": 1, "rebufferMs": 1000, "qualitySwitches": 0 } } }
     ]
+  },
+  {
+    "name": "tracks: the source's own tracks follow the device's language, and the driver is told",
+    "options": { "video": true },
+    "steps": [
+      { "view": {} },
+      { "system": { "languages": ["en-US"] } },
+      { "call": "load", "uri": "https://cdn.example/v.m3u8", "autoplay": true },
+      { "native": "ready", "duration": 600, "seekable": true },
+      { "native": "playing" },
+      { "expect": { "commands": ["open(gen=1,start=-,play=true)", "quality(maxH=-,maxBps=-,pin=-,audioOnly=false)"] } },
+      { "native": "tracks", "tracks": [{ "id": "track:0", "kind": "audio", "language": "jpn", "default": true }, { "id": "track:1", "kind": "audio", "language": "eng" }, { "id": "track:2", "kind": "subtitles", "language": "eng" }] },
+      { "expect": { "video": { "tracks": ["track:0", "track:1", "track:2"], "audioTrack": "track:1", "textTrack": null }, "commands": ["tracks(audio=track:1,text=-)"] } }
+    ]
+  },
+  {
+    "name": "tracks: an app's subtitle file in the user's language is shown over foreign audio; the driver shows none of its own",
+    "options": { "video": { "tracks": { "languages": ["pt"] } } },
+    "steps": [
+      { "view": {} },
+      { "system": { "languages": ["pt-BR"] } },
+      { "call": "load", "uri": "https://cdn.example/v.m3u8", "autoplay": true },
+      { "native": "ready", "duration": 600, "seekable": true },
+      { "native": "playing" },
+      { "expect": { "commands": ["open(gen=1,start=-,play=true)", "quality(maxH=-,maxBps=-,pin=-,audioOnly=false)"] } },
+      { "native": "tracks", "tracks": [{ "id": "track:0", "kind": "audio", "language": "ja" }, { "id": "track:1", "kind": "subtitles", "language": "en" }] },
+      { "call": "appTracks", "tracks": [{ "id": "pt", "kind": "subtitles", "language": "pt" }] },
+      { "expect": { "video": { "tracks": ["track:0", "track:1", "pt"], "audioTrack": "track:0", "textTrack": "pt" }, "commands": ["tracks(audio=track:0,text=-)"] } }
+    ]
+  },
+  {
+    "name": "tracks: turning subtitles off sticks; picking an unknown or wrong-kind track throws",
+    "options": { "video": { "tracks": { "languages": ["pt"] } } },
+    "steps": [
+      { "view": {} },
+      { "system": { "languages": ["pt-BR"] } },
+      { "call": "load", "uri": "https://cdn.example/v.m3u8", "autoplay": true },
+      { "native": "ready", "duration": 600, "seekable": true },
+      { "native": "playing" },
+      { "native": "tracks", "tracks": [{ "id": "track:0", "kind": "audio", "language": "ja" }, { "id": "track:1", "kind": "subtitles", "language": "en" }] },
+      { "call": "appTracks", "tracks": [{ "id": "pt", "kind": "subtitles", "language": "pt" }] },
+      { "call": "selectTextTrack", "id": null },
+      { "call": "appTracks", "tracks": [{ "id": "pt", "kind": "subtitles", "language": "pt" }] },
+      { "expect": { "video": { "textTrack": null } } },
+      { "call": "selectTextTrack", "id": "nope", "throws": "INVALID_ARGUMENT" },
+      { "call": "selectAudioTrack", "id": "pt", "throws": "INVALID_ARGUMENT" },
+      { "call": "selectTextTrack", "id": "track:1" },
+      { "expect": { "video": { "textTrack": "track:1", "audioTrack": "track:0" }, "commands": ["tracks(audio=track:0,text=track:1)"] } },
+      { "call": "selectAudioTrack", "id": null },
+      { "expect": { "video": { "audioTrack": "track:0" }, "commands": [] } }
+    ]
+  },
+  {
+    "name": "tracks: the OS's captions setting changes the automatic choice",
+    "options": { "video": true },
+    "steps": [
+      { "view": {} },
+      { "system": { "languages": ["en"] } },
+      { "call": "load", "uri": "https://cdn.example/v.m3u8", "autoplay": true },
+      { "native": "ready", "duration": 600, "seekable": true },
+      { "native": "playing" },
+      { "native": "tracks", "tracks": [{ "id": "a0", "kind": "audio", "language": "en" }, { "id": "t-sub", "kind": "subtitles", "language": "en" }, { "id": "t-cc", "kind": "captions", "language": "en" }] },
+      { "expect": { "video": { "textTrack": null }, "orderedCommands": ["tracks(audio=a0,text=-)"] } },
+      { "system": { "languages": ["en"], "captions": true } },
+      { "expect": { "video": { "textTrack": "t-cc" }, "commands": ["tracks(audio=a0,text=t-cc)"] } }
+    ]
+  },
+  {
+    "name": "tracks: a reconnect tells the new item again; a new load starts over",
+    "options": { "video": true },
+    "steps": [
+      { "view": {} },
+      { "system": { "languages": ["en"] } },
+      { "call": "load", "uri": "https://cdn.example/v.m3u8", "autoplay": true },
+      { "native": "ready", "duration": 600, "seekable": true },
+      { "native": "playing" },
+      { "native": "tracks", "tracks": [{ "id": "a0", "kind": "audio", "language": "en" }, { "id": "a1", "kind": "audio", "language": "fr" }] },
+      { "expect": { "video": { "audioTrack": "a0" }, "orderedCommands": ["tracks(audio=a0,text=-)"] } },
+      { "native": "failed", "code": "NETWORK_ERROR", "recoverable": true },
+      { "advance": 1000 },
+      { "native": "ready", "duration": 600, "seekable": true },
+      { "native": "tracks", "tracks": [{ "id": "a0", "kind": "audio", "language": "en" }, { "id": "a1", "kind": "audio", "language": "fr" }] },
+      { "expect": { "orderedCommands": ["open(gen=2,", "quality(maxH=-,maxBps=-,pin=-,audioOnly=false)", "tracks(audio=a0,text=-)"] } },
+      { "call": "load", "uri": "https://cdn.example/other.m3u8", "autoplay": true },
+      { "expect": { "video": { "tracks": [], "audioTrack": null, "textTrack": null } } }
+    ]
+  },
+  {
+    "name": "subtitles: the delay and fullscreen are in the status; a new load resets the delay",
+    "options": { "video": true },
+    "steps": [
+      { "view": {} },
+      { "call": "load", "uri": "https://cdn.example/v.m3u8", "autoplay": true },
+      { "call": "subtitleDelay", "value": 0.5 },
+      { "fullscreen": true },
+      { "expect": { "video": { "subtitleDelay": 0.5, "fullscreen": true } } },
+      { "call": "load", "uri": "https://cdn.example/next.m3u8", "autoplay": true },
+      { "expect": { "video": { "subtitleDelay": 0, "fullscreen": true } } },
+      { "fullscreen": false },
+      { "expect": { "video": { "fullscreen": false } } }
+    ]
   }
 ]

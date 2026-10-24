@@ -16,6 +16,7 @@ import {
   engineError,
   type EngineVideoStatus,
   type InterruptionReason,
+  type MediaTrack,
   type NetworkState,
   type Rendition,
   type VideoEngineOptions,
@@ -71,6 +72,10 @@ function videoOptions(value: unknown): VideoEngineOptions {
       ...DEFAULT_VIDEO_OPTIONS.quality,
       ...((o.quality as object | undefined) ?? {}),
     },
+    tracks: {
+      ...DEFAULT_VIDEO_OPTIONS.tracks,
+      ...((o.tracks as object | undefined) ?? {}),
+    },
     fallback:
       fallback === true
         ? DEFAULT_FALLBACK_POLICY
@@ -89,6 +94,19 @@ function renditions(value: unknown): Rendition[] | null {
     bitrate: (r.bitrate as number | undefined) ?? null,
     label: null,
     audioOnly: r.audioOnly === true,
+  }));
+}
+
+function tracks(value: unknown): MediaTrack[] {
+  return (value as Array<Record<string, unknown>>).map((t) => ({
+    id: t.id as string,
+    kind: t.kind as MediaTrack['kind'],
+    language: (t.language as string | undefined) ?? null,
+    label: null,
+    forced: t.forced === true,
+    default: t.default === true,
+    sdh: t.sdh === true,
+    describesVideo: t.describesVideo === true,
   }));
 }
 
@@ -143,6 +161,14 @@ function perform(call: string, step: Step, h: EngineHarness): void {
       });
     case 'sourceRefreshFailed':
       return h.engine.sourceRefreshFailed(h.engine.loadId);
+    case 'appTracks':
+      return h.engine.setAppTracks(tracks(step.tracks));
+    case 'selectAudioTrack':
+      return h.engine.selectAudioTrack((step.id as string | null) ?? null);
+    case 'selectTextTrack':
+      return h.engine.selectTextTrack((step.id as string | null) ?? null);
+    case 'subtitleDelay':
+      return h.engine.setSubtitleDelay(value);
     case 'play':
       return h.engine.play();
     case 'pause':
@@ -244,6 +270,8 @@ function native(step: Step, h: EngineHarness): void {
       });
     case 'firstFrame':
       return h.engine.onFirstFrame(gen);
+    case 'tracks':
+      return h.engine.onTracks(gen, tracks(step.tracks));
     case 'renditionInfo':
       return h.engine.renditionInfo(
         step.index as number,
@@ -395,8 +423,9 @@ function videoExpect_(
   if (video == null) throw new Error(`${label}: no status.video`);
   const fields = video as unknown as Record<string, unknown>;
   for (const [k, want] of Object.entries(expected)) {
-    const actual =
-      k === 'qualities' ? video.qualities.map((q) => q.id) : fields[k];
+    let actual = fields[k];
+    if (k === 'qualities') actual = video.qualities.map((q) => q.id);
+    if (k === 'tracks') actual = video.tracks.map((t) => t.id);
     expect_(`${label}.${k}`, actual, want);
   }
 }
@@ -481,6 +510,15 @@ function apply(step: Step, h: EngineHarness, at: string): void {
       width: (v.width as number | undefined) ?? 0,
       height: (v.height as number | undefined) ?? 0,
     });
+  } else if ('system' in step) {
+    const p = step.system as Record<string, unknown>;
+    h.engine.systemPreferencesChanged({
+      languages: (p.languages as string[] | undefined) ?? [],
+      captions: p.captions === true,
+      audioDescriptions: p.audioDescriptions === true,
+    });
+  } else if ('fullscreen' in step) {
+    h.engine.fullscreenChanged(step.fullscreen === true);
   } else if ('pip' in step) {
     h.engine.pictureInPictureChanged(step.pip === true);
   } else if ('networkCost' in step) {
@@ -499,7 +537,7 @@ function apply(step: Step, h: EngineHarness, at: string): void {
 
 describe('engine conformance (web twin)', () => {
   it('loads every shared scenario', () => {
-    expect(scenarios.length).toBeGreaterThanOrEqual(171);
+    expect(scenarios.length).toBeGreaterThanOrEqual(177);
   });
 
   it.each(scenarios)('%s', (name, scenario) => {

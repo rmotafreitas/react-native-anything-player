@@ -130,6 +130,7 @@ export const DEFAULT_VIDEO_OPTIONS: VideoEngineOptions = {
   focusWhenMuted: false,
   fallback: null,
   quality: DEFAULT_QUALITY_POLICY,
+  tracks: { languages: [], followSystem: true },
 };
 
 /** Deterministic exponential backoff with injectable jitter. */

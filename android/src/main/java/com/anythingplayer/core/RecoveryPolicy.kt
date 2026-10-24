@@ -178,6 +178,23 @@ data class VideoEngineOptions(
   /** `null`: no audio-only fallback. */
   val fallback: FallbackPolicy? = null,
   val quality: QualityPolicy = QualityPolicy(),
+  val tracks: TrackPolicy = TrackPolicy(),
+)
+
+/** How the starting audio and text tracks are chosen (`PlayerOptions.video.tracks`). */
+data class TrackPolicy(
+  /** The user's languages, in order. */
+  val languages: List<String> = emptyList(),
+  /** Follow the OS's captions and audio-description settings. */
+  val followSystem: Boolean = true,
+)
+
+/** What the OS says about the user (`systemPreferencesChanged`). */
+data class SystemPreferences(
+  /** The device's languages, in order. */
+  val languages: List<String> = emptyList(),
+  val captions: Boolean = false,
+  val audioDescriptions: Boolean = false,
 )
 
 /** Deterministic exponential backoff with injectable jitter. */

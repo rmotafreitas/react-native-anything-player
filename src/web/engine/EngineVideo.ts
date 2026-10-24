@@ -10,17 +10,21 @@
 // only gets the refresh, the counters and `loop`.
 
 import type { PlayerError } from '../../errors';
+import { selectTracks } from '../../core/subtitles/tracks';
 import { EngineQuality, notVideoPlayer } from './EngineQuality';
 import { RecoveryPolicy } from './RecoveryPolicy';
-import type {
-  AudioOnlyReason,
-  EngineStats,
-  EngineVideoStatus,
-  PlaybackState,
-  SourceDescriptor,
-  VideoEngineOptions,
-  VideoInfo,
-  ViewState,
+import {
+  engineError,
+  type AudioOnlyReason,
+  type EngineStats,
+  type EngineVideoStatus,
+  type MediaTrack,
+  type PlaybackState,
+  type SourceDescriptor,
+  type SystemPreferences,
+  type VideoEngineOptions,
+  type VideoInfo,
+  type ViewState,
 } from './types';
 
 /** States in which the screen stays on for a visible video player. */
@@ -37,6 +41,11 @@ const REBUFFER_STATES: ReadonlySet<PlaybackState> = new Set<PlaybackState>([
   'reconnecting',
   'loading',
 ]);
+
+type TextChoice =
+  { kind: 'auto' } | { kind: 'off' } | { kind: 'track'; id: string };
+
+const AUTO_TEXT: TextChoice = { kind: 'auto' };
 
 interface PendingRefresh {
   reason: 'unauthorized' | 'expiring';
@@ -69,6 +78,27 @@ export abstract class EngineVideo extends EngineQuality {
   // ── Stats ──
   protected loadStartedAt: number | null = null;
   protected rebufferSince: number | null = null;
+
+  // ── Tracks ──
+  /** The source's own audio and text tracks (the driver's). */
+  protected sourceTracks: MediaTrack[] = [];
+  /** The app's subtitle files (`load({ subtitles })`, `addSubtitles`). */
+  protected appTracks: MediaTrack[] = [];
+  /** The app's audio pick (`null`: automatic). */
+  protected chosenAudio: string | null = null;
+  /** The app's text pick: automatic, off, or a track. */
+  protected chosenText: TextChoice = AUTO_TEXT;
+  protected audioTrack: string | null = null;
+  protected textTrack: string | null = null;
+  /** What the driver was last told (`null`: nothing yet for this item). */
+  protected appliedTracks: string | null = null;
+  protected system: SystemPreferences = {
+    languages: [],
+    captions: false,
+    audioDescriptions: false,
+  };
+  protected subtitleDelay = 0;
+  protected fullscreen = false;
 
   // ── Queries ──
 
@@ -109,6 +139,64 @@ export abstract class EngineVideo extends EngineQuality {
     if (this.options.video == null) throw notVideoPlayer();
     this.listenOnly = value;
     this.applyOutput('listen-only');
+    this.commit();
+  }
+
+  /** Plays this audio track (`null`: back to the automatic choice). */
+  selectAudioTrack(id: string | null): void {
+    this.ensureAlive();
+    if (this.options.video == null) throw notVideoPlayer();
+    if (id != null) this.assertTrack(id, true);
+    this.chosenAudio = id;
+    this.log('audio track selected', { id: id ?? 'auto' });
+    this.applyTracks('selected');
+    this.commit();
+  }
+
+  /** Shows this text track; `null` turns subtitles off. */
+  selectTextTrack(id: string | null): void {
+    this.ensureAlive();
+    if (this.options.video == null) throw notVideoPlayer();
+    if (id != null) this.assertTrack(id, false);
+    this.chosenText = id == null ? { kind: 'off' } : { kind: 'track', id };
+    this.log('text track selected', { id: id ?? 'off' });
+    this.applyTracks('selected');
+    this.commit();
+  }
+
+  /** Shows subtitles this many seconds later (negative: earlier). */
+  setSubtitleDelay(seconds: number): void {
+    this.ensureAlive();
+    if (!Number.isFinite(seconds)) {
+      throw engineError(
+        'INVALID_ARGUMENT',
+        'The subtitle delay must be a finite number.',
+        false
+      );
+    }
+    this.subtitleDelay = seconds;
+    this.commit();
+  }
+
+  /** The app's subtitle files for the current load. */
+  setAppTracks(tracks: MediaTrack[]): void {
+    if (this.isReleased) return;
+    this.appTracks = tracks.map((t) => ({ ...t }));
+    this.applyTracks('app tracks');
+    this.commit();
+  }
+
+  /** The OS's languages and accessibility settings changed. */
+  systemPreferencesChanged(preferences: SystemPreferences): void {
+    if (this.isReleased) return;
+    this.system = { ...preferences, languages: [...preferences.languages] };
+    this.applyTracks('system preferences');
+    this.commit();
+  }
+
+  fullscreenChanged(active: boolean): void {
+    if (this.isReleased || active === this.fullscreen) return;
+    this.fullscreen = active;
     this.commit();
   }
 
@@ -198,6 +286,14 @@ export abstract class EngineVideo extends EngineQuality {
     this.commit();
   }
 
+  /** The source's own audio and text tracks. */
+  onTracks(generation: number, tracks: MediaTrack[]): void {
+    if (!this.accepts(generation)) return this.logStale('tracks', generation);
+    this.sourceTracks = tracks.map((t) => ({ ...t }));
+    this.applyTracks('source tracks');
+    this.commit();
+  }
+
   onFirstFrame(generation: number): void {
     if (!this.accepts(generation))
       return this.logStale('first frame', generation);
@@ -220,6 +316,11 @@ export abstract class EngineVideo extends EngineQuality {
       qualities: this.qualityList(),
       quality: this.currentQualityId(),
       selectedQuality: this.selectedQuality,
+      tracks: this.allTracks,
+      audioTrack: this.audioTrack,
+      textTrack: this.textTrack,
+      subtitleDelay: this.subtitleDelay,
+      fullscreen: this.fullscreen,
     };
   }
 
@@ -240,6 +341,7 @@ export abstract class EngineVideo extends EngineQuality {
     const v = this.options.video;
     if (v == null) return;
     this.firstFrame = false;
+    this.resetTracks();
     this.resetQuality();
     if (!this.view.attached) this.detachedSince ??= this.now;
     this.lastAudioOnly = this.audioOnlyReason;
@@ -266,6 +368,8 @@ export abstract class EngineVideo extends EngineQuality {
 
   protected videoOpened(): void {
     this.openedRevision = this.sourceRevision;
+    // A new item plays its default tracks until it is told again.
+    this.appliedTracks = null;
     if (this.options.video == null || this.renditions != null) return;
     // A new item starts from the driver's defaults: tell it the caps again.
     this.appliedQuality = null;
@@ -275,6 +379,8 @@ export abstract class EngineVideo extends EngineQuality {
   protected completeSwap(): void {
     super.completeSwap();
     this.openedRevision = this.sourceRevision;
+    this.appliedTracks = null;
+    this.applyTracks('quality switched');
   }
 
   protected refreshOnFailure(error: PlayerError): boolean {
@@ -514,6 +620,77 @@ export abstract class EngineVideo extends EngineQuality {
       this.log('picture', { on: `${on}`, cause });
     }
     this.applyQuality(cause);
+  }
+
+  protected get allTracks(): MediaTrack[] {
+    return [...this.sourceTracks, ...this.appTracks];
+  }
+
+  protected resetTracks(): void {
+    this.sourceTracks = [];
+    this.appTracks = [];
+    this.chosenAudio = null;
+    this.chosenText = AUTO_TEXT;
+    this.audioTrack = null;
+    this.textTrack = null;
+    this.appliedTracks = null;
+    this.subtitleDelay = 0;
+  }
+
+  protected assertTrack(id: string, audio: boolean): void {
+    const found = this.allTracks.some(
+      (t) => t.id === id && (t.kind === 'audio') === audio
+    );
+    if (!found) {
+      throw engineError(
+        'INVALID_ARGUMENT',
+        `No ${audio ? 'audio' : 'text'} track "${id}".`,
+        false
+      );
+    }
+  }
+
+  /** The tracks to play: the app's pick where it made one, else the automatic choice. */
+  protected applyTracks(cause: string): void {
+    const v = this.options.video;
+    if (v == null) return;
+    const all = this.allTracks;
+    const auto = selectTracks(all, {
+      languages: v.tracks.languages,
+      followSystem: v.tracks.followSystem,
+      systemLanguages: this.system.languages,
+      systemCaptions: this.system.captions,
+      systemAudioDescriptions: this.system.audioDescriptions,
+    });
+    const has = (id: string | null) =>
+      id != null && all.some((t) => t.id === id);
+    const audio = has(this.chosenAudio) ? this.chosenAudio : auto.audio;
+    const choice = this.chosenText;
+    let text = auto.text;
+    if (choice.kind === 'off') text = null;
+    else if (choice.kind === 'track' && has(choice.id)) text = choice.id;
+    else {
+      // Automatic, or a pick that is gone.
+    }
+    this.audioTrack = audio;
+    this.textTrack = text;
+    this.sendTracks(audio, text, cause);
+  }
+
+  /** The driver plays the source's own tracks; an app's subtitle file is the overlay's. */
+  protected sendTracks(
+    audio: string | null,
+    text: string | null,
+    cause: string
+  ): void {
+    if (this._source == null || this.sourceTracks.length === 0) return;
+    const own = (id: string | null) =>
+      id != null && this.sourceTracks.some((t) => t.id === id) ? id : null;
+    const key = `${own(audio)}|${own(text)}`;
+    if (key === this.appliedTracks) return;
+    this.appliedTracks = key;
+    this.driver.selectTracks?.(own(audio), own(text));
+    this.log('tracks', { audio: audio ?? '-', text: text ?? '-', cause });
   }
 
   protected endRebuffer(t: number): void {

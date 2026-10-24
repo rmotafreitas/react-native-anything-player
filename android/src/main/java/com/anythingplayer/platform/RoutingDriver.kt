@@ -59,6 +59,7 @@ internal class RoutingDriver(
   override fun setQuality(constraints: QualityConstraints) = target.setQuality(constraints)
   override fun setLoop(loop: Boolean) = target.setLoop(loop)
   override fun cancelSwap(generation: Int) = target.cancelSwap(generation)
+  override fun selectTracks(audio: String?, text: String?) = target.selectTracks(audio, text)
 
   /** Frees the remote output; the local driver is destroyed by its owner. */
   fun destroyRemote() {

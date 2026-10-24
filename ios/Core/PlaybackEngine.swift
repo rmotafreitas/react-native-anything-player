@@ -43,6 +43,9 @@ protocol EngineDriver: AnyObject {
   func setLoop(_ loop: Bool)
   /// Drop the item an `open(swap: true)` was preparing.
   func cancelSwap(generation: Int)
+  /// Play these of the source's own tracks (`nil` text: none of them, which
+  /// is also how an app's subtitle file is shown: by the overlay).
+  func selectTracks(audio: String?, text: String?)
 }
 
 /// Audio drivers have no picture, qualities or switches; the engine restarts
@@ -53,6 +56,7 @@ extension EngineDriver {
   func setQuality(_ constraints: QualityConstraints) {}
   func setLoop(_ loop: Bool) {}
   func cancelSwap(generation: Int) {}
+  func selectTracks(audio: String?, text: String?) {}
 }
 
 protocol EngineClock: AnyObject {
@@ -275,6 +279,29 @@ final class PlaybackEngine {
   private var loadStartedAt: Int64?
   private var counters = EngineStats()
   private var rebufferSince: Int64?
+
+  // ── Tracks ──
+  /// The source's own audio and text tracks (the driver's).
+  private var sourceTracks: [MediaTrack] = []
+  /// The app's subtitle files (`load({ subtitles })`, `addSubtitles`).
+  private var appTracks: [MediaTrack] = []
+  /// The app's audio pick (`nil`: automatic).
+  private var chosenAudio: String?
+  /// The app's text pick.
+  private var chosenText: TextChoice = .auto
+  private var audioTrack: String?
+  private var textTrack: String?
+  /// What the driver was last told (`nil`: nothing yet for this item).
+  private var appliedTracks: String?
+  private var system = SystemPreferences()
+  private var subtitleDelay: Double = 0
+  private var fullscreen = false
+
+  private enum TextChoice: Equatable {
+    case auto
+    case off
+    case track(String)
+  }
 
   private struct PendingSwap {
     let generation: Int
@@ -1725,6 +1752,68 @@ extension PlaybackEngine {
     commit()
   }
 
+  /// Plays this audio track (`nil`: back to the automatic choice).
+  func selectAudioTrack(_ id: String?) throws {
+    try ensureAlive()
+    guard options.video != nil else { throw notVideoPlayer() }
+    if let id { try assertTrack(id, audio: true) }
+    chosenAudio = id
+    log("audio track selected", ["id": id ?? "auto"])
+    applyTracks("selected")
+    commit()
+  }
+
+  /// Shows this text track; `nil` turns subtitles off.
+  func selectTextTrack(_ id: String?) throws {
+    try ensureAlive()
+    guard options.video != nil else { throw notVideoPlayer() }
+    if let id { try assertTrack(id, audio: false) }
+    chosenText = id.map { .track($0) } ?? .off
+    log("text track selected", ["id": id ?? "off"])
+    applyTracks("selected")
+    commit()
+  }
+
+  /// Shows subtitles this many seconds later (negative: earlier).
+  func setSubtitleDelay(_ seconds: Double) throws {
+    try ensureAlive()
+    guard seconds.isFinite else {
+      throw PlayerError.code(.invalidArgument, "The subtitle delay must be a finite number.", recoverable: false)
+    }
+    subtitleDelay = seconds
+    commit()
+  }
+
+  /// The app's subtitle files for the current load.
+  func setAppTracks(_ tracks: [MediaTrack]) {
+    guard !released else { return }
+    appTracks = tracks
+    applyTracks("app tracks")
+    commit()
+  }
+
+  /// The OS's languages and accessibility settings changed.
+  func systemPreferencesChanged(_ preferences: SystemPreferences) {
+    guard !released else { return }
+    system = preferences
+    applyTracks("system preferences")
+    commit()
+  }
+
+  func fullscreenChanged(_ active: Bool) {
+    guard !released, active != fullscreen else { return }
+    fullscreen = active
+    commit()
+  }
+
+  /// The source's own audio and text tracks.
+  func onTracks(generation gen: Int, tracks: [MediaTrack]) {
+    guard accepts(gen) else { return logStale("tracks", gen) }
+    sourceTracks = tracks
+    applyTracks("source tracks")
+    commit()
+  }
+
   /// The app's new source for `loadId` (after `refreshRequested`).
   func sourceRefreshed(loadId: Int, source next: SourceDescriptor) {
     guard !released else { return }
@@ -1874,7 +1963,9 @@ extension PlaybackEngine {
     return VideoStatus(
       width: videoInfo?.width, height: videoInfo?.height, hdr: videoInfo?.hdr ?? false,
       firstFrame: firstFrame, audioOnly: audioOnlyReason, pictureInPicture: pictureInPicture,
-      qualities: qualityList(), quality: currentQualityId(), selectedQuality: selectedQuality)
+      qualities: qualityList(), quality: currentQualityId(), selectedQuality: selectedQuality,
+      tracks: allTracks, audioTrack: audioTrack, textTrack: textTrack, subtitleDelay: subtitleDelay,
+      fullscreen: fullscreen)
   }
 
   fileprivate func videoLoad() {
@@ -1887,6 +1978,7 @@ extension PlaybackEngine {
     armExpiry()
     guard let v = options.video else { return }
     firstFrame = false
+    resetTracks()
     resetQuality()
     if !view.attached && detachedSince == nil { detachedSince = now }
     lastAudioOnly = audioOnlyReason
@@ -1900,6 +1992,8 @@ extension PlaybackEngine {
 
   fileprivate func videoOpened() {
     openedRevision = sourceRevision
+    // A new item plays its default tracks until it is told again.
+    appliedTracks = nil
     guard options.video != nil, renditions == nil else { return }
     // A new item starts from the driver's defaults: tell it the caps again.
     appliedQuality = nil
@@ -1923,6 +2017,8 @@ extension PlaybackEngine {
     abrUpSince = nil
     counters.qualitySwitches += 1
     log("quality switched", ["to": "r\(swap.rendition)"])
+    appliedTracks = nil
+    applyTracks("quality switched")
   }
 
   fileprivate func swapFailed(_ error: PlayerError) {
@@ -2149,6 +2245,63 @@ extension PlaybackEngine {
       log("picture", ["on": "\(on)", "cause": cause])
     }
     applyQuality(cause)
+  }
+
+  private var allTracks: [MediaTrack] { sourceTracks + appTracks }
+
+  private func resetTracks() {
+    sourceTracks = []
+    appTracks = []
+    chosenAudio = nil
+    chosenText = .auto
+    audioTrack = nil
+    textTrack = nil
+    appliedTracks = nil
+    subtitleDelay = 0
+  }
+
+  private func assertTrack(_ id: String, audio: Bool) throws {
+    guard allTracks.contains(where: { $0.id == id && ($0.kind == .audio) == audio }) else {
+      throw PlayerError.code(
+        .invalidArgument, "No \(audio ? "audio" : "text") track \"\(id)\".", recoverable: false)
+    }
+  }
+
+  /// The tracks to play: the app's pick where it made one, else the automatic choice.
+  private func applyTracks(_ cause: String) {
+    guard let v = options.video else { return }
+    let all = allTracks
+    let auto = TrackSelection.select(
+      all,
+      TrackPreferences(
+        languages: v.tracks.languages, followSystem: v.tracks.followSystem,
+        systemLanguages: system.languages, systemCaptions: system.captions,
+        systemAudioDescriptions: system.audioDescriptions))
+    let has = { (id: String?) in id.map { id in all.contains { $0.id == id } } ?? false }
+    let audio = has(chosenAudio) ? chosenAudio : auto.audio
+    let text: String?
+    switch chosenText {
+    case .auto: text = auto.text
+    case .off: text = nil
+    case .track(let id): text = has(id) ? id : auto.text
+    }
+    audioTrack = audio
+    textTrack = text
+    sendTracks(audio, text, cause: cause)
+  }
+
+  /// The driver plays the source's own tracks; an app's subtitle file is the overlay's.
+  private func sendTracks(_ audio: String?, _ text: String?, cause: String) {
+    guard source != nil, !sourceTracks.isEmpty else { return }
+    let own = { (id: String?) -> String? in
+      guard let id, self.sourceTracks.contains(where: { $0.id == id }) else { return nil }
+      return id
+    }
+    let key = "\(own(audio) ?? "-")|\(own(text) ?? "-")"
+    guard key != appliedTracks else { return }
+    appliedTracks = key
+    driver.selectTracks(audio: own(audio), text: own(text))
+    log("tracks", ["audio": audio ?? "-", "text": text ?? "-", "cause": cause])
   }
 
   private func endRebuffer(_ t: Int64) {

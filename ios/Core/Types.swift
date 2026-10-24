@@ -266,6 +266,14 @@ struct VideoStatus: Equatable {
   var quality: String?
   /// The app's pick; `nil` = automatic.
   var selectedQuality: String?
+  /// The audio and text tracks: the source's, then the app's subtitle files.
+  var tracks: [MediaTrack] = []
+  var audioTrack: String? = nil
+  /// `nil`: no subtitles.
+  var textTrack: String? = nil
+  /// Seconds the subtitles are shown later (negative: earlier).
+  var subtitleDelay: Double = 0
+  var fullscreen = false
 }
 
 /// A point-in-time reading of the native player, taken on demand.

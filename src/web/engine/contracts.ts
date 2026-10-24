@@ -41,6 +41,11 @@ export interface EngineDriver {
   setLoop?(loop: boolean): void;
   /** Drop the item an `open({ swap: true })` was preparing. */
   cancelSwap?(generation: number): void;
+  /**
+   * Play these of the source's own tracks (`null` text: none of them, which
+   * is also how an app's subtitle file is shown: by the overlay).
+   */
+  selectTracks?(audio: string | null, text: string | null): void;
 }
 
 export interface EngineClock {

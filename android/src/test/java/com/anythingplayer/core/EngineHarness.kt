@@ -102,6 +102,7 @@ class FakeDriver(private val clock: FakeClock) : EngineDriver {
     )
   }
   override fun setLoop(loop: Boolean) { commands.add("loop($loop)") }
+  override fun selectTracks(audio: String?, text: String?) { commands.add("tracks(audio=${audio ?: "-"},text=${text ?: "-"})") }
   override fun cancelSwap(generation: Int) {
     commands.add("cancelSwap(gen=$generation)")
     if (swapGeneration == generation) swapGeneration = null

@@ -106,6 +106,9 @@ final class FakeDriver: EngineDriver {
       "quality(maxH=\(height),maxBps=\(bitrate),pin=\(c.pinned ?? "-"),audioOnly=\(c.audioOnly))")
   }
   func setLoop(_ loop: Bool) { commands.append("loop(\(loop))") }
+  func selectTracks(audio: String?, text: String?) {
+    commands.append("tracks(audio=\(audio ?? "-"),text=\(text ?? "-"))")
+  }
   func cancelSwap(generation: Int) {
     commands.append("cancelSwap(gen=\(generation))")
     if swapGeneration == generation { swapGeneration = nil }

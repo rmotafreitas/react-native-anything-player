@@ -8,6 +8,18 @@ import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
 
+/** A track from a fixture (shared with `SubtitleTest`). */
+internal fun track(t: JSONObject): MediaTrack =
+  MediaTrack(
+    id = t.getString("id"),
+    kind = TrackKind.fromWire(t.getString("kind")),
+    language = if (t.has("language") && !t.isNull("language")) t.getString("language") else null,
+    forced = t.optBoolean("forced", false),
+    isDefault = t.optBoolean("default", false),
+    sdh = t.optBoolean("sdh", false),
+    describesVideo = t.optBoolean("describesVideo", false),
+  )
+
 /** Runs every scenario in the `conformance` JSON files (shared with the Swift engine). */
 class ConformanceTest {
   companion object {
@@ -75,7 +87,9 @@ class ConformanceTest {
         is Number -> StartQuality.Height(v.toInt())
         else -> StartQuality.Auto
       }
+    val t = o.optJSONObject("tracks") ?: JSONObject()
     return VideoEngineOptions(
+      tracks = TrackPolicy(strings(t.optJSONArray("languages")), t.optBoolean("followSystem", true)),
       whenBackgrounded = BackgroundMode.fromWire(o.optString("whenBackgrounded", "pause")),
       ambient = o.optBoolean("ambient", false),
       keepAwake = o.optBoolean("keepAwake", true),
@@ -105,6 +119,11 @@ class ConformanceTest {
         Rendition(r.getString("uri"), null, intOrNull(r, "height"), longOrNull(r, "bitrate"), null, r.optBoolean("audioOnly", false))
       }
     }
+
+  private fun strings(array: JSONArray?): List<String> =
+    if (array == null) emptyList() else (0 until array.length()).map { array.getString(it) }
+
+  private fun tracks(array: JSONArray): List<MediaTrack> = (0 until array.length()).map { track(array.getJSONObject(it)) }
 
   private fun variants(array: JSONArray): List<VideoVariant> =
     (0 until array.length()).map {
@@ -190,6 +209,7 @@ class ConformanceTest {
               VideoInfo(step.getInt("width"), step.getInt("height"), step.optBoolean("hdr", false), text(step, "variant")),
             )
           "firstFrame" -> h.engine.onFirstFrame(gen)
+          "tracks" -> h.engine.onTracks(gen, tracks(step.getJSONArray("tracks")))
           "renditionInfo" ->
             h.engine.renditionInfo(step.getInt("index"), intOrNull(step, "height"), longOrNull(step, "bitrate"))
           "pausedExternally" ->
@@ -235,6 +255,13 @@ class ConformanceTest {
         )
       }
       step.has("pip") -> h.engine.pictureInPictureChanged(step.getBoolean("pip"))
+      step.has("system") -> {
+        val p = step.getJSONObject("system")
+        h.engine.systemPreferencesChanged(
+          SystemPreferences(strings(p.optJSONArray("languages")), p.optBoolean("captions", false), p.optBoolean("audioDescriptions", false)),
+        )
+      }
+      step.has("fullscreen") -> h.engine.fullscreenChanged(step.getBoolean("fullscreen"))
       step.has("networkCost") -> {
         val c = step.getJSONObject("networkCost")
         h.engine.networkCostChanged(c.optBoolean("metered", false), c.optBoolean("saveData", false))
@@ -261,6 +288,10 @@ class ConformanceTest {
       "loop" -> h.engine.setLoop(step.optBoolean("value", false))
       "sourceRefreshed" -> h.engine.sourceRefreshed(h.engine.loadId, source(step, h, true))
       "sourceRefreshFailed" -> h.engine.sourceRefreshFailed(h.engine.loadId)
+      "appTracks" -> h.engine.setAppTracks(tracks(step.getJSONArray("tracks")))
+      "selectAudioTrack" -> h.engine.selectAudioTrack(text(step, "id"))
+      "selectTextTrack" -> h.engine.selectTextTrack(text(step, "id"))
+      "subtitleDelay" -> h.engine.setSubtitleDelay(value)
       "play" -> h.engine.play()
       "pause" -> h.engine.pause()
       "stop" -> h.engine.stop()
@@ -378,6 +409,11 @@ class ConformanceTest {
         "quality" -> assertEquals(label, want, vs.quality)
         "selectedQuality" -> assertEquals(label, want, vs.selectedQuality)
         "qualities" -> assertEquals(label, stringList(want as JSONArray), vs.qualities.map { it.id })
+        "tracks" -> assertEquals(label, stringList(want as JSONArray), vs.tracks.map { it.id })
+        "audioTrack" -> assertEquals(label, want, vs.audioTrack)
+        "textTrack" -> assertEquals(label, want, vs.textTrack)
+        "subtitleDelay" -> assertEquals(label, (want as Number).toDouble(), vs.subtitleDelay, 0.0)
+        "fullscreen" -> assertEquals(label, want, vs.fullscreen)
         else -> fail("$at: unknown video expectation $key")
       }
     }

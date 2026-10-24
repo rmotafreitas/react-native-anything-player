@@ -81,6 +81,7 @@ final class RoutingDriver: EngineDriver {
   func setQuality(_ constraints: QualityConstraints) { current.setQuality(constraints) }
   func setLoop(_ loop: Bool) { current.setLoop(loop) }
   func cancelSwap(generation: Int) { current.cancelSwap(generation: generation) }
+  func selectTracks(audio: String?, text: String?) { current.selectTracks(audio: audio, text: text) }
   func releaseConnection() { current.releaseConnection() }
   func unload() { current.unload() }
 

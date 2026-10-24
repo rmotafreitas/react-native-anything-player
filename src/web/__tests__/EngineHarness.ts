@@ -176,6 +176,10 @@ export class FakeDriver implements EngineDriver {
     this.commands.push(`loop(${loop})`);
   }
 
+  selectTracks(audio: string | null, text: string | null): void {
+    this.commands.push(`tracks(audio=${orDash(audio)},text=${orDash(text)})`);
+  }
+
   cancelSwap(generation: number): void {
     this.commands.push(`cancelSwap(gen=${generation})`);
     if (this.swapGeneration === generation) this.swapGeneration = null;

@@ -226,6 +226,14 @@ data class VideoStatus(
   val quality: String?,
   /** The app's pick; `null` = automatic. */
   val selectedQuality: String?,
+  /** The audio and text tracks: the source's, then the app's subtitle files. */
+  val tracks: List<MediaTrack> = emptyList(),
+  val audioTrack: String? = null,
+  /** `null`: no subtitles. */
+  val textTrack: String? = null,
+  /** Seconds the subtitles are shown later (negative: earlier). */
+  val subtitleDelay: Double = 0.0,
+  val fullscreen: Boolean = false,
 )
 
 /** A point-in-time reading of the native player, taken on demand. */

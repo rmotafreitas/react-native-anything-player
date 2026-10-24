@@ -82,6 +82,13 @@ interface EngineDriver {
   fun cancelSwap(generation: Int) {
     // Drivers without quality switches never prepare one.
   }
+  /**
+   * Play these of the source's own tracks (`null` text: none of them, which
+   * is also how an app's subtitle file is shown: by the overlay).
+   */
+  fun selectTracks(audio: String?, text: String?) {
+    // Audio drivers have one track.
+  }
 }
 
 interface EngineClock {
@@ -285,6 +292,29 @@ class PlaybackEngine(
   private var loadStartedAt: Long? = null
   private var counters = EngineStats()
   private var rebufferSince: Long? = null
+
+  // ── Tracks ──
+  /** The source's own audio and text tracks (the driver's). */
+  private var sourceTracks: List<MediaTrack> = emptyList()
+  /** The app's subtitle files (`load({ subtitles })`, `addSubtitles`). */
+  private var appTracks: List<MediaTrack> = emptyList()
+  /** The app's audio pick (`null`: automatic). */
+  private var chosenAudio: String? = null
+  /** The app's text pick: [TextChoice.Auto], off, or a track. */
+  private var chosenText: TextChoice = TextChoice.Auto
+  private var audioTrack: String? = null
+  private var textTrack: String? = null
+  /** What the driver was last told (`null`: nothing yet for this item). */
+  private var appliedTracks: String? = null
+  private var system = SystemPreferences()
+  private var subtitleDelay = 0.0
+  private var fullscreen = false
+
+  private sealed class TextChoice {
+    object Auto : TextChoice()
+    object Off : TextChoice()
+    data class Track(val id: String) : TextChoice()
+  }
 
   private data class PendingSwap(val generation: Int, val rendition: Int, val startedAt: Long)
 
@@ -979,6 +1009,68 @@ class PlaybackEngine(
     if (options.video == null) throw notVideoPlayer()
     listenOnly = value
     applyOutput("listen-only")
+    commit()
+  }
+
+  /** Plays this audio track (`null`: back to the automatic choice). */
+  fun selectAudioTrack(id: String?) {
+    ensureAlive()
+    if (options.video == null) throw notVideoPlayer()
+    if (id != null) assertTrack(id, true)
+    chosenAudio = id
+    log("audio track selected", mapOf("id" to (id ?: "auto")))
+    applyTracks("selected")
+    commit()
+  }
+
+  /** Shows this text track; `null` turns subtitles off. */
+  fun selectTextTrack(id: String?) {
+    ensureAlive()
+    if (options.video == null) throw notVideoPlayer()
+    if (id != null) assertTrack(id, false)
+    chosenText = if (id == null) TextChoice.Off else TextChoice.Track(id)
+    log("text track selected", mapOf("id" to (id ?: "off")))
+    applyTracks("selected")
+    commit()
+  }
+
+  /** Shows subtitles this many seconds later (negative: earlier). */
+  fun setSubtitleDelay(seconds: Double) {
+    ensureAlive()
+    if (!seconds.isFinite()) {
+      throw PlayerError(ErrorCode.INVALID_ARGUMENT, "The subtitle delay must be a finite number.", false)
+    }
+    subtitleDelay = seconds
+    commit()
+  }
+
+  /** The app's subtitle files for the current load. */
+  fun setAppTracks(tracks: List<MediaTrack>) {
+    if (released) return
+    appTracks = tracks.toList()
+    applyTracks("app tracks")
+    commit()
+  }
+
+  /** The OS's languages and accessibility settings changed. */
+  fun systemPreferencesChanged(preferences: SystemPreferences) {
+    if (released) return
+    system = preferences
+    applyTracks("system preferences")
+    commit()
+  }
+
+  fun fullscreenChanged(active: Boolean) {
+    if (released || active == fullscreen) return
+    fullscreen = active
+    commit()
+  }
+
+  /** The source's own audio and text tracks. */
+  fun onTracks(generation: Int, tracks: List<MediaTrack>) {
+    if (!accepts(generation)) return logStale("tracks", generation)
+    sourceTracks = tracks.toList()
+    applyTracks("source tracks")
     commit()
   }
 
@@ -1856,6 +1948,11 @@ class PlaybackEngine(
       qualities = qualityList(),
       quality = currentQualityId(),
       selectedQuality = selectedQuality,
+      tracks = allTracks,
+      audioTrack = audioTrack,
+      textTrack = textTrack,
+      subtitleDelay = subtitleDelay,
+      fullscreen = fullscreen,
     )
   }
 
@@ -1869,6 +1966,7 @@ class PlaybackEngine(
     armExpiry()
     val v = options.video ?: return
     firstFrame = false
+    resetTracks()
     resetQuality()
     if (!view.attached && detachedSince == null) detachedSince = now
     lastAudioOnly = audioOnlyReason
@@ -1882,6 +1980,8 @@ class PlaybackEngine(
 
   private fun videoOpened() {
     openedRevision = sourceRevision
+    // A new item plays its default tracks until it is told again.
+    appliedTracks = null
     if (options.video == null || renditions != null) return
     // A new item starts from the driver's defaults: tell it the caps again.
     appliedQuality = null
@@ -1903,6 +2003,8 @@ class PlaybackEngine(
     abrUpSince = null
     counters = counters.copy(qualitySwitches = counters.qualitySwitches + 1)
     log("quality switched", mapOf("to" to "r${swap.rendition}"))
+    appliedTracks = null
+    applyTracks("quality switched")
   }
 
   private fun swapFailed(error: PlayerError) {
@@ -2135,6 +2237,65 @@ class PlaybackEngine(
       log("picture", mapOf("on" to "$on", "cause" to cause))
     }
     applyQuality(cause)
+  }
+
+  private val allTracks: List<MediaTrack>
+    get() = sourceTracks + appTracks
+
+  private fun resetTracks() {
+    sourceTracks = emptyList()
+    appTracks = emptyList()
+    chosenAudio = null
+    chosenText = TextChoice.Auto
+    audioTrack = null
+    textTrack = null
+    appliedTracks = null
+    subtitleDelay = 0.0
+  }
+
+  private fun assertTrack(id: String, audio: Boolean) {
+    if (allTracks.none { it.id == id && (it.kind == TrackKind.AUDIO) == audio }) {
+      throw PlayerError(ErrorCode.INVALID_ARGUMENT, "No ${if (audio) "audio" else "text"} track \"$id\".", false)
+    }
+  }
+
+  /** The tracks to play: the app's pick where it made one, else the automatic choice. */
+  private fun applyTracks(cause: String) {
+    val v = options.video ?: return
+    val all = allTracks
+    val auto =
+      TrackSelection.select(
+        all,
+        TrackPreferences(
+          languages = v.tracks.languages,
+          followSystem = v.tracks.followSystem,
+          systemLanguages = system.languages,
+          systemCaptions = system.captions,
+          systemAudioDescriptions = system.audioDescriptions,
+        ),
+      )
+    val has = { id: String? -> id != null && all.any { it.id == id } }
+    val audio = if (has(chosenAudio)) chosenAudio else auto.audio
+    val text =
+      when (val choice = chosenText) {
+        TextChoice.Auto -> auto.text
+        TextChoice.Off -> null
+        is TextChoice.Track -> if (has(choice.id)) choice.id else auto.text
+      }
+    audioTrack = audio
+    textTrack = text
+    sendTracks(audio, text, cause)
+  }
+
+  /** The driver plays the source's own tracks; an app's subtitle file is the overlay's. */
+  private fun sendTracks(audio: String?, text: String?, cause: String) {
+    if (source == null || sourceTracks.isEmpty()) return
+    val own = { id: String? -> if (id != null && sourceTracks.any { it.id == id }) id else null }
+    val key = "${own(audio)}|${own(text)}"
+    if (key == appliedTracks) return
+    appliedTracks = key
+    driver.selectTracks(own(audio), own(text))
+    log("tracks", mapOf("audio" to (audio ?: "-"), "text" to (text ?: "-"), "cause" to cause))
   }
 
   private fun endRebuffer(t: Long) {
