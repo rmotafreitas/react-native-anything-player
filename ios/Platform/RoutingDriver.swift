@@ -76,6 +76,11 @@ final class RoutingDriver: EngineDriver {
   func play() { current.play() }
   func pause() { current.pause() }
   func seek(to seconds: Double) { current.seek(to: seconds) }
+  func seek(to seconds: Double, exact: Bool) { current.seek(to: seconds, exact: exact) }
+  func setVideoEnabled(_ enabled: Bool) { current.setVideoEnabled(enabled) }
+  func setQuality(_ constraints: QualityConstraints) { current.setQuality(constraints) }
+  func setLoop(_ loop: Bool) { current.setLoop(loop) }
+  func cancelSwap(generation: Int) { current.cancelSwap(generation: generation) }
   func releaseConnection() { current.releaseConnection() }
   func unload() { current.unload() }
 

@@ -460,7 +460,8 @@ export abstract class EngineQuality extends EngineFades {
   protected moveTo(target: number, cause: string): void {
     const open = this.readyForGeneration && !this.connectionReleased;
     const flowing = this._state === 'playing' || this._state === 'buffering';
-    if (flowing && open && this._playWhenReady)
+    // A Cast receiver plays one item: it re-opens in place.
+    if (flowing && open && this._playWhenReady && !this.remote)
       return this.startSwap(target, cause);
     this.currentRendition = target;
     // Stopped, ended, failed or reconnecting: the next open uses it.

@@ -589,6 +589,38 @@
     ]
   },
   {
+    "name": "video: on a Cast receiver a rendition change re-opens in place, without a switch behind the picture",
+    "options": { "video": true },
+    "steps": [
+      { "view": {} },
+      { "call": "load", "uri": "https://cdn.example/ep01", "autoplay": true, "renditions": [{ "uri": "https://cdn.example/240.mp4", "height": 240, "bitrate": 400000 }, { "uri": "https://cdn.example/480.mp4", "height": 480, "bitrate": 1200000 }, { "uri": "https://cdn.example/720.mp4", "height": 720, "bitrate": 2500000 }] },
+      { "native": "ready", "duration": 600, "seekable": true },
+      { "native": "playing" },
+      { "driver": "position", "value": 30 },
+      { "call": "handoff", "route": "cast", "name": "TV", "output": "cast:tv", "resume": true },
+      { "native": "ready", "duration": 600, "seekable": true },
+      { "native": "playing" },
+      { "driver": "position", "value": 40 },
+      { "expect": { "state": "playing", "orderedCommands": ["open(gen=2,start=30.0,play=true,r=1)"] } },
+      { "call": "selectQuality", "id": "r2" },
+      { "expect": { "state": "loading", "video": { "quality": "r2" }, "commands": ["open(gen=3,start=40.0,play=true,r=2)"] } }
+    ]
+  },
+  {
+    "name": "video: AirPlay keeps a video playing in the background",
+    "options": { "video": true },
+    "steps": [
+      { "view": {} },
+      { "call": "load", "uri": "https://cdn.example/v.m3u8", "autoplay": true },
+      { "native": "ready", "duration": 120, "seekable": true },
+      { "native": "playing" },
+      { "route": "airplay", "name": "Living Room" },
+      { "call": "background" },
+      { "advance": 2000 },
+      { "expect": { "state": "playing", "interruption": null } }
+    ]
+  },
+  {
     "name": "refresh: a 403 on a refreshable source waits for the app's new source and re-opens where it was",
     "steps": [
       { "call": "load", "uri": "https://cdn.example/song.mp3?sig=1", "autoplay": true, "refreshable": true },

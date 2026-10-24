@@ -21,6 +21,8 @@ protocol EngineDriver: AnyObject {
   func play()
   func pause()
   func seek(to seconds: Double)
+  /// `exact`: frame-accurate; otherwise the nearest keyframe is fine.
+  func seek(to seconds: Double, exact: Bool)
   /// Drop the network connection / decoder but keep nothing playing.
   func releaseConnection()
   /// Remove the current item entirely.
@@ -33,6 +35,24 @@ protocol EngineDriver: AnyObject {
   /// it from `handoff`, after unloading the item from the previous output.
   func switchOutput(_ outputId: String)
   func sample() -> PlaybackSample
+  /// Video players: decode and show the picture, or not (the sound plays on).
+  func setVideoEnabled(_ enabled: Bool)
+  /// Video players with an adaptive source: what its own ABR must keep to.
+  func setQuality(_ constraints: QualityConstraints)
+  /// Repeat a finite item from the start, seamlessly where the platform can.
+  func setLoop(_ loop: Bool)
+  /// Drop the item an `open(swap: true)` was preparing.
+  func cancelSwap(generation: Int)
+}
+
+/// Audio drivers have no picture, qualities or switches; the engine restarts
+/// an item that ends when looping.
+extension EngineDriver {
+  func seek(to seconds: Double, exact: Bool) { seek(to: seconds) }
+  func setVideoEnabled(_ enabled: Bool) {}
+  func setQuality(_ constraints: QualityConstraints) {}
+  func setLoop(_ loop: Bool) {}
+  func cancelSwap(generation: Int) {}
 }
 
 protocol EngineClock: AnyObject {
@@ -60,6 +80,33 @@ protocol EngineDelegate: AnyObject {
   func engine(diagnostic: DiagnosticEntry)
   /// The engine wants `onWakeup()` at this monotonic instant (`nil` = none).
   func engine(wakeupAt: Int64?)
+  /// The source needs a new URL. Answer with `sourceRefreshed` or
+  /// `sourceRefreshFailed` for the same `loadId`.
+  func engine(refreshRequested loadId: Int, reason: RefreshReason)
+}
+
+extension EngineDelegate {
+  /// Without an answer the engine backs off as for any failure.
+  func engine(refreshRequested loadId: Int, reason: RefreshReason) {}
+}
+
+/// Playback wanted, nothing heard yet: the foreground recovers these at once.
+private let waitingStates: Set<PlaybackState> = [.reconnecting, .buffering, .loading]
+/// States in which the screen stays on for a visible video player.
+private let awakeStates: Set<PlaybackState> = [.loading, .buffering, .playing, .reconnecting]
+/// States a rebuffer goes on through (the user is still waiting).
+private let rebufferStates: Set<PlaybackState> = [.buffering, .reconnecting, .loading]
+/// Heights a view's size is rounded up to before it caps an adaptive source.
+private let standardHeights = [144, 240, 360, 480, 540, 720, 1080, 1440, 2160, 4320]
+
+private func minOf<T: Comparable>(_ a: T?, _ b: T?) -> T? {
+  guard let a else { return b }
+  guard let b else { return a }
+  return min(a, b)
+}
+
+private func notVideoPlayer() -> PlayerError {
+  .code(.invalidArgument, "This is not a video player (create it with `video`).", recoverable: false)
 }
 
 final class PlaybackEngine {
@@ -71,6 +118,10 @@ final class PlaybackEngine {
   // ── Source & intent ──
   private(set) var source: SourceDescriptor?
   private(set) var generation = 0
+  /// The last generation handed out. Every open takes the next one, so an
+  /// item a quality switch was preparing (a generation ahead of the current
+  /// one) can never share a number with a later open.
+  private var issuedGeneration = 0
   private(set) var loadId = 0
   private var pendingLoadId: Int?
   private(set) var state: PlaybackState = .idle
@@ -92,6 +143,8 @@ final class PlaybackEngine {
   private var volume: Double = 1
   private var muted = false
   private var rate: Double = 1
+  /// Repeat a finite item from the start instead of ending.
+  private var loop = false
 
   // ── Output ──
   private var route: AudioRoute = .unknown
@@ -162,6 +215,80 @@ final class PlaybackEngine {
   private var sleepFadeMs: Int64 = 0
   private var sleepWallAt: Int64?
 
+  // ── Video: surroundings ──
+  private var backgrounded = false
+  private var pictureInPicture = false
+  private var view = ViewState()
+  /// No view since this instant: the picture goes off `viewDetachGraceMs` later.
+  private var detachedSince: Int64?
+  /// In the background without Picture in Picture: pause at this instant.
+  private var pipDecisionAt: Int64?
+  private var metered = false
+  private var saveData = false
+
+  // ── Video: the picture ──
+  private var listenOnly = false
+  private var videoInfo: VideoInfo?
+  private var firstFrame = false
+  private var variants: [VideoVariant] = []
+  /// What the driver was last told (`nil`: nothing yet; drivers start with the picture on).
+  private var appliedVideoEnabled: Bool?
+  /// The constraints the driver was last given (an adaptive source).
+  private var appliedQuality: String?
+  private var lastAudioOnly: AudioOnlyReason?
+
+  // ── Video: renditions ──
+  private var renditions: [Rendition]?
+  private var selectedQuality: String?
+  /// The engine's own pick among the renditions (automatic quality).
+  private var abrLevel: Int?
+  private var currentRendition: Int?
+  private var pendingSwap: PendingSwap?
+  private var failedUntil: [Int: Int64] = [:]
+  /// The last bandwidth reading, kept across loads for the next start.
+  private var bandwidth: Double?
+  /// When this load last had a reading.
+  private var bandwidthAt: Int64?
+  private var stallTimes: [Int64] = []
+  private var lastSwitchAt: Int64?
+  /// The bandwidth has been under the current rendition's bitrate since…
+  private var abrLowSince: Int64?
+  /// …above `abrUpRatio` × the next one's since.
+  private var abrUpSince: Int64?
+
+  // ── Video: the audio-only fallback ──
+  private var fallbackActive = false
+  private var fallbackSince: Int64?
+  /// The bandwidth has been under the fallback's drop ratio since…
+  private var dropSince: Int64?
+  /// …above its return ratio since.
+  private var returnSince: Int64?
+
+  // ── Refresh ──
+  private var pendingRefresh: PendingRefresh?
+  private var refreshAskAt: Int64?
+  /// Bumped by every `sourceRefreshed`; `openedRevision` is its value at the last open.
+  private var sourceRevision = 0
+  private var openedRevision = 0
+
+  // ── Stats ──
+  private var loadStartedAt: Int64?
+  private var counters = EngineStats()
+  private var rebufferSince: Int64?
+
+  private struct PendingSwap {
+    let generation: Int
+    let rendition: Int
+    let startedAt: Int64
+  }
+
+  private struct PendingRefresh {
+    let reason: RefreshReason
+    let deadline: Int64
+    /// The failure that asked for it (`unauthorized`).
+    let error: PlayerError?
+  }
+
   init(
     driver: EngineDriver, clock: EngineClock, options: EngineOptions = EngineOptions(),
     random: @escaping () -> Double = { Double.random(in: 0..<1) }
@@ -197,6 +324,7 @@ final class PlaybackEngine {
     s.rate = rate
     s.route = route
     s.sleepAt = sleepWallAt
+    s.video = videoStatus()
     return s
   }
 
@@ -210,7 +338,7 @@ final class PlaybackEngine {
   /// Whether the player holds (or may soon re-take) audio focus. A remote
   /// output always has it.
   var needsAudioFocus: Bool {
-    if remote { return false }
+    if remote || focusExempt { return false }
     return playWhenReady || fadeOutThen != nil || (interruption?.resumable ?? false)
   }
 
@@ -243,6 +371,7 @@ final class PlaybackEngine {
     resumePosition = startPosition
     playWhenReady = wanted
     if wanted { applyFocus(requestFocus()) }
+    videoLoad()
     if playWhenReady { startFadeIn(flowing: flowing) }
     log("load", ["uri": newSource.uri, "autoplay": "\(playWhenReady)"])
     open(startPosition: startPosition, reason: "load")
@@ -333,7 +462,8 @@ final class PlaybackEngine {
     try ensureAlive()
     cancelFadeOut()
     settlePendingLoad(.superseded)
-    generation += 1
+    cancelSwap("reset")
+    generation = issueGeneration()
     source = nil
     playWhenReady = false
     interruption = nil
@@ -349,7 +479,7 @@ final class PlaybackEngine {
     commit()
   }
 
-  func seek(to seconds: Double) throws {
+  func seek(to seconds: Double, exact: Bool = false) throws {
     try ensureAlive()
     guard source != nil else { throw PlayerError.code(.noSource, "No source loaded.", recoverable: false) }
     guard seekable, !isLive else {
@@ -359,6 +489,8 @@ final class PlaybackEngine {
       throw PlayerError.code(.invalidArgument, "Seek position must be a finite number ≥ 0.", recoverable: false)
     }
     let target = duration.map { min(seconds, $0) } ?? seconds
+    // A quality switch in flight was opened at the old position.
+    cancelSwap("seek")
     resumePosition = target
     lastPosition = target
     lastPositionAdvanceAt = now
@@ -368,7 +500,7 @@ final class PlaybackEngine {
       commit()
       return
     }
-    driver.seek(to: target)
+    driver.seek(to: target, exact: exact)
     commit()
   }
 
@@ -445,8 +577,18 @@ final class PlaybackEngine {
 
   func setMuted(_ value: Bool) throws {
     try ensureAlive()
+    let was = muted
     muted = value
     applyVolume()
+    if was && !value { unmuted() }
+    commit()
+  }
+
+  /// Repeat a finite item from the start (the driver loops it seamlessly where it can).
+  func setLoop(_ value: Bool) throws {
+    try ensureAlive()
+    loop = value
+    driver.setLoop(value)
     commit()
   }
 
@@ -473,6 +615,7 @@ final class PlaybackEngine {
     settlePendingLoad(.failed(.code(.playerReleased, "The player was released.", recoverable: false)))
     cancelFadeOut()
     cancelFadeTo()
+    cancelSwap("release")
     sleepAt = nil
     sleepWallAt = nil
     playWhenReady = false
@@ -489,6 +632,7 @@ final class PlaybackEngine {
   // MARK: - Native observations (generation-guarded)
 
   func onReady(generation gen: Int, info: ReadyInfo) {
+    if isSwapGeneration(gen) { return swapNote("ready") }
     guard accepts(gen) else { return logStale("ready", gen) }
     duration = info.duration
     isLive = source?.liveHint ?? info.isLive
@@ -510,6 +654,8 @@ final class PlaybackEngine {
 
   /// Audio is actually flowing.
   func onPlaying(generation gen: Int) {
+    // A quality switch's new item plays: it is the current item from now on.
+    if isSwapGeneration(gen) { completeSwap() }
     guard accepts(gen) else { return logStale("playing", gen) }
     guard playWhenReady else {
       // Fading out: the audio keeps going until the fade ends.
@@ -538,6 +684,7 @@ final class PlaybackEngine {
     lastPosition = sample.position
     lastPositionAdvanceAt = t
     playingSince = t
+    videoPlaying(t)
     if fadeInPending {
       fadeInPending = false
       rampGain(to: 1, fullScaleMs: options.fadeInMs)
@@ -551,6 +698,7 @@ final class PlaybackEngine {
 
   /// Playback wanted, waiting for data.
   func onBuffering(generation gen: Int) {
+    if isSwapGeneration(gen) { return swapNote("buffering") }
     guard accepts(gen) else { return logStale("buffering", gen) }
     // Nothing left to fade.
     completeFadeOut()
@@ -565,6 +713,10 @@ final class PlaybackEngine {
   }
 
   func onFailed(generation gen: Int, error: PlayerError) {
+    if isSwapGeneration(gen) {
+      swapFailed(error)
+      return commit()
+    }
     guard accepts(gen) else { return logStale("failed", gen) }
     completeFadeOut()
     // A stop's fade-out landed: the item is gone.
@@ -574,6 +726,7 @@ final class PlaybackEngine {
   }
 
   func onEnded(generation gen: Int) {
+    if isSwapGeneration(gen) { return swapNote("ended") }
     guard accepts(gen) else { return logStale("ended", gen) }
     if state == .ended { return logStale("ended again", gen) }
     completeFadeOut()
@@ -583,6 +736,9 @@ final class PlaybackEngine {
     // said the source is a file (`live: false`).
     if source?.liveHint != false && (isLive || duration == nil) {
       handleFailure(.code(.streamEnded, "The stream closed the connection.", recoverable: true))
+    } else if loop && playWhenReady {
+      // The driver could not loop it seamlessly: start over.
+      restartFromEnd(cause: "loop")
     } else {
       playWhenReady = false
       resumePosition = 0
@@ -595,6 +751,7 @@ final class PlaybackEngine {
 
   /// The platform paused the player without being asked to.
   func onPausedExternally(generation gen: Int, reason: InterruptionReason) {
+    if isSwapGeneration(gen) { return swapNote("paused") }
     guard accepts(gen) else { return logStale("paused externally", gen) }
     if fadeOutThen != nil {
       completeFadeOut()
@@ -652,7 +809,8 @@ final class PlaybackEngine {
       open(startPosition: position, reason: "handoff")
     } else {
       // Old-output callbacks are stale; nothing is loaded on the new one.
-      generation += 1
+      cancelSwap("handoff")
+      generation = issueGeneration()
       readyForGeneration = false
       if source != nil { connectionReleased = true }
     }
@@ -724,10 +882,11 @@ final class PlaybackEngine {
   /// through its backoff deadline; audio that is wanted but not flowing is
   /// recovered now. An open that is still young is left alone.
   func appForegrounded() {
-    guard !released, autoReconnect, !remote else { return }
-    if state == .reconnecting || state == .buffering || state == .loading {
-      attemptReconnect(reason: "app foregrounded")
-    }
+    guard !released else { return }
+    // Read before a video player resumes: its resume is not a stall.
+    let stalled = autoReconnect && !remote && waitingStates.contains(state)
+    videoForegrounded()
+    if stalled { attemptReconnect(reason: "app foregrounded") }
     commit()
   }
 
@@ -773,8 +932,10 @@ final class PlaybackEngine {
         beginWaiting()
         stallStartedAt = started
         lastBufferedAdvanceAt = started
+        stallPublished(t)
       }
     }
+    videoWakeup(t)
     if state == .reconnecting, let due = nextAttemptAt, due <= t {
       nextAttemptAt = nil
       attemptReconnect(reason: "backoff elapsed")
@@ -805,7 +966,7 @@ final class PlaybackEngine {
 
   /// Audio focus is the device's: a remote output always has it.
   private func requestFocus() -> FocusResult {
-    if remote { return .granted }
+    if remote || focusExempt { return .granted }
     return delegate?.engineRequestsAudioFocus() ?? .granted
   }
 
@@ -896,6 +1057,7 @@ final class PlaybackEngine {
 
   /// Turns the intent off (user or system). `playWhenReady` already false.
   private func pauseIntent(cause: String) {
+    cancelSwap("pause")
     holdGain()
     resetRecovery()
     stallStartedAt = nil
@@ -922,7 +1084,8 @@ final class PlaybackEngine {
 
   private func open(startPosition: Double?, reason: String) {
     guard let source else { return }
-    generation += 1
+    cancelSwap("open")
+    generation = issueGeneration()
     readyForGeneration = false
     flowedSinceOpen = false
     silentStall = false
@@ -940,10 +1103,17 @@ final class PlaybackEngine {
     lastPositionAdvanceAt = now
     lastHeartbeatAt = now
     setState(.loading, cause: reason)
+    var target = source
+    var index: Int?
+    if renditions != nil, let current = currentRendition {
+      target = renditionSource(current)
+      index = current
+    }
     driver.open(
       OpenRequest(
-        generation: generation, source: source, startPosition: startPosition,
-        playWhenReady: playWhenReady, allowReconnect: options.reconnect))
+        generation: generation, source: target, startPosition: startPosition,
+        playWhenReady: playWhenReady, allowReconnect: options.reconnect, rendition: index))
+    videoOpened()
   }
 
   /// Re-open the loaded source: at the live edge for live streams, at the last
@@ -984,6 +1154,8 @@ final class PlaybackEngine {
   }
 
   private func handleFailure(_ error: PlayerError) {
+    // A 401/403 on a source the app can refresh waits for a new URL first.
+    if refreshOnFailure(error) { return }
     lastError = error
     let wasInitialLoad = !readyForGeneration && pendingLoadId != nil
     settlePendingLoad(.failed(error))
@@ -1110,6 +1282,7 @@ final class PlaybackEngine {
           beginWaiting()
           stallStartedAt = lastPositionAdvanceAt
           silentStall = true
+          stallPublished(t)
         }
       }
       if let since = playingSince, t - since >= RecoveryPolicy.stablePlaybackMs {
@@ -1119,6 +1292,7 @@ final class PlaybackEngine {
         offlineSkips = 0
         recoveringSince = nil
       }
+      videoHeartbeat(t)
     case .buffering:
       if remote {
         // No buffer to watch on a receiver: only a stall that lasts too long.
@@ -1189,6 +1363,7 @@ final class PlaybackEngine {
     lastPosition = position
     lastPositionAdvanceAt = t
     playingSince = t
+    videoPlaying(t)
     setState(.playing, cause: "silent stall over")
   }
 
@@ -1212,7 +1387,8 @@ final class PlaybackEngine {
   /// the driver already queued for it (an end, a failure) must not move the
   /// player out of `stopped`, `paused` or `error`. Resuming opens a new one.
   private func releaseItemConnection() {
-    generation += 1
+    cancelSwap("release")
+    generation = issueGeneration()
     readyForGeneration = false
     silentStall = false
     driver.releaseConnection()
@@ -1450,6 +1626,7 @@ final class PlaybackEngine {
     if next != .playing { stallPublishAt = nil }
     let previous = state
     state = next
+    stateChanged(next)
     log("transition", ["from": previous.rawValue, "to": next.rawValue, "cause": cause])
   }
 
@@ -1485,6 +1662,948 @@ final class PlaybackEngine {
     if state == .reconnecting, let a = nextAttemptAt { candidates.append(a) }
     if heartbeatDue { candidates.append(lastHeartbeatAt + RecoveryPolicy.heartbeatMs) }
     fadeWakeups(&candidates)
+    videoWakeups(&candidates)
     return candidates.min()
+  }
+}
+
+// MARK: - Video
+//
+// What a video player does in the background and off screen, when the
+// picture is decoded, its audio focus and media session, keeping the screen
+// on, its quality (the caps of an adaptive source's own ABR; the engine's own
+// ABR over separate files, switched behind the picture under a new
+// generation), the audio-only fallback, refreshing a signed source, and the
+// quality-of-experience counters. An audio player (`options.video == nil`)
+// only gets the refresh, the counters and `loop`. Twins: `EngineVideo.ts` and
+// `EngineQuality.ts`, the video part of `PlaybackEngine.kt`.
+
+extension PlaybackEngine {
+  // MARK: Queries
+
+  /// The player should own a media session (lock screen, notification).
+  var wantsMediaSession: Bool {
+    guard let v = options.video else { return true }
+    return !(v.ambient || (muted && !v.focusWhenMuted))
+  }
+
+  /// Keep the screen on: a video playing in a visible view.
+  var wantsScreenAwake: Bool {
+    guard let v = options.video, v.keepAwake, !v.ambient else { return false }
+    guard view.attached, view.visible, !backgrounded else { return false }
+    return playWhenReady && awakeStates.contains(state)
+  }
+
+  /// Start-up, rebuffers and switches since the last `load()`.
+  var stats: EngineStats {
+    var s = counters
+    if let since = rebufferSince { s.rebufferMs += now - since }
+    return s
+  }
+
+  // MARK: Commands
+
+  /// Pins a quality (`status.video.qualities[].id`), or `nil` for automatic.
+  func selectQuality(_ id: String?) throws {
+    try ensureAlive()
+    guard options.video != nil else { throw notVideoPlayer() }
+    if let id, !qualityList().contains(where: { $0.id == id }) {
+      throw PlayerError.code(.invalidArgument, "No quality \"\(id)\".", recoverable: false)
+    }
+    selectedQuality = id
+    log("quality selected", ["id": id ?? "auto"])
+    applyQuality("selected")
+    commit()
+  }
+
+  /// Plays the sound alone (an audio-only variant or rendition where there is one).
+  func setListenOnly(_ value: Bool) throws {
+    try ensureAlive()
+    guard options.video != nil else { throw notVideoPlayer() }
+    listenOnly = value
+    applyOutput("listen-only")
+    commit()
+  }
+
+  /// The app's new source for `loadId` (after `refreshRequested`).
+  func sourceRefreshed(loadId: Int, source next: SourceDescriptor) {
+    guard !released else { return }
+    guard loadId == self.loadId, source != nil else {
+      log("refresh ignored", ["loadId": "\(loadId)"])
+      return
+    }
+    let pending = pendingRefresh
+    pendingRefresh = nil
+    var refreshed = next
+    refreshed.refreshable = true
+    source = refreshed
+    if let nextRenditions = next.renditions, renditions != nil { renditions = nextRenditions }
+    sourceRevision += 1
+    armExpiry()
+    log("source refreshed", ["reason": pending?.reason.rawValue ?? "none"])
+    if pending?.reason == .unauthorized { useRefreshedSource() }
+    commit()
+  }
+
+  /// The app could not make a new source for `loadId`.
+  func sourceRefreshFailed(loadId: Int) {
+    guard !released, loadId == self.loadId else { return }
+    let pending = pendingRefresh
+    pendingRefresh = nil
+    log("refresh failed", ["reason": pending?.reason.rawValue ?? "none"])
+    if pending?.reason == .unauthorized, let error = pending?.error {
+      settlePendingLoad(.failed(error))
+      fail(error)
+    }
+    commit()
+  }
+
+  /// The platform read a rendition's height or bitrate from its file.
+  func renditionInfo(index: Int, height: Int?, bitrate: Int64?) {
+    guard !released, var table = renditions, table.indices.contains(index) else { return }
+    if let height { table[index].height = height }
+    if let bitrate { table[index].bitrate = bitrate }
+    renditions = table
+    commit()
+  }
+
+  // MARK: System inputs
+
+  /// The app went to the background (`whenBackgrounded`).
+  func appBackgrounded() {
+    guard !released, !backgrounded else { return }
+    backgrounded = true
+    if let v = options.video, !pictureOnAnotherScreen {
+      backgroundPolicy(v)
+      applyOutput("background")
+    }
+    commit()
+  }
+
+  /// The view showing the player changed (mounted, scrolled, resized).
+  func viewChanged(_ next: ViewState) {
+    guard !released else { return }
+    let previous = view
+    view = next
+    guard let v = options.video else { return }
+    if next.attached {
+      detachedSince = nil
+    } else if previous.attached {
+      detachedSince = now
+    } else {
+      detachedSince = detachedSince ?? now
+    }
+    if v.ambient { ambientCheck() }
+    applyOutput("view")
+    commit()
+  }
+
+  func pictureInPictureChanged(_ active: Bool) {
+    guard !released, active != pictureInPicture else { return }
+    pictureInPicture = active
+    log("picture in picture", ["active": "\(active)"])
+    if active { pipDecisionAt = nil } else { pictureInPictureClosed() }
+    applyOutput("picture in picture")
+    commit()
+  }
+
+  /// A metered network (cellular caps) and the OS's data saver.
+  func networkCostChanged(metered: Bool, saveData: Bool) {
+    guard !released else { return }
+    guard metered != self.metered || saveData != self.saveData else { return }
+    self.metered = metered
+    self.saveData = saveData
+    applyQuality("network cost")
+    commit()
+  }
+
+  // MARK: Driver observations
+
+  /// A bandwidth estimate, bits per second (for the current item or a switch's).
+  func onBandwidth(generation gen: Int, bitsPerSecond: Double) {
+    guard accepts(gen) || isSwapGeneration(gen) else { return }
+    guard bitsPerSecond.isFinite, bitsPerSecond > 0 else { return }
+    let t = now
+    bandwidth = bitsPerSecond
+    bandwidthAt = t
+    trackBandwidth(t, bitsPerSecond)
+  }
+
+  /// An adaptive source's qualities.
+  func onVariants(generation gen: Int, variants: [VideoVariant]) {
+    guard accepts(gen) else { return logStale("variants", gen) }
+    self.variants = variants
+    if let selected = selectedQuality, !variants.contains(where: { $0.id == selected }) {
+      selectedQuality = nil
+    }
+    applyQuality("variants")
+    commit()
+  }
+
+  func onVideoInfo(generation gen: Int, info: VideoInfo) {
+    guard accepts(gen) else { return logStale("video info", gen) }
+    videoInfo = info
+    if let index = currentRendition, var table = renditions, table[index].height == nil, info.height > 0 {
+      table[index].height = info.height
+      renditions = table
+    }
+    applyQuality("video info")
+    commit()
+  }
+
+  func onFirstFrame(generation gen: Int) {
+    guard accepts(gen) else { return logStale("first frame", gen) }
+    firstFrame = true
+    commit()
+  }
+
+  // MARK: Hooks in the engine's paths
+
+  fileprivate var focusExempt: Bool {
+    guard let v = options.video else { return false }
+    return v.ambient || (muted && !v.focusWhenMuted)
+  }
+
+  fileprivate func issueGeneration() -> Int {
+    issuedGeneration += 1
+    return issuedGeneration
+  }
+
+  fileprivate func videoStatus() -> VideoStatus? {
+    guard options.video != nil else { return nil }
+    return VideoStatus(
+      width: videoInfo?.width, height: videoInfo?.height, hdr: videoInfo?.hdr ?? false,
+      firstFrame: firstFrame, audioOnly: audioOnlyReason, pictureInPicture: pictureInPicture,
+      qualities: qualityList(), quality: currentQualityId(), selectedQuality: selectedQuality)
+  }
+
+  fileprivate func videoLoad() {
+    loadStartedAt = now
+    counters = EngineStats()
+    rebufferSince = nil
+    pendingRefresh = nil
+    sourceRevision = 0
+    openedRevision = 0
+    armExpiry()
+    guard let v = options.video else { return }
+    firstFrame = false
+    resetQuality()
+    if !view.attached && detachedSince == nil { detachedSince = now }
+    lastAudioOnly = audioOnlyReason
+    if v.ambient && !shown && playWhenReady {
+      // Not on screen: it starts when its view is (nothing is open to pause).
+      playWhenReady = false
+      interruption = Interruption(
+        reason: backgrounded ? .background : .offscreen, resumable: true, since: clock.wallMs)
+    }
+  }
+
+  fileprivate func videoOpened() {
+    openedRevision = sourceRevision
+    guard options.video != nil, renditions == nil else { return }
+    // A new item starts from the driver's defaults: tell it the caps again.
+    appliedQuality = nil
+    applyQuality("open")
+  }
+
+  fileprivate func isSwapGeneration(_ gen: Int) -> Bool {
+    !released && pendingSwap?.generation == gen
+  }
+
+  fileprivate func completeSwap() {
+    guard let swap = pendingSwap else { return }
+    pendingSwap = nil
+    generation = swap.generation
+    currentRendition = swap.rendition
+    readyForGeneration = true
+    connectionReleased = false
+    openedRevision = sourceRevision
+    lastSwitchAt = now
+    abrLowSince = nil
+    abrUpSince = nil
+    counters.qualitySwitches += 1
+    log("quality switched", ["to": "r\(swap.rendition)"])
+  }
+
+  fileprivate func swapFailed(_ error: PlayerError) {
+    guard let swap = pendingSwap else { return }
+    dropSwap(swap, reason: "failed: \(error.code.rawValue)")
+  }
+
+  fileprivate func swapNote(_ event: String) {
+    log("quality switch", ["event": event])
+  }
+
+  fileprivate func cancelSwap(_ reason: String) {
+    guard let swap = pendingSwap else { return }
+    pendingSwap = nil
+    driver.cancelSwap(generation: swap.generation)
+    log("quality switch cancelled", ["reason": reason])
+  }
+
+  fileprivate func refreshOnFailure(_ error: PlayerError) -> Bool {
+    guard source?.refreshable == true else { return false }
+    guard error.httpStatus == 401 || error.httpStatus == 403 else { return false }
+    if sourceRevision > openedRevision {
+      // A new source came in ahead (`expiresAt`): use it now.
+      log("refreshed source", ["note": "already here"])
+      useRefreshedSource()
+      return true
+    }
+    if pendingRefresh?.reason == .unauthorized { return true }
+    lastError = error
+    requestRefresh(.unauthorized, error: error)
+    if playWhenReady {
+      if !isLive { rememberPosition() }
+      if recoveringSince == nil { recoveringSince = now }
+      nextAttemptAt = nil
+      reconnectReason = "refresh"
+      setState(.reconnecting, cause: "waiting for a new source")
+    }
+    return true
+  }
+
+  fileprivate func videoPlaying(_ t: Int64) {
+    if counters.startupMs == nil, let started = loadStartedAt { counters.startupMs = t - started }
+    endRebuffer(t)
+  }
+
+  fileprivate func stallPublished(_ t: Int64) {
+    counters.rebufferCount += 1
+    if rebufferSince == nil { rebufferSince = t }
+    guard options.video != nil, !remote else { return }
+    if audioOnlyReason == nil {
+      stallTimes.append(t)
+      stallTimes.removeAll { t - $0 >= RecoveryPolicy.fallbackProbeMs }
+    }
+    evaluateAbr(t, stalled: true)
+    evaluateFallback(t, stalled: true)
+  }
+
+  fileprivate func stateChanged(_ next: PlaybackState) {
+    if rebufferSince != nil && !rebufferStates.contains(next) { endRebuffer(now) }
+  }
+
+  fileprivate func unmuted() {
+    guard let v = options.video, !v.ambient, !v.focusWhenMuted else { return }
+    guard !remote, playWhenReady else { return }
+    // A muted video took no focus: it asks now, and a refusal pauses it.
+    switch delegate?.engineRequestsAudioFocus() ?? .granted {
+    case .granted: break
+    case .delayed: systemPause(reason: .audioFocusDelayed, resumable: true)
+    case .denied: systemPause(reason: .audioFocusDenied, resumable: false)
+    }
+  }
+
+  fileprivate func videoWakeup(_ t: Int64) {
+    if let due = pipDecisionAt, due <= t { pipDecision() }
+    if let since = detachedSince, t - since >= RecoveryPolicy.viewDetachGraceMs { noViewDue() }
+    if let refresh = pendingRefresh, refresh.deadline <= t { refreshTimedOut(refresh) }
+    if let ask = refreshAskAt, ask <= t { expiryDue() }
+    if let swap = pendingSwap, t - swap.startedAt >= RecoveryPolicy.swapTimeoutMs {
+      dropSwap(swap, reason: "timeout")
+    }
+  }
+
+  fileprivate func videoWakeups(_ candidates: inout [Int64]) {
+    if let due = pipDecisionAt { candidates.append(due) }
+    if let since = detachedSince, pictureMayGoOff {
+      candidates.append(since + RecoveryPolicy.viewDetachGraceMs)
+    }
+    if let refresh = pendingRefresh { candidates.append(refresh.deadline) }
+    if let ask = refreshAskAt { candidates.append(ask) }
+    if let swap = pendingSwap { candidates.append(swap.startedAt + RecoveryPolicy.swapTimeoutMs) }
+  }
+
+  /// The app came back (`appForegrounded`).
+  fileprivate func videoForegrounded() {
+    guard backgrounded else { return }
+    backgrounded = false
+    pipDecisionAt = nil
+    guard let v = options.video else { return }
+    if v.ambient {
+      ambientCheck()
+    } else if pausedFor(.background) {
+      interruption = nil
+      startPlayback(cause: "foreground")
+    }
+    applyOutput("foreground")
+  }
+
+  /// The watchdog's tick, while playback is wanted.
+  fileprivate func videoHeartbeat(_ t: Int64) {
+    guard options.video != nil, !remote, state == .playing else { return }
+    // A switch a seek or a pause cancelled is tried again.
+    if renditions != nil && pendingSwap == nil { retarget("resume switch") }
+    evaluateAbr(t, stalled: false)
+    evaluateFallback(t, stalled: false)
+  }
+
+  // MARK: Surroundings
+
+  /// The picture is on another screen (Cast, AirPlay): the app's state does not matter.
+  private var pictureOnAnotherScreen: Bool { remote || route.kind == .airplay }
+
+  /// The view is attached, visible, and the app in the foreground.
+  private var shown: Bool { view.attached && view.visible && !backgrounded }
+
+  private var audioOnlyReason: AudioOnlyReason? {
+    guard options.video != nil else { return nil }
+    if listenOnly { return .listen }
+    if backgroundAudio { return .background }
+    if fallbackActive { return .fallback }
+    return nil
+  }
+
+  /// `whenBackgrounded: 'audio'` applies now.
+  private var backgroundAudio: Bool {
+    guard let v = options.video, !v.ambient, backgrounded else { return false }
+    guard !pictureInPicture, !pictureOnAnotherScreen else { return false }
+    return v.whenBackgrounded == .audio
+  }
+
+  /// Decode the picture: something shows it, or a view went away only just now.
+  private var wantsPicture: Bool {
+    if audioOnlyReason != nil { return false }
+    if pictureInPicture || view.attached || remote { return true }
+    guard let since = detachedSince else { return true }
+    return now - since < RecoveryPolicy.viewDetachGraceMs
+  }
+
+  /// The no-view grace can still turn the picture off.
+  private var pictureMayGoOff: Bool {
+    options.video != nil && source != nil && appliedVideoEnabled != false
+  }
+
+  /// The system paused it for `reason` and may resume it.
+  private func pausedFor(_ reason: InterruptionReason) -> Bool {
+    guard let i = interruption else { return false }
+    return i.resumable && i.reason == reason
+  }
+
+  private func backgroundPolicy(_ v: VideoEngineOptions) {
+    if v.ambient { return ambientCheck() }
+    if pictureInPicture { return }
+    switch v.whenBackgrounded {
+    case .pip:
+      // Picture in Picture may start a moment after the app leaves.
+      pipDecisionAt = now + RecoveryPolicy.pipGraceMs
+    case .pause:
+      if playWhenReady { systemPause(reason: .background, resumable: false) }
+    case .audio:
+      break
+    }
+  }
+
+  /// Closing Picture in Picture from the background pauses, unless the app
+  /// comes back ("back to app" brings the app forward right after).
+  private func pictureInPictureClosed() {
+    guard let v = options.video, !v.ambient, backgrounded else { return }
+    if v.whenBackgrounded != .audio { pipDecisionAt = now + RecoveryPolicy.pipGraceMs }
+  }
+
+  /// The Picture in Picture grace ran out in the background.
+  private func pipDecision() {
+    pipDecisionAt = nil
+    guard backgrounded, !pictureInPicture else { return }
+    if playWhenReady { systemPause(reason: .background, resumable: false) }
+  }
+
+  private func noViewDue() {
+    if appliedVideoEnabled != false { applyOutput("no view") }
+  }
+
+  private func expiryDue() {
+    refreshAskAt = nil
+    if pendingRefresh == nil { requestRefresh(.expiring, error: nil) }
+  }
+
+  /// An ambient player plays only when shown, and resumes when shown again.
+  private func ambientCheck() {
+    guard shown else {
+      if playWhenReady {
+        systemPause(reason: backgrounded ? .background : .offscreen, resumable: true)
+      }
+      return
+    }
+    let waiting = pausedFor(.background) || pausedFor(.offscreen)
+    if waiting && source != nil {
+      interruption = nil
+      startPlayback(cause: "on screen")
+    }
+  }
+
+  /// Sends what changed about the picture: on or off, audio only, the quality.
+  private func applyOutput(_ cause: String) {
+    guard options.video != nil, source != nil else { return }
+    let reason = audioOnlyReason
+    if reason != lastAudioOnly {
+      if lastAudioOnly == nil { counters.audioOnlySwitches += 1 }
+      log("audio only", ["reason": reason?.rawValue ?? "off", "cause": cause])
+      lastAudioOnly = reason
+    }
+    let on = wantsPicture
+    if on != (appliedVideoEnabled ?? true) {
+      appliedVideoEnabled = on
+      driver.setVideoEnabled(on)
+      log("picture", ["on": "\(on)", "cause": cause])
+    }
+    applyQuality(cause)
+  }
+
+  private func endRebuffer(_ t: Int64) {
+    guard let since = rebufferSince else { return }
+    counters.rebufferMs += t - since
+    rebufferSince = nil
+  }
+
+  // MARK: Refresh
+
+  /// A 401/403 met a source the app already replaced, or the app's answer came.
+  private func useRefreshedSource() {
+    let opening = playWhenReady || pendingLoadId != nil
+    if opening || state == .loading {
+      if !isLive && readyForGeneration { rememberPosition() }
+      reopen(reason: "refreshed source")
+    } else {
+      connectionReleased = true
+    }
+  }
+
+  private func armExpiry() {
+    guard let current = source, current.refreshable, let expires = current.expiresAt else {
+      refreshAskAt = nil
+      return
+    }
+    let left = expires - clock.wallMs - RecoveryPolicy.refreshAheadMs
+    refreshAskAt = now + max(0, left)
+  }
+
+  private func requestRefresh(_ reason: RefreshReason, error: PlayerError?) {
+    pendingRefresh = PendingRefresh(
+      reason: reason, deadline: now + RecoveryPolicy.refreshTimeoutMs, error: error)
+    log("refresh requested", ["reason": reason.rawValue])
+    delegate?.engine(refreshRequested: loadId, reason: reason)
+  }
+
+  /// The app did not answer in time (JavaScript frozen, a slow token server).
+  private func refreshTimedOut(_ refresh: PendingRefresh) {
+    pendingRefresh = nil
+    log("refresh timed out", ["reason": refresh.reason.rawValue])
+    guard refresh.reason == .unauthorized, let error = refresh.error else { return }
+    settlePendingLoad(.failed(error))
+    if playWhenReady && options.reconnect {
+      // Try the old source again in the backoff; a 401/403 asks again.
+      pendingEvents.append { [weak self] in self?.delegate?.engine(error: error, fatal: false) }
+      scheduleReconnect(reason: "refresh timed out")
+    } else {
+      fail(error)
+    }
+  }
+
+  // MARK: Quality
+
+  /// A new source: the renditions and the quality facts start over.
+  private func resetQuality() {
+    videoInfo = nil
+    variants = []
+    selectedQuality = nil
+    fallbackActive = false
+    fallbackSince = nil
+    stallTimes = []
+    failedUntil = [:]
+    bandwidthAt = nil
+    abrLowSince = nil
+    abrUpSince = nil
+    dropSince = nil
+    returnSince = nil
+    lastSwitchAt = nil
+    appliedQuality = nil
+    if let table = source?.renditions, !table.isEmpty { renditions = table } else { renditions = nil }
+    abrLevel = renditions != nil ? startLevel() : nil
+    currentRendition = targetRendition()
+  }
+
+  /// The quality the status reports as playing.
+  private func currentQualityId() -> String? {
+    guard renditions != nil else { return videoInfo?.variantId }
+    return currentRendition.map { "r\($0)" }
+  }
+
+  private func applyQuality(_ cause: String) {
+    guard options.video != nil, source != nil else { return }
+    if renditions != nil {
+      retarget(cause)
+      return
+    }
+    let c = constraints()
+    let key = "\(String(describing: c.maxHeight))|\(String(describing: c.maxBitrate))|\(c.pinned ?? "-")|\(c.audioOnly)"
+    guard key != appliedQuality else { return }
+    appliedQuality = key
+    driver.setQuality(c)
+  }
+
+  /// The caps for an adaptive source's ABR (and the allowed renditions).
+  private func constraints() -> QualityConstraints {
+    let q = options.video?.quality ?? QualityPolicy()
+    var maxHeight = q.maxHeight
+    var maxBitrate = q.maxBitrate
+    if metered {
+      maxHeight = minOf(maxHeight, q.cellularMaxHeight)
+      maxBitrate = minOf(maxBitrate, q.cellularMaxBitrate)
+    }
+    if saveData && q.followDataSaver { maxHeight = minOf(maxHeight, RecoveryPolicy.dataSaverMaxHeight) }
+    if q.capToView { maxHeight = minOf(maxHeight, viewCap()) }
+    return QualityConstraints(
+      maxHeight: maxHeight, maxBitrate: maxBitrate,
+      pinned: renditions == nil ? selectedQuality : nil, audioOnly: audioOnlyReason != nil)
+  }
+
+  /// The picture height the view can show (contain fit), rounded up; `nil`: no cap.
+  private func viewCap() -> Int? {
+    guard view.attached, view.height > 0, !pictureInPicture else { return nil }
+    let shownHeight = self.shownHeight(view)
+    guard let table = renditions else { return standardHeights.first { Double($0) >= shownHeight } }
+    // The smallest rendition that fills it.
+    return table.filter { !$0.audioOnly }.compactMap(\.height).filter { Double($0) >= shownHeight }.min()
+  }
+
+  /// How many rows of the picture the view shows.
+  private func shownHeight(_ view: ViewState) -> Double {
+    guard let info = videoInfo, info.width > 0, info.height > 0, view.width > 0 else {
+      return Double(view.height)
+    }
+    let scale = min(Double(view.width) / Double(info.width), Double(view.height) / Double(info.height))
+    return Double(info.height) * scale
+  }
+
+  private func qualityList() -> [VideoVariant] {
+    guard let table = renditions else { return variants }
+    return table.enumerated().map { i, r in
+      VideoVariant(id: "r\(i)", height: r.height, bitrate: r.bitrate, audioOnly: r.audioOnly, label: r.label)
+    }
+  }
+
+  private func renditionSource(_ index: Int) -> SourceDescriptor {
+    let r = renditions![index]
+    return SourceDescriptor(
+      uri: r.uri, headers: r.headers ?? source?.headers ?? [:], liveHint: source?.liveHint)
+  }
+
+  /// A rendition's bitrate, or an estimate from its height and a known one.
+  private func bitrateOf(_ index: Int) -> Int64? {
+    let table = renditions!
+    let r = table[index]
+    if let bitrate = r.bitrate { return bitrate }
+    guard let height = r.height else { return nil }
+    guard
+      let known = table.first(where: { !$0.audioOnly && $0.bitrate != nil && $0.height != nil }),
+      let knownBitrate = known.bitrate, let knownHeight = known.height
+    else { return nil }
+    let ratio = Double(height) / Double(knownHeight)
+    return Int64((Double(knownBitrate) * ratio * ratio).rounded())
+  }
+
+  /// The video renditions, lowest first.
+  private func videoOrder() -> [Int] {
+    guard let table = renditions else { return [] }
+    return table.indices.filter { !table[$0].audioOnly }.sorted { compareRenditions($0, $1) < 0 }
+  }
+
+  private func compareRenditions(_ a: Int, _ b: Int) -> Int {
+    if let ba = bitrateOf(a), let bb = bitrateOf(b), ba != bb { return ba < bb ? -1 : 1 }
+    if let ha = renditions![a].height, let hb = renditions![b].height, ha != hb {
+      return ha < hb ? -1 : 1
+    }
+    return a < b ? -1 : (a > b ? 1 : 0)
+  }
+
+  /// The video renditions the caps allow and none failed of, lowest first.
+  private func allowedOrder() -> [Int] {
+    let order = videoOrder()
+    guard !order.isEmpty else { return order }
+    let t = now
+    let usable = order.filter { (failedUntil[$0] ?? 0) <= t }
+    let pool = usable.isEmpty ? order : usable
+    let c = constraints()
+    let allowed = pool.filter { withinCaps($0, c) }
+    return allowed.isEmpty ? [pool[0]] : allowed
+  }
+
+  private func withinCaps(_ index: Int, _ c: QualityConstraints) -> Bool {
+    let height = renditions![index].height
+    let bitrate = bitrateOf(index)
+    if let maxHeight = c.maxHeight, let height, height > maxHeight { return false }
+    guard let maxBitrate = c.maxBitrate, let bitrate else { return true }
+    return bitrate <= maxBitrate
+  }
+
+  private func audioRendition() -> Int? {
+    renditions?.firstIndex(where: \.audioOnly)
+  }
+
+  /// The highest rendition that fits a bandwidth, among `order` (lowest first).
+  private func fitting(_ order: [Int], _ bandwidth: Double) -> Int? {
+    order.last { i in
+      guard let bitrate = bitrateOf(i) else { return false }
+      return Double(bitrate) <= RecoveryPolicy.abrFitRatio * bandwidth
+    }
+  }
+
+  private func startLevel() -> Int? {
+    let order = allowedOrder()
+    guard let first = order.first, let last = order.last else { return nil }
+    switch options.video?.quality.startQuality ?? .auto {
+    case .lowest: return first
+    case .highest: return last
+    case .height(let value): return tallestUpTo(order, value)
+    case .auto:
+      if let bandwidth { return fitting(order, bandwidth) ?? first }
+      return automaticStart(order)
+    }
+  }
+
+  /// The tallest rendition no taller than `height`, or the lowest.
+  private func tallestUpTo(_ order: [Int], _ height: Int) -> Int {
+    order.last { i in renditions![i].height.map { $0 <= height } ?? false } ?? order[0]
+  }
+
+  /// No bandwidth reading yet: the lowest at least 480p (or the tallest under it).
+  private func automaticStart(_ order: [Int]) -> Int {
+    let table = renditions!
+    if let tall = order.first(where: { i in
+      table[i].height.map { $0 >= RecoveryPolicy.startMinHeight } ?? false
+    }) {
+      return tall
+    }
+    let allKnown = order.allSatisfy { table[$0].height != nil }
+    return allKnown ? order[order.count - 1] : order[0]
+  }
+
+  /// Which rendition should play now.
+  private func targetRendition() -> Int? {
+    guard renditions != nil else { return nil }
+    if audioOnlyReason != nil, let audio = audioRendition() { return audio }
+    if let selected = selectedQuality, let index = Int(selected.dropFirst()) {
+      let failed = (failedUntil[index] ?? 0) > now
+      return failed ? currentRendition : index
+    }
+    let order = allowedOrder()
+    guard let first = order.first else { return currentRendition }
+    guard let level = abrLevel else { return first }
+    if order.contains(level) { return level }
+    // Not allowed any more (caps, a failure): the highest allowed below it.
+    let all = videoOrder()
+    let position = all.firstIndex(of: level) ?? -1
+    return order.last { (all.firstIndex(of: $0) ?? -1) < position } ?? first
+  }
+
+  /// Moves to the target rendition if it changed.
+  private func retarget(_ cause: String) {
+    guard let target = targetRendition() else { return }
+    if pendingSwap?.rendition == target { return }
+    if pendingSwap != nil { cancelSwap("retarget") }
+    if target != currentRendition { moveTo(target, cause: cause) }
+  }
+
+  private func moveTo(_ target: Int, cause: String) {
+    let open = readyForGeneration && !connectionReleased
+    let flowing = state == .playing || state == .buffering
+    // A Cast receiver plays one item: it re-opens in place.
+    if flowing && open && playWhenReady && !remote { return startSwap(target, cause: cause) }
+    currentRendition = target
+    // Stopped, ended, failed or reconnecting: the next open uses it.
+    let reopens = state == .loading || (open && (flowing || state == .paused))
+    guard reopens else { return }
+    // A load still opening keeps its start position.
+    if open && !isLive { rememberPosition() }
+    reopen(reason: "quality: \(cause)")
+  }
+
+  private func startSwap(_ target: Int, cause: String) {
+    let position = isLive ? nil : driver.sample().position
+    let gen = issueGeneration()
+    pendingSwap = PendingSwap(generation: gen, rendition: target, startedAt: now)
+    log("quality switch", ["to": "r\(target)", "cause": cause])
+    driver.open(
+      OpenRequest(
+        generation: gen, source: renditionSource(target), startPosition: position,
+        playWhenReady: true, allowReconnect: options.reconnect, swap: true, rendition: target))
+  }
+
+  /// A switch that failed or timed out: its file sits out a while.
+  private func dropSwap(_ swap: PendingSwap, reason: String) {
+    failedUntil[swap.rendition] = now + RecoveryPolicy.failedRenditionMs
+    if abrLevel == swap.rendition { abrLevel = currentRendition }
+    cancelSwap(reason)
+  }
+
+  private func trackBandwidth(_ t: Int64, _ bps: Double) {
+    trackFallbackBandwidth(t, bps)
+    guard options.video != nil, renditions != nil else { return }
+    let level = abrLevel ?? currentRendition
+    if let level, let bitrate = videoBitrateOf(level), bps < Double(bitrate) {
+      if abrLowSince == nil { abrLowSince = t }
+    } else {
+      abrLowSince = nil
+    }
+    if let level, let next = nextAllowed(level), let nextBitrate = bitrateOf(next),
+      bps > RecoveryPolicy.abrUpRatio * Double(nextBitrate)
+    {
+      if abrUpSince == nil { abrUpSince = t }
+    } else {
+      abrUpSince = nil
+    }
+  }
+
+  /// A video rendition's bitrate (`nil` for the audio-only one).
+  private func videoBitrateOf(_ index: Int) -> Int64? {
+    renditions![index].audioOnly ? nil : bitrateOf(index)
+  }
+
+  /// The allowed rendition above `index`, if any.
+  private func nextAllowed(_ index: Int) -> Int? {
+    let order = allowedOrder()
+    guard let position = order.firstIndex(of: index), position + 1 < order.count else { return nil }
+    return order[position + 1]
+  }
+
+  private func trackFallbackBandwidth(_ t: Int64, _ bps: Double) {
+    guard let f = options.video?.fallback, let lowest = lowestVideoBitrate() else { return }
+    if bps < f.dropBelowRatio * Double(lowest) {
+      if dropSince == nil { dropSince = t }
+    } else {
+      dropSince = nil
+    }
+    if bps > f.returnAboveRatio * Double(lowest) {
+      if returnSince == nil { returnSince = t }
+    } else {
+      returnSince = nil
+    }
+  }
+
+  private func lowestVideoBitrate() -> Int64? {
+    if renditions != nil { return videoOrder().first.flatMap { bitrateOf($0) } }
+    return variants.filter { !$0.audioOnly }.compactMap(\.bitrate).min()
+  }
+
+  private func hasAudioOption() -> Bool {
+    if renditions != nil { return audioRendition() != nil }
+    return variants.contains(where: \.audioOnly)
+  }
+
+  private func stallsWithin(_ t: Int64, _ windowMs: Int64) -> Int {
+    stallTimes.filter { t - $0 < windowMs }.count
+  }
+
+  /// The bandwidth reading of this load, if it had one.
+  private var currentBandwidth: Double? { bandwidthAt != nil ? bandwidth : nil }
+
+  /// The engine picks among the renditions itself (none pinned, the picture on).
+  private var automaticRenditions: Bool {
+    renditions != nil && selectedQuality == nil && audioOnlyReason == nil
+  }
+
+  /// The engine's own ABR over the renditions (automatic quality only).
+  private func evaluateAbr(_ t: Int64, stalled: Bool) {
+    guard automaticRenditions else { return }
+    let order = allowedOrder()
+    // The engine's pick, whether or not its switch has landed yet.
+    guard !order.isEmpty, let level = abrLevel ?? currentRendition else { return }
+    let position = order.firstIndex(of: level) ?? 0
+    let next =
+      stalled ? stallStep(order, position, t) : bandwidthStep(order, position, t)
+    if next == position && order[position] == abrLevel { return }
+    abrLevel = order[next]
+    abrLowSince = nil
+    abrUpSince = nil
+    retarget(stalled ? "stall" : "bandwidth")
+  }
+
+  /// A stall steps down: to what the bandwidth fits, or one step without a reading.
+  private func stallStep(_ order: [Int], _ position: Int, _ t: Int64) -> Int {
+    guard position > 0 else { return 0 }
+    let bw = currentBandwidth
+    let repeated = stallsWithin(t, RecoveryPolicy.abrStallWindowMs) >= 2
+    var slow = false
+    if let bw, let bitrate = bitrateOf(order[position]) {
+      slow = bw < RecoveryPolicy.abrStallRatio * Double(bitrate)
+    }
+    guard repeated || slow else { return position }
+    guard let bw else { return position - 1 }
+    guard let fit = fitting(Array(order[0..<position]), bw) else { return 0 }
+    return order.firstIndex(of: fit) ?? 0
+  }
+
+  /// Sustained low bandwidth steps down; sustained headroom steps up.
+  private func bandwidthStep(_ order: [Int], _ position: Int, _ t: Int64) -> Int {
+    if position > 0, let low = abrLowSince, t - low >= RecoveryPolicy.abrLowMs { return position - 1 }
+    if position < order.count - 1 && canStepUp(t) { return position + 1 }
+    return position
+  }
+
+  private func canStepUp(_ t: Int64) -> Bool {
+    guard let up = abrUpSince, t - up >= RecoveryPolicy.abrUpMs else { return false }
+    if let last = lastSwitchAt, t - last < RecoveryPolicy.abrUpMs { return false }
+    return stallsWithin(t, RecoveryPolicy.abrUpMs) == 0
+  }
+
+  /// The audio-only fallback (`fallbackToAudio`).
+  private func evaluateFallback(_ t: Int64, stalled: Bool) {
+    guard let f = options.video?.fallback, !listenOnly else { return }
+    guard hasAudioOption() else {
+      if fallbackActive { endFallback("no audio-only option") }
+      return
+    }
+    if fallbackActive {
+      checkFallbackReturn(t, f)
+      return
+    }
+    if let cause = fallbackCause(t, stalled: stalled, f) { startFallback(t, cause) }
+  }
+
+  /// Why the picture should go now, or `nil`.
+  private func fallbackCause(_ t: Int64, stalled: Bool, _ f: FallbackPolicy) -> String? {
+    // The renditions step down first; audio is the step below the lowest.
+    guard atLowestRendition else { return nil }
+    if let drop = dropSince, t - drop >= f.dropAfterMs { return "slow network" }
+    if stalled && stallsWithin(t, f.stallWindowMs) >= f.dropAfterStalls { return "stalls" }
+    return nil
+  }
+
+  private var atLowestRendition: Bool {
+    guard renditions != nil, selectedQuality == nil else { return true }
+    let order = allowedOrder()
+    return order.isEmpty || currentRendition == order[0]
+  }
+
+  private func startFallback(_ t: Int64, _ cause: String) {
+    fallbackActive = true
+    fallbackSince = t
+    stallTimes = []
+    dropSince = nil
+    returnSince = nil
+    applyOutput(cause)
+  }
+
+  private func checkFallbackReturn(_ t: Int64, _ f: FallbackPolicy) {
+    let since = fallbackSince ?? t
+    if let back = returnSince, t - back >= f.returnAfterMs {
+      endFallback("network recovered")
+      return
+    }
+    // No reading since the drop: try the picture again after a quiet minute.
+    let measured = bandwidthAt.map { $0 >= since } ?? false
+    if measured || t - since < RecoveryPolicy.fallbackProbeMs { return }
+    if stallsWithin(t, RecoveryPolicy.fallbackProbeMs) == 0 { endFallback("probe") }
+  }
+
+  private func endFallback(_ cause: String) {
+    fallbackActive = false
+    fallbackSince = nil
+    dropSince = nil
+    returnSince = nil
+    stallTimes = []
+    applyOutput(cause)
   }
 }

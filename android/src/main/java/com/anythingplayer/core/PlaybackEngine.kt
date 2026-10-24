@@ -2391,7 +2391,8 @@ class PlaybackEngine(
   private fun moveTo(target: Int, cause: String) {
     val open = readyForGeneration && !connectionReleased
     val flowing = state == PlaybackState.PLAYING || state == PlaybackState.BUFFERING
-    if (flowing && open && playWhenReady) return startSwap(target, cause)
+    // A Cast receiver plays one item: it re-opens in place.
+    if (flowing && open && playWhenReady && !remote) return startSwap(target, cause)
     currentRendition = target
     // Stopped, ended, failed or reconnecting: the next open uses it.
     val reopens = state == PlaybackState.LOADING || (open && (flowing || state == PlaybackState.PAUSED))
