@@ -14,12 +14,19 @@ import { EngineCore, type FadeOutEnd } from './EngineCore';
 import { RecoveryPolicy } from './RecoveryPolicy';
 import { engineError, rampValue, type Ramp } from './types';
 
+/** The longest sleep timer or fade: 24 h (larger values overflow native timers). */
+export const MAX_TIMER_MS = 86_400_000;
+
 function invalidDuration(what: string): PlayerError {
   return engineError(
     'INVALID_ARGUMENT',
-    `${what} must be a finite number ≥ 0.`,
+    `${what} must be a finite number from 0 to 24 h.`,
     false
   );
+}
+
+function validDuration(ms: number): boolean {
+  return Number.isFinite(ms) && ms >= 0 && ms <= MAX_TIMER_MS;
 }
 
 export abstract class EngineFades extends EngineCore {
@@ -58,8 +65,7 @@ export abstract class EngineFades extends EngineCore {
         false
       );
     }
-    if (!Number.isFinite(durationMs) || durationMs < 0)
-      throw invalidDuration('A fade duration');
+    if (!validDuration(durationMs)) throw invalidDuration('A fade duration');
     const t = this.now;
     const from = this.levelAt(t);
     this.cancelFadeTo();
@@ -84,9 +90,8 @@ export abstract class EngineFades extends EngineCore {
   sleep(afterMs: number | null, fadeOutMs: number | null): void {
     this.ensureAlive();
     if (afterMs != null) {
-      if (!Number.isFinite(afterMs) || afterMs < 0)
-        throw invalidDuration('The sleep delay');
-      if (fadeOutMs != null && (!Number.isFinite(fadeOutMs) || fadeOutMs < 0))
+      if (!validDuration(afterMs)) throw invalidDuration('The sleep delay');
+      if (fadeOutMs != null && !validDuration(fadeOutMs))
         throw invalidDuration('The sleep fade-out');
     }
     this.endSleep();
@@ -114,9 +119,8 @@ export abstract class EngineFades extends EngineCore {
    */
   setFades(inMs: number, outMs: number): void {
     this.ensureAlive();
-    if (!Number.isFinite(inMs) || inMs < 0) throw invalidDuration('A fade-in');
-    if (!Number.isFinite(outMs) || outMs < 0)
-      throw invalidDuration('A fade-out');
+    if (!validDuration(inMs)) throw invalidDuration('A fade-in');
+    if (!validDuration(outMs)) throw invalidDuration('A fade-out');
     this.options = {
       ...this.options,
       fadeInMs: Math.round(inMs),
@@ -249,7 +253,7 @@ export abstract class EngineFades extends EngineCore {
   }
 
   /** Starts the fade-out of a pause or a stop; `false` when there is nothing to fade. */
-  protected beginFadeOut(then: FadeOutEnd): boolean {
+  protected beginFadeOut(end: FadeOutEnd): boolean {
     const ms = this.remote ? 0 : this.options.fadeOutMs;
     if (ms <= 0 || this._state !== 'playing' || this.stallPublishAt != null)
       return false;
@@ -257,20 +261,20 @@ export abstract class EngineFades extends EngineCore {
     this.rampGain(0, ms);
     const ramp = this.gainRamp;
     if (ramp == null) return false;
-    this.fadeOutThen = then;
+    this.fadeOutThen = end;
     this.resetRecovery();
     this.playingSince = null;
-    this.log('fade-out', { then, ms: `${ramp.endAt - ramp.startAt}` });
+    this.log('fade-out', { end, ms: `${ramp.endAt - ramp.startAt}` });
     return true;
   }
 
   /** Lands a fade-out now: silence, then the pause or the stop. */
   protected completeFadeOut(override?: FadeOutEnd): void {
     if (this.fadeOutThen == null) return;
-    const then = override ?? this.fadeOutThen;
+    const end = override ?? this.fadeOutThen;
     this.fadeOutThen = null;
     this.setGain(0);
-    if (then === 'stop') this.stopNow();
+    if (end === 'stop') this.stopNow();
     else this.pauseIntent('pause: faded out');
   }
 

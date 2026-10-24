@@ -109,6 +109,8 @@ data class OpenRequest(
   /** Seconds to start at; `null` = default (live edge / beginning). */
   val startPosition: Double?,
   val playWhenReady: Boolean,
+  /** The engine re-opens on its own (`reconnect`): a driver may then continue a dropped live connection itself. */
+  val allowReconnect: Boolean = true,
 )
 
 /** A point-in-time reading of the native player, taken on demand. */

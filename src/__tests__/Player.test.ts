@@ -502,6 +502,13 @@ describe('sleep timer and fades', () => {
     await expect(p.fadeTo(0.5, -1)).rejects.toMatchObject(invalid);
     await expect(p.fadeTo(Number.NaN, 1)).rejects.toMatchObject(invalid);
     await expect(p.setFade({ in: -2 })).rejects.toMatchObject(invalid);
+    // Above 24 h: native timers would overflow (Swift traps on the conversion).
+    await expect(p.sleep({ after: 1e20 })).rejects.toMatchObject(invalid);
+    await expect(p.sleep({ after: 60, fadeOut: 86_401 })).rejects.toMatchObject(
+      invalid
+    );
+    await expect(p.fadeTo(0.5, 86_401)).rejects.toMatchObject(invalid);
+    await expect(p.setFade({ out: 1e12 })).rejects.toMatchObject(invalid);
     expect(fake.calls).toEqual([]);
     expect(() => new Player({ fade: { out: Infinity } })).toThrow(PlayerError);
     await p.release();

@@ -30,7 +30,10 @@ export class AudioSampler {
   onWindow: ((window: AudioWindow) => void) | null = null;
   private context: AudioContextLike | null = null;
   /** One tap per element ever routed (routing cannot be undone). */
-  private readonly taps = new Map<AudioElementLike, AnalyserLike>();
+  private readonly taps = new Map<
+    AudioElementLike,
+    { node: { disconnect(): void }; analyser: AnalyserLike }
+  >();
   private current: AudioElementLike | null = null;
   private resuming = false;
   private timer: number | null = null;
@@ -58,6 +61,11 @@ export class AudioSampler {
       return this.isAttached(element);
     }
     const context = this.ensureContext();
+    // The browser refused another context (they are limited): no sampling.
+    if (!context) {
+      this.stopTimer();
+      return this.isAttached(element);
+    }
     if (context.state !== 'running') {
       if (!this.resuming) {
         this.resuming = true;
@@ -77,7 +85,7 @@ export class AudioSampler {
       analyser.fftSize = FFT_SIZE;
       node.connect(analyser);
       analyser.connect(context.destination);
-      this.taps.set(element, analyser);
+      this.taps.set(element, { node, analyser });
     }
     this.current = element;
     this.startTimer();
@@ -88,11 +96,36 @@ export class AudioSampler {
     this.stopTimer();
   }
 
-  private ensureContext(): AudioContextLike {
+  /** Frees the audio context (the browser limits them) once the player is gone. */
+  destroy(): void {
+    this.enabled = false;
+    this.stopTimer();
+    const context = this.context;
+    for (const { node, analyser } of this.taps.values()) {
+      try {
+        node.disconnect();
+        analyser.disconnect();
+      } catch {
+        // Already disconnected.
+      }
+    }
+    this.taps.clear();
+    this.current = null;
+    this.context = null;
+    this.onWindow = null;
+    // A rejection (closed already) leaves nothing to free.
+    context?.close().catch(() => undefined);
+  }
+
+  private ensureContext(): AudioContextLike | null {
     if (!this.context) {
       const g = browser();
       const Context = (g.AudioContext ?? g.webkitAudioContext)!;
-      this.context = new Context();
+      try {
+        this.context = new Context();
+      } catch {
+        return null;
+      }
     }
     return this.context;
   }
@@ -103,7 +136,7 @@ export class AudioSampler {
     const buffer = new Float32Array(FFT_SIZE);
     this.timer = browser().setInterval(() => {
       const element = this.current;
-      const analyser = element ? this.taps.get(element) : undefined;
+      const analyser = element ? this.taps.get(element)?.analyser : undefined;
       const context = this.context;
       if (!element || !analyser || !context) return;
       if (!this.onWindow || element.paused) return;
@@ -119,7 +152,7 @@ export class AudioSampler {
 }
 
 /** Resamples one analyser frame to `points` values and measures its loudness. */
-export function toWindow(
+function toWindow(
   samples: Float32Array,
   points: number,
   context: Pick<

@@ -17,13 +17,20 @@ import {
 
 const LOCAL: AudioRoute = { kind: 'unknown', name: null };
 
+function causeText(cause: unknown): string | undefined {
+  if (typeof cause === 'string') return cause;
+  if (cause instanceof Error) return String(cause);
+  if (cause != null) return JSON.stringify(cause);
+  return undefined;
+}
+
 function pickerUnavailable(message: string, cause?: unknown): PlayerError {
   return new PlayerError({
     code: 'ROUTE_PICKER_UNAVAILABLE',
     message,
     recoverable: false,
     platform: 'web',
-    cause: cause == null ? undefined : String(cause),
+    cause: causeText(cause),
   });
 }
 

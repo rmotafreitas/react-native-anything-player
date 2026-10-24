@@ -89,11 +89,11 @@ export class WebModule implements PlayerModule {
     // A picked file: the item plays from an object URL the controller owns.
     const blob = (source as { blob?: unknown }).blob;
     const objectUrl = blob == null ? null : browser().URL.createObjectURL(blob);
-    const [descriptor, fields] = parseSource(
-      objectUrl == null ? source : { ...source, uri: objectUrl }
-    );
-    const o = options as { autoplay?: unknown; startPosition?: unknown };
     try {
+      const [descriptor, fields] = parseSource(
+        objectUrl == null ? source : { ...source, uri: objectUrl }
+      );
+      const o = options as { autoplay?: unknown; startPosition?: unknown };
       controller.userGesture();
       const loaded = controller.load(
         descriptor,
@@ -273,9 +273,13 @@ export class WebModule implements PlayerModule {
     request: object,
     playerId: string | null
   ): Promise<object> {
+    const spoken = (request as { query?: unknown }).query;
+    let query = '';
+    if (spoken != null)
+      query = typeof spoken === 'string' ? spoken : JSON.stringify(spoken);
     const asked = {
       ...(request as Record<string, unknown>),
-      query: String((request as { query?: unknown }).query ?? ''),
+      query,
       origin: 'app',
     };
     let item = this.catalog.resolve(asked);
@@ -342,6 +346,8 @@ export class WebModule implements PlayerModule {
   ): Promise<object> {
     const controller = this.runtime.players.get(playerId);
     if (!controller) throw released();
+    // A play() started outside a command (media keys, system resume) is nobody's to report.
+    controller.takePlayAttempt();
     try {
       block(controller);
     } catch (error) {

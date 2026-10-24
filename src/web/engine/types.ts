@@ -68,6 +68,11 @@ export interface OpenRequest {
   /** Seconds to start at; `null` = default (live edge / beginning). */
   startPosition: number | null;
   playWhenReady: boolean;
+  /**
+   * The engine re-opens on its own (`recovery.reconnect`): a driver may then
+   * continue a dropped live connection itself. `false`: it never reconnects.
+   */
+  allowReconnect: boolean;
 }
 
 /** A point-in-time reading of the media element, taken on demand. */

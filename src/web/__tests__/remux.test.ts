@@ -123,7 +123,7 @@ describe('choosing the type', () => {
     });
     expect(first!.length).toBeGreaterThan(initLength(first!));
     expect(buffer().mp4Errors).toEqual([]);
-    expect(buffer().buffered.length).toBe(1);
+    expect(buffer().buffered).toHaveLength(1);
   });
 
   it('takes the MP4 form for AAC', async () => {

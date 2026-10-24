@@ -240,8 +240,7 @@ export class WebPlayerController implements EngineDelegate, DriverObserver {
   release(): void {
     if (this.released) return;
     this.released = true;
-    this.sampler.enabled = false;
-    this.sampler.stop();
+    this.sampler.destroy();
     this.clearTimers();
     this.engine.release();
     this.elementRoute.detach();

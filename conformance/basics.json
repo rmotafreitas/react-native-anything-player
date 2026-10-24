@@ -110,7 +110,7 @@
       { "call": "stop" },
       { "expect": { "state": "stopped", "playWhenReady": false, "commands": ["release"] } },
       { "call": "play" },
-      { "expect": { "state": "loading", "playWhenReady": true, "commands": ["open(gen=2,start=-,play=true)"] } }
+      { "expect": { "state": "loading", "playWhenReady": true, "commands": ["open(gen=3,start=-,play=true)"] } }
     ]
   },
   {
@@ -122,7 +122,7 @@
       { "advance": 5000 },
       { "call": "stop" },
       { "call": "play" },
-      { "expect": { "commands": ["open(gen=1,start=-,play=true)", "release", "open(gen=2,start=0.0,play=true)"] } }
+      { "expect": { "commands": ["open(gen=1,start=-,play=true)", "release", "open(gen=3,start=0.0,play=true)"] } }
     ]
   },
   {
@@ -219,7 +219,7 @@
       { "native": "failed", "code": "UNSUPPORTED_FORMAT", "recoverable": false },
       { "expect": { "state": "error", "error": "UNSUPPORTED_FORMAT", "playWhenReady": false, "errors": ["UNSUPPORTED_FORMAT:fatal"], "loads": ["1:failed:UNSUPPORTED_FORMAT"], "commands": ["open(gen=1,start=-,play=true)", "release"] } },
       { "call": "load", "uri": "https://radio.example/b" },
-      { "expect": { "state": "loading", "error": null, "commands": ["open(gen=2,start=-,play=false)"] } }
+      { "expect": { "state": "loading", "error": null, "commands": ["open(gen=3,start=-,play=false)"] } }
     ]
   },
   {
@@ -248,6 +248,101 @@
       { "expect": { "state": "playing", "commands": ["play"] } },
       { "advance": 6000 },
       { "expect": { "state": "playing", "commands": [] } }
+    ]
+  },
+  {
+    "name": "a late end from the stopped item is dropped",
+    "steps": [
+      { "call": "load", "uri": "file:///music/a.mp3", "autoplay": true },
+      { "native": "ready", "duration": 120, "seekable": true },
+      { "native": "playing" },
+      { "call": "stop" },
+      { "expect": { "state": "stopped", "commands": ["open(gen=1,start=-,play=true)", "release"] } },
+      { "native": "ended", "gen": 1 },
+      { "expect": { "state": "stopped", "playWhenReady": false, "ended": 0, "errors": [], "commands": [] } },
+      { "call": "play" },
+      { "expect": { "state": "loading", "commands": ["open(gen=3,start=0.0,play=true)"] } }
+    ]
+  },
+  {
+    "name": "a late failure from the stopped item is dropped",
+    "steps": [
+      { "call": "load", "uri": "https://cdn.example/song.mp3", "autoplay": true },
+      { "native": "ready", "duration": 120, "seekable": true },
+      { "native": "playing" },
+      { "call": "stop" },
+      { "native": "failed", "gen": 1, "code": "DECODER_ERROR", "recoverable": false },
+      { "expect": { "state": "stopped", "error": null, "errors": [], "commands": ["open(gen=1,start=-,play=true)", "release"] } }
+    ]
+  },
+  {
+    "name": "a repeated end is reported once",
+    "steps": [
+      { "call": "load", "uri": "file:///music/a.mp3", "autoplay": true },
+      { "native": "ready", "duration": 120, "seekable": true },
+      { "native": "playing" },
+      { "native": "ended" },
+      { "expect": { "state": "ended", "ended": 1 } },
+      { "native": "ended" },
+      { "expect": { "state": "ended", "ended": 0, "errors": [], "commands": [] } }
+    ]
+  },
+  {
+    "name": "an on-demand source (live: false) of unknown duration ends at its end",
+    "steps": [
+      { "call": "load", "uri": "https://cdn.example/podcast", "live": false, "autoplay": true },
+      { "native": "ready" },
+      { "native": "playing" },
+      { "expect": { "state": "playing", "isLive": false, "duration": null } },
+      { "native": "ended" },
+      { "expect": { "state": "ended", "isLive": false, "ended": 1, "errors": [], "commands": [] } }
+    ]
+  },
+  {
+    "name": "a late failure after a paused stream released its connection is dropped",
+    "steps": [
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "call": "pause" },
+      { "advance": 30000 },
+      { "expect": { "state": "paused", "commands": ["open(gen=1,start=-,play=true)", "pause", "release"] } },
+      { "native": "failed", "gen": 1, "code": "DECODER_ERROR", "recoverable": false },
+      { "expect": { "state": "paused", "error": null, "errors": [], "commands": [] } }
+    ]
+  },
+  {
+    "name": "a late end after an open timed out is dropped",
+    "steps": [
+      { "call": "load", "uri": "file:///music/a.mp3", "autoplay": false },
+      { "advance": 12000 },
+      { "expect": { "state": "error", "error": "TIMEOUT" } },
+      { "native": "ended", "gen": 1 },
+      { "expect": { "state": "error", "error": "TIMEOUT", "ended": 0, "errors": [], "commands": [] } }
+    ]
+  },
+  {
+    "name": "a media services reset leaves a released paused stream released",
+    "steps": [
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "call": "pause" },
+      { "advance": 30000 },
+      { "expect": { "state": "paused", "commands": ["open(gen=1,start=-,play=true)", "pause", "release"] } },
+      { "platformReset": true },
+      { "expect": { "state": "paused", "playWhenReady": false, "commands": [] } }
+    ]
+  },
+  {
+    "name": "with reconnect off, a media services reset fails instead of re-opening",
+    "options": { "reconnect": false },
+    "steps": [
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "platformReset": true },
+      { "expect": { "state": "error", "error": "NETWORK_ERROR", "playWhenReady": false, "errors": ["NETWORK_ERROR:fatal"], "commands": ["open(gen=1,start=-,play=true)", "release"] } }
     ]
   }
 ]

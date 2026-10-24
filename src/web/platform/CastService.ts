@@ -146,7 +146,12 @@ export class CastService {
       .then((parts) => {
         this.parts = parts;
         if (parts) this.initialize();
-        else this.setState('unavailable', null);
+        else {
+          // Settled as unavailable, but the next configure tries again
+          // (a flaky network must not leave Cast dead until a reload).
+          this.starting = null;
+          this.setState('unavailable', null);
+        }
       });
     return this.starting;
   }

@@ -92,12 +92,18 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
   private var rate: Float = 1
   private var volume: Float = 1
   private var liveHint = false
+  /// The app said `live: false`: a file even without a content length or with
+  /// an indefinite duration (never spliced, never reported live).
+  private var finiteHint = false
   private var lastMetadata: StreamMetadata?
   private var pendingSeek: Double?
   /// The proxied URL of the current item (see StreamProxy), retired on teardown.
   private var proxied: URL?
   /// The upstream response had no length (or ICY): a live stream.
   private var unbounded = false
+  /// The proxy found an HLS playlist and redirected AVPlayer to it: the
+  /// proxy relays no audio for this item (no stream visualizer).
+  private var redirected = false
   private var station: (name: String?, genre: String?) = (nil, nil)
   /// The real network error behind an item failure (offline vs DNS vs refused).
   private var upstreamError: Error?
@@ -142,6 +148,7 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
     lastHTTPStatus = nil
     lastMetadata = nil
     liveHint = request.source.liveHint ?? false
+    finiteHint = request.source.liveHint == false
     playWanted = request.playWhenReady
     pendingStart = request.startPosition.flatMap { $0 > 0 ? $0 : nil }
 
@@ -157,6 +164,7 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
       return
     }
     unbounded = false
+    redirected = false
     station = (nil, nil)
     upstreamError = nil
     let asset: AVURLAsset
@@ -185,8 +193,10 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
           },
           onAudio: { [weak self] data, contentType in
             guard let self else { return }
-            let feeding = self.feedLock.sync { () -> Bool in
-              guard self.generation == gen else { return false }
+            // Enqueued under the lock: a teardown (which stops the visualizer
+            // under it too) can then never run before a feed it should drop.
+            self.feedLock.sync {
+              guard self.generation == gen else { return }
               if self.packetClock == nil {
                 let clock = StreamDecoder(contentType: contentType)
                 clock.countOnly = true
@@ -201,9 +211,13 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
                 self.recentBytes -= self.recentAudio.removeFirst().data.count
               }
               self.recentContentType = contentType
-              return self.feedGeneration == gen
+              if self.feedGeneration == gen { self.streamVisualizer.feed(data, contentType: contentType) }
             }
-            if feeding { self.streamVisualizer.feed(data, contentType: contentType) }
+          },
+          live: request.source.liveHint,
+          reconnect: request.allowReconnect,
+          onRedirect: { [weak self] _ in
+            DispatchQueue.main.async { self?.upstreamRedirected(gen) }
           }))
     }
     itemIsLive = false
@@ -214,13 +228,11 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
       packetClock = nil
     }
     if samplingEnabled { startStreamFeed() }
-    if let proxied {
-      asset = AVURLAsset(url: proxied)
-    } else {
-      var options: [String: Any] = [:]
-      if !request.source.headers.isEmpty { options["AVURLAssetHTTPHeaderFieldsKey"] = request.source.headers }
-      asset = AVURLAsset(url: url, options: options)
-    }
+    // The headers go to AVFoundation even when proxied: it sends them itself
+    // if the proxy redirects it to an HLS playlist (the proxy also sets them).
+    var options: [String: Any] = [:]
+    if !request.source.headers.isEmpty { options["AVURLAssetHTTPHeaderFieldsKey"] = request.source.headers }
+    asset = AVURLAsset(url: proxied ?? url, options: options)
     let newItem = AVPlayerItem(asset: asset)
     let output = AVPlayerItemMetadataOutput(identifiers: nil)
     output.setDelegate(self, queue: .main)
@@ -321,11 +333,13 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
     guard enabled != samplingEnabled else { return }
     samplingEnabled = enabled
     guard enabled else {
-      feedLock.sync { feedGeneration = -1 }
-      streamVisualizer.stop()
+      feedLock.sync {
+        feedGeneration = -1
+        streamVisualizer.stop()
+      }
       return
     }
-    if let item, item.status == .readyToPlay, proxied != nil {
+    if let item, item.status == .readyToPlay, relaysAudio {
       // Mid-stream: prime from the recently relayed audio, which ends where
       // the player's loaded range ends.
       let playhead = item.currentTime().seconds
@@ -343,8 +357,11 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
     if let item, item.status == .readyToPlay { attachSampling(item) }
   }
 
+  /// The proxy relays this item's audio (what the stream visualizer decodes).
+  private var relaysAudio: Bool { proxied != nil && !redirected }
+
   private func startStreamFeed() {
-    guard proxied != nil else { return }
+    guard relaysAudio else { return }
     streamVisualizer.reset()
     let gen = generation
     feedLock.sync { feedGeneration = gen }
@@ -352,7 +369,7 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
 
   /// Live: decoded proxy bytes against the item clock. Finite: the PCM tap.
   private func attachSampling(_ item: AVPlayerItem) {
-    if itemIsLive && proxied != nil {
+    if itemIsLive && relaysAudio {
       streamVisualizer.start(timebase: item.timebase)
     } else {
       feedLock.sync { feedGeneration = -1 }
@@ -361,8 +378,10 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
   }
 
   func destroy() {
-    feedLock.sync { feedGeneration = -1 }
-    streamVisualizer.stop()
+    feedLock.sync {
+      feedGeneration = -1
+      streamVisualizer.stop()
+    }
     releaseConnection()
     playerObservers.forEach { $0.invalidate() }
     playerObservers = []
@@ -459,6 +478,14 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
 
   private func tearDownItem() {
     pendingSplices = []
+    // The stream visualizer (decoder, queued windows, its timer) belongs to
+    // the item: the next item restarts it while sampling is on (`open`,
+    // then `attachSampling` on readiness).
+    feedLock.sync {
+      feedGeneration = -1
+      streamVisualizer.stop()
+    }
+    redirected = false
     // Closes every HTTP connection of the item, whatever AVFoundation does.
     if let proxied { StreamProxy.shared.retire(proxied) }
     proxied = nil
@@ -491,7 +518,8 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
       let duration = changed.duration
       let indefinite = duration.isIndefinite || !duration.isNumeric
       let seconds = indefinite ? nil : duration.seconds
-      let isLive = indefinite || liveHint || unbounded
+      // `live: false` wins, as in the engine (`liveHint ?? info.isLive`).
+      let isLive = !finiteHint && (indefinite || liveHint || unbounded)
       if isLive { player.automaticallyWaitsToMinimizeStalling = false }
       let seekable = !isLive && !changed.seekableTimeRanges.isEmpty
       observer?.driverReady(
@@ -582,7 +610,7 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
       lastHTTPStatus = status
       return
     }
-    if status == 200 && (headers["content-length"] == nil || headers["icy-metaint"] != nil) {
+    if status == 200 && !finiteHint && (headers["content-length"] == nil || headers["icy-metaint"] != nil) {
       unbounded = true
       player.automaticallyWaitsToMinimizeStalling = false
     }
@@ -596,6 +624,18 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
     if let name { meta.raw["icy-name"] = name }
     if let genre { meta.raw["icy-genre"] = genre }
     publish(meta, gen)
+  }
+
+  /// The proxy found an HLS playlist behind the URL and redirected AVPlayer
+  /// to it: AVFoundation plays it like any `.m3u8`, nothing is relayed.
+  private func upstreamRedirected(_ gen: Int) {
+    guard gen == generation, !redirected else { return }
+    redirected = true
+    feedLock.sync {
+      feedGeneration = -1
+      streamVisualizer.stop()
+    }
+    observer?.driverNote(generation: gen, event: "HLS redirect", details: [:])
   }
 
   // MARK: - Metadata

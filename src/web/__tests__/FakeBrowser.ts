@@ -193,6 +193,19 @@ export class FakeMediaSource extends FakeEvents {
   }
 }
 
+/** The element each `<source>` child was appended to (`remove()` leaves it). */
+const sourceOwners = new WeakMap<object, FakeAudio>();
+
+/** A `<source>` element: `remove()` takes it out of its parent, as in the DOM. */
+class FakeSourceElement {
+  src = '';
+  type = '';
+
+  remove(): void {
+    sourceOwners.get(this)?.removeChild(this);
+  }
+}
+
 const objectUrls = new Map<string, unknown>();
 let urlCounter = 0;
 
@@ -293,7 +306,13 @@ export class FakeAudio extends FakeEvents {
   plainBuffered = ranges([]);
   error: { code: number; message: string } | null = null;
   /** What play() does: start, refuse (autoplay policy), fail, or abort. */
-  playBehavior: 'start' | 'block' | 'fail' | 'abort' | 'throw' = 'start';
+  playBehavior: 'start' | 'block' | 'fail' | 'abort' | 'throw' | 'defer' =
+    'start';
+  /** The play() promises left pending by `playBehavior = 'defer'`, to settle by hand. */
+  pendingPlays: Array<{
+    resolve: () => void;
+    reject: (error: Error) => void;
+  }> = [];
   plays = 0;
   loads = 0;
   srcHistory: string[] = [];
@@ -329,6 +348,7 @@ export class FakeAudio extends FakeEvents {
   }
 
   appendChild(child: { src: string; type: string }): void {
+    sourceOwners.set(child, this);
     this.children.push(child);
     // Resource selection: the first usable `<source>` of an element without `src`.
     if (this._src === '' && this.mediaSource == null)
@@ -361,6 +381,10 @@ export class FakeAudio extends FakeEvents {
         );
       case 'throw':
         throw new Error('sync failure');
+      case 'defer':
+        return new Promise<void>((resolve, reject) => {
+          this.pendingPlays.push({ resolve, reject });
+        });
       default:
         this.paused = false;
         return Promise.resolve();
@@ -563,15 +587,29 @@ export class FakeMediaSession {
 
 export class FakeAudioContext {
   static instances: FakeAudioContext[] = [];
+  /** Construction throws (Chrome refuses a new context past its limit). */
+  static failConstruct = false;
+  /** `close()` rejects (the context was closed already). */
+  static failClose = false;
   state = 'suspended';
   sampleRate = 48000;
   baseLatency = 0.01;
   outputLatency = 0.02;
   destination = {};
   sources: unknown[] = [];
-  analysers: Array<{ fftSize: number; connected: unknown[] }> = [];
+  /** The nodes `createMediaElementSource` returned. */
+  sourceNodes: Array<{ disconnected: boolean }> = [];
+  analysers: Array<{
+    fftSize: number;
+    connected: unknown[];
+    disconnected: boolean;
+  }> = [];
 
   constructor() {
+    if (FakeAudioContext.failConstruct)
+      throw Object.assign(new Error('too many contexts'), {
+        name: 'NotSupportedError',
+      });
     FakeAudioContext.instances.push(this);
   }
 
@@ -580,17 +618,36 @@ export class FakeAudioContext {
     return Promise.resolve();
   }
 
+  close() {
+    if (FakeAudioContext.failClose)
+      return Promise.reject(new Error('InvalidStateError'));
+    this.state = 'closed';
+    return Promise.resolve();
+  }
+
   createMediaElementSource(element: unknown) {
     this.sources.push(element);
-    return { connect: () => undefined, disconnect: () => undefined };
+    const node = {
+      disconnected: false,
+      connect: () => undefined,
+      disconnect() {
+        node.disconnected = true;
+      },
+    };
+    this.sourceNodes.push(node);
+    return node;
   }
 
   createAnalyser() {
     const analyser = {
       fftSize: 2048,
       connected: [] as unknown[],
+      disconnected: false,
       connect(node: unknown) {
         analyser.connected.push(node);
+      },
+      disconnect() {
+        analyser.disconnected = true;
       },
       getFloatTimeDomainData(target: Float32Array) {
         for (let i = 0; i < target.length; i++) target[i] = i % 2 ? 0.5 : -0.5;
@@ -681,6 +738,8 @@ export function install(
   FakeMediaSource.supported = new Set(options.mediaTypes ?? RAW_AUDIO_TYPES);
   elementFeatures.nativeHls = options.nativeHls === true;
   FakeAudioContext.instances = [];
+  FakeAudioContext.failConstruct = false;
+  FakeAudioContext.failClose = false;
   elementFeatures.airplay = options.airplay === true;
   elementFeatures.remote = options.remotePlayback === true;
   elementFeatures.refuseWatch = options.refuseWatch === true;
@@ -693,7 +752,7 @@ export function install(
         scripts.push(script),
     },
     createElement: (tag: string) => {
-      if (tag === 'source') return { src: '', type: '' };
+      if (tag === 'source') return new FakeSourceElement();
       if (tag === 'script')
         return { src: '', async: false, onerror: null as (() => void) | null };
       const element = new FakeAudio();

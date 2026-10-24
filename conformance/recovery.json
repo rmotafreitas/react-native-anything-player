@@ -83,7 +83,7 @@
       { "native": "failed", "code": "NETWORK_ERROR", "recoverable": true },
       { "expect": { "state": "error", "error": "NETWORK_ERROR", "loads": ["1:failed:NETWORK_ERROR"], "errors": ["NETWORK_ERROR:fatal"], "commands": ["open(gen=1,start=-,play=false)", "release"] } },
       { "call": "play" },
-      { "expect": { "state": "loading", "error": null, "playWhenReady": true, "commands": ["open(gen=2,start=-,play=true)"] } }
+      { "expect": { "state": "loading", "error": null, "playWhenReady": true, "commands": ["open(gen=3,start=-,play=true)"] } }
     ]
   },
   {
@@ -355,7 +355,7 @@
       { "advance": 1 },
       { "expect": { "state": "paused", "commands": ["release"] } },
       { "call": "play" },
-      { "expect": { "state": "loading", "commands": ["open(gen=3,start=-,play=true)"] } }
+      { "expect": { "state": "loading", "commands": ["open(gen=4,start=-,play=true)"] } }
     ]
   },
   {
@@ -446,6 +446,149 @@
       { "advance": 1000 },
       { "call": "play" },
       { "expect": { "state": "loading", "commands": ["pause", "open(gen=2,start=-,play=true)"] } }
+    ]
+  },
+  {
+    "name": "a silent stall that ends without a native playing goes back to playing",
+    "steps": [
+      { "call": "load", "uri": "https://cdn.example/song.mp3", "autoplay": true },
+      { "native": "ready", "duration": 120, "seekable": true },
+      { "native": "playing" },
+      { "driver": "frozen" },
+      { "advance": 4000 },
+      { "expect": { "state": "buffering", "commands": ["open(gen=1,start=-,play=true)"] } },
+      { "driver": "flowing" },
+      { "advance": 1000 },
+      { "expect": { "state": "playing", "commands": [] } },
+      { "advance": 20000 },
+      { "expect": { "state": "playing", "errors": [], "commands": [] } }
+    ]
+  },
+  {
+    "name": "a re-open after a native stall resumes where the playhead got to",
+    "steps": [
+      { "call": "load", "uri": "https://cdn.example/song.mp3", "autoplay": true },
+      { "native": "ready", "duration": 120, "seekable": true },
+      { "native": "playing" },
+      { "native": "buffering" },
+      { "driver": "flowing" },
+      { "advance": 20000 },
+      { "expect": { "state": "loading", "commands": ["open(gen=1,start=-,play=true)", "open(gen=2,start=20.0,play=true)"] } }
+    ]
+  },
+  {
+    "name": "an open without play intent times out",
+    "steps": [
+      { "call": "load", "uri": "https://cdn.example/song.mp3", "autoplay": false },
+      { "expect": { "state": "loading", "playWhenReady": false, "commands": ["open(gen=1,start=-,play=false)"] } },
+      { "advance": 11999 },
+      { "expect": { "state": "loading", "loads": [], "errors": [] } },
+      { "advance": 1 },
+      { "expect": { "state": "error", "error": "TIMEOUT", "playWhenReady": false, "loads": ["1:failed:TIMEOUT"], "errors": ["TIMEOUT:fatal"], "commands": ["release"] } }
+    ]
+  },
+  {
+    "name": "a pause while loading does not stop the open from timing out",
+    "steps": [
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "advance": 2000 },
+      { "call": "pause" },
+      { "advance": 10000 },
+      { "expect": { "state": "error", "error": "TIMEOUT", "playWhenReady": false, "loads": ["1:failed:TIMEOUT"], "errors": ["TIMEOUT:fatal"], "commands": ["open(gen=1,start=-,play=true)", "pause", "release"] } }
+    ]
+  },
+  {
+    "name": "an autoplay refused by focus does not leave the open without a timeout",
+    "steps": [
+      { "focus": "denied" },
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "expect": { "state": "loading", "playWhenReady": false, "interruption": "audio-focus-denied", "commands": ["open(gen=1,start=-,play=false)"] } },
+      { "advance": 12000 },
+      { "expect": { "state": "error", "error": "TIMEOUT", "loads": ["1:failed:TIMEOUT"], "errors": ["TIMEOUT:fatal"], "commands": ["release"] } }
+    ]
+  },
+  {
+    "name": "with reconnect off, a dead stall fails instead of re-opening",
+    "options": { "reconnect": false },
+    "steps": [
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "native": "buffering" },
+      { "advance": 3000 },
+      { "expect": { "state": "error", "error": "NETWORK_ERROR", "playWhenReady": false, "errors": ["NETWORK_ERROR:fatal"], "commands": ["open(gen=1,start=-,play=true)", "release"] } },
+      { "advance": 30000 },
+      { "expect": { "state": "error", "commands": [] } }
+    ]
+  },
+  {
+    "name": "with reconnect off, a silent stall fails instead of re-opening",
+    "options": { "reconnect": false },
+    "steps": [
+      { "call": "load", "uri": "https://cdn.example/song.mp3", "autoplay": true },
+      { "native": "ready", "duration": 120, "seekable": true },
+      { "native": "playing" },
+      { "driver": "frozen" },
+      { "advance": 4000 },
+      { "expect": { "state": "buffering", "commands": ["open(gen=1,start=-,play=true)"] } },
+      { "advance": 3000 },
+      { "expect": { "state": "error", "error": "NETWORK_ERROR", "errors": ["NETWORK_ERROR:fatal"], "commands": ["release"] } }
+    ]
+  },
+  {
+    "name": "with reconnect off, the network coming back does not re-open",
+    "options": { "reconnect": false },
+    "steps": [
+      { "network": "online" },
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "network": "offline" },
+      { "native": "buffering" },
+      { "advance": 1000 },
+      { "network": "online" },
+      { "expect": { "state": "buffering", "commands": ["open(gen=1,start=-,play=true)"] } },
+      { "call": "foreground" },
+      { "expect": { "state": "buffering", "commands": [] } },
+      { "advance": 1000 },
+      { "expect": { "state": "error", "error": "NETWORK_ERROR", "errors": ["NETWORK_ERROR:fatal"], "commands": ["release"] } }
+    ]
+  },
+  {
+    "name": "a foreground in the same millisecond as a network restore keeps the fresh open",
+    "steps": [
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "network": "offline" },
+      { "network": "online" },
+      { "expect": { "state": "loading", "commands": ["open(gen=1,start=-,play=true)", "open(gen=2,start=-,play=true)"] } },
+      { "call": "foreground" },
+      { "expect": { "state": "loading", "commands": [] } }
+    ]
+  },
+  {
+    "name": "a re-open while the start seek is pending keeps the start position",
+    "steps": [
+      { "call": "load", "uri": "https://cdn.example/song.mp3", "autoplay": true, "start": 120 },
+      { "native": "ready", "duration": 300, "seekable": true },
+      { "driver": "position", "value": 0 },
+      { "advance": 3000 },
+      { "expect": { "state": "loading", "commands": ["open(gen=1,start=120.0,play=true)", "open(gen=2,start=120.0,play=true)"] } }
+    ]
+  },
+  {
+    "name": "a native stall awaiting publication is not taken for a silent one",
+    "steps": [
+      { "call": "load", "uri": "https://cdn.example/song.mp3", "autoplay": true },
+      { "native": "ready", "duration": 120, "seekable": true },
+      { "native": "playing" },
+      { "driver": "frozen" },
+      { "advance": 3800 },
+      { "native": "buffering" },
+      { "advance": 200 },
+      { "expect": { "state": "playing", "commands": ["open(gen=1,start=-,play=true)"] } },
+      { "driver": "flowing" },
+      { "advance": 1000 },
+      { "expect": { "state": "buffering", "commands": [] } }
     ]
   }
 ]

@@ -329,7 +329,7 @@ internal class PlayerController(
     stopTitleReader()
     var reader: IcyMetadataReader? = null
     reader =
-      IcyMetadataReader(source!!, titleReaderUserAgent(source), options.titleFormat) { metadata ->
+      IcyMetadataReader(source, titleReaderUserAgent(source), options.titleFormat) { metadata ->
         // A title read for a load that has since changed is dropped.
         handler.post { if (titleReader === reader && !released) onStreamMetadata(engine.generation, metadata) }
       }

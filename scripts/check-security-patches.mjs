@@ -50,6 +50,21 @@ export function verifySecurityPatch(name, cwd = process.cwd()) {
     for (const invalid of [[oid, nil, nil], [oid, nil, node(asn1.Type.OCTETSTRING, "garbage")]]) {
       assert.throws(() => key.verify(digest, sign(invalid)), /DigestInfo/);
     }
+  } else if (name === "zod") {
+    // GHSA-mrhx-c7xc-m3w5: an oversized array/set built one issue per bad
+    // element before its size bound was reported. Fixed upstream in 4.6.6;
+    // the Expo CLI's 3.x is patched to reject the size first.
+    const { z } = library;
+    assert.equal(z.array(z.number()).max(2).safeParse([1, 2]).success, true);
+    assert.equal(z.array(z.number()).safeParse(["a", "b"]).error.issues.length, 2);
+    const flood = Array(100000).fill("x");
+    for (const schema of [z.array(z.number()).max(2), z.array(z.number()).length(2)]) {
+      const { error } = schema.safeParse(flood);
+      assert.equal(error.issues.length, 1);
+      assert.equal(error.issues[0].code, "too_big");
+    }
+    const { error } = z.set(z.number()).max(1).safeParse(new Set(flood.map((x, i) => x + i)));
+    assert.equal(error.issues.length, 1);
   } else {
     throw new Error("Unknown security patch: " + name);
   }

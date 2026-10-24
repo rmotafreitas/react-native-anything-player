@@ -6,6 +6,7 @@ import com.anythingplayer.core.SourceDescriptor
 import com.anythingplayer.core.StreamMetadata
 import com.anythingplayer.core.StreamTitleFormat
 import java.io.IOException
+import java.io.InputStream
 import okhttp3.Call
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -75,7 +76,10 @@ internal class IcyMetadataReader(
 
   private fun readOnce(): Outcome {
     val builder = Request.Builder().url(source.uri).header("Icy-MetaData", "1").header("User-Agent", userAgent)
-    source.headers.forEach { (key, value) -> if (!key.equals("User-Agent", ignoreCase = true)) builder.header(key, value) }
+    // The reader exists for the metadata: an app's `Icy-MetaData: 0` must not switch it off.
+    source.headers.forEach { (key, value) ->
+      if (!key.equals("User-Agent", ignoreCase = true) && !key.equals("Icy-MetaData", ignoreCase = true)) builder.header(key, value)
+    }
     val call = client.newCall(builder.build())
     this.call = call
     if (stopped) call.cancel()
@@ -88,22 +92,26 @@ internal class IcyMetadataReader(
           genre = response.header("icy-genre")?.trim()?.ifEmpty { null },
         )
       // The station and genre ride along with each title: sent alone they would blank the title on screen.
-      val framing = IcyDeinterleaver(metaint)
-      val buffer = ByteArray(CHUNK_BYTES)
-      var titles = false
       val stream = response.body?.byteStream() ?: return Outcome.FAILED
-      while (!stopped) {
-        val read = stream.read(buffer)
-        if (read < 0) break
-        for (block in framing.consume(buffer, read).blocks) {
-          val metadata = IcyParser.metadataFromBlock(block.bytes, format)
-          if (metadata.isEmpty) continue
-          emit(metadata.copy(station = metadata.station ?: base.station, genre = metadata.genre ?: base.genre))
-          titles = true
-        }
-      }
-      return if (titles) Outcome.STREAMED_TITLES else Outcome.FAILED
+      return if (readTitles(stream, IcyDeinterleaver(metaint), base)) Outcome.STREAMED_TITLES else Outcome.FAILED
     }
+  }
+
+  /** Reads the body until it ends or the reader stops; whether any title came out of it. */
+  private fun readTitles(stream: InputStream, framing: IcyDeinterleaver, base: StreamMetadata): Boolean {
+    val buffer = ByteArray(CHUNK_BYTES)
+    var titles = false
+    while (!stopped) {
+      val read = stream.read(buffer)
+      if (read < 0) break
+      for (block in framing.consume(buffer, read).blocks) {
+        val metadata = IcyParser.metadataFromBlock(block.bytes, format)
+        if (metadata.isEmpty) continue
+        emit(metadata.copy(station = metadata.station ?: base.station, genre = metadata.genre ?: base.genre))
+        titles = true
+      }
+    }
+    return titles
   }
 
   private fun emit(metadata: StreamMetadata) {

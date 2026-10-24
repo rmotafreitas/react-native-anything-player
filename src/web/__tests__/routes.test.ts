@@ -133,7 +133,7 @@ describe('Safari AirPlay', () => {
       .load(id, { uri: 'https://cdn.example/song.mp3', live: false }, {})
       .catch(() => undefined);
     const replaced = world.element();
-    expect(replaced === old).toBe(false);
+    expect(replaced).not.toBe(old);
     replaced.setWireless(true);
     await flush();
     expect(route(id).kind).toBe('airplay');

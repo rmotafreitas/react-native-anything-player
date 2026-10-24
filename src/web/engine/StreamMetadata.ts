@@ -86,6 +86,9 @@ function nonEmpty(s: string): string | null {
   return trimmed === '' ? null : trimmed;
 }
 
+/** Whitespace allowed between ICY fields (exactly these, in every twin). */
+const FIELD_SPACE = ' \t\r\n';
+
 function startsKey(text: string, index: number): boolean {
   let i = index;
   while (i < text.length) {
@@ -100,10 +103,13 @@ function startsKey(text: string, index: number): boolean {
 
 /** Where a field's value ends, and where the next field starts. */
 function fieldEnd(text: string, valueStart: number): [number, number] {
-  // The value ends at the first `';` that is followed by another key (or the end).
+  // The value ends at the first `';` that is followed by another key (or the
+  // end), whitespace between fields allowed.
   let candidate = text.indexOf("';", valueStart);
   while (candidate >= 0) {
-    const after = candidate + 2;
+    let after = candidate + 2;
+    while (after < text.length && FIELD_SPACE.includes(text[after]!))
+      after += 1;
     if (after >= text.length || startsKey(text, after))
       return [candidate, after];
     candidate = text.indexOf("';", candidate + 1);

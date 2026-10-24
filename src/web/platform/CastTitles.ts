@@ -89,8 +89,11 @@ export class IcyTitleReader {
       discard(response);
       return 'failed';
     }
-    const metaint = parseInt(response.headers.get('icy-metaint') ?? '0', 10);
-    if (!(metaint > 0)) {
+    const metaint = Number.parseInt(
+      response.headers.get('icy-metaint') ?? '0',
+      10
+    );
+    if (metaint <= 0 || Number.isNaN(metaint)) {
       // Not an ICY stream, or CORS hides the interval: there are no titles to read.
       discard(response);
       return 'unsupported';

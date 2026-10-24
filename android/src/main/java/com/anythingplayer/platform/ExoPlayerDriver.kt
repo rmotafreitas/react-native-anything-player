@@ -364,6 +364,9 @@ internal class ExoPlayerDriver(
     val request = currentRequest ?: return
     val gen = currentGeneration(p) ?: return
     if (gen != generation || readyGeneration != gen || !p.playWhenReady) return
+    // A source the app called a file (`live: false`) ends where it ends, and
+    // with `reconnect: false` nothing reconnects on its own.
+    if (request.source.liveHint == false || !request.allowReconnect) return
     if (!(p.isCurrentMediaItemLive || (p.duration == C.TIME_UNSET && !p.isCurrentMediaItemSeekable))) return
     if (p.playbackState != Player.STATE_READY && p.playbackState != Player.STATE_BUFFERING) return
     // Items load sequentially: "not loading" means the LAST queued item's

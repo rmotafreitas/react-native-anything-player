@@ -173,13 +173,16 @@ export function normalizeNowPlaying(
   return out;
 }
 
-/** Seconds that must be finite and ≥ 0. */
+/** The longest sleep timer or fade, in seconds (24 h): the engines reject more. */
+const MAX_TIMER_SECONDS = 86_400;
+
+/** Timer and fade seconds: finite, from 0 to 24 h. */
 function assertDuration(name: string, value: number): void {
   assertFinite(name, value);
-  if (value < 0) {
+  if (value < 0 || value > MAX_TIMER_SECONDS) {
     throw new PlayerError({
       code: 'INVALID_ARGUMENT',
-      message: `${name} must be ≥ 0 (seconds).`,
+      message: `${name} must be from 0 to ${MAX_TIMER_SECONDS} seconds (24 h).`,
       recoverable: false,
     });
   }
@@ -526,7 +529,9 @@ export class Player {
   ): void {
     const set = this.listeners.get(event);
     if (!set) return;
-    for (const listener of [...set]) {
+    // A snapshot: a listener that re-subscribes during dispatch must not run again in this pass.
+    const snapshot = [...set];
+    for (const listener of snapshot) {
       try {
         (listener as (...a: Parameters<PlayerEventMap[E]>) => void)(...args);
       } catch (error) {

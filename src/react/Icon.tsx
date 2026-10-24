@@ -7,11 +7,11 @@ export function Icon({
   path,
   size,
   color,
-}: {
+}: Readonly<{
   path: string;
   size: number;
   color: string;
-}) {
+}>) {
   return (
     <svg
       aria-hidden="true"

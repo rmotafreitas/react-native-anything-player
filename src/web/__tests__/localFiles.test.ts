@@ -148,6 +148,22 @@ describe('a File or Blob', () => {
     await mod.releasePlayer(id);
   });
 
+  it('revokes the URL when the source cannot be read at all', async () => {
+    const { WebModule } = await import('../platform/WebModule');
+    const mod = new WebModule();
+    const id = mod.createPlayer({});
+    const hostile = {
+      uri: '',
+      blob: file(),
+      get metadata(): never {
+        throw new Error('unreadable');
+      },
+    };
+    await expect(mod.load(id, hostile, {})).rejects.toBeDefined();
+    expect(liveBlobUrls()).toEqual([]);
+    await mod.releasePlayer(id);
+  });
+
   it('is an element source the visualizer and Remote Playback treat as bytes the page holds', async () => {
     const player = new web.Player();
     expect(player.setAudioSampling({ enabled: true })).toBe(true);

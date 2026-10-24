@@ -36,6 +36,7 @@ export interface MediaErrorLike {
 export interface SourceElementLike {
   src: string;
   type: string;
+  remove(): void;
 }
 
 /** The Remote Playback API (Chrome): send an element's media to a receiver. */
@@ -74,7 +75,6 @@ export interface AudioElementLike extends EventTargetLike {
   canPlayType(type: string): string;
   removeAttribute(name: string): void;
   appendChild(child: SourceElementLike): void;
-  removeChild(child: SourceElementLike): void;
 }
 
 export interface SourceBufferLike extends EventTargetLike {
@@ -147,6 +147,7 @@ export interface AnalyserLike {
   fftSize: number;
   getFloatTimeDomainData(target: Float32Array): void;
   connect(destination: unknown): void;
+  disconnect(): void;
 }
 
 export interface AudioContextLike {
@@ -156,6 +157,7 @@ export interface AudioContextLike {
   readonly outputLatency?: number;
   readonly destination: unknown;
   resume(): Promise<void>;
+  close(): Promise<void>;
   createMediaElementSource(element: AudioElementLike): {
     connect(node: unknown): void;
     disconnect(): void;

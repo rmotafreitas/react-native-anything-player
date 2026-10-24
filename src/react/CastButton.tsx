@@ -34,7 +34,7 @@ export function CastButton({
   className,
   style,
   label,
-}: CastButtonProps) {
+}: Readonly<CastButtonProps>) {
   const { state, device } = useCastStatus();
   useEffect(() => {
     configureCast().catch(ignore);

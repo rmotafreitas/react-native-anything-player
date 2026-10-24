@@ -131,6 +131,8 @@ export class MediaElementDriver implements EngineDriver {
   private sourcePlayed = false;
   /** The current source has streamed through fetch: its server allows CORS. */
   private corsProven = false;
+  /** The engine allows reconnecting (`OpenRequest.allowReconnect`): a dropped stream may be spliced. */
+  private allowReconnect = true;
   private flowed = false;
   private playRequested = false;
   private expectingPause = false;
@@ -141,6 +143,8 @@ export class MediaElementDriver implements EngineDriver {
   tapped = false;
   /** Set by every play(); the module awaits it to report autoplay refusals. */
   lastPlayAttempt: Promise<PlayAttempt> | null = null;
+  /** Counts play() calls, so a refusal of a replaced one is told from the current one. */
+  private playToken = 0;
   private volume = 1;
   private rate = 1;
 
@@ -149,8 +153,6 @@ export class MediaElementDriver implements EngineDriver {
     private readonly titleFormat: StreamTitleFormat
   ) {
     this._element = this.createElement();
-    // hls.js from a <script> tag (globalThis.Hls) was never registered.
-    if (hlsConstructor()) loadHlsParts().catch(() => undefined);
   }
 
   get element(): AudioElementLike {
@@ -185,6 +187,8 @@ export class MediaElementDriver implements EngineDriver {
   // ── EngineDriver ──
 
   open(request: OpenRequest): void {
+    // hls.js from a <script> tag (globalThis.Hls) was never registered.
+    if (hlsConstructor()) loadHlsParts().catch(() => undefined);
     this.teardownItem();
     // A previous stream that needed headers kept this element off AirPlay.
     if (this._element.disableRemotePlayback)
@@ -196,6 +200,7 @@ export class MediaElementDriver implements EngineDriver {
       this.nativeHlsFailed = false;
     }
     this.source = request.source;
+    this.allowReconnect = request.allowReconnect;
     this.flowed = false;
     this.pendingStart = request.startPosition;
     const media = mediaSourceConstructor();
@@ -221,17 +226,21 @@ export class MediaElementDriver implements EngineDriver {
     // play() is not lost and the element is not asked twice.
     if (this.hlsPending) return;
     const generation = this.generation;
-    let attempt: Promise<void>;
-    try {
-      attempt = this._element.play();
-    } catch (error) {
-      attempt = Promise.reject(error);
-    }
+    this.playToken += 1;
+    const token = this.playToken;
+    // An async body runs synchronously up to its first await: play() is still
+    // called here, and a synchronous throw becomes a rejection.
+    const attempt = (async () => this._element.play())();
     this.lastPlayAttempt = attempt.then(
       (): PlayAttempt => 'started',
       (error: { name?: string }): PlayAttempt => {
         // Replaced by a newer item or paused before it started: not a failure.
-        if (generation !== this.generation || error?.name === 'AbortError')
+        // A newer play() took over: its outcome is the one that counts.
+        if (
+          generation !== this.generation ||
+          token !== this.playToken ||
+          error?.name === 'AbortError'
+        )
           return 'started';
         if (error?.name === 'NotAllowedError') {
           this.observer.onPausedExternally(generation, 'autoplay-blocked');
@@ -593,7 +602,8 @@ export class MediaElementDriver implements EngineDriver {
           if (live()) this.corsProven = true;
         },
       },
-      this.corsProven
+      this.corsProven,
+      this.allowReconnect
     );
     this.stream = stream;
     stream.start();
