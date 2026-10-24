@@ -43,6 +43,17 @@ export function compareVersions(a, b) {
   return 0;
 }
 
+/** The first `name = 24` / `name 24` level a Gradle file sets, among `names`. */
+export function sdkLevel(text, ...names) {
+  for (const name of names) {
+    const match = new RegExp(`${name}\\s*(?:=\\s*)?(\\d+)\\b`).exec(
+      String(text ?? '')
+    );
+    if (match) return Number(match[1]);
+  }
+  return null;
+}
+
 /** `key=value` lines of a gradle.properties file. */
 export function parseProperties(text) {
   const values = {};

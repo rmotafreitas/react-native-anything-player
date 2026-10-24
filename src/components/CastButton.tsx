@@ -37,7 +37,7 @@ export function CastButton({
   activeColor = '#0a84ff',
   style,
   accessibilityLabel,
-}: CastButtonProps) {
+}: Readonly<CastButtonProps>) {
   const { state, device } = useCastStatus();
   // The web loads the Cast SDK here (before any tap); native resolves at once.
   useEffect(() => {

@@ -53,16 +53,8 @@ class IcyDeinterleaver(
           if (remaining == 0) phase = Phase.LENGTH
         }
         Phase.LENGTH -> {
-          val size = (data[i].toInt() and 0xFF) * 16
+          beginBlock((data[i].toInt() and 0xFF) * 16)
           i += 1
-          if (size == 0) {
-            phase = Phase.AUDIO
-            remaining = metaint
-          } else {
-            pending.reset()
-            phase = Phase.METADATA
-            remaining = size
-          }
         }
         Phase.METADATA -> {
           val take = minOf(remaining, length - i)
@@ -79,5 +71,17 @@ class IcyDeinterleaver(
       }
     }
     return Output(audio.toByteArray(), blocks)
+  }
+
+  /** The length byte, as a size in bytes: 0 is "no change", else the metadata block follows. */
+  private fun beginBlock(size: Int) {
+    if (size == 0) {
+      phase = Phase.AUDIO
+      remaining = metaint
+    } else {
+      pending.reset()
+      phase = Phase.METADATA
+      remaining = size
+    }
   }
 }

@@ -91,10 +91,10 @@ export function tokenize(text: string): string[] {
     .toLowerCase()
     .normalize('NFKD')
     .replace(MARKS, '')
-    .replace(/ß/g, 'ss')
-    .replace(/ς/g, 'σ')
-    .replace(/ı/g, 'i')
-    .replace(/&/g, ' and ');
+    .replaceAll('ß', 'ss')
+    .replaceAll('ς', 'σ')
+    .replaceAll('ı', 'i')
+    .replaceAll('&', ' and ');
   return folded.split(SEPARATORS).filter((token) => token.length > 0);
 }
 

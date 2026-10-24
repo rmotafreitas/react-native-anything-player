@@ -7,7 +7,12 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { loadProject, parseProperties, versionParts } from './project.mjs';
+import {
+  loadProject,
+  parseProperties,
+  sdkLevel,
+  versionParts,
+} from './project.mjs';
 import { moduleStates } from './modules.mjs';
 import { runDoctor } from './doctor.mjs';
 import { formatInfo } from './report.mjs';
@@ -25,16 +30,6 @@ export function tilde(target) {
   if (target.startsWith(`${home}${path.sep}`))
     return `~${target.slice(home.length).split(path.sep).join('/')}`;
   return target.split(path.sep).join('/');
-}
-
-function sdkLevel(text, ...names) {
-  for (const name of names) {
-    const match = new RegExp(`${name}\\s*(?:=\\s*)?(\\d+)\\b`).exec(
-      String(text ?? '')
-    );
-    if (match) return Number(match[1]);
-  }
-  return null;
 }
 
 function media3Version(ctx) {

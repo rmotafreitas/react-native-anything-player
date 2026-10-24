@@ -1,19 +1,12 @@
 // Android checks: SDK levels, the Cast switch, and the Assistant intent.
 
-import { parseProperties } from '../project.mjs';
+import { parseProperties, sdkLevel } from '../project.mjs';
 import { finding } from '../findings.mjs';
 import { relative } from '../util.mjs';
 
 const MIN_SDK = 24;
 const COMPILE_SDK = 36;
 const PLAY_FROM_SEARCH = 'android.media.action.MEDIA_PLAY_FROM_SEARCH';
-
-function sdkLevel(text, name) {
-  const match = new RegExp(`${name}\\s*(?:=\\s*)?(\\d+)\\b`).exec(
-    String(text ?? '')
-  );
-  return match ? Number(match[1]) : null;
-}
 
 function androidPath(ctx, file) {
   return relative(ctx.cwd, file);
@@ -40,8 +33,7 @@ function checkSdks(ctx, findings) {
   const gradle = ctx.android.buildGradle ?? '';
   const app = ctx.android.appBuildGradle ?? '';
   const minSdk = sdkLevel(gradle, 'minSdkVersion');
-  const compileSdk =
-    sdkLevel(gradle, 'compileSdkVersion') ?? sdkLevel(gradle, 'compileSdk');
+  const compileSdk = sdkLevel(gradle, 'compileSdkVersion', 'compileSdk');
 
   if (minSdk !== null && minSdk < MIN_SDK) {
     findings.push(

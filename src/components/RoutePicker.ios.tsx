@@ -15,7 +15,7 @@ export function RoutePicker({
   activeColor = '#0a84ff',
   style,
   accessibilityLabel = 'Choose audio output',
-}: RoutePickerProps) {
+}: Readonly<RoutePickerProps>) {
   const available = useRoutePickerAvailable();
   if (!available) return null;
   return (

@@ -15,5 +15,7 @@ export function onModuleEvent(listener: ModuleListener): () => void {
 
 /** @internal Called for every module event without a `playerId`. */
 export function dispatchModuleEvent(event: Record<string, unknown>): void {
-  for (const listener of [...listeners]) listener(event);
+  // A snapshot: a listener that re-subscribes during dispatch must not run again in this pass.
+  const snapshot = [...listeners];
+  for (const listener of snapshot) listener(event);
 }

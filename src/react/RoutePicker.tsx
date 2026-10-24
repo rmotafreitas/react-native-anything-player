@@ -37,7 +37,7 @@ export function RoutePicker({
   className,
   style,
   label = 'Choose audio output',
-}: RoutePickerProps) {
+}: Readonly<RoutePickerProps>) {
   const available = useRoutePickerAvailable();
   const remote = usePlaysElsewhere(player);
   if (!available) return null;

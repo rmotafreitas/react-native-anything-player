@@ -276,6 +276,26 @@ object CatalogSearch {
 
   private val FOCUS_KINDS = mapOf("station" to "station", "song" to "song", "album" to "album", "podcast" to "podcast")
 
+  /** An item's score: the best free-text variant (when there is a query) plus a bonus per structured field that matches. */
+  private fun itemScore(queries: List<List<String>>, structured: Structured, item: Tokenized): Int {
+    val extra = structuredScores(structured, item)
+    if (queries.isEmpty()) return extra.sum()
+    var best = 0
+    for (q in queries) {
+      val candidate = freeTextScore(q, item)
+      if (candidate > best) best = candidate
+    }
+    return best + STRUCTURED_BONUS * extra.size
+  }
+
+  /** Keeps only the matches of the requested kind, unless there are none of it. */
+  private fun narrowToFocus(scored: List<Pair<Int, Int>>, items: List<SearchableItem>, focus: String?): List<Pair<Int, Int>> {
+    val kind = if (!focus.isNullOrEmpty()) FOCUS_KINDS[focus] else null
+    if (kind == null) return scored
+    val focused = scored.filter { (items[it.first].kind ?: "station") == kind }
+    return if (focused.isNotEmpty()) focused else scored
+  }
+
   /** Ranks `items` against `request`. */
   fun search(items: List<SearchableItem>, request: CatalogQuery): SearchOutcome {
     val tokens = tokenize(request.query)
@@ -292,27 +312,10 @@ object CatalogSearch {
     val scoped = BrowseTree.groupSegments(request.group).isNotEmpty()
     items.forEachIndexed { index, raw ->
       if (scoped && !BrowseTree.isInGroup(raw.group, request.group)) return@forEachIndexed
-      val item = tokenizeItem(raw)
-      val extra = structuredScores(structured, item)
-      val score =
-        if (queries.isNotEmpty()) {
-          var best = 0
-          for (q in queries) {
-            val candidate = freeTextScore(q, item)
-            if (candidate > best) best = candidate
-          }
-          best + STRUCTURED_BONUS * extra.size
-        } else {
-          extra.sum()
-        }
+      val score = itemScore(queries, structured, tokenizeItem(raw))
       if (score >= MATCH_THRESHOLD) scored.add(index to score)
     }
-    var ranked: List<Pair<Int, Int>> = scored
-    val kind = if (!request.focus.isNullOrEmpty()) FOCUS_KINDS[request.focus] else null
-    if (kind != null) {
-      val focused = scored.filter { (items[it.first].kind ?: "station") == kind }
-      if (focused.isNotEmpty()) ranked = focused
-    }
+    val ranked = narrowToFocus(scored, items, request.focus)
     val matches = ranked
       .sortedWith(compareByDescending<Pair<Int, Int>> { it.second }.thenBy { it.first })
       .map { it.first }
