@@ -6,7 +6,9 @@ import com.facebook.react.bridge.ReadableType
 import com.facebook.react.bridge.WritableMap
 import com.anythingplayer.core.DiagnosticEntry
 import com.anythingplayer.core.EngineOptions
+import com.anythingplayer.core.Interruption
 import com.anythingplayer.core.PlayerError
+import com.anythingplayer.core.ReconnectInfo
 import com.anythingplayer.core.SourceDescriptor
 import com.anythingplayer.core.Status
 import com.anythingplayer.core.StreamMetadata
@@ -130,11 +132,9 @@ internal fun parseSource(map: ReadableMap): Pair<SourceDescriptor, NowPlayingFie
 internal fun parseNowPlaying(map: ReadableMap?): NowPlayingFields {
   if (map == null) return NowPlayingFields()
   val artwork = map.optString("artwork") ?: map.optMap("artwork")?.optString("uri")
-  fun number(key: String) = if (map.hasKey(key) && map.getType(key) == ReadableType.Number) map.getDouble(key) else null
-  val live = if (map.hasKey("live") && map.getType("live") == ReadableType.Boolean) map.getBoolean("live") else null
   return NowPlayingFields(
     map.optString("title"), map.optString("artist"), map.optString("album"), artwork,
-    duration = number("duration"), elapsed = number("elapsed"), live = live,
+    duration = map.optDouble("duration"), elapsed = map.optDouble("elapsed"), live = map.optBoolean("live"),
   )
 }
 
@@ -158,6 +158,36 @@ internal fun errorToMap(error: PlayerError): WritableMap =
     error.causeDescription?.let { putString("cause", it) }
   }
 
+private fun WritableMap.putInterruption(interruption: Interruption?) {
+  if (interruption == null) {
+    putNull("interruption")
+  } else {
+    putMap(
+      "interruption",
+      Arguments.createMap().apply {
+        putString("reason", interruption.reason.wire)
+        putBoolean("resumable", interruption.resumable)
+        putDouble("since", interruption.since.toDouble())
+      },
+    )
+  }
+}
+
+private fun WritableMap.putReconnect(reconnect: ReconnectInfo?) {
+  if (reconnect == null) {
+    putNull("reconnect")
+  } else {
+    putMap(
+      "reconnect",
+      Arguments.createMap().apply {
+        putInt("attempt", reconnect.attempt)
+        if (reconnect.nextAttemptAt == null) putNull("nextAttemptAt") else putDouble("nextAttemptAt", reconnect.nextAttemptAt.toDouble())
+        putString("reason", reconnect.reason)
+      },
+    )
+  }
+}
+
 internal fun statusToMap(status: Status, seq: Long): WritableMap =
   Arguments.createMap().apply {
     putDouble("seq", seq.toDouble())
@@ -167,34 +197,10 @@ internal fun statusToMap(status: Status, seq: Long): WritableMap =
     putBoolean("isLive", status.isLive)
     putNullableDouble("duration", status.duration)
     putBoolean("seekable", status.seekable)
-    val interruption = status.interruption
-    if (interruption == null) {
-      putNull("interruption")
-    } else {
-      putMap(
-        "interruption",
-        Arguments.createMap().apply {
-          putString("reason", interruption.reason.wire)
-          putBoolean("resumable", interruption.resumable)
-          putDouble("since", interruption.since.toDouble())
-        },
-      )
-    }
+    putInterruption(status.interruption)
     val error = status.error
     if (error == null) putNull("error") else putMap("error", errorToMap(error))
-    val reconnect = status.reconnect
-    if (reconnect == null) {
-      putNull("reconnect")
-    } else {
-      putMap(
-        "reconnect",
-        Arguments.createMap().apply {
-          putInt("attempt", reconnect.attempt)
-          if (reconnect.nextAttemptAt == null) putNull("nextAttemptAt") else putDouble("nextAttemptAt", reconnect.nextAttemptAt.toDouble())
-          putString("reason", reconnect.reason)
-        },
-      )
-    }
+    putReconnect(status.reconnect)
     putString("network", status.network.wire)
     putDouble("volume", status.volume)
     putBoolean("muted", status.muted)

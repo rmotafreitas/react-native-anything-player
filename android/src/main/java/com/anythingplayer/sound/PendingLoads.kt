@@ -41,7 +41,7 @@ internal class PendingLoads {
   /** Settles the load with `result`. Returns `false` (and does nothing) when it was already settled. */
   fun finish(ticket: Long, result: Result<LoadedSound>): Boolean {
     val done = synchronized(lock) { pending.remove(ticket) } ?: return false
-    done(result)
+    done.invoke(result)
     return true
   }
 

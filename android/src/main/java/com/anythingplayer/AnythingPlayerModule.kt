@@ -52,6 +52,7 @@ class AnythingPlayerModule(reactContext: ReactApplicationContext) : NativeAnythi
 
   companion object {
     const val NAME = NativeAnythingPlayerSpec.NAME
+    private const val PLAYER_RELEASED_MESSAGE = "The player was released."
   }
 
   override fun initialize() {
@@ -83,7 +84,7 @@ class AnythingPlayerModule(reactContext: ReactApplicationContext) : NativeAnythi
     main.post {
       val controller = AnythingPlayerRuntime.players[playerId]
       if (controller == null) {
-        reject(promise, PlayerError(ErrorCode.PLAYER_RELEASED, "The player was released.", false))
+        reject(promise, PlayerError(ErrorCode.PLAYER_RELEASED, PLAYER_RELEASED_MESSAGE, false))
         return@post
       }
       try {
@@ -108,7 +109,7 @@ class AnythingPlayerModule(reactContext: ReactApplicationContext) : NativeAnythi
     main.post {
       val controller = AnythingPlayerRuntime.players[playerId]
       if (controller == null) {
-        reject(promise, PlayerError(ErrorCode.PLAYER_RELEASED, "The player was released.", false))
+        reject(promise, PlayerError(ErrorCode.PLAYER_RELEASED, PLAYER_RELEASED_MESSAGE, false))
         return@post
       }
       try {
@@ -137,7 +138,7 @@ class AnythingPlayerModule(reactContext: ReactApplicationContext) : NativeAnythi
     main.post {
       val controller = AnythingPlayerRuntime.players[playerId]
       if (controller == null) {
-        reject(promise, PlayerError(ErrorCode.PLAYER_RELEASED, "The player was released.", false))
+        reject(promise, PlayerError(ErrorCode.PLAYER_RELEASED, PLAYER_RELEASED_MESSAGE, false))
         return@post
       }
       try {

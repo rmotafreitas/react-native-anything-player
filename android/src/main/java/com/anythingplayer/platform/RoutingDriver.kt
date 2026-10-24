@@ -34,12 +34,15 @@ internal class RoutingDriver(
     get() = target !== local
 
   override fun switchOutput(outputId: String) {
-    val next: Output =
-      if (outputId.startsWith(CAST_PREFIX)) remote ?: remoteFactory()?.also { remote = it } ?: local else local
+    val next: Output = if (outputId.startsWith(CAST_PREFIX)) remoteOutput() ?: local else local
     target = next
     next.switchOutput(outputId)
   }
 
+  private fun remoteOutput(): RemoteOutput? = remote ?: remoteFactory()?.also { remote = it }
+
+  // Plain forwards, not `by` delegation: `by` binds one delegate for good, and
+  // `target` changes on every output switch.
   override fun open(request: OpenRequest) = target.open(request)
   override fun play() = target.play()
   override fun pause() = target.pause()

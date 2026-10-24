@@ -106,12 +106,11 @@ internal class RouteMonitor(private val context: Context, private val onChange: 
       override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>) = refresh()
     }
 
-  private val poll =
-    object : Runnable {
-      override fun run() {
-        if (!polling) return
+  private val poll: Runnable =
+    Runnable {
+      if (polling) {
         refresh()
-        main.postDelayed(this, ROUTE_POLL_MS)
+        main.postDelayed(poll, ROUTE_POLL_MS)
       }
     }
 
@@ -167,8 +166,10 @@ internal object OutputPicker {
    * could open.
    */
   fun show(context: Context, activity: Activity?): Via {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-      if (runCatching { MediaRouter2.getInstance(context).showSystemOutputSwitcher() }.getOrDefault(false)) return Via.OUTPUT_SWITCHER
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE &&
+      runCatching { MediaRouter2.getInstance(context).showSystemOutputSwitcher() }.getOrDefault(false)
+    ) {
+      return Via.OUTPUT_SWITCHER
     }
     if (runCatching { SystemOutputSwitcherDialogController.showDialog(activity ?: context) }.getOrDefault(false)) return Via.MEDIA_ROUTER_DIALOG
     val settings = Intent(Settings.ACTION_BLUETOOTH_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

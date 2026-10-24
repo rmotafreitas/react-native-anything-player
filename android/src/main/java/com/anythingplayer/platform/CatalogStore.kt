@@ -184,8 +184,10 @@ internal class CatalogStore(private val file: File) {
     // rename(2) replaces the old file in one step. Never delete it first: a
     // failure then would leave no catalog at all.
     if (!temp.renameTo(file)) {
-      temp.delete()
-      throw IOException("Could not save the catalog to ${file.path}.")
+      val removed = temp.delete()
+      throw IOException(
+        "Could not save the catalog to ${file.path}." + if (removed) "" else " The temporary file ${temp.path} was left behind."
+      )
     }
   }
 

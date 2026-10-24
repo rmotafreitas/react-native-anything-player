@@ -64,10 +64,14 @@ class IcyMetadataReaderTest {
     }.apply { isDaemon = true }.start()
   }
 
-  private fun read(expected: Int, onStart: (IcyMetadataReader) -> Unit = { it.start() }): List<StreamMetadata> {
+  private fun read(
+    expected: Int,
+    headers: Map<String, String> = mapOf("X-Token" to "t"),
+    onStart: (IcyMetadataReader) -> Unit = { it.start() },
+  ): List<StreamMetadata> {
     val delivered = CopyOnWriteArrayList<StreamMetadata>()
     val done = CountDownLatch(expected)
-    val source = SourceDescriptor("http://127.0.0.1:${server.localPort}/live", mapOf("X-Token" to "t"), true)
+    val source = SourceDescriptor("http://127.0.0.1:${server.localPort}/live", headers, true)
     reader = IcyMetadataReader(source, "RNAP-test", StreamTitleFormat.ARTIST_TITLE) { delivered.add(it); done.countDown() }
     onStart(reader!!)
     assertTrue("timed out with ${delivered.size} of $expected", done.await(10, TimeUnit.SECONDS))
@@ -87,6 +91,14 @@ class IcyMetadataReaderTest {
     assertEquals("1", request["icy-metadata"])
     assertEquals("RNAP-test", request["user-agent"])
     assertEquals("t", request["x-token"])
+  }
+
+  @Test
+  fun `an app's Icy-MetaData header cannot switch the metadata off`() {
+    serve(body(16, listOf("Miles Davis - So What")))
+    read(expected = 1, headers = mapOf("icy-metadata" to "0", "X-Token" to "t"))
+    assertEquals("1", connections[0]["icy-metadata"])
+    assertEquals("t", connections[0]["x-token"])
   }
 
   @Test
