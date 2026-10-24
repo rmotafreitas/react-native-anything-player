@@ -5,6 +5,8 @@
 import type { PlayerError } from '../../errors';
 import {
   DEFAULT_ENGINE_OPTIONS,
+  DEFAULT_FALLBACK_POLICY,
+  DEFAULT_VIDEO_OPTIONS,
   type EngineOptions,
 } from '../engine/RecoveryPolicy';
 import type {
@@ -12,9 +14,13 @@ import type {
   StreamTitleFormat,
 } from '../engine/StreamMetadata';
 import type {
+  BackgroundMode,
   EngineDiagnostic,
   EngineStatus,
+  FallbackPolicy,
+  QualityPolicy,
   SourceDescriptor,
+  VideoEngineOptions,
 } from '../engine/types';
 import type { ProgressReading } from './MediaElementDriver';
 
@@ -64,6 +70,56 @@ export const NO_FIELDS: NowPlayingFields = {
   live: null,
 };
 
+/** `PlayerOptions.video`: `true` takes every default; absent or `false`, an audio player. */
+export function parseVideo(value: unknown): VideoEngineOptions | null {
+  if (value === true) return DEFAULT_VIDEO_OPTIONS;
+  const map = dict(value);
+  if (map == null) return null;
+  const mode = str(map.whenBackgrounded);
+  const whenBackgrounded: BackgroundMode =
+    mode === 'audio' || mode === 'pip' ? mode : 'pause';
+  return {
+    whenBackgrounded,
+    ambient: bool(map.ambient) ?? false,
+    keepAwake: bool(map.keepAwake) ?? true,
+    focusWhenMuted: bool(map.focusWhenMuted) ?? false,
+    fallback: parseFallback(map.fallbackToAudio),
+    quality: parseQuality(map.quality),
+  };
+}
+
+function parseFallback(value: unknown): FallbackPolicy | null {
+  if (value === true) return DEFAULT_FALLBACK_POLICY;
+  const map = dict(value);
+  if (map == null) return null;
+  const d = DEFAULT_FALLBACK_POLICY;
+  return {
+    dropBelowRatio: num(map.dropBelowRatio) ?? d.dropBelowRatio,
+    dropAfterMs: num(map.dropAfterMs) ?? d.dropAfterMs,
+    dropAfterStalls: num(map.dropAfterStalls) ?? d.dropAfterStalls,
+    stallWindowMs: num(map.stallWindowMs) ?? d.stallWindowMs,
+    returnAboveRatio: num(map.returnAboveRatio) ?? d.returnAboveRatio,
+    returnAfterMs: num(map.returnAfterMs) ?? d.returnAfterMs,
+  };
+}
+
+function parseQuality(value: unknown): QualityPolicy {
+  const map = dict(value) ?? {};
+  const cellular = dict(map.cellular);
+  const start = map.startQuality;
+  const startQuality: QualityPolicy['startQuality'] =
+    start === 'lowest' || start === 'highest' ? start : (num(start) ?? 'auto');
+  return {
+    maxHeight: num(map.maxResolution),
+    maxBitrate: num(map.maxBitrate),
+    cellularMaxHeight: num(cellular?.maxResolution),
+    cellularMaxBitrate: num(cellular?.maxBitrate),
+    startQuality,
+    followDataSaver: bool(map.followDataSaver) ?? true,
+    capToView: bool(map.capToView) ?? true,
+  };
+}
+
 export function parseOptions(value: unknown): WebPlayerOptions {
   const map = dict(value) ?? {};
   const recovery = dict(map.recovery);
@@ -88,6 +144,7 @@ export function parseOptions(value: unknown): WebPlayerOptions {
       liveMaxDriftMs:
         num(recovery?.liveMaxDriftMs) ?? DEFAULT_ENGINE_OPTIONS.liveMaxDriftMs,
       ...parseFade(map.fade),
+      video: parseVideo(map.video),
     },
     mediaSession: bool(session?.enabled) ?? true,
     remoteCommands: new Set(commands),

@@ -13,7 +13,7 @@
 // Twins: `ios/Core/PlaybackEngine.swift`, `android/.../core/PlaybackEngine.kt`.
 // All three run `conformance/`.
 
-import { EngineFades } from './EngineFades';
+import { EngineVideo } from './EngineVideo';
 import { RecoveryPolicy } from './RecoveryPolicy';
 import { continuesIntent } from './status';
 import {
@@ -21,6 +21,7 @@ import {
   type AudioRoute,
   type InterruptionReason,
   type NetworkState,
+  type PlaybackState,
 } from './types';
 
 export type {
@@ -30,7 +31,14 @@ export type {
   LoadOutcome,
 } from './contracts';
 
-export class PlaybackEngine extends EngineFades {
+/** Playback wanted, nothing heard yet: the foreground recovers these at once. */
+const WAITING_STATES: ReadonlySet<PlaybackState> = new Set<PlaybackState>([
+  'reconnecting',
+  'buffering',
+  'loading',
+]);
+
+export class PlaybackEngine extends EngineVideo {
   // ── Output ──
 
   /** The local output changed (headphones, AirPlay, Bluetooth). Ignored while casting. */
@@ -82,7 +90,8 @@ export class PlaybackEngine extends EngineFades {
       this.open(position, 'handoff');
     } else {
       // Old-output callbacks are stale; nothing is loaded on the new one.
-      this._generation += 1;
+      this.cancelSwap('handoff');
+      this._generation = this.issueGeneration();
       this.readyForGeneration = false;
       if (this._source != null) this.connectionReleased = true;
     }
@@ -162,14 +171,12 @@ export class PlaybackEngine extends EngineFades {
 
   /** The app came to the foreground: recover wanted-but-silent audio now. */
   appForegrounded(): void {
-    if (this.isReleased || !this.autoReconnect || this.remote) return;
-    if (
-      this._state === 'reconnecting' ||
-      this._state === 'buffering' ||
-      this._state === 'loading'
-    ) {
-      this.attemptReconnect('app foregrounded');
-    }
+    if (this.isReleased) return;
+    // Read before a video player resumes: its resume is not a stall.
+    const stalled =
+      this.autoReconnect && !this.remote && WAITING_STATES.has(this._state);
+    this.videoForegrounded();
+    if (stalled) this.attemptReconnect('app foregrounded');
     this.commit();
   }
 
@@ -243,6 +250,7 @@ export class PlaybackEngine extends EngineFades {
       }
       case 'playing':
         this.heartbeatPlaying(t, suspect);
+        this.videoHeartbeat(t);
         break;
       case 'buffering':
         if (this.remote) this.heartbeatRemoteBuffering(t);
@@ -282,6 +290,7 @@ export class PlaybackEngine extends EngineFades {
         this.beginWaiting();
         this.stallStartedAt = this.lastPositionAdvanceAt;
         this.silentStall = true;
+        this.stallPublished(t);
       }
     }
     const playing = this.playingSince;
@@ -381,6 +390,7 @@ export class PlaybackEngine extends EngineFades {
     this.lastPosition = position;
     this.lastPositionAdvanceAt = t;
     this.playingSince = t;
+    this.videoPlaying(t);
     this.setState('playing', 'silent stall over');
   }
 }

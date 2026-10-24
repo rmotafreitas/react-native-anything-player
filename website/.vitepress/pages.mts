@@ -178,6 +178,12 @@ export const SECTIONS: DocSection[] = [
           "RNAP's architecture: a native engine over AVPlayer on iOS and Media3 ExoPlayer on Android is the source of truth, exposed to React Native as a TurboModule.",
       },
       {
+        link: '/docs/video-design',
+        text: 'Video (design)',
+        description:
+          'The design of RNAP video: the same engine and recovery, OS players with remux, subtitles, Picture in Picture, quality on bad networks, every platform.',
+      },
+      {
         link: '/docs/testing',
         text: 'Testing',
         description:

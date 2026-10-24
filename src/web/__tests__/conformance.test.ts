@@ -8,12 +8,18 @@ import path from 'node:path';
 import type { AudioRouteKind, PlayerErrorCode } from '../../types';
 import {
   DEFAULT_ENGINE_OPTIONS,
+  DEFAULT_FALLBACK_POLICY,
+  DEFAULT_VIDEO_OPTIONS,
   type EngineOptions,
 } from '../engine/RecoveryPolicy';
 import {
   engineError,
+  type EngineVideoStatus,
   type InterruptionReason,
   type NetworkState,
+  type Rendition,
+  type VideoEngineOptions,
+  type VideoVariant,
 } from '../engine/types';
 import { EngineHarness, WALL_BASE, type Motion } from './EngineHarness';
 
@@ -49,7 +55,51 @@ function engineOptions(o: Record<string, unknown> = {}): EngineOptions {
     options.liveMaxDriftMs = o.liveMaxDriftMs as number;
   if ('fadeInMs' in o) options.fadeInMs = o.fadeInMs as number;
   if ('fadeOutMs' in o) options.fadeOutMs = o.fadeOutMs as number;
+  if ('video' in o) options.video = videoOptions(o.video);
   return options;
+}
+
+/** `"video": true` or partial `VideoEngineOptions` (`"fallback": true` takes its defaults). */
+function videoOptions(value: unknown): VideoEngineOptions {
+  if (value === true) return DEFAULT_VIDEO_OPTIONS;
+  const o = value as Record<string, unknown>;
+  const fallback = o.fallback;
+  return {
+    ...DEFAULT_VIDEO_OPTIONS,
+    ...(o as Partial<VideoEngineOptions>),
+    quality: {
+      ...DEFAULT_VIDEO_OPTIONS.quality,
+      ...((o.quality as object | undefined) ?? {}),
+    },
+    fallback:
+      fallback === true
+        ? DEFAULT_FALLBACK_POLICY
+        : fallback == null || fallback === false
+          ? null
+          : { ...DEFAULT_FALLBACK_POLICY, ...(fallback as object) },
+  };
+}
+
+function renditions(value: unknown): Rendition[] | null {
+  if (!Array.isArray(value)) return null;
+  return value.map((r: Record<string, unknown>) => ({
+    uri: r.uri as string,
+    headers: null,
+    height: (r.height as number | undefined) ?? null,
+    bitrate: (r.bitrate as number | undefined) ?? null,
+    label: null,
+    audioOnly: r.audioOnly === true,
+  }));
+}
+
+function variants(value: unknown): VideoVariant[] {
+  return (value as Array<Record<string, unknown>>).map((v) => ({
+    id: v.id as string,
+    height: (v.height as number | undefined) ?? null,
+    bitrate: (v.bitrate as number | undefined) ?? null,
+    audioOnly: v.audioOnly === true,
+    label: null,
+  }));
 }
 
 function perform(call: string, step: Step, h: EngineHarness): void {
@@ -61,11 +111,38 @@ function perform(call: string, step: Step, h: EngineHarness): void {
           uri: step.uri as string,
           headers: {},
           liveHint: (step.live as boolean | undefined) ?? null,
+          renditions: renditions(step.renditions),
+          refreshable: step.refreshable === true,
+          expiresAt:
+            step.expiresIn != null
+              ? h.clock.wallMs + (step.expiresIn as number)
+              : null,
         },
         (step.autoplay as boolean | undefined) ?? null,
         (step.start as number | undefined) ?? null
       );
       break;
+    case 'background':
+      return h.engine.appBackgrounded();
+    case 'selectQuality':
+      return h.engine.selectQuality((step.id as string | null) ?? null);
+    case 'listenOnly':
+      return h.engine.setListenOnly(step.value === true);
+    case 'loop':
+      return h.engine.setLoop(step.value === true);
+    case 'sourceRefreshed':
+      return h.engine.sourceRefreshed(h.engine.loadId, {
+        uri: step.uri as string,
+        headers: {},
+        liveHint: (step.live as boolean | undefined) ?? null,
+        renditions: renditions(step.renditions),
+        expiresAt:
+          step.expiresIn != null
+            ? h.clock.wallMs + (step.expiresIn as number)
+            : null,
+      });
+    case 'sourceRefreshFailed':
+      return h.engine.sourceRefreshFailed(h.engine.loadId);
     case 'play':
       return h.engine.play();
     case 'pause':
@@ -77,7 +154,7 @@ function perform(call: string, step: Step, h: EngineHarness): void {
     case 'release':
       return h.engine.release();
     case 'seek':
-      return h.engine.seek(value);
+      return h.engine.seek(value, step.exact === true);
     case 'volume':
       return h.engine.setVolume(value);
     case 'muted':
@@ -121,6 +198,10 @@ function native(step: Step, h: EngineHarness): void {
   const move = (motion: Motion) => {
     if (accepted) h.driver.setMotion(motion);
   };
+  if (step.native === 'playing' && gen === h.driver.swapGeneration) {
+    h.driver.completeSwap();
+    return h.engine.onPlaying(gen);
+  }
   switch (step.native) {
     case 'ready':
       return h.engine.onReady(gen, {
@@ -144,8 +225,30 @@ function native(step: Step, h: EngineHarness): void {
         engineError(
           step.code as PlayerErrorCode,
           'test',
-          step.recoverable === true
+          step.recoverable === true,
+          step.httpStatus != null
+            ? { httpStatus: step.httpStatus as number }
+            : {}
         )
+      );
+    case 'bandwidth':
+      return h.engine.onBandwidth(gen, step.bps as number);
+    case 'variants':
+      return h.engine.onVariants(gen, variants(step.variants));
+    case 'videoInfo':
+      return h.engine.onVideoInfo(gen, {
+        width: step.width as number,
+        height: step.height as number,
+        hdr: step.hdr === true,
+        variantId: (step.variant as string | undefined) ?? null,
+      });
+    case 'firstFrame':
+      return h.engine.onFirstFrame(gen);
+    case 'renditionInfo':
+      return h.engine.renditionInfo(
+        step.index as number,
+        (step.height as number | undefined) ?? null,
+        (step.bitrate as number | undefined) ?? null
       );
     case 'pausedExternally':
       return h.engine.onPausedExternally(
@@ -248,6 +351,27 @@ function check(
       case 'orderedCommands':
         orderedCommands_(label, v as string[], h.driver.commands);
         break;
+      case 'video':
+        videoExpect_(label, s.video, v as Record<string, unknown>);
+        break;
+      case 'wantsMediaSession':
+        expect_(label, h.engine.wantsMediaSession, v);
+        break;
+      case 'wantsScreenAwake':
+        expect_(label, h.engine.wantsScreenAwake, v);
+        break;
+      case 'refreshes':
+        expect_(label, h.recorder.refreshes, v);
+        break;
+      case 'gen':
+        expect_(label, h.engine.generation, v);
+        break;
+      case 'stats': {
+        const stats = h.engine.stats as unknown as Record<string, unknown>;
+        for (const [k, want] of Object.entries(v as Record<string, unknown>))
+          expect_(`${label}.${k}`, stats[k], want);
+        break;
+      }
       default:
         throw new Error(`${at}: unknown expectation ${key}`);
     }
@@ -258,6 +382,23 @@ function check(
   h.recorder.ended = 0;
   h.recorder.sleeps = 0;
   h.recorder.fades = 0;
+  h.recorder.refreshes = [];
+}
+
+/** Compares the listed `status.video` fields (`qualities` as their ids). */
+function videoExpect_(
+  label: string,
+  video: EngineVideoStatus | null,
+  expected: Record<string, unknown> | null
+): void {
+  if (expected == null) return expect_(label, video, null);
+  if (video == null) throw new Error(`${label}: no status.video`);
+  const fields = video as unknown as Record<string, unknown>;
+  for (const [k, want] of Object.entries(expected)) {
+    const actual =
+      k === 'qualities' ? video.qualities.map((q) => q.id) : fields[k];
+    expect_(`${label}.${k}`, actual, want);
+  }
 }
 
 function expect_(label: string, actual: unknown, expected: unknown): void {
@@ -332,6 +473,19 @@ function apply(step: Step, h: EngineHarness, at: string): void {
       kind: step.route as AudioRouteKind,
       name: (step.name as string | undefined) ?? null,
     });
+  } else if ('view' in step) {
+    const v = step.view as Record<string, unknown>;
+    h.engine.viewChanged({
+      attached: v.attached !== false,
+      visible: v.visible !== false,
+      width: (v.width as number | undefined) ?? 0,
+      height: (v.height as number | undefined) ?? 0,
+    });
+  } else if ('pip' in step) {
+    h.engine.pictureInPictureChanged(step.pip === true);
+  } else if ('networkCost' in step) {
+    const c = step.networkCost as Record<string, unknown>;
+    h.engine.networkCostChanged(c.metered === true, c.saveData === true);
   } else if ('platformReset' in step) {
     h.engine.platformReset();
   } else if ('advance' in step) {

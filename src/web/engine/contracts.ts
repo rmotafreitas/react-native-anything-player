@@ -9,6 +9,7 @@ import type {
   FocusResult,
   OpenRequest,
   PlaybackSample,
+  QualityConstraints,
 } from './types';
 
 export interface EngineDriver {
@@ -16,7 +17,8 @@ export interface EngineDriver {
   /** Start/resume the current item (latched until the item is ready). */
   play(): void;
   pause(): void;
-  seek(seconds: number): void;
+  /** `exact`: frame-accurate; otherwise the nearest keyframe is fine. */
+  seek(seconds: number, exact?: boolean): void;
   /** Drop the network connection / decoder but keep nothing playing. */
   releaseConnection(): void;
   /** Remove the current item entirely. */
@@ -31,6 +33,14 @@ export interface EngineDriver {
    */
   switchOutput(outputId: string): void;
   sample(): PlaybackSample;
+  /** Video players: decode and show the picture, or not (the sound plays on). */
+  setVideoEnabled?(enabled: boolean): void;
+  /** Video players with an adaptive source: what its own ABR must keep to. */
+  setQuality?(constraints: QualityConstraints): void;
+  /** Repeat a finite item from the start, seamlessly where the platform can. */
+  setLoop?(loop: boolean): void;
+  /** Drop the item an `open({ swap: true })` was preparing. */
+  cancelSwap?(generation: number): void;
 }
 
 export interface EngineClock {
@@ -56,4 +66,13 @@ export interface EngineDelegate {
   engineDiagnostic(entry: EngineDiagnostic): void;
   /** The engine wants `onWakeup()` at this monotonic instant (`null` = none). */
   engineWakeupAt(at: number | null): void;
+  /**
+   * The source needs a new URL (`'unauthorized'`: a 401/403; `'expiring'`:
+   * `expiresAt` is near). Answer with `sourceRefreshed` or
+   * `sourceRefreshFailed` for the same `loadId`.
+   */
+  engineRequestsSourceRefresh?(
+    loadId: number,
+    reason: 'unauthorized' | 'expiring'
+  ): void;
 }

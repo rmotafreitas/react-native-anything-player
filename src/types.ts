@@ -43,7 +43,11 @@ export type InterruptionReason =
   /** The platform paused without saying why. */
   | 'system'
   /** Web: the browser refused to start audio without a user gesture (autoplay policy). Call `play()` from a tap. */
-  | 'autoplay-blocked';
+  | 'autoplay-blocked'
+  /** Video: the app went to the background (`video.whenBackgrounded`, ambient players). */
+  | 'background'
+  /** Video: an ambient player's view left the screen; it resumes when shown again. */
+  | 'offscreen';
 
 /** The system paused playback, or refused to start it. */
 export interface Interruption {
