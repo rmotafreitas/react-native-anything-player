@@ -100,6 +100,12 @@ export abstract class EngineCore {
   protected lastPositionAdvanceAt = 0;
   protected lastBuffered = 0;
   protected lastBufferedAdvanceAt = 0;
+  /**
+   * While waiting, where the playhead's current run at the playback rate
+   * began, and the last reading (the playhead can prove playback).
+   */
+  protected waitingFrom: { position: number; at: number } | null = null;
+  protected waitingLast: { position: number; at: number } | null = null;
   protected pausedAt: number | null = null;
   protected driftMs = 0;
   protected playingSince: number | null = null;
@@ -863,7 +869,10 @@ export abstract class EngineCore {
     this.stallStartedAt = this.now;
     this.playingSince = null;
     this.lastBufferedAdvanceAt = this.now;
-    this.lastBuffered = this.driver.sample().bufferedPosition;
+    const sample = this.driver.sample();
+    this.lastBuffered = sample.bufferedPosition;
+    this.waitingFrom = { position: sample.position, at: this.now };
+    this.waitingLast = this.waitingFrom;
   }
 
   protected handleFailure(error: PlayerError): void {

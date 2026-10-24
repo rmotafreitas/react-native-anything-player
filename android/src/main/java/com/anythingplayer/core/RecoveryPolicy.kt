@@ -33,6 +33,12 @@ object RecoveryPolicy {
   /** A stall that trickles data but never recovers is re-opened after this. */
   const val STALL_MAX_MS = 20_000L
 
+  /**
+   * A playhead that advances this far (seconds), at about the playback rate,
+   * while the platform still says buffering: it is playing.
+   */
+  const val PLAYHEAD_PROOF_S = 1.5
+
   /** How long after a connectivity edge the link is treated as suspect. */
   const val NETWORK_SUSPECT_MS = 20_000L
 

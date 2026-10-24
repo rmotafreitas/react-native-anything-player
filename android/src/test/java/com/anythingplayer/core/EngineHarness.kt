@@ -14,7 +14,8 @@ class FakeClock : EngineClock {
 
 /** Records every driver call and simulates a playhead. */
 class FakeDriver(private val clock: FakeClock) : EngineDriver {
-  enum class Motion { FLOWING, FROZEN, TRICKLE }
+  /** `LOADED`: the whole file is buffered: the playhead advances, the buffer stays where it is. */
+  enum class Motion { FLOWING, FROZEN, TRICKLE, LOADED }
 
   val commands = mutableListOf<String>()
   /** Like ExoPlayer: report readiness/playing synchronously from inside commands. */
@@ -30,10 +31,10 @@ class FakeDriver(private val clock: FakeClock) : EngineDriver {
     private set
   private var swapStart = 0.0
 
-  fun setMotion(next: Motion) {
+  fun setMotion(next: Motion, buffered: Double? = null) {
     val current = sample()
     anchorPosition = current.position
-    anchorBuffered = current.bufferedPosition
+    anchorBuffered = buffered ?: current.bufferedPosition
     anchorTime = clock.monotonicMs
     motion = next
     if (next == Motion.FLOWING) anchorBuffered = maxOf(anchorBuffered, anchorPosition + 10)
@@ -52,6 +53,7 @@ class FakeDriver(private val clock: FakeClock) : EngineDriver {
       Motion.FLOWING -> PlaybackSample(anchorPosition + elapsed, anchorBuffered + elapsed)
       Motion.FROZEN -> PlaybackSample(anchorPosition, anchorBuffered)
       Motion.TRICKLE -> PlaybackSample(anchorPosition, anchorBuffered + elapsed * 0.5)
+      Motion.LOADED -> PlaybackSample(anchorPosition + elapsed, anchorBuffered)
     }
   }
 

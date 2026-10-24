@@ -294,6 +294,8 @@ function driver(step: Step, h: EngineHarness): void {
     case 'frozen':
     case 'trickle':
       return h.driver.setMotion(step.driver);
+    case 'loaded':
+      return h.driver.setMotion('loaded', step.value as number);
     case 'reentrant':
       h.driver.reentrant = true;
       return;

@@ -33,7 +33,8 @@ export class FakeClock implements EngineClock {
   }
 }
 
-export type Motion = 'flowing' | 'frozen' | 'trickle';
+/** `loaded`: the whole file is buffered: the playhead advances, the buffer stays where it is. */
+export type Motion = 'flowing' | 'frozen' | 'trickle' | 'loaded';
 
 const f1 = (v: number) => v.toFixed(1);
 const f2 = (v: number) => v.toFixed(2);
@@ -56,10 +57,10 @@ export class FakeDriver implements EngineDriver {
 
   constructor(private readonly clock: FakeClock) {}
 
-  setMotion(next: Motion): void {
+  setMotion(next: Motion, buffered?: number): void {
     const current = this.sample();
     this.anchorPosition = current.position;
-    this.anchorBuffered = current.bufferedPosition;
+    this.anchorBuffered = buffered ?? current.bufferedPosition;
     this.anchorTime = this.clock.monotonicMs;
     this.motion = next;
     if (next === 'flowing')
@@ -88,6 +89,11 @@ export class FakeDriver implements EngineDriver {
         return {
           position: this.anchorPosition,
           bufferedPosition: this.anchorBuffered + elapsed * 0.5,
+        };
+      case 'loaded':
+        return {
+          position: this.anchorPosition + elapsed,
+          bufferedPosition: this.anchorBuffered,
         };
       default:
         return {

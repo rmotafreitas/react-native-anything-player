@@ -13,7 +13,8 @@ final class FakeClock: EngineClock {
 
 /// Records every driver call and simulates a playhead.
 final class FakeDriver: EngineDriver {
-  enum Motion { case flowing, frozen, trickle }
+  /// `loaded`: the whole file is buffered: the playhead advances, the buffer stays where it is.
+  enum Motion { case flowing, frozen, trickle, loaded }
 
   let clock: FakeClock
   var commands: [String] = []
@@ -31,10 +32,10 @@ final class FakeDriver: EngineDriver {
 
   init(clock: FakeClock) { self.clock = clock }
 
-  func setMotion(_ next: Motion) {
+  func setMotion(_ next: Motion, buffered: Double? = nil) {
     let current = sample()
     anchorPosition = current.position
-    anchorBuffered = current.bufferedPosition
+    anchorBuffered = buffered ?? current.bufferedPosition
     anchorTime = clock.monotonicMs
     motion = next
     if next == .flowing { anchorBuffered = max(anchorBuffered, anchorPosition + 10) }
@@ -58,6 +59,8 @@ final class FakeDriver: EngineDriver {
     case .trickle:
       return PlaybackSample(
         position: anchorPosition, bufferedPosition: anchorBuffered + elapsed * 0.5)
+    case .loaded:
+      return PlaybackSample(position: anchorPosition + elapsed, bufferedPosition: anchorBuffered)
     }
   }
 

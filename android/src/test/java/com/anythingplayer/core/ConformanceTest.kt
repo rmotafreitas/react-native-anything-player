@@ -222,6 +222,7 @@ class ConformanceTest {
           "flowing" -> h.driver.setMotion(FakeDriver.Motion.FLOWING)
           "frozen" -> h.driver.setMotion(FakeDriver.Motion.FROZEN)
           "trickle" -> h.driver.setMotion(FakeDriver.Motion.TRICKLE)
+          "loaded" -> h.driver.setMotion(FakeDriver.Motion.LOADED, step.optDouble("value", 0.0))
           "reentrant" -> h.driver.reentrant = true
           "position" -> h.driver.setPosition(step.optDouble("value", 0.0))
           else -> fail("$at: unknown driver step $d")

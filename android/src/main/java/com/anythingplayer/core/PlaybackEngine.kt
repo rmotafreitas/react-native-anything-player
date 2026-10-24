@@ -186,6 +186,13 @@ class PlaybackEngine(
   private var lastPositionAdvanceAt = 0L
   private var lastBuffered = 0.0
   private var lastBufferedAdvanceAt = 0L
+  /**
+   * While waiting, where the playhead's current run at the playback rate
+   * began, and the last reading (the playhead can prove playback).
+   */
+  private var waitingFromPosition: Double? = null
+  private var waitingLastPosition = 0.0
+  private var waitingLastAt = 0L
   private var pausedAt: Long? = null
   private var driftMs = 0L
   private var playingSince: Long? = null
@@ -1442,7 +1449,32 @@ class PlaybackEngine(
     stallStartedAt = now
     playingSince = null
     lastBufferedAdvanceAt = now
-    lastBuffered = driver.sample().bufferedPosition
+    val sample = driver.sample()
+    lastBuffered = sample.bufferedPosition
+    waitingFromPosition = sample.position
+    waitingLastPosition = sample.position
+    waitingLastAt = now
+  }
+
+  /**
+   * Whether the playhead has run on, reading after reading, at about the
+   * playback rate for `PLAYHEAD_PROOF_S` (a jump, like a live edge or a
+   * seek, or a frozen playhead, starts the run again).
+   */
+  private fun playheadPlays(t: Long, p: Double): Boolean {
+    var from = waitingFromPosition ?: return false
+    if (remote) return false
+    val dt = (t - waitingLastAt) / 1000.0
+    val dp = p - waitingLastPosition
+    val r = maxOf(rate, 0.1)
+    val runs = dt > 0 && dp >= 0.5 * r * dt && dp <= 1.5 * r * dt + 0.25
+    waitingLastPosition = p
+    waitingLastAt = t
+    if (!runs) {
+      from = p
+      waitingFromPosition = p
+    }
+    return runs && p - from >= RecoveryPolicy.PLAYHEAD_PROOF_S
   }
 
   private fun handleFailure(error: PlayerError) {
@@ -1630,6 +1662,12 @@ class PlaybackEngine(
       // The stall was ours (native never left playing): the playhead moving
       // again is the only sign it is over.
       endSilentStall(t, p)
+      return
+    }
+    if (playheadPlays(t, p)) {
+      // The platform plays but never said so: the playhead is the proof.
+      log("playhead moving", mapOf("at" to "%.1f".format(java.util.Locale.ROOT, p)))
+      onPlaying(generation)
       return
     }
     if (sample.bufferedPosition > lastBuffered + 0.01) {

@@ -146,6 +146,53 @@
     ]
   },
   {
+    "name": "a stall long after the file finished loading counts its time without data from its start",
+    "steps": [
+      { "network": "online" },
+      { "call": "load", "uri": "https://cdn.example/clip.mp4", "autoplay": true },
+      { "native": "ready", "duration": 60, "seekable": true },
+      { "driver": "loaded", "value": 60 },
+      { "advance": 1000 },
+      { "native": "playing" },
+      { "driver": "loaded", "value": 60 },
+      { "advance": 20000 },
+      { "native": "buffering" },
+      { "advance": 1000 },
+      { "expect": { "state": "buffering", "commands": ["open(gen=1,start=-,play=true)"] } },
+      { "advance": 1500 },
+      { "expect": { "state": "buffering", "commands": [] } },
+      { "advance": 500 },
+      { "expect": { "state": "loading", "reconnectAttempt": 1 } }
+    ]
+  },
+  {
+    "name": "a playhead that runs while the platform still says buffering is playing",
+    "steps": [
+      { "network": "online" },
+      { "call": "load", "uri": "https://cdn.example/clip.mp4", "autoplay": true },
+      { "native": "ready", "duration": 60, "seekable": true },
+      { "expect": { "state": "buffering" } },
+      { "driver": "flowing" },
+      { "advance": 1000 },
+      { "expect": { "state": "buffering" } },
+      { "advance": 1000 },
+      { "expect": { "state": "playing" } }
+    ]
+  },
+  {
+    "name": "a playhead that jumps while buffering (a live edge) is not playing",
+    "steps": [
+      { "network": "online" },
+      { "call": "load", "uri": "https://radio.example/live.m3u8", "live": true, "autoplay": true },
+      { "native": "ready", "live": true },
+      { "driver": "position", "value": 30 },
+      { "advance": 1000 },
+      { "expect": { "state": "buffering" } },
+      { "advance": 1000 },
+      { "expect": { "state": "buffering" } }
+    ]
+  },
+  {
     "name": "short live stalls accumulate drift until the stream is re-opened at the live edge",
     "steps": [
       { "network": "online" },
@@ -471,8 +518,10 @@
       { "native": "ready", "duration": 120, "seekable": true },
       { "native": "playing" },
       { "native": "buffering" },
-      { "driver": "flowing" },
-      { "advance": 20000 },
+      { "driver": "trickle" },
+      { "advance": 10000 },
+      { "driver": "position", "value": 20 },
+      { "advance": 10000 },
       { "expect": { "state": "loading", "commands": ["open(gen=1,start=-,play=true)", "open(gen=2,start=20.0,play=true)"] } }
     ]
   },

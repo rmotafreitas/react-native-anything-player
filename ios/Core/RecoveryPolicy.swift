@@ -36,6 +36,9 @@ enum RecoveryPolicy {
   static let suspectStallDeadMs: Int64 = 1_500
   /// A stall that trickles data but never recovers is re-opened after this.
   static let stallMaxMs: Int64 = 20_000
+  /// A playhead that advances this far (seconds), at about the playback rate,
+  /// while the platform still says buffering: it is playing.
+  static let playheadProofS: Double = 1.5
 
   /// How long after a connectivity edge the link is treated as suspect.
   static let networkSuspectMs: Int64 = 20_000

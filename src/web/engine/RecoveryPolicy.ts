@@ -27,6 +27,12 @@ export const RecoveryPolicy = {
   SUSPECT_STALL_DEAD_MS: 1_500,
   /** A stall that trickles data but never recovers is re-opened after this. */
   STALL_MAX_MS: 20_000,
+  /**
+   * A playhead that advances this far (seconds), at about the playback rate,
+   * while the platform still says buffering: it is playing (WebKitGTK plays
+   * at readyState 2 without a `playing` event).
+   */
+  PLAYHEAD_PROOF_S: 1.5,
   /** How long after a connectivity edge the link is treated as suspect. */
   NETWORK_SUSPECT_MS: 20_000,
   /** Reconnect backoff: base delay, doubled per attempt, capped, ±jitter. */

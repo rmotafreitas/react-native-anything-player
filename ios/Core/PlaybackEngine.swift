@@ -167,6 +167,10 @@ final class PlaybackEngine {
   private var lastPositionAdvanceAt: Int64 = 0
   private var lastBuffered: Double = 0
   private var lastBufferedAdvanceAt: Int64 = 0
+  /// While waiting, where the playhead's current run at the playback rate
+  /// began, and the last reading (the playhead can prove playback).
+  private var waitingFrom: Double?
+  private var waitingLast: (position: Double, at: Int64) = (0, 0)
   private var pausedAt: Int64?
   /// Live: how far behind the live edge the current open has fallen (ms).
   private var driftMs: Int64 = 0
@@ -1181,7 +1185,27 @@ final class PlaybackEngine {
     stallStartedAt = now
     playingSince = nil
     lastBufferedAdvanceAt = now
-    lastBuffered = driver.sample().bufferedPosition
+    let sample = driver.sample()
+    lastBuffered = sample.bufferedPosition
+    waitingFrom = sample.position
+    waitingLast = (sample.position, now)
+  }
+
+  /// Whether the playhead has run on, reading after reading, at about the
+  /// playback rate for `playheadProofS` (a jump, like a live edge or a seek,
+  /// or a frozen playhead, starts the run again).
+  private func playheadPlays(_ t: Int64, _ p: Double) -> Bool {
+    guard var from = waitingFrom, !remote else { return false }
+    let dt = Double(t - waitingLast.at) / 1000
+    let dp = p - waitingLast.position
+    let r = max(rate, 0.1)
+    let runs = dt > 0 && dp >= 0.5 * r * dt && dp <= 1.5 * r * dt + 0.25
+    waitingLast = (p, t)
+    if !runs {
+      from = p
+      waitingFrom = p
+    }
+    return runs && p - from >= RecoveryPolicy.playheadProofS
   }
 
   private func handleFailure(_ error: PlayerError) {
@@ -1343,6 +1367,12 @@ final class PlaybackEngine {
         // The stall was ours (native never left playing): the playhead moving
         // again is the only sign it is over.
         endSilentStall(t, p)
+        return
+      }
+      if playheadPlays(t, p) {
+        // The platform plays but never said so: the playhead is the proof.
+        log("playhead moving", ["at": String(format: "%.1f", p)])
+        onPlaying(generation: generation)
         return
       }
       if sample.bufferedPosition > lastBuffered + 0.01 {

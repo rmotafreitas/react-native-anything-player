@@ -313,6 +313,12 @@ export class PlaybackEngine extends EngineVideo {
       this.endSilentStall(t, p);
       return;
     }
+    if (this.playheadPlays(t, p)) {
+      // The platform plays but never said so: the playhead is the proof.
+      this.log('playhead moving', { at: p.toFixed(1) });
+      this.onPlaying(this.generation);
+      return;
+    }
     if (sample.bufferedPosition > this.lastBuffered + 0.01) {
       this.lastBuffered = sample.bufferedPosition;
       this.lastBufferedAdvanceAt = t;
@@ -335,6 +341,26 @@ export class PlaybackEngine extends EngineVideo {
     } else {
       // Data is arriving: give the buffer time to recover.
     }
+  }
+
+  /**
+   * Whether the playhead has run on, reading after reading, at about the
+   * playback rate for `PLAYHEAD_PROOF_S` (a jump, like a live edge or a
+   * seek, or a frozen playhead, starts the run again).
+   */
+  protected playheadPlays(t: number, p: number): boolean {
+    const last = this.waitingLast;
+    if (last == null || this.waitingFrom == null || this.remote) return false;
+    const dt = (t - last.at) / 1000;
+    const dp = p - last.position;
+    const rate = Math.max(this.rate, 0.1);
+    const runs =
+      dt > 0 && dp >= 0.5 * rate * dt && dp <= 1.5 * rate * dt + 0.25;
+    this.waitingLast = { position: p, at: t };
+    if (!runs) this.waitingFrom = { position: p, at: t };
+    return (
+      runs && p - this.waitingFrom.position >= RecoveryPolicy.PLAYHEAD_PROOF_S
+    );
   }
 
   /**
