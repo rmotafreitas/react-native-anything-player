@@ -3,6 +3,7 @@ package com.anythingplayer.platform
 import com.facebook.react.bridge.ReadableMap
 import com.anythingplayer.core.MediaTrack
 import com.anythingplayer.core.Status
+import com.anythingplayer.core.VideoStatus
 
 /** What a video load brings besides the source: its poster, its subtitle files and their session. */
 internal data class VideoLoadParts(
@@ -43,6 +44,9 @@ internal interface VideoPicture {
 
   /** Playback jumped: subtitles place themselves again. */
   fun positionJumped()
+
+  /** The app's subtitle files whose cues have loaded, as WebVTT (for a Cast receiver). */
+  fun castSubtitles(status: VideoStatus): List<CastSubtitle>
 
   /** `cues`, `fullscreen`, `pictureInPicture` (main thread; throws a `PlayerError`). */
   fun command(op: String, command: ReadableMap)

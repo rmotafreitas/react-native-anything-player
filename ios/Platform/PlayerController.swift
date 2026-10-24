@@ -253,6 +253,7 @@ final class PlayerController: EngineDelegate, DriverObserver {
     audioDriver?.observer = self
     routing.observer = self
     routing.describe = { [weak self] in self?.nowPlaying() ?? NowPlayingInfo() }
+    routing.media = { [weak self] in self?.castMedia() ?? CastMedia() }
     engine.delegate = self
     picture?.attach(to: self)
     // JS reads the status right after creating the player, before the engine
@@ -359,6 +360,12 @@ final class PlayerController: EngineDelegate, DriverObserver {
   func mediaServicesReset() {
     drivers.forEach { $0.rebuild() }
     engine.platformReset()
+  }
+
+  /// What a Cast receiver gets besides the source: a video player's subtitle files as WebVTT.
+  func castMedia() -> CastMedia {
+    guard let video = status.video else { return CastMedia() }
+    return CastMedia(video: true, subtitles: picture?.castSubtitles(video) ?? [], textTrack: video.textTrack)
   }
 
   /// Emits a player event with a payload of its own (`cues`), ordered like every other.

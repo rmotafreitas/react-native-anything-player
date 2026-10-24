@@ -17,7 +17,7 @@ Video follows the rest of RNAP: **lightweight, bulletproof, best DX**. It is not
 | Android and iOS: loop, exact seeks, refresh, `fetchText` | **Done** |
 | iOS: the picture (`AVPlayerLayer`s in a stage moved between `<VideoView>`s), renditions switched behind the picture, the source's audio and text options and HLS variants, the legible output in the MediaAccessibility caption style, AVKit's controls inline and in fullscreen (orientation lock), Picture in Picture (auto from inline), the idle timer, posters, the `RNAP_VIDEO` switch | **Written**; compiled and tried in macOS CI and on devices before it is called done |
 | Web: the source's own tracks (hls.js audio and subtitle groups; Safari's own `audioTracks` and `textTracks`), drawn by RNAP's overlay; video players take hls.js over a native HLS without track lists (Chromium's) | **Done**, Playwright on Chromium, Firefox and WebKit |
-| Cast video (web, Android, iOS): video content types, movie metadata, the app's subtitle files as receiver text tracks | Next |
+| Cast video (web, Android, iOS): video content types, movie metadata, the app's subtitle files (any format) as the receiver's WebVTT text tracks (`data:` URLs, the subtitle delay applied), switched while casting; renditions go as the file playing | **Written**: the web against a scripted sender SDK, Android compiled and unit-tested, iOS compiled in macOS CI; to try on a real receiver |
 | Remux (MKV, WebM, TS), DASH, software decoders, DRM | In the release plan below |
 
 ## Decisions

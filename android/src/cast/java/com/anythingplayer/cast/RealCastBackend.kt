@@ -21,6 +21,7 @@ import com.anythingplayer.platform.CastBackend
 import com.anythingplayer.platform.CastHost
 import com.anythingplayer.platform.CastState
 import com.anythingplayer.platform.CastStatus
+import com.anythingplayer.platform.CastMedia
 import com.anythingplayer.platform.DriverObserver
 import com.anythingplayer.platform.NowPlaying
 import com.anythingplayer.platform.RemoteOutput
@@ -94,7 +95,7 @@ internal class RealCastBackend(context: Context, private val host: CastHost) : C
     }
     context.sessionManager.addSessionManagerListener(sessionListener, CastSession::class.java)
     player =
-      RemoteCastPlayer.Builder(app).build().also {
+      RemoteCastPlayer.Builder(app).setMediaItemConverter(TextTrackConverter()).build().also {
         it.setSessionAvailabilityListener(availability)
         it.addListener(playerListener)
       }
@@ -244,7 +245,8 @@ internal class RealCastBackend(context: Context, private val host: CastHost) : C
 
   // ── CastBackend ──
 
-  override fun newOutput(observer: DriverObserver, nowPlaying: () -> NowPlaying): RemoteOutput = CastOutput(this, observer, nowPlaying)
+  override fun newOutput(observer: DriverObserver, nowPlaying: () -> NowPlaying, media: () -> CastMedia): RemoteOutput =
+    CastOutput(this, observer, nowPlaying, media)
 
   override fun showPicker(activity: Activity?) {
     val context = castContext

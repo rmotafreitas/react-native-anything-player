@@ -6,6 +6,8 @@ protocol RemoteOutputDriver: EngineDriver {
   var observer: DriverObserver? { get set }
   /// What the receiver shows for the item it opens (title, artist, artwork).
   var describe: (() -> NowPlayingInfo)? { get set }
+  /// A video player's extras for the receiver (its subtitle files).
+  var media: (() -> CastMedia)? { get set }
   func progress() -> ProgressReading
   /// Stops listening to the receiver. Does not stop its media (`unload` does).
   func destroy()
@@ -27,6 +29,9 @@ final class RoutingDriver: EngineDriver {
   }
   var describe: (() -> NowPlayingInfo)? {
     didSet { remote?.describe = describe }
+  }
+  var media: (() -> CastMedia)? {
+    didSet { remote?.media = media }
   }
   private(set) var outputId = RoutingDriver.localOutput
   private var remote: RemoteOutputDriver?
@@ -104,6 +109,7 @@ final class RoutingDriver: EngineDriver {
     if isRemote, let next = makeRemote?(outputId) {
       next.observer = observer
       next.describe = describe
+      next.media = media
       remote = next
     }
     current.setVolume(volume)

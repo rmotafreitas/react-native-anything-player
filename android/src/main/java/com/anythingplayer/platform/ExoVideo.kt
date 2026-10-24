@@ -54,6 +54,7 @@ internal data class OverlayCue(
 }
 
 /** A video's tracks as the engine lists them, and how to find each again. */
+@OptIn(UnstableApi::class)
 internal class MappedTracks(
   val tracks: List<MediaTrack>,
   val variants: List<VideoVariant>,

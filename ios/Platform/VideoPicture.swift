@@ -87,6 +87,8 @@ protocol VideoPicture: AnyObject {
   func sourceCues(_ cues: [OverlayCue])
   /// Playback jumped (a seek, a loop): subtitles place themselves again.
   func positionJumped()
+  /// The app's subtitle files whose cues have loaded, as WebVTT (for a Cast receiver).
+  func castSubtitles(_ status: VideoStatus) -> [CastSubtitle]
   /// `cues`, `fullscreen`, `pictureInPicture`.
   func command(_ op: String, _ command: NSDictionary) throws
   /// The app went to the background or came back.
@@ -173,5 +175,71 @@ public final class RNAPVideoHostView: UIView {
   /// Fabric recycles views: a recycled one belongs to no player.
   @objc public func prepareForReuse() {
     playerId = ""
+  }
+}
+
+// MARK: - Cast
+
+/// One of the app's subtitle files, as WebVTT for a Cast receiver.
+struct CastSubtitle {
+  /// The engine's track id (`sub:<n>`).
+  var id: String
+  var captions: Bool
+  var language: String?
+  var label: String?
+  var vtt: String
+}
+
+/// What a video player hands a Cast receiver besides the source.
+struct CastMedia {
+  var video = false
+  var subtitles: [CastSubtitle] = []
+  /// The text track shown (`status.video.textTrack`).
+  var textTrack: String?
+
+  /// A WebVTT file a receiver fetches without a server: a `data:` URL.
+  static func dataURL(_ vtt: String) -> String {
+    let unreserved = CharacterSet(
+      charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.!~*'()")
+    return "data:text/vtt;charset=utf-8," + (vtt.addingPercentEncoding(withAllowedCharacters: unreserved) ?? "")
+  }
+}
+
+/// Cues as a WebVTT file (bold, italic, underline and placement kept),
+/// shifted by `delay`. Twin of `cuesToVtt` in src/core/subtitles/vtt.ts.
+enum CueWriter {
+  static func vtt(_ cues: [OverlayCue], delay: Double = 0) -> String {
+    let blocks = cues.filter { $0.end + delay > 0 }.map { cue -> String in
+      let text = cue.spans.map { span -> String in
+        var t = span.text.replacingOccurrences(of: "&", with: "&amp;").replacingOccurrences(of: "<", with: "&lt;")
+          .replacingOccurrences(of: ">", with: "&gt;")
+        if span.underline { t = "<u>\(t)</u>" }
+        if span.italic { t = "<i>\(t)</i>" }
+        if span.bold { t = "<b>\(t)</b>" }
+        return t
+      }.joined()
+      return "\(clock(cue.start + delay)) --> \(clock(cue.end + delay)) \(settings(cue))\n\(text)"
+    }
+    return (["WEBVTT"] + blocks).joined(separator: "\n\n") + "\n"
+  }
+
+  private static func clock(_ seconds: Double) -> String {
+    let ms = max(0, Int((seconds * 1000).rounded()))
+    return String(
+      format: "%02d:%02d:%02d.%03d", ms / 3_600_000, (ms % 3_600_000) / 60_000, (ms % 60_000) / 1000, ms % 1000)
+  }
+
+  private static func settings(_ cue: OverlayCue) -> String {
+    var out = ["align:" + (cue.align == "left" ? "start" : cue.align == "right" ? "end" : "center")]
+    if let y = cue.y {
+      let anchor = cue.vertical == "top" ? "start" : cue.vertical == "middle" ? "center" : "end"
+      out.append(String(format: "line:%.1f%%,%@", y * 100, anchor))
+    } else if cue.vertical == "top" {
+      out.append("line:0")
+    } else if cue.vertical == "middle" {
+      out.append("line:50%,center")
+    }
+    if let x = cue.x { out.append(String(format: "position:%.1f%%", x * 100)) }
+    return out.joined(separator: " ")
   }
 }

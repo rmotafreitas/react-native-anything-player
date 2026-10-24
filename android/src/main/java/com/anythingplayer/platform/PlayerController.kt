@@ -247,6 +247,12 @@ internal class PlayerController(
     )
   }
 
+  /** What a Cast receiver gets besides the source: a video player's subtitle files as WebVTT. */
+  fun castMedia(): CastMedia {
+    val video = status.video ?: return CastMedia()
+    return CastMedia(true, picture?.castSubtitles(video).orEmpty(), video.textTrack)
+  }
+
   /** A player event with a payload of its own (`searchPlay`), ordered like every other. */
   fun emitEvent(type: String, payload: WritableMap) = emit(type, payload)
 

@@ -209,7 +209,8 @@ internal object AnythingPlayerRuntime : FocusListener {
   }
 
   /** A Cast output for [controller]'s routing driver; `null` where Cast is not built in. */
-  fun newRemoteOutput(controller: PlayerController): RemoteOutput? = castBackend?.newOutput(controller, controller::nowPlaying)
+  fun newRemoteOutput(controller: PlayerController): RemoteOutput? =
+    castBackend?.newOutput(controller, controller::nowPlaying, controller::castMedia)
 
   // ── Voice ──
 

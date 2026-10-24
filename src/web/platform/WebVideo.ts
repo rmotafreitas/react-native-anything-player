@@ -353,6 +353,11 @@ export class WebVideo implements SwapStage {
     this.refreshCues();
   }
 
+  /** An app subtitle file's cues, once loaded (`null` before). */
+  cuesFor(trackId: string): SubtitleCue[] | null {
+    return this.cues.get(trackId) ?? null;
+  }
+
   /** The source's own text track's active cues (the browser draws none). */
   sourceCues(cues: SubtitleCue[]): void {
     this.sourceCueList = cues;

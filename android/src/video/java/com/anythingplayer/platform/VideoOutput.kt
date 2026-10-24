@@ -32,6 +32,8 @@ import com.anythingplayer.core.ErrorCode
 import com.anythingplayer.core.PlaybackState
 import com.anythingplayer.core.PlayerError
 import com.anythingplayer.core.Status
+import com.anythingplayer.core.TrackKind
+import com.anythingplayer.core.VideoStatus
 import com.anythingplayer.core.ViewState
 import com.google.common.util.concurrent.ListenableFuture
 import kotlin.math.max
@@ -124,6 +126,13 @@ internal class VideoOutput(
   }
 
   override fun positionJumped() = applyCues()
+
+  override fun castSubtitles(status: VideoStatus): List<CastSubtitle> =
+    status.tracks.mapNotNull { track ->
+      if (track.kind == TrackKind.AUDIO || track.id.startsWith("track:")) return@mapNotNull null
+      val cues = appCues[track.id]?.cues ?: return@mapNotNull null
+      CastSubtitle(track.id, track.kind == TrackKind.CAPTIONS, track.language, track.label, cuesToVtt(cues, status.subtitleDelay))
+    }
 
   override fun command(op: String, command: ReadableMap) {
     when (op) {

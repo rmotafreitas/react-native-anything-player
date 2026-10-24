@@ -198,6 +198,15 @@ final class VideoOutput: NSObject, VideoPicture, VideoStage, AVPictureInPictureC
 
   func positionJumped() { applyCues() }
 
+  func castSubtitles(_ status: VideoStatus) -> [CastSubtitle] {
+    status.tracks.compactMap { track in
+      guard track.kind != .audio, !track.id.hasPrefix("track:"), let app = appCues[track.id] else { return nil }
+      return CastSubtitle(
+        id: track.id, captions: track.kind == .captions, language: track.language, label: track.label,
+        vtt: CueWriter.vtt(app.cues, delay: status.subtitleDelay))
+    }
+  }
+
   func command(_ op: String, _ command: NSDictionary) throws {
     switch op {
     case "cues":

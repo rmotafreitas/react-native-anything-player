@@ -25,6 +25,8 @@ import {
   type VideoVariant,
 } from '../engine/types';
 import type { MediaTrack } from '../../core/subtitles/tracks';
+import { cuesToVtt } from '../../core/subtitles/vtt';
+import type { CastMedia } from './CastDriver';
 import type { SubtitleCue } from '../../core/subtitles/types';
 import { AudioSampler } from './AudioSampler';
 import type { CastService } from './CastService';
@@ -152,7 +154,12 @@ export class WebPlayerController
     this.routing = new RoutingDriver(this.driver, () => {
       const parts = runtime.cast.parts;
       return parts
-        ? new parts.CastDriver(this, () => this.nowPlaying(), runtime.cast)
+        ? new parts.CastDriver(
+            this,
+            () => this.nowPlaying(),
+            runtime.cast,
+            () => this.castMedia()
+          )
         : null;
     });
     this.engine = new PlaybackEngine(this.routing, webClock, options.engine);
@@ -684,6 +691,32 @@ export class WebPlayerController
 
   onBandwidth(generation: number, bitsPerSecond: number): void {
     this.engine.onBandwidth(generation, bitsPerSecond);
+  }
+
+  /** What a Cast receiver gets besides the source: the app's subtitle files as WebVTT. */
+  private castMedia(): CastMedia {
+    const video = this.video;
+    const status = this.engine.status.video;
+    if (video == null || status == null)
+      return { video: false, subtitles: [], textTrack: null };
+    // The app's files whose cues have loaded (the source's own reach the receiver with it).
+    const subtitles = status.tracks.flatMap((track) => {
+      const cues =
+        track.kind === 'audio' || track.id.startsWith('track:')
+          ? null
+          : video.cuesFor(track.id);
+      if (cues == null) return [];
+      return [
+        {
+          id: track.id,
+          kind: track.kind === 'captions' ? 'captions' : 'subtitles',
+          language: track.language,
+          label: track.label,
+          vtt: cuesToVtt(cues, status.subtitleDelay),
+        } as const,
+      ];
+    });
+    return { video: true, subtitles, textTrack: status.textTrack };
   }
 
   onTracks(generation: number, tracks: MediaTrack[]): void {

@@ -277,6 +277,12 @@ export interface CastReceiverLike {
 export interface CastMediaLike {
   readonly idleReason?: string | null;
   supportsCommand(command: string): boolean;
+  /** Turns the receiver's text tracks on and off (`EditTracksInfoRequest`). */
+  editTracksInfo?(
+    request: unknown,
+    onSuccess: () => void,
+    onError: (error: unknown) => void
+  ): void;
   setVolume(
     request: unknown,
     onSuccess: () => void,
@@ -340,6 +346,17 @@ export interface CastFrameworkLike {
 export interface CastMediaInfoLike {
   streamType: string;
   metadata: unknown;
+  /** Video: the text tracks the receiver may show. */
+  tracks?: unknown[];
+}
+
+/** A `chrome.cast.media.Track`: a text track for the receiver (WebVTT). */
+export interface CastTrackLike {
+  trackContentId: string;
+  trackContentType: string;
+  subtype: string;
+  name: string | null;
+  language: string | null;
 }
 
 /** `chrome.cast`, once the Cast sender SDK is loaded. */
@@ -361,9 +378,20 @@ export interface ChromeCastLike {
       albumName?: string;
       images?: unknown[];
     };
+    /** Video: a movie's metadata (the receiver's video layout). */
+    MovieMetadata?: new () => {
+      title?: string;
+      subtitle?: string;
+      images?: unknown[];
+    };
+    Track?: new (trackId: number, trackType: string) => CastTrackLike;
+    TrackType?: { TEXT: string };
+    TextTrackType?: { SUBTITLES: string; CAPTIONS: string };
+    EditTracksInfoRequest?: new (activeTrackIds: number[]) => unknown;
     LoadRequest: new (mediaInfo: CastMediaInfoLike) => {
       autoplay: boolean;
       currentTime?: number;
+      activeTrackIds?: number[];
     };
     VolumeRequest: new (volume: unknown) => unknown;
   };

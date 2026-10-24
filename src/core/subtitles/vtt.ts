@@ -119,3 +119,67 @@ export function parseVtt(text: string): SubtitleCue[] {
   }
   return sortCues(cues);
 }
+
+// ── Writing ──
+
+function clock(seconds: number): string {
+  const ms = Math.max(0, Math.round(seconds * 1000));
+  const h = Math.floor(ms / 3_600_000);
+  const m = Math.floor((ms % 3_600_000) / 60_000);
+  const s = Math.floor((ms % 60_000) / 1000);
+  const pad = (n: number, w = 2) => String(n).padStart(w, '0');
+  return `${pad(h)}:${pad(m)}:${pad(s)}.${pad(ms % 1000, 3)}`;
+}
+
+const escapeText = (text: string) =>
+  text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+const WRITE_ALIGN: Record<SubtitleCue['align'], string> = {
+  left: 'start',
+  center: 'center',
+  right: 'end',
+};
+
+/** Where the cue sits, as WebVTT settings. */
+function settingsFor(cue: SubtitleCue): string {
+  const out = [`align:${WRITE_ALIGN[cue.align]}`];
+  if (cue.y != null) {
+    const anchor = { top: 'start', middle: 'center', bottom: 'end' }[
+      cue.vertical
+    ];
+    out.push(`line:${(cue.y * 100).toFixed(1)}%,${anchor}`);
+  } else if (cue.vertical === 'top') {
+    out.push('line:0');
+  } else if (cue.vertical === 'middle') {
+    out.push('line:50%,center');
+  } else {
+    // The bottom: WebVTT's default place.
+  }
+  if (cue.x != null) out.push(`position:${(cue.x * 100).toFixed(1)}%`);
+  return out.join(' ');
+}
+
+/**
+ * Cues as a WebVTT file (bold, italic, underline and placement kept;
+ * colours need a stylesheet WebVTT players rarely read, so they go). How an
+ * app's subtitle file, whatever its format, reaches a Cast receiver.
+ * `delay` shifts every cue (`setSubtitleDelay`).
+ */
+export function cuesToVtt(cues: readonly SubtitleCue[], delay = 0): string {
+  const blocks = cues
+    .filter((cue) => cue.end + delay > 0)
+    .map((cue) => {
+      const text = cue.spans
+        .map((span) => {
+          let t = escapeText(span.text);
+          if (span.underline) t = `<u>${t}</u>`;
+          if (span.italic) t = `<i>${t}</i>`;
+          if (span.bold) t = `<b>${t}</b>`;
+          return t;
+        })
+        .join('');
+      const timing = `${clock(cue.start + delay)} --> ${clock(cue.end + delay)}`;
+      return `${timing} ${settingsFor(cue)}\n${text}`;
+    });
+  return ['WEBVTT', ...blocks].join('\n\n') + '\n';
+}

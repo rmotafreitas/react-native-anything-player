@@ -17,6 +17,7 @@ import com.facebook.react.viewmanagers.RNAPVideoViewManagerInterface
 // `android/build.gradle`).
 
 /** The video module this build has. Chosen at build time: `src/video` or `src/novideo`. */
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 internal object VideoSupport {
   const val AVAILABLE = false
 

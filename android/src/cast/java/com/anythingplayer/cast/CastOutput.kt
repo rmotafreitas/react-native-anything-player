@@ -25,6 +25,9 @@ import com.anythingplayer.platform.ReceiverState
 import com.anythingplayer.platform.ReceiverStatus
 import com.anythingplayer.platform.RemoteOutput
 import com.anythingplayer.platform.receiverMimeType
+import com.anythingplayer.platform.vttDataUri
+import com.anythingplayer.platform.CastMedia
+import androidx.media3.common.MimeTypes
 import com.google.android.gms.cast.MediaError
 import com.google.android.gms.cast.MediaInfo
 import com.google.android.gms.cast.MediaStatus
@@ -46,7 +49,10 @@ internal class CastOutput(
   private val hub: RealCastBackend,
   private val observer: DriverObserver,
   private val nowPlaying: () -> NowPlaying,
+  private val media: () -> CastMedia,
 ) : RemoteOutput, ReceiverActions {
+  /** The receiver's text track ids of the app's files (`sub:<n>` → 1, 2…). */
+  private var castTracks = emptyMap<String, Long>()
   private val main = Handler(Looper.getMainLooper())
   private val mapper = ReceiverMapper(observer, this, SystemClock::elapsedRealtime)
   private var owns = false
@@ -94,6 +100,15 @@ internal class CastOutput(
 
   override fun seek(seconds: Double) {
     if (owns) hub.player?.seekTo((seconds * 1000).toLong())
+  }
+
+  /** The text track to show: one of the app's files the receiver was given, or none. */
+  override fun selectTracks(audio: String?, text: String?) {
+    if (!owns || castTracks.isEmpty()) return
+    val ids = text?.let { castTracks[it] }?.let { longArrayOf(it) } ?: LongArray(0)
+    hub.client?.setActiveMediaTracks(ids)?.setResultCallback { result ->
+      if (!result.status.isSuccess) Log.w(TAG, "cast text track refused: ${result.status}")
+    }
   }
 
   /** Drops the receiver's media: a later `play()` makes the engine open it again. */
@@ -211,14 +226,34 @@ internal class CastOutput(
 
   private fun mediaItem(request: OpenRequest): MediaItem {
     val shown = nowPlaying()
+    val extra = media()
     val metadata = MediaMetadata.Builder().setTitle(shown.title).setArtist(shown.artist).setAlbumTitle(shown.album)
+    if (extra.video) {
+      // The receiver's video layout: a title and a subtitle line.
+      metadata.setMediaType(MediaMetadata.MEDIA_TYPE_MOVIE).setSubtitle(shown.artist ?: shown.album)
+    }
     shown.artwork?.takeIf { it.startsWith("http://") || it.startsWith("https://") }?.let { metadata.setArtworkUri(Uri.parse(it)) }
+    // The app's subtitle files, as WebVTT the receiver fetches from a data: URL
+    // (TextTrackConverter makes them its text tracks).
+    castTracks = extra.subtitles.mapIndexed { i, file -> file.id to (i + 1).toLong() }.toMap()
+    val subtitles =
+      extra.subtitles.map { file ->
+        MediaItem.SubtitleConfiguration.Builder(vttDataUri(file.vtt))
+          .setId(file.id)
+          .setMimeType(MimeTypes.TEXT_VTT)
+          .setLanguage(file.language)
+          .setLabel(file.label ?: file.language)
+          .setRoleFlags(if (file.captions) C.ROLE_FLAG_CAPTION else C.ROLE_FLAG_SUBTITLE)
+          .setSelectionFlags(if (file.id == extra.textTrack) C.SELECTION_FLAG_DEFAULT else 0)
+          .build()
+      }
     val builder =
       MediaItem.Builder()
         .setMediaId(contentId)
         .setUri(request.source.uri)
-        .setMimeType(receiverMimeType(request.source.uri))
+        .setMimeType(receiverMimeType(request.source.uri, extra.video))
         .setMediaMetadata(metadata.build())
+        .setSubtitleConfigurations(subtitles)
     // An explicit live configuration is how Media3 marks a stream as live for the receiver.
     if (request.source.liveHint == true) builder.setLiveConfiguration(MediaItem.LiveConfiguration.Builder().build())
     return builder.build()
