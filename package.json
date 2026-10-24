@@ -132,6 +132,7 @@
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19",
     "del-cli": "^8.0.1",
+    "esbuild": "^0.25.12",
     "eslint": "^9.39.5",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-ft-flow": "^3.0.11",
