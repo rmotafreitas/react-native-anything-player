@@ -1,22 +1,8 @@
 import { useEffect, useRef, type ComponentRef } from 'react';
-import {
-  Platform,
-  StyleSheet,
-  View,
-  type StyleProp,
-  type ViewStyle,
-} from 'react-native';
-import type { Player } from '../core/Player';
+import { StyleSheet, View } from 'react-native';
+import type { VideoViewProps } from './VideoViewProps';
 
-/** Props of {@link VideoView}. */
-export interface VideoViewProps {
-  /** A video player (`new Player({ video: true })`). */
-  player: Player;
-  /** How the picture fills the view. Default `contain` (letterboxed). */
-  contentFit?: 'contain' | 'cover' | 'fill';
-  /** Give it a size (e.g. `{ aspectRatio: 16 / 9 }`). */
-  style?: StyleProp<ViewStyle>;
-}
+export type { VideoViewProps } from './VideoViewProps';
 
 /**
  * Shows a video player's picture and subtitles. The player outlives it: an
@@ -24,8 +10,8 @@ export interface VideoViewProps {
  * what happens in the background), and moving the player to another view
  * goes on without a gap.
  *
- * React Native Web and Expo web put the picture in the view's element. On
- * iOS and Android it is a native view, with the video module.
+ * This is React Native Web and Expo web: the picture goes in the view's
+ * element. iOS and Android show it in a native view (`VideoView.native.tsx`).
  */
 export function VideoView({
   player,
@@ -36,8 +22,7 @@ export function VideoView({
   useEffect(() => {
     // React Native Web: the view's ref is its element.
     const element = view.current as unknown;
-    if (Platform.OS !== 'web' || element == null || player.isReleased)
-      return undefined;
+    if (element == null || player.isReleased) return undefined;
     player.attachTo(element, { contentFit });
     return () => {
       if (!player.isReleased) player.attachTo(null);

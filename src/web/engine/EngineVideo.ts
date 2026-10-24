@@ -266,6 +266,7 @@ export abstract class EngineVideo extends EngineQuality {
 
   pictureInPictureChanged(active: boolean): void {
     if (this.isReleased || active === this.pictureInPicture) return;
+    if (active) this.pipCap = this.viewCap();
     this.pictureInPicture = active;
     this.log('picture in picture', { active: `${active}` });
     if (active) this.pipDecisionAt = null;

@@ -86,7 +86,7 @@ jobs:
       - name: Android lint and Kotlin engine conformance + ICY tests
         run: cd example/android && ./gradlew :react-native-anything-player:lintDebug :react-native-anything-player:testDebugUnitTest --no-daemon --build-cache
       - name: Android lint and tests with Cast, Sound and Android Auto built in
-        run: cd example/android && ./gradlew :react-native-anything-player:lintDebug :react-native-anything-player:testDebugUnitTest -PrnapCast=true -PrnapSound=true -PrnapCar=true --no-daemon --build-cache
+        run: cd example/android && ./gradlew :react-native-anything-player:lintDebug :react-native-anything-player:testDebugUnitTest -PrnapCast=true -PrnapSound=true -PrnapCar=true -PrnapVideo=true --no-daemon --build-cache
 
   build-android:
     timeout-minutes: 45
@@ -150,7 +150,7 @@ jobs:
         env:
           JAVA_OPTS: "-XX:MaxHeapSize=6g"
         run: |
-          ./gradlew assembleDebug -PrnapCast=true -PrnapSound=true -PrnapCar=true -PreactNativeArchitectures=arm64-v8a --no-daemon --console=plain
+          ./gradlew assembleDebug -PrnapCast=true -PrnapSound=true -PrnapCar=true -PrnapVideo=true -PreactNativeArchitectures=arm64-v8a --no-daemon --console=plain
 
   build-ios:
     timeout-minutes: 60

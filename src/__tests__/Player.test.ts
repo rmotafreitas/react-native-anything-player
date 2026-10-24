@@ -554,6 +554,27 @@ describe('source normalization', () => {
     ).toEqual({ uri: 'HTTPS://A.example/x', live: false });
   });
 
+  it('needs no uri beside renditions: the first picture stands in', () => {
+    const renditions = [
+      { uri: 'https://a.example/audio.m4a', audioOnly: true },
+      { uri: ' https://a.example/360.mp4 ', height: 360 },
+    ];
+    expect(normalizeSource({ renditions })).toMatchObject({
+      uri: 'https://a.example/360.mp4',
+      renditions: [
+        expect.objectContaining({ uri: 'https://a.example/audio.m4a' }),
+        expect.objectContaining({ height: 360 }),
+      ],
+    });
+    // A uri given wins; an empty renditions list is no source.
+    expect(
+      normalizeSource({ uri: 'https://a.example/v.m3u8', renditions })
+    ).toMatchObject({ uri: 'https://a.example/v.m3u8' });
+    expect(() => normalizeSource({ renditions: [] })).toThrow(
+      expect.objectContaining({ code: 'INVALID_SOURCE' })
+    );
+  });
+
   it('passes the live badge choice through, dropping non-booleans', () => {
     expect(normalizeNowPlaying({ title: 'Jingle', live: false })).toEqual({
       title: 'Jingle',

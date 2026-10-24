@@ -4,20 +4,30 @@ import android.content.Context
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import android.view.Surface
 import androidx.annotation.OptIn
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
+import androidx.media3.common.ColorInfo
+import androidx.media3.common.Format
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Metadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.TrackSelectionOverride
+import androidx.media3.common.Tracks
+import androidx.media3.common.VideoSize
+import androidx.media3.common.text.CueGroup
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.common.util.Util
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.DecoderReuseEvaluation
+import androidx.media3.exoplayer.SeekParameters
+import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.extractor.DefaultExtractorsFactory
@@ -25,9 +35,13 @@ import androidx.media3.extractor.metadata.icy.IcyInfo
 import androidx.media3.extractor.metadata.id3.TextInformationFrame
 import com.anythingplayer.core.EngineDriver
 import com.anythingplayer.core.InterruptionReason
+import com.anythingplayer.core.MediaTrack
 import com.anythingplayer.core.OpenRequest
 import com.anythingplayer.core.PlaybackSample
 import com.anythingplayer.core.PlayerError
+import com.anythingplayer.core.QualityConstraints
+import com.anythingplayer.core.VideoInfo
+import com.anythingplayer.core.VideoVariant
 import com.anythingplayer.core.ReadyInfo
 import com.anythingplayer.core.IcyParser
 import com.anythingplayer.core.StreamMetadata
@@ -50,6 +64,36 @@ internal interface DriverObserver {
    */
   fun onDiscontinuity(generation: Int, position: Double)
   fun isOffline(): Boolean
+
+  /** Video: the picture's size, HDR, and the variant playing. */
+  fun onVideoInfo(generation: Int, info: VideoInfo) {
+    // Audio players have no picture.
+  }
+
+  /** Video: the first frame was rendered. */
+  fun onFirstFrame(generation: Int) {
+    // Audio players have no picture.
+  }
+
+  /** Video: the source's own audio and text tracks, and its variants. */
+  fun onTracks(generation: Int, tracks: List<MediaTrack>, variants: List<VideoVariant>) {
+    // Audio players keep their one track.
+  }
+
+  /** Video: the cues of the text track ExoPlayer renders, now. */
+  fun onSourceCues(generation: Int, cues: List<OverlayCue>) {
+    // Audio players show no subtitles.
+  }
+
+  /** Video: a bandwidth estimate, bits per second. */
+  fun onBandwidth(generation: Int, bitsPerSecond: Double) {
+    // Audio players need none.
+  }
+
+  /** Video: playback jumped (a seek, a loop): subtitles place themselves again. */
+  fun onPositionJump(generation: Int) {
+    // Audio players show no subtitles.
+  }
 }
 
 /** Extra readings for the progress snapshot (not needed by the engine). */
@@ -88,8 +132,19 @@ internal class ExoPlayerDriver(
   private val speech: Boolean,
   private val titleFormat: StreamTitleFormat,
   private val observer: DriverObserver,
+  /** A video player: a picture, tracks, variants and cues. */
+  private val video: Boolean = false,
 ) : Output {
   private var player: ExoPlayer? = null
+  // ── Video ──
+  /** Where the picture goes (its [PictureSurface]; `null`: none yet). */
+  private var surface: Surface? = null
+  private var mapped: MappedTracks? = null
+  private var quality: QualityConstraints? = null
+  private var videoDisabled = false
+  private var chosenAudio: String? = null
+  private var chosenText: String? = null
+  private var looping = false
   /**
    * ExoPlayer invokes some listeners synchronously from inside commands
    * (`setPlayWhenReady` → `onIsPlayingChanged`). Observations are therefore
@@ -180,9 +235,10 @@ internal class ExoPlayerDriver(
         // the jump is audible, not when the connection opened: here if the new
         // connection's audio plays on, else (an outage outlasted the buffer:
         // nothing of it has arrived yet) once playback resumes.
-        if (reason != Player.DISCONTINUITY_REASON_AUTO_TRANSITION && reason != Player.DISCONTINUITY_REASON_INTERNAL) return
         val p = player ?: return
         val gen = currentGeneration(p) ?: return
+        if (video) report { observer.onPositionJump(gen) }
+        if (reason != Player.DISCONTINUITY_REASON_AUTO_TRANSITION && reason != Player.DISCONTINUITY_REASON_INTERNAL) return
         if (playedGeneration != gen) return
         val position = newPosition.positionMs / 1000.0
         if (p.isPlaying) {
@@ -216,6 +272,44 @@ internal class ExoPlayerDriver(
         val gen = currentGeneration(p) ?: return
         val base = lastStream ?: StreamMetadata()
         publish(gen, base.copy(station = station ?: base.station, genre = genre ?: base.genre))
+      }
+
+      override fun onVideoSizeChanged(videoSize: VideoSize) {
+        val p = player ?: return
+        val gen = currentGeneration(p) ?: return
+        if (!video || videoSize.width <= 0 || videoSize.height <= 0) return
+        val info = videoInfo(p, videoSize)
+        report { observer.onVideoInfo(gen, info) }
+      }
+
+      override fun onRenderedFirstFrame() {
+        val p = player ?: return
+        val gen = currentGeneration(p) ?: return
+        report { observer.onFirstFrame(gen) }
+      }
+
+      override fun onTracksChanged(tracks: Tracks) {
+        val p = player ?: return
+        val gen = currentGeneration(p) ?: return
+        if (!video) return
+        val found = ExoVideo.map(tracks)
+        mapped = found
+        // Picks made before the tracks were known apply now.
+        applyTrackParameters()
+        report { observer.onTracks(gen, found.tracks, found.variants) }
+        // The variant playing, now that the variants are known.
+        val format = p.videoFormat
+        val size = p.videoSize.takeIf { it.width > 0 } ?: format?.takeIf { it.width > 0 }?.let { VideoSize(it.width, it.height) }
+        if (size != null) report { observer.onVideoInfo(gen, videoInfo(p, size, format)) }
+      }
+
+      override fun onCues(cueGroup: CueGroup) {
+        val p = player ?: return
+        val gen = currentGeneration(p) ?: return
+        if (!video) return
+        val position = p.currentPosition / 1000.0
+        val cues = cueGroup.cues.map { ExoVideo.overlayCue(it, position) }
+        report { observer.onSourceCues(gen, cues) }
       }
 
       override fun onMetadata(metadata: Metadata) {
@@ -263,10 +357,16 @@ internal class ExoPlayerDriver(
     val attributes =
       AudioAttributes.Builder()
         .setUsage(C.USAGE_MEDIA)
-        .setContentType(if (speech) C.AUDIO_CONTENT_TYPE_SPEECH else C.AUDIO_CONTENT_TYPE_MUSIC)
+        .setContentType(
+          when {
+            video -> C.AUDIO_CONTENT_TYPE_MOVIE
+            speech -> C.AUDIO_CONTENT_TYPE_SPEECH
+            else -> C.AUDIO_CONTENT_TYPE_MUSIC
+          }
+        )
         .build()
     val created =
-      ExoPlayer.Builder(context, sampler.renderersFactory(context))
+      ExoPlayer.Builder(context, sampler.renderersFactory(context, video))
         .setLooper(context.mainLooper)
         .setAudioAttributes(attributes, /* handleAudioFocus= */ false)
         .setHandleAudioBecomingNoisy(true)
@@ -290,8 +390,120 @@ internal class ExoPlayerDriver(
     created.addListener(listener)
     created.volume = volume
     created.setPlaybackSpeed(rate)
+    if (video) setUpVideo(created)
     player = created
     return created
+  }
+
+  private fun setUpVideo(created: ExoPlayer) {
+    surface?.let { created.setVideoSurface(it) }
+    created.repeatMode = if (looping) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
+    created.addAnalyticsListener(
+      object : AnalyticsListener {
+        override fun onBandwidthEstimate(
+          eventTime: AnalyticsListener.EventTime,
+          totalLoadTimeMs: Int,
+          totalBytesLoaded: Long,
+          bitrateEstimate: Long,
+        ) {
+          val gen = currentGeneration(created) ?: return
+          if (bitrateEstimate > 0) report { observer.onBandwidth(gen, bitrateEstimate.toDouble()) }
+        }
+
+        // An adaptive source moved to another variant: the quality playing now.
+        override fun onVideoInputFormatChanged(
+          eventTime: AnalyticsListener.EventTime,
+          format: Format,
+          decoderReuseEvaluation: DecoderReuseEvaluation?,
+        ) {
+          val gen = currentGeneration(created) ?: return
+          val size = created.videoSize
+          val info =
+            if (size.width > 0 && size.height > 0) videoInfo(created, size, format)
+            else if (format.width > 0 && format.height > 0) videoInfo(created, VideoSize(format.width, format.height), format)
+            else return
+          report { observer.onVideoInfo(gen, info) }
+        }
+      },
+    )
+    applyTrackParameters(created)
+  }
+
+  private fun videoInfo(p: ExoPlayer, size: VideoSize, format: Format? = p.videoFormat): VideoInfo {
+    val width = (size.width * size.pixelWidthHeightRatio).toInt()
+    val hdr = format?.colorInfo?.let { ColorInfo.isTransferHdr(it) } ?: false
+    val variant = mapped?.variantOf(format)
+    return VideoInfo(width, size.height, hdr, variant)
+  }
+
+  // ── Video commands ──
+
+  /** Renders the picture into `next` (`null`: nowhere). */
+  fun attachSurface(next: Surface?) {
+    if (next === surface) return
+    surface = next
+    player?.setVideoSurface(next)
+  }
+
+  /** The tracks ExoPlayer found in the current item (`null` until known). */
+  val mappedTracks: MappedTracks?
+    get() = mapped
+
+  /** Frames the video decoder dropped in the current item, `null` before it decodes. */
+  val droppedFrames: Int?
+    get() = player?.videoDecoderCounters?.droppedBufferCount
+
+  /** The picture's size in pixels (square pixels), `null` before the first frame's format. */
+  val pictureSize: Pair<Int, Int>?
+    get() {
+      val size = player?.videoSize ?: return null
+      if (size.width <= 0 || size.height <= 0) return null
+      return (size.width * size.pixelWidthHeightRatio).toInt() to size.height
+    }
+
+  override fun setVideoEnabled(enabled: Boolean) {
+    videoDisabled = !enabled
+    applyTrackParameters()
+  }
+
+  override fun setQuality(constraints: QualityConstraints) {
+    quality = constraints
+    applyTrackParameters()
+  }
+
+  override fun selectTracks(audio: String?, text: String?) {
+    chosenAudio = audio
+    chosenText = text
+    applyTrackParameters()
+  }
+
+  override fun setLoop(loop: Boolean) {
+    looping = loop
+    player?.repeatMode = if (loop) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
+  }
+
+  /** The caps, the pinned variant, audio only, and the engine's track picks. */
+  private fun applyTrackParameters(p: ExoPlayer? = player) {
+    if (p == null || !video) return
+    val c = quality
+    val locations = mapped?.locations ?: emptyMap()
+    val audioOnly = c?.audioOnly == true || c?.pinned == ExoVideo.AUDIO_ONLY_VARIANT
+    val b =
+      p.trackSelectionParameters.buildUpon()
+        .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, videoDisabled || audioOnly)
+        .setMaxVideoSize(Int.MAX_VALUE, c?.maxHeight ?: Int.MAX_VALUE)
+        .setMaxVideoBitrate(c?.maxBitrate?.coerceAtMost(Int.MAX_VALUE.toLong())?.toInt() ?: Int.MAX_VALUE)
+        .clearOverridesOfType(C.TRACK_TYPE_VIDEO)
+        .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+        .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+    // ExoPlayer renders a text track only when it is the source's: none, or an
+    // app file (the overlay draws it), turns the source's text off.
+    val sourceText = chosenText?.let { locations[it] }
+    b.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, sourceText == null)
+    c?.pinned?.let { id -> locations[id]?.let { (group, i) -> b.addOverride(TrackSelectionOverride(group, i)) } }
+    chosenAudio?.let { id -> locations[id]?.let { (group, i) -> b.addOverride(TrackSelectionOverride(group, i)) } }
+    sourceText?.let { (group, i) -> b.addOverride(TrackSelectionOverride(group, i)) }
+    p.trackSelectionParameters = b.build()
   }
 
   private fun currentGeneration(p: Player): Int? {
@@ -324,6 +536,7 @@ internal class ExoPlayerDriver(
     lastStream = null
     stationName = null
     stationGenre = null
+    mapped = null
     val mediaSource = buildMediaSource(request, "$MEDIA_ID_PREFIX${request.generation}")
     val start = request.startPosition
     if (start != null && start > 0) {
@@ -388,8 +601,13 @@ internal class ExoPlayerDriver(
     player?.playWhenReady = false
   }
 
-  override fun seek(seconds: Double) {
-    player?.seekTo((seconds * 1000).toLong())
+  override fun seek(seconds: Double) = seek(seconds, false)
+
+  /** A video's scrub lands on the nearest keyframe (fast) unless `exact`; audio is always exact. */
+  override fun seek(seconds: Double, exact: Boolean) {
+    val p = player ?: return
+    p.setSeekParameters(if (exact || !video) SeekParameters.EXACT else SeekParameters.CLOSEST_SYNC)
+    p.seekTo((seconds * 1000).toLong())
   }
 
   override fun releaseConnection() {

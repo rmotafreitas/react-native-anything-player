@@ -80,9 +80,17 @@ internal object AnythingPlayerRuntime : FocusListener {
   var localRoute: AudioRoute = AudioRoute.UNKNOWN
     private set
 
-  /** The activity in the foreground, if any (dialogs need one). */
+  /** React Native's current activity, while a JS instance is attached. */
+  @Volatile private var activitySource: ActivitySource? = null
+
+  /**
+   * The activity in the foreground, if any (dialogs need one). The runtime
+   * starts watching activities after the first one resumed: until the next
+   * resume, React Native's current activity stands in.
+   */
   val foregroundActivity: Activity?
-    get() = resumedActivity?.get()
+    get() = resumedActivity?.get() ?: if (sawLifecycle) null else activitySource?.current()?.takeIf { !it.isFinishing }
+  private var sawLifecycle = false
 
   /** The player the system media controls show and control. */
   @Volatile var active: PlayerController? = null
@@ -98,13 +106,15 @@ internal object AnythingPlayerRuntime : FocusListener {
   // ── JS attachment ──
 
   /** The TurboModule initialized: its emitter receives every event from now on. */
-  fun attachModule(sink: EventSink) {
+  fun attachModule(sink: EventSink, activities: ActivitySource? = null) {
     eventSink = sink
+    if (activities != null) activitySource = activities
   }
 
   /** The module is going away (JS reload / teardown): only that module's sink is cleared. */
-  fun detachModule(sink: EventSink) {
+  fun detachModule(sink: EventSink, activities: ActivitySource? = null) {
     if (eventSink === sink) eventSink = null
+    if (activities != null && activitySource === activities) activitySource = null
   }
 
   /** Whether a JS instance is attached (the search handler can be asked). */
@@ -149,7 +159,12 @@ internal object AnythingPlayerRuntime : FocusListener {
     appContext = context.applicationContext
     Voice.attach(appContext)
     focus = AudioFocusCoordinator(appContext, this)
-    network = NetworkMonitor(appContext) { state, changed -> players.values.forEach { it.engine.networkChanged(state, changed) } }
+    network =
+      NetworkMonitor(
+        appContext,
+        { state, changed -> players.values.forEach { it.engine.networkChanged(state, changed) } },
+        { metered, saveData -> players.values.forEach { it.engine.networkCostChanged(metered, saveData) } },
+      )
     routes =
       RouteMonitor(appContext) { route ->
         Log.d(TAG, "output route: ${route.kind.wire}${route.name?.let { " ($it)" } ?: ""}")
@@ -169,7 +184,19 @@ internal object AnythingPlayerRuntime : FocusListener {
     players[controller.id] = controller
     controller.engine.networkChanged(network.state, false)
     controller.engine.routeChanged(localRoute)
+    if (controller.picture != null) {
+      controller.engine.networkCostChanged(network.metered, network.saveData)
+      controller.engine.systemPreferencesChanged(systemPreferences.current())
+      VideoSupport.playerRegistered()
+    }
     controller.prewarm()
+  }
+
+  /** The OS's languages and caption settings, read on first use by a video player. */
+  private val systemPreferences: SystemPreferencesMonitor by lazy {
+    SystemPreferencesMonitor(appContext) { prefs ->
+      players.values.filter { it.picture != null }.forEach { it.engine.systemPreferencesChanged(prefs) }
+    }
   }
 
   /** Main thread. */
@@ -465,17 +492,27 @@ internal object AnythingPlayerRuntime : FocusListener {
   private val foregroundTracker =
     object : Application.ActivityLifecycleCallbacks {
       override fun onActivityStarted(activity: Activity) {
+        sawLifecycle = true
         startedActivities += 1
         if (startedActivities == 1) players.values.forEach { it.engine.appForegrounded() }
       }
       override fun onActivityStopped(activity: Activity) {
+        sawLifecycle = true
         startedActivities = (startedActivities - 1).coerceAtLeast(0)
+        // The last activity left the screen (not a rotation): `whenBackgrounded`.
+        // In Picture in Picture the activity is only paused: still on screen.
+        if (startedActivities == 0 && !activity.isChangingConfigurations) {
+          players.values.filter { it.picture != null }.forEach { it.engine.appBackgrounded() }
+        }
       }
       override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) = Unit
       override fun onActivityResumed(activity: Activity) {
+        sawLifecycle = true
         resumedActivity = WeakReference(activity)
+        VideoSupport.activityResumed(activity)
       }
       override fun onActivityPaused(activity: Activity) {
+        sawLifecycle = true
         if (resumedActivity?.get() === activity) resumedActivity = null
       }
       override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit

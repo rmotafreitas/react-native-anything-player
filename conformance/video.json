@@ -257,7 +257,7 @@
     ]
   },
   {
-    "name": "video: the caps follow the network cost, the data saver and the view's size",
+    "name": "video: the caps follow the network cost, the data saver and the view's size; Picture in Picture keeps the cap it started with",
     "options": { "video": { "quality": { "maxHeight": 1080, "cellularMaxHeight": 720, "cellularMaxBitrate": 3000000 } } },
     "steps": [
       { "view": {} },
@@ -276,7 +276,11 @@
       { "view": { "width": 400, "height": 300 } },
       { "expect": { "video": { "width": 1920, "height": 1080 }, "commands": ["quality(maxH=240,maxBps=-,pin=-,audioOnly=false)"] } },
       { "pip": true },
-      { "expect": { "commands": ["quality(maxH=1080,maxBps=-,pin=-,audioOnly=false)"] } }
+      { "expect": { "video": { "pictureInPicture": true }, "commands": [] } },
+      { "view": { "width": 200, "height": 112 } },
+      { "expect": { "commands": [] } },
+      { "pip": false },
+      { "expect": { "commands": ["quality(maxH=144,maxBps=-,pin=-,audioOnly=false)"] } }
     ]
   },
   {
@@ -340,7 +344,7 @@
     ]
   },
   {
-    "name": "video: picking a rendition while playing switches behind the picture, under a new generation",
+    "name": "video: picking a rendition while playing switches behind the picture, under a new generation; the new file's own variants keep the pick",
     "options": { "video": true },
     "steps": [
       { "view": {} },
@@ -356,6 +360,8 @@
       { "expect": { "state": "playing", "gen": 1 } },
       { "native": "playing", "gen": 2 },
       { "expect": { "state": "playing", "gen": 2, "video": { "quality": "r3" }, "stats": { "qualitySwitches": 1 }, "commands": [] } },
+      { "native": "variants", "gen": 2, "variants": [] },
+      { "expect": { "video": { "quality": "r3", "selectedQuality": "r3" }, "commands": [] } },
       { "native": "failed", "gen": 1, "code": "NETWORK_ERROR", "recoverable": true },
       { "advance": 1000 },
       { "expect": { "state": "playing", "errors": [], "commands": [] } }

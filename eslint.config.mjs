@@ -33,6 +33,7 @@ export default defineConfig([
       'coverage/',
       '**/build/',
       'ios/.build/',
+      'scripts/stream-server/media/',
       'website/.vitepress/dist/',
       'example-react/dist/',
       'website/.vitepress/cache/',

@@ -13,7 +13,9 @@ Video follows the rest of RNAP: **lightweight, bulletproof, best DX**. It is not
 | Subtitles: SubRip, WebVTT, basic ASS, TTML parsing; encoding detection; cue timing; track choice | **Done** (parsing in TypeScript; encoding, timing and track choice also in Kotlin and Swift, held to `conformance/subtitles/` and `conformance/tracks/`) |
 | The API: `video` option, `status.video`, the commands and events, `attachTo`, `<VideoView>` (React DOM, React Native Web) | **Done** |
 | Web: `<video>`, hls.js variants and caps, renditions switched behind the picture, subtitle overlay, fullscreen, Picture in Picture, wake lock, hidden tabs | **Done**, Playwright on Chromium, Firefox and WebKit (`e2e/video.spec.ts`) |
-| Android and iOS: loop, exact seeks, refresh, `fetchText` | **Done**; the picture (surface, view, PiP, fullscreen) is next and answers `VIDEO_UNAVAILABLE` until then |
+| Android: the picture (ExoPlayer on a `TextureView` that keeps its frame between views), `<VideoView>`, renditions switched behind the picture, the source's tracks and variants, the subtitle overlay in the OS caption style, fullscreen, Picture in Picture (auto on Android 12+), keep-awake, light controls, posters, the `rnapVideo` switch | **Done**, on the emulator with the example app (file, renditions + SubRip, HLS with two audio languages and WebVTT groups) |
+| Android and iOS: loop, exact seeks, refresh, `fetchText` | **Done** |
+| iOS: the picture (`AVPlayerLayer` view, AVKit fullscreen and controls, Picture in Picture, legible output) | Next (compiled in macOS CI) |
 | Web: the source's own tracks (hls.js audio and subtitle groups, `<track>`), Cast video | Next |
 | Remux (MKV, WebM, TS), DASH, software decoders, DRM | In the release plan below |
 
@@ -24,7 +26,7 @@ Video follows the rest of RNAP: **lightweight, bulletproof, best DX**. It is not
 | Engine | The same `PlaybackEngine` (Swift, Kotlin, TypeScript) and the same conformance suite, with video scenarios added (`conformance/video.json`). |
 | Players | The OS's: AVPlayer, ExoPlayer (Media3), the browser's `<video>`. Formats they cannot read are **remuxed** (repackaged, not decoded) on iOS and the web. Software decoders are separate opt-in modules. |
 | API shape | The player is separate from the view: `<VideoView player={player} />`; `player.attachTo(element)` on plain pages. One view at a time; moving to another view keeps playing. |
-| Controls | None by default (build them from `status` and the hooks). `nativeControls` opts into the OS's own; on Android only it adds `media3-ui`. |
+| Controls | None by default (build them from `status` and the hooks). `nativeControls` opts into the OS's own: AVKit's on iOS, the browser's on the web, and on Android (which has none) RNAP's light ones: play/pause, the time, a seek bar and fullscreen, plain platform widgets with no extra library. Fullscreen always has them. |
 | Packaging | The same package, a `/video` entry, and a build switch on native (`rnapVideo`, `RNAP_VIDEO`, Expo `video: true`, `npx rnap add video`). The web needs no switch: the video code is a separate chunk loaded on the first video player. |
 | Use cases in v1 | Long-form on demand, live, ambient loops. Feeds (TikTok-style): design only, [below](#feeds). |
 | Platforms | Phase 1: iOS, Android (with Android TV and Fire TV), the web (Expo web, React Native Web, React DOM, plain pages, Electron and Tauri). Phase 2: tvOS, macOS. Phase 3: visionOS. Windows: roadmap. |
@@ -79,7 +81,7 @@ export function Screen() {
 | `video.quality` | `maxResolution`, `maxBitrate`, `cellular: { maxResolution, maxBitrate }`, `startQuality: 'auto' \| 'lowest' \| 'highest' \| <height>`, `followDataSaver` (default `true`), `capToView` (default `true`: never more pixels than the view shows). |
 | `video.tracks` | `languages` (preferred, in order), `followSystem` (captions and audio descriptions from the OS accessibility settings, default `true`). |
 | `video.hdr` | `false` keeps HDR sources on SDR variants. Default `true`. |
-| `load({ renditions })` | Separate files of one video at different qualities: `[{ uri, height?, bitrate?, label?, audioOnly? }]`. RNAP picks, switches and falls back; a missing height or bitrate is read from the file. |
+| `load({ renditions })` | Separate files of one video at different qualities: `[{ uri, height?, bitrate?, label?, audioOnly? }]`, with no `uri` needed beside them. RNAP picks, switches and falls back; a missing height or bitrate is read from the file. |
 | `load({ subtitles })` | `[{ uri \| text, language, label?, format?, forced?, default?, encoding? }]`, before or after `load()` (`player.addSubtitles()`). |
 | `load({ refresh, expiresAt })` | Called on 401/403, and ahead of `expiresAt`; returns the new source. |
 | `load({ drm })` | `{ fairplay?, widevine?, playready?, clearkey? }`: reserved, `DRM_UNSUPPORTED` until DRM ships. |
@@ -99,7 +101,7 @@ Video decisions are engine decisions: they have to keep working while JavaScript
 |---|---|
 | `appBackgrounded()` / `appForegrounded()` | The `whenBackgrounded` policy. `'pause'` pauses (`interruption.reason: 'background'`, not resumed by itself); `'audio'` turns the picture off and asks for audio only; `'pip'` keeps playing only while Picture in Picture is up. Ambient players pause and resume. |
 | `viewChanged({ attached, visible, width, height })` | No view for 1 s turns decoding off (a move between views keeps it); off screen pauses an ambient player (`'offscreen'`, resumed when visible); the size caps the quality. |
-| `pictureInPictureChanged(active)` | Closing Picture in Picture while in the background pauses after a 1 s grace (the "back to app" button foregrounds the app first). |
+| `pictureInPictureChanged(active)` | Closing Picture in Picture while in the background pauses after a 1 s grace (the "back to app" button foregrounds the app first). The quality cap stays what the view had: no switch, and no rebuffer, on the way in or back. |
 | `networkCostChanged(metered, saveData)` | Cellular caps, Data Saver / Low Data Mode / `saveData`. |
 | `onBandwidth(gen, bps)`, `onVariants(gen, variants)`, `onVideoInfo(gen, info)`, `onFirstFrame(gen)` | Bandwidth estimates and the source's facts. |
 | `selectQuality`, `setListenOnly`, `setLoop`, `sourceRefreshed` / `sourceRefreshFailed` | Commands. |
@@ -120,11 +122,11 @@ New driver commands: `setVideoEnabled(on)`, `setQuality({ maxHeight, maxBitrate,
 
 | | iOS | Android | Web |
 |---|---|---|---|
-| Player | AVPlayer, `AVPlayerLayer` in a Fabric view | ExoPlayer on a `SurfaceView` (`TextureView` when the view is transformed) | `<video>`, one per player, moved between views |
+| Player | AVPlayer, `AVPlayerLayer` in a Fabric view | ExoPlayer on a `TextureView` whose `SurfaceTexture` outlives the view: moving to fullscreen, Picture in Picture or another view keeps the frame | `<video>`, one per player, moved between views |
 | Video off | Layer detached (QA1668) | `setTrackTypeDisabled(VIDEO)` | No decoding to disable: audio-only variants only |
 | Quality caps | `preferredMaximumResolution`, `preferredPeakBitRate` (and for expensive networks) | `TrackSelectionParameters` | hls.js / dash.js level caps |
-| Swap (renditions) | A second AVPlayer and layer | A second ExoPlayer on the same surface | A second `<video>`, unlocked with the first on the same gesture |
-| Picture in Picture | `AVPictureInPictureController` (auto from inline) | The activity's PiP mode (auto on Android 12+); the view fills it, the app hears `pictureInPictureChange` | Picture-in-Picture API |
+| Swap (renditions) | A second AVPlayer and layer | A second ExoPlayer on its own `TextureView` under the first, muted until it takes over | A second `<video>`, unlocked with the first on the same gesture |
+| Picture in Picture | `AVPictureInPictureController` (auto from inline) | The activity's PiP mode (auto-enter on Android 12+, the user-leave hint on 8–11 with androidx.activity 1.9+); the picture fills the window, the app hears `pictureInPictureChange`. The activity needs `android:supportsPictureInPicture` (the Expo plugin and `rnap add video --pip` add it) | Picture-in-Picture API |
 | Fullscreen | `AVPlayerViewController`, modal | A fullscreen dialog, immersive, optional orientation lock | Fullscreen API; `webkitEnterFullscreen` on iPhone |
 | Keep-awake | `isIdleTimerDisabled` | `FLAG_KEEP_SCREEN_ON` on the view | Screen Wake Lock |
 | Captions settings | MediaAccessibility | `CaptioningManager` | — (browser defaults) |

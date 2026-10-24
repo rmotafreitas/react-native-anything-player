@@ -1,18 +1,29 @@
 package com.anythingplayer.platform
 
 import com.facebook.react.bridge.Arguments
+import com.facebook.react.bridge.ReadableArray
 import com.facebook.react.bridge.ReadableMap
 import com.facebook.react.bridge.ReadableType
 import com.facebook.react.bridge.WritableMap
+import com.anythingplayer.core.BackgroundMode
 import com.anythingplayer.core.DiagnosticEntry
 import com.anythingplayer.core.EngineOptions
+import com.anythingplayer.core.FallbackPolicy
 import com.anythingplayer.core.Interruption
+import com.anythingplayer.core.MediaTrack
 import com.anythingplayer.core.PlayerError
+import com.anythingplayer.core.QualityPolicy
 import com.anythingplayer.core.ReconnectInfo
+import com.anythingplayer.core.Rendition
 import com.anythingplayer.core.SourceDescriptor
+import com.anythingplayer.core.StartQuality
 import com.anythingplayer.core.Status
 import com.anythingplayer.core.StreamMetadata
 import com.anythingplayer.core.StreamTitleFormat
+import com.anythingplayer.core.TrackKind
+import com.anythingplayer.core.TrackPolicy
+import com.anythingplayer.core.VideoEngineOptions
+import com.anythingplayer.core.VideoStatus
 
 /** Parsed `PlayerOptions` (src/types.ts). Defaults live in JS and here. */
 internal data class PlayerOptions(
@@ -76,6 +87,23 @@ internal fun ReadableMap.optDouble(key: String): Double? =
 internal fun ReadableMap.optMap(key: String): ReadableMap? =
   if (hasKey(key) && getType(key) == ReadableType.Map) getMap(key) else null
 
+internal fun ReadableMap.optArray(key: String): ReadableArray? =
+  if (hasKey(key) && getType(key) == ReadableType.Array) getArray(key) else null
+
+private fun ReadableMap.stringMap(key: String): Map<String, String>? {
+  val m = optMap(key) ?: return null
+  val out = mutableMapOf<String, String>()
+  val it = m.keySetIterator()
+  while (it.hasNextKey()) {
+    val k = it.nextKey()
+    m.optString(k)?.let { out[k] = it }
+  }
+  return out
+}
+
+private fun ReadableArray.maps(): List<ReadableMap> =
+  (0 until size()).mapNotNull { if (getType(it) == ReadableType.Map) getMap(it) else null }
+
 /** A `fade` side (`in` / `out`, seconds) in ms; absent or ≤ 0 = no fade. */
 internal fun fadeMs(fade: ReadableMap?, key: String): Long {
   val seconds = fade?.optDouble(key) ?: return 0L
@@ -95,6 +123,9 @@ internal fun parseOptions(map: ReadableMap): PlayerOptions {
       liveMaxDriftMs = recovery?.optDouble("liveMaxDriftMs")?.toLong() ?: EngineOptions().liveMaxDriftMs,
       fadeInMs = fadeMs(map.optMap("fade"), "in"),
       fadeOutMs = fadeMs(map.optMap("fade"), "out"),
+      // Without the video module there is no video player: JS sees
+      // `status.video == null` and throws VIDEO_UNAVAILABLE.
+      video = if (VideoSupport.AVAILABLE) parseVideo(map) else null,
     )
   val session = map.optMap("mediaSession")
   val commands = mutableSetOf<String>()
@@ -116,20 +147,105 @@ internal fun parseOptions(map: ReadableMap): PlayerOptions {
   )
 }
 
-internal fun parseSource(map: ReadableMap): Pair<SourceDescriptor, NowPlayingFields> {
-  val headers = mutableMapOf<String, String>()
-  map.optMap("headers")?.let { h ->
-    val it = h.keySetIterator()
-    while (it.hasNextKey()) {
-      val key = it.nextKey()
-      h.optString(key)?.let { value -> headers[key] = value }
+/** `PlayerOptions.video`: `true` takes every default; absent or `false`, an audio player. */
+private fun parseVideo(options: ReadableMap): VideoEngineOptions? {
+  if (!options.hasKey("video")) return null
+  if (options.getType("video") == ReadableType.Boolean) return if (options.getBoolean("video")) VideoEngineOptions() else null
+  val map = options.optMap("video") ?: return null
+  return VideoEngineOptions(
+    whenBackgrounded = BackgroundMode.fromWire(map.optString("whenBackgrounded")),
+    ambient = map.optBoolean("ambient") ?: false,
+    keepAwake = map.optBoolean("keepAwake") ?: true,
+    focusWhenMuted = map.optBoolean("focusWhenMuted") ?: false,
+    fallback = parseFallback(map),
+    quality = parseQuality(map.optMap("quality")),
+    tracks = parseTrackPolicy(map.optMap("tracks")),
+  )
+}
+
+private fun parseFallback(video: ReadableMap): FallbackPolicy? {
+  if (!video.hasKey("fallbackToAudio")) return null
+  if (video.getType("fallbackToAudio") == ReadableType.Boolean) return if (video.getBoolean("fallbackToAudio")) FallbackPolicy() else null
+  val map = video.optMap("fallbackToAudio") ?: return null
+  val d = FallbackPolicy()
+  return FallbackPolicy(
+    dropBelowRatio = map.optDouble("dropBelowRatio") ?: d.dropBelowRatio,
+    dropAfterMs = map.optDouble("dropAfterMs")?.toLong() ?: d.dropAfterMs,
+    dropAfterStalls = map.optDouble("dropAfterStalls")?.toInt() ?: d.dropAfterStalls,
+    stallWindowMs = map.optDouble("stallWindowMs")?.toLong() ?: d.stallWindowMs,
+    returnAboveRatio = map.optDouble("returnAboveRatio") ?: d.returnAboveRatio,
+    returnAfterMs = map.optDouble("returnAfterMs")?.toLong() ?: d.returnAfterMs,
+  )
+}
+
+private fun parseQuality(map: ReadableMap?): QualityPolicy {
+  if (map == null) return QualityPolicy()
+  val cellular = map.optMap("cellular")
+  val start =
+    when {
+      map.optString("startQuality") == "lowest" -> StartQuality.Lowest
+      map.optString("startQuality") == "highest" -> StartQuality.Highest
+      map.optDouble("startQuality") != null -> StartQuality.Height(map.getDouble("startQuality").toInt())
+      else -> StartQuality.Auto
     }
+  return QualityPolicy(
+    maxHeight = map.optDouble("maxResolution")?.toInt(),
+    maxBitrate = map.optDouble("maxBitrate")?.toLong(),
+    cellularMaxHeight = cellular?.optDouble("maxResolution")?.toInt(),
+    cellularMaxBitrate = cellular?.optDouble("maxBitrate")?.toLong(),
+    startQuality = start,
+    followDataSaver = map.optBoolean("followDataSaver") ?: true,
+    capToView = map.optBoolean("capToView") ?: true,
+  )
+}
+
+private fun parseTrackPolicy(map: ReadableMap?): TrackPolicy {
+  if (map == null) return TrackPolicy()
+  val languages = map.optArray("languages")?.let { a -> (0 until a.size()).mapNotNull { if (a.getType(it) == ReadableType.String) a.getString(it) else null } }
+  return TrackPolicy(languages ?: emptyList(), map.optBoolean("followSystem") ?: true)
+}
+
+private fun parseRenditions(map: ReadableMap): List<Rendition>? {
+  val list = map.optArray("renditions")?.maps() ?: return null
+  if (list.isEmpty()) return null
+  return list.map {
+    Rendition(
+      uri = it.optString("uri") ?: "",
+      headers = it.stringMap("headers"),
+      height = it.optDouble("height")?.toInt(),
+      bitrate = it.optDouble("bitrate")?.toLong(),
+      label = it.optString("label"),
+      audioOnly = it.optBoolean("audioOnly") ?: false,
+    )
   }
+}
+
+/** The app's subtitle files as tracks (`sub:<n>`, from JS). */
+internal fun parseSubtitleTracks(array: ReadableArray?): List<MediaTrack> =
+  array?.maps()?.map {
+    val captions = it.optString("kind") == "captions"
+    MediaTrack(
+      id = it.optString("id") ?: "",
+      kind = if (captions) TrackKind.CAPTIONS else TrackKind.SUBTITLES,
+      language = it.optString("language"),
+      label = it.optString("label"),
+      forced = it.optBoolean("forced") ?: false,
+      isDefault = it.optBoolean("default") ?: false,
+      sdh = captions,
+    )
+  } ?: emptyList()
+
+/** A video source's poster, subtitle files and their session. */
+internal fun parseVideoParts(map: ReadableMap): VideoLoadParts =
+  VideoLoadParts(map.optString("poster"), map.optString("subtitleSession"), parseSubtitleTracks(map.optArray("subtitles")))
+
+internal fun parseSource(map: ReadableMap): Pair<SourceDescriptor, NowPlayingFields> {
   val descriptor =
     SourceDescriptor(
       map.optString("uri") ?: "",
-      headers,
+      map.stringMap("headers") ?: emptyMap(),
       map.optBoolean("live"),
+      renditions = parseRenditions(map),
       refreshable = map.optBoolean("refreshable") ?: false,
       expiresAt = map.optDouble("expiresAt")?.toLong(),
     )
@@ -221,8 +337,63 @@ internal fun statusToMap(status: Status, seq: Long): WritableMap =
     )
     val sleepAt = status.sleepAt
     if (sleepAt == null) putNull("sleepAt") else putDouble("sleepAt", sleepAt.toDouble())
-    // A video player's part comes with the video module (not in this build yet).
-    putNull("video")
+    val video = status.video
+    if (video == null) putNull("video") else putMap("video", videoToMap(video))
+  }
+
+private fun WritableMap.putNullableInt(key: String, value: Number?) {
+  if (value == null) putNull(key) else putDouble(key, value.toDouble())
+}
+
+private fun videoToMap(video: VideoStatus): WritableMap =
+  Arguments.createMap().apply {
+    putNullableInt("width", video.width)
+    putNullableInt("height", video.height)
+    putBoolean("hdr", video.hdr)
+    putBoolean("firstFrame", video.firstFrame)
+    putNullableString("audioOnly", video.audioOnly?.wire)
+    putBoolean("pictureInPicture", video.pictureInPicture)
+    putArray(
+      "qualities",
+      Arguments.createArray().apply {
+        video.qualities.forEach { q ->
+          pushMap(
+            Arguments.createMap().apply {
+              putString("id", q.id)
+              putNullableInt("height", q.height)
+              putNullableInt("bitrate", q.bitrate)
+              putBoolean("audioOnly", q.audioOnly)
+              putNullableString("label", q.label)
+            }
+          )
+        }
+      },
+    )
+    putNullableString("quality", video.quality)
+    putNullableString("selectedQuality", video.selectedQuality)
+    putArray(
+      "tracks",
+      Arguments.createArray().apply {
+        video.tracks.forEach { t ->
+          pushMap(
+            Arguments.createMap().apply {
+              putString("id", t.id)
+              putString("kind", t.kind.wire)
+              putNullableString("language", t.language)
+              putNullableString("label", t.label)
+              putBoolean("forced", t.forced)
+              putBoolean("default", t.isDefault)
+              putBoolean("sdh", t.sdh)
+              putBoolean("describesVideo", t.describesVideo)
+            }
+          )
+        }
+      },
+    )
+    putNullableString("audioTrack", video.audioTrack)
+    putNullableString("textTrack", video.textTrack)
+    putDouble("subtitleDelay", video.subtitleDelay)
+    putBoolean("fullscreen", video.fullscreen)
   }
 
 internal fun metadataToMap(metadata: StreamMetadata, timestamp: Long): WritableMap =

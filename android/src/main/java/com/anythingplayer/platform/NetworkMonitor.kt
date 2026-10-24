@@ -21,7 +21,12 @@ import com.anythingplayer.core.NetworkState
  *   the old route. It is reported once the new network validates; a new
  *   network that never validates is reported offline after [VALIDATION_GRACE_MS].
  */
-internal class NetworkMonitor(context: Context, private val onChange: (NetworkState, Boolean) -> Unit) {
+internal class NetworkMonitor(
+  private val context: Context,
+  private val onChange: (NetworkState, Boolean) -> Unit,
+  /** `(metered, saveData)`: a metered network (cellular caps) and the OS's Data Saver. */
+  private val onCost: (Boolean, Boolean) -> Unit = { _, _ -> },
+) {
   companion object {
     const val VALIDATION_GRACE_MS = 5_000L
   }
@@ -34,6 +39,19 @@ internal class NetworkMonitor(context: Context, private val onChange: (NetworkSt
 
   var state: NetworkState = NetworkState.UNKNOWN
     private set
+
+  /** The default network costs money per byte (cellular, a metered hotspot). */
+  var metered = false
+    private set
+
+  /** The user turned on Data Saver (background data restricted for this app). */
+  var saveData = false
+    private set
+
+  private val dataSaverChanged =
+    object : android.content.BroadcastReceiver() {
+      override fun onReceive(context: Context, intent: android.content.Intent) = onMain { evaluateCost() }
+    }
 
   private val validationTimeout = Runnable { evaluate(forceOfflineIfUnvalidated = true) }
 
@@ -73,12 +91,38 @@ internal class NetworkMonitor(context: Context, private val onChange: (NetworkSt
       // ACCESS_NETWORK_STATE missing (merged manifest altered): stay `unknown`.
       state = NetworkState.UNKNOWN
     }
+    androidx.core.content.ContextCompat.registerReceiver(
+      context,
+      dataSaverChanged,
+      android.content.IntentFilter(ConnectivityManager.ACTION_RESTRICT_BACKGROUND_CHANGED),
+      androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED,
+    )
+    evaluateCost()
+  }
+
+  private fun evaluateCost() {
+    val network = current
+    val caps = network?.let { connectivity.getNetworkCapabilities(it) }
+    val nextMetered =
+      when {
+        caps == null -> connectivity.isActiveNetworkMetered
+        caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED) -> false
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+          caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_TEMPORARILY_NOT_METERED) -> false
+        else -> true
+      }
+    val nextSave = connectivity.restrictBackgroundStatus == ConnectivityManager.RESTRICT_BACKGROUND_STATUS_ENABLED
+    if (nextMetered == metered && nextSave == saveData) return
+    metered = nextMetered
+    saveData = nextSave
+    onCost(metered, saveData)
   }
 
   fun stop() {
     if (!started) return
     started = false
     handler.removeCallbacks(validationTimeout)
+    runCatching { context.unregisterReceiver(dataSaverChanged) }
     try {
       connectivity.unregisterNetworkCallback(callback)
     } catch (_: IllegalArgumentException) {
@@ -88,6 +132,7 @@ internal class NetworkMonitor(context: Context, private val onChange: (NetworkSt
   }
 
   private fun evaluate(forceOfflineIfUnvalidated: Boolean) {
+    evaluateCost()
     val network = current
     if (network == null) {
       handler.removeCallbacks(validationTimeout)

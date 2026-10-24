@@ -117,5 +117,6 @@ export type {
   SleepEvent,
   SleepTimer,
   Source,
+  SourceOptions,
   SourceInput,
 } from '../types';

@@ -204,7 +204,8 @@
         "AnythingPlayerSound": "AnythingPlayerSoundModule"
       },
       "componentProvider": {
-        "RNAPRoutePickerView": "RNAPRoutePickerView"
+        "RNAPRoutePickerView": "RNAPRoutePickerView",
+        "RNAPVideoView": "RNAPVideoView"
       }
     }
   },

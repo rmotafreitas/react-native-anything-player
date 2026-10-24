@@ -29,6 +29,8 @@
 // Files:        GET /file.mp3, /program.mp3, /artwork.png, /artwork2.png,
 //               /video-360.mp4, /video-720.mp4, /video-audio.m4a, /subs.srt,
 //               /subs.vtt (the video ones when generated)
+// Video HLS:    GET /video-hls/master.m3u8  360p + 720p, audio in English and
+//               Spanish, WebVTT subtitles in English and Portuguese
 //               (Range supported; `?delay=MS` slows the response)
 // Control:      GET /control?down=1|0     refuse every new stream connection
 //               GET /control?stall=1|0    freeze every open stream
@@ -39,8 +41,8 @@
 // CORS:         every response allows any origin and exposes the ICY headers,
 //               as Icecast does, so browsers can read streams with fetch().
 import { createServer } from 'node:http';
-import { existsSync, readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { dirname, extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -67,6 +69,19 @@ const VIDEO_FILES = {
 for (const [path, type] of Object.entries(VIDEO_FILES)) {
   if (existsSync(join(here, 'media', path.slice(1))))
     FILES[path] = { body: media(path.slice(1)), type };
+}
+/** Optional (generate-media.sh): the video as HLS with its own tracks, at /video-hls/. */
+const HLS_VIDEO_TYPES = {
+  '.m3u8': 'application/vnd.apple.mpegurl',
+  '.ts': 'video/mp2t',
+  '.vtt': 'text/vtt; charset=utf-8',
+};
+if (existsSync(join(here, 'media', 'hls-video'))) {
+  for (const name of readdirSync(join(here, 'media', 'hls-video'))) {
+    const type = HLS_VIDEO_TYPES[extname(name)];
+    if (type)
+      FILES[`/video-hls/${name}`] = { body: media(`hls-video/${name}`), type };
+  }
 }
 const BYTES_PER_SECOND = 128_000 / 8;
 const LIVE_STREAMS = {

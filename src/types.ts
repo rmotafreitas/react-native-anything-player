@@ -338,14 +338,32 @@ export interface NowPlayingMetadata {
   live?: boolean;
 }
 
-/** What to play, with per-source options. */
-export interface Source {
-  /**
-   * `https://…`, `http://…`, `file://…`, `content://…` (Android) or an absolute
-   * path. On the web also `blob:…` (an object URL you made) and `data:…`; the
-   * app owns a `blob:` URL it made and revokes it.
-   */
-  uri: string;
+/**
+ * What to play, with per-source options: a `uri`, or (video) `renditions`,
+ * separate files of one video at different qualities.
+ */
+export type Source = SourceOptions &
+  (
+    | {
+        /**
+         * `https://…`, `http://…`, `file://…`, `content://…` (Android) or an
+         * absolute path. On the web also `blob:…` (an object URL you made)
+         * and `data:…`; the app owns a `blob:` URL it made and revokes it.
+         */
+        uri: string;
+        /** Video: separate files of this video at different qualities (`uri` is then ignored). */
+        renditions?: Rendition[];
+      }
+    | {
+        /** Not needed with `renditions` (the first picture's file stands in). */
+        uri?: string;
+        /** Video: separate files of this video at different qualities. */
+        renditions: Rendition[];
+      }
+  );
+
+/** A source's options besides where the media is (`Source`). */
+export interface SourceOptions {
   /** HTTP headers sent with every request for this source (e.g. `User-Agent`, auth). */
   headers?: Record<string, string>;
   /**
@@ -356,8 +374,6 @@ export interface Source {
   live?: boolean;
   /** Lock-screen metadata (e.g. station name and logo). Stream metadata updates on top. */
   metadata?: NowPlayingMetadata;
-  /** Video: separate files of this video at different qualities (`uri` is then ignored). */
-  renditions?: Rendition[];
   /** Video: subtitle files, besides the source's own tracks. */
   subtitles?: SubtitleSource[];
   /**

@@ -4,6 +4,9 @@
     "paths": {
       "react-native-anything-player": [
         "./src/index"
+      ],
+      "react-native-anything-player/video": [
+        "./src/video/index"
       ]
     },
     "allowUnreachableCode": false,
@@ -41,6 +44,7 @@
     "example-react",
     "lib",
     "node_modules",
+    "scripts/stream-server/media",
     "website"
   ]
 }

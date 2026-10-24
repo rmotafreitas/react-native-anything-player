@@ -222,6 +222,8 @@ final class PlaybackEngine {
   // ── Video: surroundings ──
   private var backgrounded = false
   private var pictureInPicture = false
+  /// The view's cap when Picture in Picture started: it holds while the window is up.
+  private var pipCap: Int?
   private var view = ViewState()
   /// No view since this instant: the picture goes off `viewDetachGraceMs` later.
   private var detachedSince: Int64?
@@ -1891,6 +1893,7 @@ extension PlaybackEngine {
 
   func pictureInPictureChanged(_ active: Bool) {
     guard !released, active != pictureInPicture else { return }
+    if active { pipCap = viewCap() }
     pictureInPicture = active
     log("picture in picture", ["active": "\(active)"])
     if active { pipDecisionAt = nil } else { pictureInPictureClosed() }
@@ -1924,7 +1927,8 @@ extension PlaybackEngine {
   func onVariants(generation gen: Int, variants: [VideoVariant]) {
     guard accepts(gen) else { return logStale("variants", gen) }
     self.variants = variants
-    if let selected = selectedQuality, !variants.contains(where: { $0.id == selected }) {
+    // A pick among renditions stands: each file's variants are not the list.
+    if let selected = selectedQuality, renditions == nil, !variants.contains(where: { $0.id == selected }) {
       selectedQuality = nil
     }
     applyQuality("variants")
@@ -2423,7 +2427,10 @@ extension PlaybackEngine {
 
   /// The picture height the view can show (contain fit), rounded up; `nil`: no cap.
   private func viewCap() -> Int? {
-    guard view.attached, view.height > 0, !pictureInPicture else { return nil }
+    // Picture in Picture keeps the quality it started with: no switch (and
+    // no rebuffer) on the way in or back for a window that small.
+    if pictureInPicture { return pipCap }
+    guard view.attached, view.height > 0 else { return nil }
     let shownHeight = self.shownHeight(view)
     guard let table = renditions else { return standardHeights.first { Double($0) >= shownHeight } }
     // The smallest rendition that fills it.

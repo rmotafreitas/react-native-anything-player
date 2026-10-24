@@ -131,14 +131,15 @@ export function normalizeSource(input: SourceInput): Record<string, unknown> {
   if (typeof input === 'string') source = { uri: input };
   else if (typeof input === 'number') source = { uri: resolveAsset(input) };
   else source = input;
-  if (!source || typeof source.uri !== 'string' || source.uri.trim() === '') {
+  const uri = sourceUri(source);
+  if (uri === '') {
     throw new PlayerError({
       code: 'INVALID_SOURCE',
-      message: 'A source needs a non-empty `uri`.',
+      message:
+        'A source needs a non-empty `uri` (or, for a video, `renditions`).',
       recoverable: false,
     });
   }
-  const uri = source.uri.trim();
   const scheme = URI_SCHEME.exec(uri)?.[0]?.slice(0, -1).toLowerCase();
   // No scheme: an absolute path, or (Android release builds) a bundled asset's resource name.
   if (
@@ -157,6 +158,16 @@ export function normalizeSource(input: SourceInput): Record<string, unknown> {
   if (typeof source.live === 'boolean') out.live = source.live;
   if (source.metadata) out.metadata = normalizeNowPlaying(source.metadata);
   return { ...out, ...normalizeVideoSource(source, artworkUri) };
+}
+
+/** The source's `uri`; with renditions and no `uri`, the first picture's file. */
+function sourceUri(source: Source | null | undefined): string {
+  if (source == null || typeof source !== 'object') return '';
+  if (typeof source.uri === 'string' && source.uri.trim() !== '')
+    return source.uri.trim();
+  const renditions = Array.isArray(source.renditions) ? source.renditions : [];
+  const first = renditions.find((r) => !r?.audioOnly) ?? renditions[0];
+  return typeof first?.uri === 'string' ? first.uri.trim() : '';
 }
 
 function wantsVideo(options: PlayerOptions): boolean {
@@ -311,8 +322,9 @@ export class Player {
       throw new PlayerError({
         code: 'VIDEO_UNAVAILABLE',
         message:
-          'Video players are not available in this build. They play on the web today; ' +
-          'iOS and Android get them with the video module (see docs/video-design.md).',
+          'Video is not built into this app. Turn the video module on and rebuild: ' +
+          '`npx rnap add video`, or `rnapVideo=true` in android/gradle.properties and ' +
+          "`RNAP_VIDEO=1 pod install` on iOS, or the Expo plugin's `video` option.",
         recoverable: false,
       });
     }

@@ -55,6 +55,8 @@ export abstract class EngineQuality extends EngineFades {
     height: 0,
   };
   protected pictureInPicture = false;
+  /** The view's cap when Picture in Picture started: it holds while the window is up. */
+  protected pipCap: number | null = null;
   protected metered = false;
   protected saveData = false;
   protected listenOnly = false;
@@ -162,8 +164,13 @@ export abstract class EngineQuality extends EngineFades {
   onVariants(generation: number, variants: VideoVariant[]): void {
     if (!this.accepts(generation)) return this.logStale('variants', generation);
     this.variants = variants.map((v) => ({ ...v }));
+    // A pick among renditions stands: each file's variants are not the list.
     const selected = this.selectedQuality;
-    if (selected != null && !this.variants.some((v) => v.id === selected))
+    if (
+      selected != null &&
+      this.renditions == null &&
+      !this.variants.some((v) => v.id === selected)
+    )
       this.selectedQuality = null;
     this.applyQuality('variants');
     this.commit();
@@ -276,9 +283,11 @@ export abstract class EngineQuality extends EngineFades {
 
   /** The picture height the view can show (contain fit), rounded up; `null`: no cap. */
   protected viewCap(): number | null {
+    // Picture in Picture keeps the quality it started with: no switch (and
+    // no rebuffer) on the way in or back for a window that small.
+    if (this.pictureInPicture) return this.pipCap;
     const view = this.view;
-    if (!view.attached || view.height <= 0 || this.pictureInPicture)
-      return null;
+    if (!view.attached || view.height <= 0) return null;
     const shown = this.shownHeight(view);
     if (this.renditions == null)
       return STANDARD_HEIGHTS.find((h) => h >= shown) ?? null;

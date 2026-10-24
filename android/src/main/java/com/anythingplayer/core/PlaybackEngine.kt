@@ -235,6 +235,8 @@ class PlaybackEngine(
   // ── Video: surroundings ──
   private var backgrounded = false
   private var pictureInPicture = false
+  /** The view's cap when Picture in Picture started: it holds while the window is up. */
+  private var pipCap: Int? = null
   private var view = ViewState()
   /** No view since this instant: the picture goes off `VIEW_DETACH_GRACE_MS` later. */
   private var detachedSince: Long? = null
@@ -1151,6 +1153,7 @@ class PlaybackEngine(
 
   fun pictureInPictureChanged(active: Boolean) {
     if (released || active == pictureInPicture) return
+    if (active) pipCap = viewCap()
     pictureInPicture = active
     log("picture in picture", mapOf("active" to "$active"))
     if (active) pipDecisionAt = null else pictureInPictureClosed()
@@ -1184,8 +1187,9 @@ class PlaybackEngine(
   fun onVariants(generation: Int, variants: List<VideoVariant>) {
     if (!accepts(generation)) return logStale("variants", generation)
     this.variants = variants.toList()
+    // A pick among renditions stands: each file's variants are not the list.
     val selected = selectedQuality
-    if (selected != null && this.variants.none { it.id == selected }) selectedQuality = null
+    if (selected != null && renditions == null && this.variants.none { it.id == selected }) selectedQuality = null
     applyQuality("variants")
     commit()
   }
@@ -2422,7 +2426,10 @@ class PlaybackEngine(
 
   /** The picture height the view can show (contain fit), rounded up; `null`: no cap. */
   private fun viewCap(): Int? {
-    if (!view.attached || view.height <= 0 || pictureInPicture) return null
+    // Picture in Picture keeps the quality it started with: no switch (and
+    // no rebuffer) on the way in or back for a window that small.
+    if (pictureInPicture) return pipCap
+    if (!view.attached || view.height <= 0) return null
     val shownHeight = shownHeight(view)
     val table = renditions ?: return STANDARD_HEIGHTS.firstOrNull { it >= shownHeight }
     // The smallest rendition that fills it.

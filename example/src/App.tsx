@@ -22,6 +22,7 @@ import {
 } from 'react-native-anything-player';
 import { COVER, STATIONS, serverControl } from './config';
 import { runScenarios, SCENARIOS } from './scenarios';
+import { VideoCard } from './VideoCard';
 
 // One app-wide player, created at module scope: playback is independent of
 // any component's lifetime.
@@ -277,6 +278,9 @@ export default function App() {
             }
           />
         </View>
+
+        <Text style={styles.h2}>Video</Text>
+        <VideoCard />
 
         <Text style={styles.h2}>Sources</Text>
         {STATIONS.map((station, index) => (
