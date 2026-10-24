@@ -54,7 +54,7 @@ npm install react-native-anything-player
 > npm install https://github.com/rmotafreitas/react-native-anything-player/releases/latest/download/react-native-anything-player.tgz
 > ```
 >
-> To pin a version, use `releases/download/v1.2.0/react-native-anything-player.tgz`.
+> To pin a version, use `releases/download/v1.2.1/react-native-anything-player.tgz`.
 
 Requires React Native **≥ 0.80** with the New Architecture (the default), iOS 15.1+, Android 7.0+ (API 24). On the web: any current browser ([Web](docs/web.md)); on the desktop, Electron and Tauri apps through the web engine ([Desktop](docs/desktop.md)). Expo Go cannot load native code: use a development build.
 
