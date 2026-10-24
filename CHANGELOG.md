@@ -7,6 +7,20 @@ and versions follow [Semantic Versioning](https://semver.org/): see
 change and how releases are made. Changes not released yet are listed in the
 open release pull request.
 
+## [1.2.1](https://github.com/rmotafreitas/react-native-anything-player/compare/v1.2.0...v1.2.1) (2026-10-24)
+
+
+### Fixed
+
+* **android:** keep ICY metadata on, honour live:false and reconnect:false ([b45e9fb](https://github.com/rmotafreitas/react-native-anything-player/commit/b45e9fb6edc478f03e0a6299ffb92c055155553c))
+* **build:** declare esbuild, which the CLI build imports ([c51d6f1](https://github.com/rmotafreitas/react-native-anything-player/commit/c51d6f17481550d9ecc5ba91509b268c489de15a))
+* **build:** declare esbuild, which the CLI build imports ([db32824](https://github.com/rmotafreitas/react-native-anything-player/commit/db32824c9ce2001e0a4ea50e2505da0f85dbb651))
+* **engine:** settle stale callbacks, timeouts and recovery in all three engines ([f63d64c](https://github.com/rmotafreitas/react-native-anything-player/commit/f63d64c013855cb11ff1c7103854ee927db9e547))
+* **ios:** HLS behind the proxy, finite chunked files, session ownership, tap ([12ef393](https://github.com/rmotafreitas/react-native-anything-player/commit/12ef393098aa3b1809a4d21de063013920352ee3))
+* **package:** ship the Codegen specs from yarn pack and test the real build ([b7c65ab](https://github.com/rmotafreitas/react-native-anything-player/commit/b7c65ab4a5be418e2a6333b6f4713772048291bb))
+* **security:** patch the Expo CLI's zod, escape pbxproj paths ([0ec3777](https://github.com/rmotafreitas/react-native-anything-player/commit/0ec37777a20dd805b80356f470c07f4115e0e7b8))
+* **web:** autoplay attribution, AudioContext release, Cast retry, MSE edge cases ([2b0746b](https://github.com/rmotafreitas/react-native-anything-player/commit/2b0746be31c6f1b59ac4918cb2223e453316c4ab))
+
 ## [1.2.0](https://github.com/rmotafreitas/react-native-anything-player/compare/v1.1.1...v1.2.0) (2026-10-23)
 
 Short sounds, cars and watches, a sleep timer, and a CLI that sets up the optional parts. Everything is additive except one rule for catalog ids (see **Upgrading**).
