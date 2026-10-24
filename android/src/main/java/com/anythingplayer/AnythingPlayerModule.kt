@@ -16,6 +16,7 @@ import com.anythingplayer.core.TrackKind
 import com.anythingplayer.platform.ActivitySource
 import com.anythingplayer.platform.AnythingPlayerRuntime
 import com.anythingplayer.platform.EventSink
+import com.anythingplayer.platform.LicenseRequests
 import com.anythingplayer.platform.PlayerController
 import com.anythingplayer.platform.SearchRequest
 import com.anythingplayer.platform.Voice
@@ -68,6 +69,12 @@ class AnythingPlayerModule(reactContext: ReactApplicationContext) : NativeAnythi
 
   override fun videoCommand(playerId: String, command: ReadableMap, promise: Promise) {
     val op = command.optString("op")
+    if (op == "license") {
+      // The app's getLicense answered (any player's request: the ids are unique).
+      LicenseRequests.answer(command.optDouble("requestId")?.toInt() ?: -1, command.optString("license"), command.optString("error"))
+      promise.resolve(null)
+      return
+    }
     val refreshed = if (op == "refreshed") command.optMap("source")?.let { parseSource(it).first } else null
     val added = if (op == "addSubtitles") parseSubtitleTracks(command.optArray("tracks")) else emptyList()
     command(playerId, promise) { controller ->

@@ -23,6 +23,7 @@ import type {
 import type { PlayerError } from '../../errors';
 import {
   engineError,
+  type DrmDescriptor,
   type QualityConstraints,
   type ReadyInfo,
   type SourceDescriptor,
@@ -46,6 +47,67 @@ export interface DashListener {
   onTracks?(): void;
   /** The manifest is loaded: the element can play. */
   onLoaded?(): void;
+  /** Protected content: a license from the app's `drm.getLicense`. */
+  requestLicense?(request: {
+    keySystem: 'fairplay' | 'widevine' | 'playready' | 'clearkey';
+    challenge: Uint8Array;
+    contentId: string | null;
+    licenseUrl: string | null;
+    headers: Record<string, string>;
+  }): Promise<Uint8Array>;
+}
+
+/** Shaka's request type for a license (`shaka.net.NetworkingEngine.RequestType.LICENSE`). */
+const LICENSE_REQUEST = 2;
+const LICENSE_SCHEME = 'rnap-license';
+
+/** EME names by RNAP's key system names. */
+const SHAKA_SYSTEMS = {
+  widevine: 'com.widevine.alpha',
+  playready: 'com.microsoft.playready',
+  fairplay: 'com.apple.fps',
+  clearkey: 'org.w3.clearkey',
+} as const;
+
+type KeySystem = keyof typeof SHAKA_SYSTEMS;
+
+/** The streams that answer `rnap-license://<id>/<key system>` (the app's `getLicense`). */
+const licenseStreams = new Map<string, DashStream>();
+let nextLicenseId = 1;
+const schemeRegistered = new WeakSet<object>();
+
+/** A request body as bytes. */
+function bodyBytes(body: ArrayBuffer | ArrayBufferView | null | undefined) {
+  if (body instanceof ArrayBuffer) return new Uint8Array(body);
+  if (!body) return new Uint8Array(0);
+  return new Uint8Array(body.buffer, body.byteOffset, body.byteLength);
+}
+
+/** Shaka's `drm` configuration for a source's DRM (`licensePath`: the `rnap-license:` URI prefix when the app answers). */
+export function shakaDrm(
+  drm: DrmDescriptor,
+  licensePath: string | null
+): Record<string, unknown> {
+  const servers: Record<string, string> = {};
+  for (const name of Object.keys(SHAKA_SYSTEMS) as KeySystem[]) {
+    const server = drm[name] as { licenseUrl: string | null } | undefined;
+    if (server == null) continue;
+    const url = licensePath ? `${licensePath}/${name}` : server.licenseUrl;
+    if (url) servers[SHAKA_SYSTEMS[name]] = url;
+  }
+  const config: Record<string, unknown> = { servers };
+  const keys = drm.clearkey?.keys;
+  if (keys && !licensePath) {
+    config.clearKeys = keys;
+    delete servers[SHAKA_SYSTEMS.clearkey];
+  }
+  if (drm.fairplay)
+    config.advanced = {
+      [SHAKA_SYSTEMS.fairplay]: {
+        serverCertificateUri: drm.fairplay.certificateUrl,
+      },
+    };
+  return config;
 }
 
 const DESCRIBES_VIDEO = 'public.accessibility.describes-video';
@@ -151,6 +213,8 @@ export class DashStream implements HlsTracks {
   }> = [];
   private texts: ShakaTrack[] = [];
   private lastPicture: string | null = null;
+  /** This stream's id in `rnap-license:` URIs (the app's `getLicense`). */
+  private licenseId: string | null = null;
 
   constructor(
     private readonly element: AudioElementLike,
@@ -188,6 +252,7 @@ export class DashStream implements HlsTracks {
         for (const [name, value] of headers) request.headers[name] = value;
       });
     }
+    this.configureDrm(player);
     try {
       await player.attach(this.element);
       // Shaka 4: cues load hidden (Shaka 5 has no such switch: RNAP hides
@@ -218,6 +283,77 @@ export class DashStream implements HlsTracks {
     this.listener.onLoaded?.();
   }
 
+  /** The source's DRM, for Shaka: servers, keys, the license headers, the app's `getLicense`. */
+  private configureDrm(player: ShakaPlayerLike): void {
+    const drm = this.source.drm;
+    if (!drm) return;
+    let path: string | null = null;
+    if (drm.hook && this.listener.requestLicense && this.registerScheme()) {
+      this.licenseId = `${nextLicenseId}`;
+      nextLicenseId += 1;
+      licenseStreams.set(this.licenseId, this);
+      path = `${LICENSE_SCHEME}://${this.licenseId}`;
+    }
+    player.configure({ drm: shakaDrm(drm, path) });
+    const licenseHeaders = {
+      ...drm.widevine?.headers,
+      ...drm.playready?.headers,
+      ...drm.fairplay?.headers,
+      ...drm.clearkey?.headers,
+    };
+    if (Object.keys(licenseHeaders).length === 0) return;
+    player.getNetworkingEngine()?.registerRequestFilter((type, request) => {
+      if (type !== LICENSE_REQUEST) return;
+      Object.assign(request.headers, licenseHeaders);
+    });
+  }
+
+  /** Registers the `rnap-license:` scheme with this Shaka (once); `false` when it has no networking API. */
+  private registerScheme(): boolean {
+    const shaka = this.shaka;
+    const engine = shaka.net?.NetworkingEngine;
+    const util = shaka.util?.AbortableOperation;
+    if (!engine || !util) return false;
+    if (schemeRegistered.has(engine)) return true;
+    schemeRegistered.add(engine);
+    engine.registerScheme(LICENSE_SCHEME, (uri, request) => {
+      const [id, system] = uri.slice(LICENSE_SCHEME.length + 3).split('/');
+      const stream = licenseStreams.get(id ?? '');
+      const challenge = bodyBytes(request.body);
+      const answer = stream
+        ? stream.license(system as KeySystem, challenge)
+        : Promise.reject(new Error('The player is gone.'));
+      return util.notAbortable(
+        answer.then((license) => ({
+          uri,
+          originalUri: uri,
+          data: license.slice().buffer,
+          headers: {},
+        }))
+      );
+    });
+    return true;
+  }
+
+  /** A license from the app's `getLicense`, for Shaka's request. */
+  private license(
+    system: KeySystem,
+    challenge: Uint8Array
+  ): Promise<Uint8Array> {
+    const drm = this.source.drm!;
+    const server = drm[system] as
+      | { licenseUrl: string | null; headers: Record<string, string> }
+      | undefined;
+    return this.listener.requestLicense!({
+      keySystem: system,
+      challenge,
+      contentId:
+        system === 'fairplay' ? (drm.fairplay?.contentId ?? null) : null,
+      licenseUrl: server?.licenseUrl ?? null,
+      headers: server?.headers ?? {},
+    });
+  }
+
   private fail(error: PlayerError): void {
     if (this.closed || this.failed) return;
     this.failed = true;
@@ -230,6 +366,7 @@ export class DashStream implements HlsTracks {
   close(): void {
     if (this.closed) return;
     this.closed = true;
+    if (this.licenseId) licenseStreams.delete(this.licenseId);
     const player = this.player;
     this.player = null;
     player?.destroy().catch(() => undefined);

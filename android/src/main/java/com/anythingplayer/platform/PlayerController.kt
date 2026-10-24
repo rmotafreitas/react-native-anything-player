@@ -342,8 +342,9 @@ internal class PlayerController(
 
   // ── Cast ──
 
+  /** A Cast receiver fetches the source itself, and gets no DRM keys. */
   override val castableSource: Boolean?
-    get() = engine.source?.isNetwork
+    get() = engine.source?.let { it.isNetwork && it.drm == null }
 
   override fun handoff(route: AudioRoute, outputId: String, resume: Boolean) = engine.handoff(route, outputId, resume)
 
@@ -351,7 +352,11 @@ internal class PlayerController(
     engineError(
       PlayerError(
         ErrorCode.CAST_UNSUPPORTED_SOURCE,
-        "A Cast receiver can only play http(s) sources; local files, content:// URIs and bundled assets stay on this device.",
+        if (engine.source?.drm != null) {
+          "A Cast receiver cannot decrypt the source (DRM); it stays on this device."
+        } else {
+          "A Cast receiver can only play http(s) sources; local files, content:// URIs and bundled assets stay on this device."
+        },
         false,
       ),
       fatal = false,
@@ -528,6 +533,21 @@ internal class PlayerController(
   }
 
   override fun isOffline(): Boolean = runtime.networkState == com.anythingplayer.core.NetworkState.OFFLINE
+
+  override fun onLicenseRequest(generation: Int, ask: LicenseAsk) {
+    if (!engine.accepts(generation)) return LicenseRequests.cancel(ask.requestId, "The source was replaced.")
+    emit(
+      "licenseRequest",
+      Arguments.createMap().apply {
+        putInt("requestId", ask.requestId)
+        putString("keySystem", ask.keySystem)
+        putString("challenge", android.util.Base64.encodeToString(ask.challenge, android.util.Base64.NO_WRAP))
+        putNull("contentId")
+        ask.licenseUrl?.let { putString("licenseUrl", it) } ?: putNull("licenseUrl")
+        putMap("headers", Arguments.createMap().apply { ask.headers.forEach { (k, v) -> putString(k, v) } })
+      },
+    )
+  }
 
   // ── DriverObserver: video (main thread) ──
 

@@ -66,6 +66,7 @@ export type {
   CueSpan,
   CueVertical,
   DrmConfig,
+  LicenseRequest,
   MediaTrack,
   PlaybackStats,
   Rendition,

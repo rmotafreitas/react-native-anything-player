@@ -25,6 +25,7 @@ const CODES: ReadonlySet<string> = new Set<PlayerErrorCode>([
   'SOUND_UNAVAILABLE',
   'VIDEO_UNAVAILABLE',
   'DRM_UNSUPPORTED',
+  'DRM_LICENSE_FAILED',
   'SUBTITLE_LOAD_FAILED',
   'INTERNAL_ERROR',
 ]);

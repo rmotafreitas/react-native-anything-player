@@ -380,6 +380,13 @@ public final class AnythingPlayerBridge: NSObject {
     resolve: @escaping (Any?) -> Void, reject: @escaping (String, String, NSError?) -> Void
   ) {
     let op = command["op"] as? String ?? ""
+    if op == "license" {
+      // The app's getLicense answered (any player's request: the ids are unique).
+      LicenseRequests.shared.answer(
+        (command["requestId"] as? NSNumber)?.intValue ?? -1, license: command["license"] as? String,
+        error: command["error"] as? String)
+      return resolve(nil)
+    }
     let refreshed = (command["source"] as? NSDictionary).map { SourceDescriptor.parse($0).0 }
     DispatchQueue.main.async { [weak self] in
       guard let controller = self?.runtime.player(id) else {

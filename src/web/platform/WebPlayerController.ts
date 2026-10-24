@@ -2,6 +2,8 @@
 // `Player`. Twin of `PlayerController.kt` / `PlayerController.swift`, on the
 // browser's single thread.
 
+import type { LicenseRequestEvent } from '../../core/drm';
+import { answerLicense } from './licenseRequests';
 import type { PlayerError } from '../../errors';
 import {
   PlaybackEngine,
@@ -284,6 +286,7 @@ export class WebPlayerController
     }
     if (op === 'refreshFailed')
       return this.engine.sourceRefreshFailed(command.loadId as number);
+    if (op === 'license') return answerLicense(command);
     return this.videoOnly(op, command);
   }
 
@@ -741,6 +744,11 @@ export class WebPlayerController
     } catch {
       // Nothing to play or not seekable: the element's own state stays.
     }
+  }
+
+  onLicenseRequest(generation: number, request: LicenseRequestEvent): void {
+    if (this.engine.accepts(generation))
+      this.emit('licenseRequest', { ...request });
   }
 
   onSourceCues(generation: number, cues: SubtitleCue[]): void {

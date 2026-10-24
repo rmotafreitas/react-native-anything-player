@@ -9,6 +9,7 @@ import type {
   VideoInfo,
   VideoVariant,
 } from '../engine/types';
+import type { LicenseRequestEvent } from '../../core/drm';
 import type { AudioElementLike } from './dom';
 import type { MediaTrack } from '../../core/subtitles/tracks';
 import type { SubtitleCue } from '../../core/subtitles/types';
@@ -47,6 +48,8 @@ export interface DriverObserver {
     command: 'play' | 'pause' | 'seek',
     position: number
   ): void;
+  /** Protected content needs a license from the app's `drm.getLicense`. */
+  onLicenseRequest?(generation: number, request: LicenseRequestEvent): void;
 }
 
 /** What a play() attempt came to: the module rejects `play` on `blocked`. */

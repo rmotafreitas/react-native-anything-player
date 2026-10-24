@@ -108,6 +108,7 @@ enum ErrorCode: String {
   case soundUnavailable = "SOUND_UNAVAILABLE"
   case videoUnavailable = "VIDEO_UNAVAILABLE"
   case drmUnsupported = "DRM_UNSUPPORTED"
+  case drmLicenseFailed = "DRM_LICENSE_FAILED"
   case subtitleLoadFailed = "SUBTITLE_LOAD_FAILED"
 }
 
@@ -153,6 +154,8 @@ struct SourceDescriptor: Equatable {
   var refreshable = false
   /// Wall-clock epoch ms when the source's URL stops working.
   var expiresAt: Int64? = nil
+  /// The source is encrypted: its key systems and license servers (`nil`: clear).
+  var drm: DrmDescriptor? = nil
   /// Whether the source is fetched over the network (http/https).
   var isNetwork: Bool {
     let lower = uri.lowercased()

@@ -247,6 +247,7 @@ export class SwapDriver implements LocalDriver {
       onSourceCues: (g, cues) => f.onSourceCues?.(g, cues),
       onUserCommand: (g, command, position) =>
         f.onUserCommand?.(g, command, position),
+      onLicenseRequest: (g, request) => f.onLicenseRequest?.(g, request),
     };
   }
 

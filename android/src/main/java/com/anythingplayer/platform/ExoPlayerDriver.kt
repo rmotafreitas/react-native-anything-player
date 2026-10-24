@@ -91,6 +91,11 @@ internal interface DriverObserver {
     // Audio players need none.
   }
 
+  /** The source's `drm.getLicense` must answer a key request (see [LicenseRequests]). */
+  fun onLicenseRequest(generation: Int, ask: LicenseAsk) {
+    LicenseRequests.cancel(ask.requestId, "Nothing can answer the license request.")
+  }
+
   /** Video: playback jumped (a seek, a loop): subtitles place themselves again. */
   fun onPositionJump(generation: Int) {
     // Audio players show no subtitles.
@@ -167,6 +172,13 @@ internal class ExoPlayerDriver(
   private var currentRequest: OpenRequest? = null
   /** HTTP calls per playlist item (media id), cancelled when the item goes. */
   private val itemCalls = LinkedHashMap<String, CallRegistry>()
+  /** The current source's DRM (`null`: a clear source), and the key system it uses here. */
+  private var sourceDrm: SourceDrm? = null
+  private var keySystem: KeySystem? = null
+  /** License requests carry the key system's headers only, never the source's. */
+  private val licenseHttp by lazy {
+    OkHttpDataSource.Factory(HttpConnections.client).setUserAgent(Util.getUserAgent(context, "RNAP"))
+  }
   private var continuationCount = 0
   private val continuationTimes = ArrayDeque<Long>()
   /**
@@ -292,6 +304,11 @@ internal class ExoPlayerDriver(
       override fun onTracksChanged(tracks: Tracks) {
         val p = player ?: return
         val gen = currentGeneration(p) ?: return
+        if (lockedOut(tracks)) {
+          val error = PlayerError(ErrorCode.DRM_UNSUPPORTED, lockedOutMessage(), false)
+          report { observer.onFailed(gen, error) }
+          return
+        }
         if (!video) return
         val found = ExoVideo.map(tracks)
         mapped = found
@@ -541,17 +558,24 @@ internal class ExoPlayerDriver(
     // Without Media3's DASH module a manifest would be read as a file and
     // fail as unreadable: say what is missing instead.
     if (isDashUri(request.source.uri) && !dashBuiltIn) {
-      p.stop()
-      p.clearMediaItems()
+      return refuse(
+        p,
+        request.generation,
+        ErrorCode.UNSUPPORTED_FORMAT,
+        "DASH is not built into this app: video apps have it, or set `rnapDash=true` in android/gradle.properties and rebuild.",
+      )
+    }
+    sourceDrm?.close()
+    sourceDrm = null
+    keySystem = null
+    val drm = request.source.drm
+    if (drm != null) {
+      val system =
+        chooseKeySystem(drm, SourceDrm::isSupported)
+          ?: return refuse(p, request.generation, ErrorCode.DRM_UNSUPPORTED, noKeySystemMessage(drm))
       val gen = request.generation
-      val error =
-        PlayerError(
-          ErrorCode.UNSUPPORTED_FORMAT,
-          "DASH is not built into this app: video apps have it, or set `rnapDash=true` in android/gradle.properties and rebuild.",
-          false,
-        )
-      report { observer.onFailed(gen, error) }
-      return
+      keySystem = system
+      sourceDrm = SourceDrm.create(drm, system, licenseHttp) { ask -> report { observer.onLicenseRequest(gen, ask) } }
     }
     val mediaSource = buildMediaSource(request, "$MEDIA_ID_PREFIX${request.generation}")
     val start = request.startPosition
@@ -562,6 +586,32 @@ internal class ExoPlayerDriver(
     }
     p.playWhenReady = request.playWhenReady
     p.prepare()
+  }
+
+  /**
+   * Encrypted tracks no key system here can open: ExoPlayer would leave them
+   * unselected and play the rest (or nothing) as if all were well.
+   */
+  private fun lockedOut(tracks: Tracks): Boolean {
+    val locked = tracks.groups.filter { g -> g.length > 0 && (0 until g.length).all { g.getTrackSupport(it) == C.FORMAT_UNSUPPORTED_DRM } }
+    return locked.any { l -> l.type != C.TRACK_TYPE_TEXT && tracks.groups.none { it.type == l.type && it.isSelected } }
+  }
+
+  private fun lockedOutMessage(): String {
+    val system = keySystem
+    return if (system == null) {
+      "The source is encrypted (DRM): give its key systems and license servers in `drm`."
+    } else {
+      "The source is not packaged for ${system.wire}, the key system of its `drm` this device uses."
+    }
+  }
+
+  /** An item this player cannot open: nothing plays, and the engine learns why. */
+  private fun refuse(p: ExoPlayer, gen: Int, code: ErrorCode, message: String) {
+    p.stop()
+    p.clearMediaItems()
+    val error = PlayerError(code, message, false)
+    report { observer.onFailed(gen, error) }
   }
 
   private fun buildMediaSource(request: OpenRequest, mediaId: String): MediaSource {
@@ -576,9 +626,11 @@ internal class ExoPlayerDriver(
     // CBR seeking: MP3s without a Xing/VBRI header are seekable too (like iOS).
     var extractors = DefaultExtractorsFactory().setConstantBitrateSeekingEnabled(true)
     if (video) extractors = VideoSupport.subtitles(extractors)
-    return DefaultMediaSourceFactory(DefaultDataSource.Factory(context, http), extractors)
-      .setLoadErrorHandlingPolicy(AnythingPlayerLoadErrorPolicy())
-      .createMediaSource(MediaItem.Builder().setUri(resolveUri(request.source.uri)).setMediaId(mediaId).build())
+    val factory =
+      DefaultMediaSourceFactory(DefaultDataSource.Factory(context, http), extractors)
+        .setLoadErrorHandlingPolicy(AnythingPlayerLoadErrorPolicy())
+    sourceDrm?.let { drm -> factory.setDrmSessionManagerProvider { drm.manager } }
+    return factory.createMediaSource(MediaItem.Builder().setUri(resolveUri(request.source.uri)).setMediaId(mediaId).build())
   }
 
   /**
@@ -645,6 +697,8 @@ internal class ExoPlayerDriver(
     p.clearMediaItems()
     cancelCallsExcept(emptySet())
     lastStream = null
+    sourceDrm?.close()
+    sourceDrm = null
   }
 
   override fun setVolume(effective: Double) {
@@ -686,6 +740,8 @@ internal class ExoPlayerDriver(
     player?.release()
     player = null
     cancelCallsExcept(emptySet())
+    sourceDrm?.close()
+    sourceDrm = null
   }
 
   /** Retires the HTTP calls of every item not in [keep]: those items are gone. */

@@ -48,7 +48,8 @@ Native details are never dropped: `AVFoundationErrorDomain -11800` comes with th
 | `CAST_UNSUPPORTED_SOURCE` | no | non-fatal `error` event: a Cast session started but the player's source cannot be reached by a receiver (a local file, `content://`, a bundled asset, `blob:`); the player stays on the device ([Casting & AirPlay](routes-and-casting.md#what-casting-does)) |
 | `SOUND_UNAVAILABLE` | no | `Sound.load()` or `Sound.configure()` on iOS or Android in an app built without the `sound` option ([Sound](sound.md#enabling-it)) |
 | `VIDEO_UNAVAILABLE` | no | `new Player({ video })` on iOS or Android in an app built without the video module ([Video](video.md#enabling-it)) |
-| `DRM_UNSUPPORTED` | no | `load()` of a source with `drm`: DRM is designed, not shipped yet ([Video design](video-design.md)) |
+| `DRM_UNSUPPORTED` | no | a protected source the platform cannot decrypt: none of its `drm` key systems is here, or it is encrypted without `drm`, or not packaged for the key system picked ([Video](video.md#drm)) |
+| `DRM_LICENSE_FAILED` | 5xx, 429 | the license server refused (`httpStatus`), `getLicense` threw or did not answer in 30 s, or the FairPlay certificate could not be fetched ([Video](video.md#drm)) |
 | `SUBTITLE_LOAD_FAILED` | no | non-fatal `error` event: a subtitle file could not be fetched or read; the video plays on ([Subtitles](subtitles.md#files)) |
 | `INTERNAL_ERROR` | no | a bug — please report with `player.getDiagnostics()` |
 

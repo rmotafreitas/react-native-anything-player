@@ -145,6 +145,7 @@ A `Player` with a picture ([guide](video.md), [subtitles](subtitles.md)).
 | Picture in Picture, `whenBackgrounded: 'pip'` | ✓ ² | ✓ ¹ | ✓ | – | ✓ | ✓ † |
 | `nativeControls` | ✓ ² (AVKit's) | ✓ ¹ (RNAP's) | ✓ | ✓ | ✓ | ✓ † |
 | On a Cast receiver, with the app's subtitle files | ✓ ² † | ✓ ¹ † | ✓ † | – | – | – |
+| DRM: license servers, Clear Key keys in the source, or the app's `getLicense` | ◐ ² ⁹ | ✓ ¹ ¹⁰ | ✓ ¹¹ | ✓ ¹¹ | ◐ ⁹ † | ◐ ⁹ † |
 
 1. Opt-in: a build option (`video` in the Expo plugin, `npx rnap add video`). Tried on the Android emulator (a file, separate quality files with SubRip, HLS with two audio languages and WebVTT subtitles, Picture in Picture, fullscreen, controls); not yet on a device †.
 2. Opt-in, as on Android. Written and compiled in CI; not yet run on a simulator or device †.
@@ -154,6 +155,9 @@ A `Player` with a picture ([guide](video.md), [subtitles](subtitles.md)).
 6. CMAF DASH (fragmented MP4 segments), rewritten as HLS for AVPlayer; a manifest addressed by byte ranges (`SegmentBase`) is refused.
 7. With Shaka Player ([`configureShaka`](web.md#dash)).
 8. Remuxed (nothing is decoded): the platform needs the codecs, and on the web the server needs CORS. Chromium takes no MP3 inside these; AC-3 and E-AC-3 play on Apple devices only ([Video](video.md#matroska-webm-and-mpeg-ts)).
+9. FairPlay only, with HLS ([DRM](video.md#drm)).
+10. Widevine, PlayReady or Clear Key, whichever the device has; Clear Key tried on the emulator.
+11. Widevine, PlayReady or Clear Key, whichever the browser has, through Media Source Extensions (HLS with hls.js, DASH with Shaka); Clear Key in CI.
 
 ## Sound effects
 

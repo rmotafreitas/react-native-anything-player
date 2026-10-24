@@ -121,10 +121,7 @@ extension PlayerOptions {
 extension SourceDescriptor {
   /// A serialized `Source` (src/core/Player.ts `normalizeSource`) and its lock-screen fields.
   static func parse(_ source: NSDictionary) -> (SourceDescriptor, NowPlayingFields) {
-    var headers: [String: String] = [:]
-    (source["headers"] as? NSDictionary)?.forEach { key, value in
-      if let k = key as? String, let v = value as? String { headers[k] = v }
-    }
+    let headers = strings(source["headers"])
     let renditions = (source["renditions"] as? [NSDictionary]).flatMap { list -> [Rendition]? in
       guard !list.isEmpty else { return nil }
       return list.map { r in
@@ -145,12 +142,35 @@ extension SourceDescriptor {
     let descriptor = SourceDescriptor(
       uri: source["uri"] as? String ?? "", headers: headers, liveHint: source["live"] as? Bool,
       renditions: renditions, refreshable: source["refreshable"] as? Bool ?? false,
-      expiresAt: (source["expiresAt"] as? NSNumber)?.int64Value)
+      expiresAt: (source["expiresAt"] as? NSNumber)?.int64Value,
+      drm: (source["drm"] as? NSDictionary).map(parseDrm))
     return (descriptor, NowPlayingFields(source["metadata"] as? NSDictionary))
   }
 
-  /// Whether a Cast receiver can fetch it itself.
-  var isCastable: Bool { isNetwork }
+  private static func strings(_ value: Any?) -> [String: String] {
+    var out: [String: String] = [:]
+    (value as? NSDictionary)?.forEach { key, value in
+      if let k = key as? String, let v = value as? String { out[k] = v }
+    }
+    return out
+  }
+
+  private static func parseDrm(_ drm: NSDictionary) -> DrmDescriptor {
+    let fairplay = (drm["fairplay"] as? NSDictionary).flatMap { f -> FairPlayServer? in
+      guard let license = f["licenseUrl"] as? String, let certificate = f["certificateUrl"] as? String else {
+        return nil
+      }
+      return FairPlayServer(
+        licenseUrl: license, certificateUrl: certificate, headers: strings(f["headers"]),
+        contentId: f["contentId"] as? String)
+    }
+    return DrmDescriptor(
+      fairplay: fairplay, others: ["widevine", "playready", "clearkey"].filter { drm[$0] is NSDictionary },
+      hook: drm["hook"] as? Bool ?? false)
+  }
+
+  /// Whether a Cast receiver can fetch it itself (it gets no DRM keys).
+  var isCastable: Bool { isNetwork && drm == nil }
 
   /// A progressive HTTP(S) stream that may interleave ICY metadata (not HLS).
   var mayCarryIcy: Bool {
@@ -463,7 +483,9 @@ final class PlayerController: EngineDelegate, DriverObserver {
         "error": Serialization.error(
           .code(
             .castUnsupportedSource,
-            "A Cast receiver cannot fetch this source (it is not an http(s) URL); it keeps playing on the device.",
+            engine.source?.drm != nil
+              ? "A Cast receiver cannot decrypt the source (DRM); it keeps playing on the device."
+              : "A Cast receiver cannot fetch this source (it is not an http(s) URL); it keeps playing on the device.",
             recoverable: false)),
         "fatal": false,
       ])
@@ -672,6 +694,21 @@ final class PlayerController: EngineDelegate, DriverObserver {
 
   func driverSourceCues(generation: Int, cues: [OverlayCue]) {
     if engine.accepts(generation) { picture?.sourceCues(cues) }
+  }
+
+  func driverLicenseRequest(generation: Int, request: LicenseAsk) {
+    guard engine.accepts(generation) else {
+      return LicenseRequests.shared.cancel(request.requestId, "The source was replaced.")
+    }
+    emit(
+      "licenseRequest",
+      [
+        "requestId": request.requestId, "keySystem": request.keySystem,
+        "challenge": request.challenge.base64EncodedString(),
+        "contentId": Serialization.optional(request.contentId),
+        "licenseUrl": Serialization.optional(request.licenseUrl),
+        "headers": request.headers,
+      ])
   }
 
   func driverAccessLog(generation: Int, bitsPerSecond: Double?, droppedFrames: Int?) {

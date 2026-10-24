@@ -115,6 +115,28 @@ export interface ShakaLike {
     /** Installs them all. */
     installAll(): void;
   };
+  /** Shaka's networking: RNAP registers its `rnap-license:` scheme there (the app's `drm.getLicense`). */
+  net?: {
+    /** `shaka.net.NetworkingEngine`. */
+    NetworkingEngine: {
+      /** Serves the requests to `scheme:` URIs. */
+      registerScheme(
+        scheme: string,
+        plugin: (
+          uri: string,
+          request: { body?: ArrayBuffer | ArrayBufferView | null }
+        ) => unknown
+      ): void;
+    };
+  };
+  /** Shaka's utilities. */
+  util?: {
+    /** `shaka.util.AbortableOperation`. */
+    AbortableOperation: {
+      /** An operation that cannot be aborted, from a promise. */
+      notAbortable(promise: Promise<unknown>): unknown;
+    };
+  };
 }
 
 let registered: ShakaLike | null = null;

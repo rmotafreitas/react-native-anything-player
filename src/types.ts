@@ -132,6 +132,7 @@ export type PlayerErrorCode =
   | 'SOUND_UNAVAILABLE'
   | 'VIDEO_UNAVAILABLE'
   | 'DRM_UNSUPPORTED'
+  | 'DRM_LICENSE_FAILED'
   | 'SUBTITLE_LOAD_FAILED'
   | 'INTERNAL_ERROR';
 
@@ -396,7 +397,7 @@ export interface SourceOptions {
   poster?: ArtworkInput;
   /** Video: a WebVTT track of thumbnail sprites, for `getThumbnail`. */
   thumbnails?: string;
-  /** Reserved for DRM (`DRM_UNSUPPORTED` until it ships). */
+  /** Protected content: the key systems and their license servers (the Video guide, "DRM"). */
   drm?: DrmConfig;
 }
 
@@ -452,40 +453,68 @@ export interface SourceRefreshRequest {
 }
 
 /**
- * DRM, by key system: each platform uses the one it supports. Reserved: until
- * DRM ships, a source with `drm` is rejected with `DRM_UNSUPPORTED`.
+ * DRM, by key system: give every one the content is packaged for, and each
+ * platform uses one it has (iOS and Safari FairPlay; Android Widevine, else
+ * PlayReady, else Clear Key; other browsers Widevine, PlayReady or Clear
+ * Key). A source with none the platform has fails with `DRM_UNSUPPORTED`;
+ * a license that cannot be had, with `DRM_LICENSE_FAILED`.
  */
 export interface DrmConfig {
   /** Apple FairPlay Streaming (iOS, Safari). */
   fairplay?: {
-    /** Where the license (CKC) is requested. */
+    /** Where the license (CKC) is requested: the SPC is POSTed as is. */
     licenseUrl: string;
     /** The application certificate. */
     certificateUrl: string;
     /** Headers for both requests. */
     headers?: Record<string, string>;
+    /** The content id the SPC is made for; default: the `skd://` URI's host. */
+    contentId?: string;
   };
-  /** Google Widevine (Android, Chromium, Firefox). */
+  /** Google Widevine (Android, Chromium, Firefox, Edge). */
   widevine?: {
     /** Where the license is requested. */
     licenseUrl: string;
     /** Headers for the license request. */
     headers?: Record<string, string>;
   };
-  /** Microsoft PlayReady (Edge, some Android TVs). */
+  /** Microsoft PlayReady (Edge, Android TVs). */
   playready?: {
     /** Where the license is requested. */
     licenseUrl: string;
     /** Headers for the license request. */
     headers?: Record<string, string>;
   };
-  /** W3C Clear Key (testing, light protection). */
+  /** W3C Clear Key (tests, light protection; every browser and Android). */
   clearkey?: {
-    /** Key id → key, hex. */
+    /** Key id → key, hex: no license server at all. */
     keys?: Record<string, string>;
-    /** Or where the keys are requested. */
+    /** Or where the keys are requested (the W3C JSON exchange). */
     licenseUrl?: string;
+    /** Headers for the license request. */
+    headers?: Record<string, string>;
   };
+  /**
+   * Exchanges the license itself: for a provider that wraps its requests (a
+   * JSON envelope, a token fetched first). RNAP hands over the platform's
+   * challenge and plays the license returned; the key system's `licenseUrl`
+   * is then only passed along.
+   */
+  getLicense?(request: LicenseRequest): Promise<ArrayBuffer | Uint8Array>;
+}
+
+/** A license the platform needs, for {@link DrmConfig.getLicense}. */
+export interface LicenseRequest {
+  /** The key system the platform uses. */
+  keySystem: 'fairplay' | 'widevine' | 'playready' | 'clearkey';
+  /** The challenge to send (FairPlay's SPC). */
+  challenge: Uint8Array;
+  /** FairPlay: the content id the SPC was made for; `null` elsewhere. */
+  contentId: string | null;
+  /** The key system's `licenseUrl`, if configured. */
+  licenseUrl: string | null;
+  /** The key system's `headers`. */
+  headers: Record<string, string>;
 }
 
 /** What `load()` accepts: a {@link Source}, a URI, or `require('./file.mp3')`. */

@@ -65,6 +65,32 @@ export interface SourceDescriptor {
   refreshable?: boolean;
   /** Wall-clock epoch ms when the source's URL stops working. */
   expiresAt?: number | null;
+  /** Protected content: its key systems (the platform's driver plays it). */
+  drm?: DrmDescriptor | null;
+}
+
+/** A key system's license server. */
+export interface LicenseServer {
+  licenseUrl: string;
+  headers: Record<string, string>;
+}
+
+/** A source's `drm`, validated (see src/core/drm.ts). */
+export interface DrmDescriptor {
+  fairplay?: LicenseServer & {
+    certificateUrl: string;
+    contentId: string | null;
+  };
+  widevine?: LicenseServer;
+  playready?: LicenseServer;
+  clearkey?: {
+    /** Key id → key, hex. */
+    keys: Record<string, string> | null;
+    licenseUrl: string | null;
+    headers: Record<string, string>;
+  };
+  /** The app answers license requests itself (`getLicense`). */
+  hook: boolean;
 }
 
 /** One file of a video at one quality (`SourceDescriptor.renditions`). */

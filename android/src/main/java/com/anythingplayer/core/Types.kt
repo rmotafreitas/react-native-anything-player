@@ -67,6 +67,7 @@ enum class ErrorCode(val wire: String) {
   CAST_UNSUPPORTED_SOURCE("CAST_UNSUPPORTED_SOURCE"),
   VIDEO_UNAVAILABLE("VIDEO_UNAVAILABLE"),
   DRM_UNSUPPORTED("DRM_UNSUPPORTED"),
+  DRM_LICENSE_FAILED("DRM_LICENSE_FAILED"),
   SUBTITLE_LOAD_FAILED("SUBTITLE_LOAD_FAILED"),
   INTERNAL_ERROR("INTERNAL_ERROR");
 
@@ -95,6 +96,24 @@ enum class NetworkState(val wire: String) {
 
 enum class FocusResult { GRANTED, DELAYED, DENIED }
 
+/** A key system's license server and the headers sent to it (`licenseUrl` `null`: none given). */
+data class LicenseServer(val licenseUrl: String?, val headers: Map<String, String> = emptyMap())
+
+/**
+ * A source's `drm`, as JavaScript validated it. [clearKeys] maps key ids to
+ * keys (hex), answered on the device; [fairplay] is Apple's (named so Android
+ * can say why it cannot play); [hook]: the app's `getLicense` answers the
+ * license requests.
+ */
+data class DrmDescriptor(
+  val widevine: LicenseServer? = null,
+  val playready: LicenseServer? = null,
+  val clearkey: LicenseServer? = null,
+  val clearKeys: Map<String, String>? = null,
+  val fairplay: Boolean = false,
+  val hook: Boolean = false,
+)
+
 /** What the app asked to play. */
 data class SourceDescriptor(
   val uri: String,
@@ -111,6 +130,8 @@ data class SourceDescriptor(
   val refreshable: Boolean = false,
   /** Wall-clock epoch ms when the source's URL stops working. */
   val expiresAt: Long? = null,
+  /** The source is encrypted: its key systems and license servers (`null`: clear). */
+  val drm: DrmDescriptor? = null,
 ) {
   val isNetwork: Boolean
     get() {

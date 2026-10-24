@@ -7,9 +7,11 @@ import com.facebook.react.bridge.ReadableType
 import com.facebook.react.bridge.WritableMap
 import com.anythingplayer.core.BackgroundMode
 import com.anythingplayer.core.DiagnosticEntry
+import com.anythingplayer.core.DrmDescriptor
 import com.anythingplayer.core.EngineOptions
 import com.anythingplayer.core.FallbackPolicy
 import com.anythingplayer.core.Interruption
+import com.anythingplayer.core.LicenseServer
 import com.anythingplayer.core.MediaTrack
 import com.anythingplayer.core.PlayerError
 import com.anythingplayer.core.QualityPolicy
@@ -248,8 +250,22 @@ internal fun parseSource(map: ReadableMap): Pair<SourceDescriptor, NowPlayingFie
       renditions = parseRenditions(map),
       refreshable = map.optBoolean("refreshable") ?: false,
       expiresAt = map.optDouble("expiresAt")?.toLong(),
+      drm = map.optMap("drm")?.let(::parseDrm),
     )
   return descriptor to parseNowPlaying(map.optMap("metadata"))
+}
+
+private fun parseDrm(map: ReadableMap): DrmDescriptor {
+  fun server(name: String) =
+    map.optMap(name)?.let { LicenseServer(it.optString("licenseUrl"), it.stringMap("headers") ?: emptyMap()) }
+  return DrmDescriptor(
+    widevine = server("widevine"),
+    playready = server("playready"),
+    clearkey = server("clearkey"),
+    clearKeys = map.optMap("clearkey")?.stringMap("keys"),
+    fairplay = map.optMap("fairplay") != null,
+    hook = map.optBoolean("hook") == true,
+  )
 }
 
 internal fun parseNowPlaying(map: ReadableMap?): NowPlayingFields {

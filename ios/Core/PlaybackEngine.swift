@@ -2486,7 +2486,7 @@ extension PlaybackEngine {
   private func renditionSource(_ index: Int) -> SourceDescriptor {
     let r = renditions![index]
     return SourceDescriptor(
-      uri: r.uri, headers: r.headers ?? source?.headers ?? [:], liveHint: source?.liveHint)
+      uri: r.uri, headers: r.headers ?? source?.headers ?? [:], liveHint: source?.liveHint, drm: source?.drm)
   }
 
   /// A rendition's bitrate, or an estimate from its height and a known one.

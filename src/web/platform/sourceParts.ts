@@ -7,6 +7,22 @@ import type { AudioElementLike } from './dom';
 
 export type DashParts = typeof import('./DashStream');
 export type RemuxParts = typeof import('./RemuxStream');
+export type DrmParts = typeof import('./WebDrm');
+
+/** The EME glue, once loaded (only protected content needs it). */
+let drmLoading: Promise<DrmParts | null> | null = null;
+
+/** Loads the EME glue once; a failed load is tried again next time. */
+export function loadDrmParts(): Promise<DrmParts | null> {
+  drmLoading ??= import('./WebDrm').then(
+    (parts) => parts,
+    () => {
+      drmLoading = null;
+      return null;
+    }
+  );
+  return drmLoading;
+}
 
 /** The remuxer, once loaded (only Matroska, WebM and MPEG-TS files need it). */
 let remuxLoading: Promise<RemuxParts | null> | null = null;

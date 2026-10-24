@@ -33,6 +33,7 @@ The player and the view are separate. Unmounting `<VideoView>` does not stop the
 | `{ uri, poster }` | an image shown until the first frame |
 | `{ uri, refresh, expiresAt }` | a signed URL: RNAP asks `refresh` for a new one on a 401/403 or a minute before `expiresAt`, and goes on where it was |
 | `{ uri, thumbnails }` | a WebVTT thumbnail track, for `getThumbnail(time)` in a scrubber |
+| `{ uri, drm }` | protected content: its key systems and license servers ([below](#drm)) |
 
 ```ts
 await player.load({
@@ -71,6 +72,68 @@ What it needs:
 - **The codecs:** the platform has to decode them. H.264, HEVC, VP9 and AV1 video play wherever the platform has a decoder. AAC, MP3, AC-3, E-AC-3, Opus and FLAC sound play where the platform has those. AC-3 and E-AC-3 are Safari and Apple devices only, and Chromium takes no MP3 inside MP4, so such a track is left out there. A codec the platform lacks (MPEG-2, VC-1, DTS, TrueHD, Vorbis) fails with `UNSUPPORTED_FORMAT` naming it; software decoders are [planned](video-design.md#software-decoders).
 - **On the web, CORS:** the server must allow cross-origin reads (`Access-Control-Allow-Origin`), with range requests for seeking. Without CORS, the element gets the URL as it is, which works where the browser reads the container itself (Matroska and WebM in Chromium and Firefox), without the tracks.
 - **On iOS, range requests:** a file is read by ranges. A live channel needs none.
+
+## DRM
+
+Give every key system the content is packaged for, with its license server. Each platform uses the first one it has:
+
+| Platform | Key systems, in order |
+|---|---|
+| iOS, Safari | FairPlay (HLS) |
+| Android | Widevine, PlayReady, Clear Key |
+| Chromium, Firefox, Edge | Widevine, PlayReady, Clear Key (whichever the browser has) |
+
+```ts
+await player.load({
+  uri: 'https://cdn.example/ep1/master.m3u8', // CMAF, cbcs: FairPlay and Widevine alike
+  drm: {
+    fairplay: {
+      licenseUrl: 'https://drm.example/fps',
+      certificateUrl: 'https://drm.example/fps.cer',
+    },
+    widevine: {
+      licenseUrl: 'https://drm.example/wv',
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  },
+});
+```
+
+The platform's license request (FairPlay's SPC, a Widevine or PlayReady challenge, Clear Key's JSON) is POSTed to `licenseUrl` as it is, with the key system's `headers`, and the answer is the license. PlayReady's SOAP headers are added for you. FairPlay first GETs the certificate from `certificateUrl`. The content id is the `skd://` URI's host unless you give `contentId`.
+
+**Clear Key with the keys in the source** needs no server: `clearkey: { keys: { [keyId]: key } }`, both in hex (dashes in a key id are fine). It is light protection, for tests and content that only needs to stay off casual downloads.
+
+**A provider that wraps its requests** (a JSON envelope, a token fetched first, base64 bodies): answer them yourself with `getLicense`. RNAP hands over the challenge and plays the license you return. The key system's `licenseUrl` and `headers` are passed along, unused:
+
+```ts
+drm: {
+  widevine: { licenseUrl: 'https://drm.example/wv' },
+  getLicense: async ({ keySystem, challenge, licenseUrl, contentId }) => {
+    const response = await fetch(licenseUrl!, {
+      method: 'POST',
+      // React Native's fetch sends a binary body only with a Content-Type.
+      headers: { 'Content-Type': 'application/octet-stream', 'X-Token': await token() },
+      body: challenge,
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return response.arrayBuffer();
+  },
+},
+```
+
+A `getLicense` that throws, or does not answer within 30 seconds, fails the load with `DRM_LICENSE_FAILED` and its message.
+
+| Error | When |
+|---|---|
+| `DRM_UNSUPPORTED` | none of the source's key systems is on this platform (a `drm` with only Widevine on iOS, only FairPlay on Android); the source is encrypted and has no `drm`; on Android, the content is not packaged for the key system picked |
+| `DRM_LICENSE_FAILED` | the license server refused (`httpStatus` set; recoverable on 5xx and 429, so the engine retries), `getLicense` threw or timed out, the certificate could not be fetched, or the platform could not make the request (in a browser, content not packaged for the key system picked) |
+
+What it needs, and what it does not do:
+
+- **Browsers decrypt only through Media Source Extensions:** HLS and DASH with fragmented MP4 segments play; a single encrypted MP4 file does not. Remuxed files (Matroska, WebM, MPEG-TS) are not decrypted.
+- **Licenses are temporary:** fetched for each load, kept in memory. Persistent licenses come with downloads for offline viewing ([design](video-design.md#release-plan)).
+- **Cast:** a receiver gets no keys from RNAP, so a protected source stays on the device with a non-fatal `CAST_UNSUPPORTED_SOURCE`. AirPlay plays FairPlay itself.
+- **Security levels:** what the hardware offers. Android emulators and desktop Chromium have Widevine L3, which many providers limit to SD; output protection (HDCP) is the platform's.
 
 ## The view
 
@@ -184,7 +247,8 @@ Without it, `new Player({ video })` throws `VIDEO_UNAVAILABLE` (the message says
 | Code | When |
 |---|---|
 | `VIDEO_UNAVAILABLE` | `new Player({ video })` on iOS or Android in an app built without the video module |
-| `DRM_UNSUPPORTED` | `load()` of a source with `drm` (DRM is designed, not shipped yet: [design](video-design.md)) |
+| `DRM_UNSUPPORTED` | a protected source the platform cannot decrypt ([DRM](#drm)) |
+| `DRM_LICENSE_FAILED` | the license could not be had ([DRM](#drm)) |
 | `SUBTITLE_LOAD_FAILED` | non-fatal: a subtitle file could not be fetched or read; the video plays on |
 | `INVALID_ARGUMENT` | a quality or track id not in the status; Picture in Picture where there is none |
 

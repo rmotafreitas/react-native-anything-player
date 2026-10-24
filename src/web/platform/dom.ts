@@ -75,6 +75,29 @@ export interface AudioElementLike extends EventTargetLike {
   canPlayType(type: string): string;
   removeAttribute(name: string): void;
   appendChild(child: SourceElementLike): void;
+  /** Encrypted Media Extensions: the keys that decrypt what the element plays. */
+  setMediaKeys?(keys: MediaKeysLike | null): Promise<void>;
+}
+
+/** A key system the browser grants (`requestMediaKeySystemAccess`). */
+export interface MediaKeySystemAccessLike {
+  readonly keySystem: string;
+  createMediaKeys(): Promise<MediaKeysLike>;
+}
+
+export interface MediaKeysLike {
+  createSession(type?: string): MediaKeySessionLike;
+  setServerCertificate(certificate: Uint8Array): Promise<boolean>;
+}
+
+/** A license exchange: `message` events carry the challenge, `update` takes the license. */
+export interface MediaKeySessionLike extends EventTargetLike {
+  generateRequest(
+    initDataType: string,
+    initData: Uint8Array | ArrayBuffer
+  ): Promise<void>;
+  update(license: Uint8Array): Promise<void>;
+  close(): Promise<void>;
 }
 
 /** What every element RNAP styles has. */
@@ -456,6 +479,10 @@ export interface BrowserGlobals {
     readonly mediaSession?: MediaSessionLike;
     readonly connection?: NetworkInformationLike;
     readonly languages?: readonly string[];
+    requestMediaKeySystemAccess?(
+      keySystem: string,
+      configurations: object[]
+    ): Promise<MediaKeySystemAccessLike>;
     readonly wakeLock?: {
       request(type: 'screen'): Promise<WakeLockSentinelLike>;
     };

@@ -10,6 +10,10 @@ import {
 import { useCues, VideoView } from 'react-native-anything-player/video';
 import { STREAM_HOST } from './config';
 
+/** The stream server's Clear Key test key (scripts/stream-server). */
+const DRM_KID = 'a7e61c373e219033c21091fa607bf3b8';
+const DRM_KEY = '76a6c65c5ea762046bd749a2e632ccbb';
+
 // The video player, created on first use: an app built without the video
 // module throws VIDEO_UNAVAILABLE, and the card says so instead.
 let video: Player | null = null;
@@ -82,6 +86,39 @@ export const VIDEO_SOURCES: Array<{ label: string; source: () => Source }> = [
     source: () => ({
       uri: `${STREAM_HOST}/live.ts`,
       metadata: { title: 'Test channel (live MPEG-TS)', artist: 'RNAP' },
+    }),
+  },
+  {
+    label: 'DRM keys',
+    source: () => ({
+      uri: `${STREAM_HOST}/drm/hls/index.m3u8`,
+      // Clear Key with its keys in the source: no license server.
+      drm: { clearkey: { keys: { [DRM_KID]: DRM_KEY } } },
+      metadata: { title: 'Test pattern (Clear Key)', artist: 'RNAP' },
+    }),
+  },
+  {
+    label: 'DRM getLicense',
+    source: () => ({
+      uri: `${STREAM_HOST}/drm/hls/index.m3u8`,
+      drm: {
+        clearkey: { licenseUrl: `${STREAM_HOST}/drm/clearkey?token=demo` },
+        // The app asks its license server itself (a session token here).
+        getLicense: async ({ challenge, licenseUrl }) => {
+          const response = await fetch(licenseUrl!, {
+            method: 'POST',
+            body: challenge,
+            // React Native's fetch sends a binary body only with a type.
+            headers: {
+              'Content-Type': 'application/octet-stream',
+              'X-Drm-Token': 'demo',
+            },
+          });
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          return response.arrayBuffer();
+        },
+      },
+      metadata: { title: 'Test pattern (getLicense)', artist: 'RNAP' },
     }),
   },
 ];

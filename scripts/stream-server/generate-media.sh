@@ -168,4 +168,16 @@ ffmpeg -loglevel error -y -i media/video-360.mp4 -t 60 $X264 -c:a aac -b:a 96k -
 ffmpeg -loglevel error -y -i media/video-360.mp4 -t 10 -c:v libvpx-vp9 -deadline realtime -cpu-used 8 -g 50 -b:v 300k \
   -c:a libopus -b:a 64k media/remux/movie.webm
 
-ls -la media media/hls-video media/dash-video media/remux | head -40
+# DRM: the video as fragmented MP4 HLS, encrypted (CENC) with a Clear Key
+# by encrypt-fmp4.mjs (browsers decrypt only fragmented MP4, and ffmpeg's own
+# encryption of fragments is incomplete). The key and its id are the license
+# server's (server.mjs).
+DRM_KID=a7e61c373e219033c21091fa607bf3b8
+DRM_KEY=76a6c65c5ea762046bd749a2e632ccbb
+rm -rf media/drm && mkdir -p media/drm/hls
+ffmpeg -loglevel error -y -i media/video-360.mp4 -t 20 -c copy -f hls -hls_time 4 -hls_playlist_type vod \
+  -hls_segment_type fmp4 -hls_fmp4_init_filename init.mp4 -hls_segment_filename 'media/drm/hls/seg-%d.m4s' \
+  media/drm/hls/index.m3u8
+node encrypt-fmp4.mjs "${DRM_KID}" "${DRM_KEY}" media/drm/hls/init.mp4 media/drm/hls/seg-*.m4s
+
+ls -la media media/hls-video media/dash-video media/remux media/drm | head -44

@@ -2491,7 +2491,7 @@ class PlaybackEngine(
   private fun renditionSource(index: Int): SourceDescriptor {
     val current = source!!
     val r = renditions!![index]
-    return SourceDescriptor(r.uri, r.headers ?: current.headers, current.liveHint)
+    return SourceDescriptor(r.uri, r.headers ?: current.headers, current.liveHint, drm = current.drm)
   }
 
   /** A rendition's bitrate, or an estimate from its height and a known one. */

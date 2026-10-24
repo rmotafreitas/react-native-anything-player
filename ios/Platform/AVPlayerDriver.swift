@@ -31,6 +31,8 @@ protocol DriverObserver: AnyObject {
   func driverSourceCues(generation: Int, cues: [OverlayCue])
   /// Video: a bandwidth estimate (bits per second) and the dropped frames so far.
   func driverAccessLog(generation: Int, bitsPerSecond: Double?, droppedFrames: Int?)
+  /// The source's `drm.getLicense` must answer a key request (see `LicenseRequests`).
+  func driverLicenseRequest(generation: Int, request: LicenseAsk)
 }
 
 /// Audio players have no picture, tracks or cues.
@@ -39,6 +41,9 @@ extension DriverObserver {
   func driverTracks(generation: Int, tracks: [MediaTrack], variants: [VideoVariant]) {}
   func driverSourceCues(generation: Int, cues: [OverlayCue]) {}
   func driverAccessLog(generation: Int, bitsPerSecond: Double?, droppedFrames: Int?) {}
+  func driverLicenseRequest(generation: Int, request: LicenseAsk) {
+    LicenseRequests.shared.cancel(request.requestId, "Nothing can answer the license request.")
+  }
 }
 
 /// A video's tracks as the engine lists them, and how to find each again.
@@ -138,6 +143,8 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
   /// A source the item failed to open, retried remuxed (its container told by its bytes).
   private var forcedRemux: URL?
   private var lastRequest: OpenRequest?
+  /// An encrypted source's FairPlay keys.
+  private var fairPlay: FairPlaySession?
   /// The upstream response had no length (or ICY): a live stream.
   private var unbounded = false
   /// The proxy found an HLS playlist and redirected AVPlayer to it: the
@@ -227,6 +234,14 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
       }
       return
     }
+    if let message = request.source.drm?.unsupportedMessage {
+      let gen = generation
+      DispatchQueue.main.async { [weak self] in
+        self?.observer?.driverFailed(
+          generation: gen, error: PlayerError(code: .drmUnsupported, message: message, recoverable: false))
+      }
+      return
+    }
     unbounded = false
     redirected = false
     station = (nil, nil)
@@ -241,7 +256,7 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
       remuxURL = StreamProxy.shared.registerRemux(session)
     }
     // A video goes to AVFoundation directly: range requests, and no ICY to read.
-    if remuxSession == nil && !video && Self.proxies(url) {
+    if remuxSession == nil && !video && request.source.drm == nil && Self.proxies(url) {
       let gen = generation
       proxied = StreamProxy.shared.register(
         StreamProxy.Route(
@@ -315,6 +330,17 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
       asset.resourceLoader.setDelegate(loader, queue: loader.queue)
     } else {
       asset = AVURLAsset(url: proxied ?? url, options: options)
+    }
+    if let drm = request.source.drm, let server = drm.fairplay {
+      let gen = generation
+      let session = FairPlaySession(server: server, hook: drm.hook) { [weak self] ask in
+        DispatchQueue.main.async {
+          guard let self else { return LicenseRequests.shared.cancel(ask.requestId, "The player was released.") }
+          self.observer?.driverLicenseRequest(generation: gen, request: ask)
+        }
+      }
+      session.attach(asset)
+      fairPlay = session
     }
     let newItem = AVPlayerItem(asset: asset)
     let output = AVPlayerItemMetadataOutput(identifiers: nil)
@@ -603,6 +629,8 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
     if let remuxURL { StreamProxy.shared.retireRemux(remuxURL) }
     remuxURL = nil
     remuxSession = nil
+    fairPlay?.close()
+    fairPlay = nil
     // Abort the asset's loading now: otherwise AVFoundation can keep the
     // stream's HTTP connection open (and downloading) after the item is gone.
     item?.cancelPendingSeeks()
@@ -677,8 +705,9 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
   }
 
   private func fail(_ gen: Int, _ error: Error?) {
-    // A DASH manifest that could not be fetched or rewritten says why.
-    if let failure = dashLoader?.failure ?? remuxSession?.failure {
+    // A DASH manifest that could not be fetched or rewritten, or a FairPlay
+    // key that could not be had, says why.
+    if let failure = dashLoader?.failure ?? remuxSession?.failure ?? fairPlay?.failure {
       observer?.driverFailed(generation: gen, error: failure)
       return
     }

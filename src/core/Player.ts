@@ -1,5 +1,6 @@
 import { PlayerError, toPlayerError } from '../errors';
 import { WEB_ONLY_SCHEMES, host } from './host';
+import { answerLicense, type LicenseRequestEvent } from './drm';
 import { dispatchModuleEvent } from './moduleEvents';
 import type { SubtitleCue } from './subtitles/types';
 import {
@@ -266,6 +267,8 @@ export class Player {
   private released = false;
   /** The current source's `refresh`, its headers and its thumbnail track. */
   private refreshSource: Source['refresh'] | null = null;
+  /** The current source's `drm.getLicense`. */
+  private licenseHook: NonNullable<Source['drm']>['getLicense'] | null = null;
   private sourceHeaders: Record<string, string> = {};
   private thumbnails: ThumbnailTrack | null = null;
   private cuesOnScreen: SubtitleCue[] = [];
@@ -422,6 +425,7 @@ export class Player {
     normalized: Record<string, unknown>
   ): void {
     this.refreshSource = source?.refresh ?? null;
+    this.licenseHook = source?.drm?.getLicense ?? null;
     this.sourceHeaders = { ...(source?.headers ?? {}) };
     this.thumbnails =
       source?.thumbnails != null
@@ -670,6 +674,22 @@ export class Player {
     await this.run(() => native().videoCommand(this.id, command));
   }
 
+  /** The platform needs a license: the app's `drm.getLicense` answers. */
+  private async licenseRequested(event: LicenseRequestEvent): Promise<void> {
+    const hook = this.licenseHook;
+    const answer = hook
+      ? await answerLicense(hook, event)
+      : { error: 'The source has no drm.getLicense.' };
+    if (this.released) return;
+    await native()
+      .videoCommand(this.id, {
+        op: 'license',
+        requestId: event.requestId,
+        ...answer,
+      })
+      .catch(() => undefined);
+  }
+
   /** The engine asks for a fresh source: the app's `refresh` answers. */
   private async refreshRequested(
     loadId: number,
@@ -860,6 +880,11 @@ export class Player {
           event.loadId as number,
           event.reason as 'unauthorized' | 'expiring'
         ).catch(() => undefined);
+        break;
+      case 'licenseRequest':
+        this.licenseRequested(event as unknown as LicenseRequestEvent).catch(
+          () => undefined
+        );
         break;
       case 'audioSample':
         this.emit('audioSample', {

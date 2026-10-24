@@ -20,7 +20,8 @@ Video follows the rest of RNAP: **lightweight, bulletproof, best DX**. It is not
 | Cast video (web, Android, iOS): video content types, movie metadata, the app's subtitle files (any format) as the receiver's WebVTT text tracks (`data:` URLs, the subtitle delay applied), switched while casting; renditions go as the file playing | **Written**: the web against a scripted sender SDK, Android compiled and unit-tested, iOS compiled in macOS CI; to try on a real receiver |
 | DASH: ExoPlayer's module (in video apps, `rnapDash` either way), CMAF DASH rewritten to HLS on iOS (`DashToHls`, golden fixtures in `conformance/dash/`) and served through the asset's resource loader, Shaka Player injected on the web (`configureShaka`, 4.x and 5.x) with its tracks and variants | **Done** on Android (emulator) and the web (Playwright, three browsers); iOS **written**, the converter tested on Linux |
 | Remux of Matroska, WebM and MPEG-TS (also M2TS): the demuxers and fragmented MP4 writer twice, TypeScript and Swift, byte for byte against `conformance/remux/` (8 fixtures: H.264, HEVC, VP9, AV1; AAC, MP3, AC-3, E-AC-3, Opus, FLAC; SubRip, ASS; lacing; multiple audio tracks); the web through MSE (seeks by Cues or bitrate, live TS, audio switches, subtitles to the overlay); iOS as HLS from the loopback server (windows remuxed on request, a rendition per audio and subtitle track, live TS as a sliding playlist with reconnects); Android with ExoPlayer's extractors and their subtitles | **Done** on the web (Playwright, three browsers) and Android (emulator: tracks, subtitles, TS, live TS); iOS **written**: the serving tested on Linux against the test server, its HLS played by ffmpeg; AVPlayer to try in macOS CI |
-| Software decoders, DRM | In the release plan below |
+| DRM: FairPlay (AVContentKeySession), Widevine, PlayReady and Clear Key (ExoPlayer's DRM sessions; EME on the web, Shaka's for DASH), Clear Key keys answered on the device, the app's `getLicense` over the bridge, protected sources kept off Cast | **Done** on the web (Playwright: Clear Key in Chromium and Firefox, keys, license server, `getLicense`, refusals) and Android (emulator: the same, plus FairPlay-only and wrong-system refusals); iOS **written**: the license registry tested on Linux, FairPlay to try on hardware |
+| Software decoders | In the release plan below |
 
 ## Decisions
 
@@ -38,7 +39,7 @@ Video follows the rest of RNAP: **lightweight, bulletproof, best DX**. It is not
 | Quality | Native ABR for HLS/DASH under RNAP's caps; separate files per quality (`renditions`) are managed by the engine, switched without a spinner. |
 | Cloud files | Headers, signed URLs, and a `refresh` hook on 401/403 or expiry. No provider SDKs. |
 | Subtitles | SubRip, WebVTT, TTML/IMSC, CEA-608/708, MP4 and MKV text tracks, basic ASS. One cue pipeline, one RNAP overlay that follows the OS caption settings, `useCues()` for custom rendering. Full ASS (libass): design only. |
-| DRM | Typed now (`drm`, by key system), `load()` rejects `DRM_UNSUPPORTED` until it ships, right after v1. |
+| DRM | `drm` by key system; each platform uses the first one it has. License servers by URL and headers, Clear Key keys in the source, or the app's `getLicense` for providers that wrap their requests. Temporary licenses only until downloads. |
 | System | Picture in Picture everywhere, AirPlay / Cast / Remote Playback video, the media session (skip ±10 s on demand), keep-awake, fullscreen, muted videos take no audio focus. |
 
 ## API
@@ -87,7 +88,7 @@ export function Screen() {
 | `load({ renditions })` | Separate files of one video at different qualities: `[{ uri, height?, bitrate?, label?, audioOnly? }]`, with no `uri` needed beside them. RNAP picks, switches and falls back; a missing height or bitrate is read from the file. |
 | `load({ subtitles })` | `[{ uri \| text, language, label?, format?, forced?, default?, encoding? }]`, before or after `load()` (`player.addSubtitles()`). |
 | `load({ refresh, expiresAt })` | Called on 401/403, and ahead of `expiresAt`; returns the new source. |
-| `load({ drm })` | `{ fairplay?, widevine?, playready?, clearkey? }`: reserved, `DRM_UNSUPPORTED` until DRM ships. |
+| `load({ drm })` | `{ fairplay?, widevine?, playready?, clearkey?, getLicense? }` ([Video](video.md#drm)). |
 | `player.selectQuality(id \| 'auto')`, `selectAudioTrack(id)`, `selectSubtitles(id \| null)`, `setSubtitleDelay(s)`, `setListenOnly(b)`, `setLoop(b)` | Commands. |
 | `player.presentFullscreen({ lockOrientation })`, `dismissFullscreen()`, `startPictureInPicture()`, `stopPictureInPicture()` | The system UI. |
 | `player.getThumbnail(t)`, `player.getStats()`, `seekTo(t, { exact })` | Seek previews, quality-of-experience numbers, frame-accurate seeks. |
@@ -166,7 +167,7 @@ To a Cast receiver: WebVTT or TTML tracks by URL; other formats converted to Web
 
 1. **Video v1 (1.3.0)**: the engine and conformance; web, Android and iOS drivers and views; renditions; subtitles; remux; CMAF DASH→HLS; PiP, fullscreen, AirPlay/Cast video; the Android decoders.
 2. The iOS and web software decoders, each as soon as it passes the suite.
-3. DRM: FairPlay, Widevine, PlayReady, ClearKey. ClearKey runs in CI (Playwright Chromium and Firefox, the Android emulator) and Widevine L3 on the emulator where it works; FairPlay, Widevine L1, PlayReady and Cast DRM are on the hardware list.
+3. DRM: FairPlay, Widevine, PlayReady, ClearKey (**built**, see the status above). ClearKey runs in CI (Playwright Chromium and Firefox) and on the Android emulator; FairPlay, Widevine L1, PlayReady and Cast DRM are on the hardware list.
 4. Separate audio and video URLs (`source: { video, audio }`), on demand: Media3 `MergingMediaSource`, two MSE source buffers, `AVMutableComposition`. Live pairs only through manifests.
 5. Downloads for offline viewing, with persistent licences, together with Cache & preload.
 

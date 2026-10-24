@@ -263,6 +263,12 @@ final class VideoSwapDriver: LocalOutput {
     func driverAccessLog(generation: Int, bitsPerSecond: Double?, droppedFrames: Int?) {
       target?.driverAccessLog(generation: generation, bitsPerSecond: bitsPerSecond, droppedFrames: droppedFrames)
     }
+    func driverLicenseRequest(generation: Int, request: LicenseAsk) {
+      guard let target else {
+        return LicenseRequests.shared.cancel(request.requestId, "The player was released.")
+      }
+      target.driverLicenseRequest(generation: generation, request: request)
+    }
   }
 }
 #endif

@@ -328,6 +328,7 @@ export abstract class EngineQuality extends EngineFades {
       uri: r.uri,
       headers: r.headers ?? source.headers,
       liveHint: source.liveHint,
+      drm: source.drm ?? null,
     };
   }
 

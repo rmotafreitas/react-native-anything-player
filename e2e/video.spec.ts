@@ -422,6 +422,164 @@ test('WebM plays: natively, or remuxed where the browser has no WebM', async ({
   expect(await page.evaluate(() => window.videoTest.errors)).toEqual([]);
 });
 
+// The Clear Key the test server's DRM fixture is encrypted with.
+const KEYS = {
+  a7e61c373e219033c21091fa607bf3b8: '76a6c65c5ea762046bd749a2e632ccbb',
+};
+
+/** Whether this browser grants Clear Key (Playwright's WebKit on Linux may not). */
+async function clearKeySupported(page: Page): Promise<boolean> {
+  return page.evaluate(async () => {
+    try {
+      await navigator.requestMediaKeySystemAccess('org.w3.clearkey', [
+        {
+          initDataTypes: ['cenc', 'keyids'],
+          videoCapabilities: [
+            { contentType: 'video/mp4; codecs="avc1.42E01E"' },
+          ],
+        },
+      ]);
+      return true;
+    } catch {
+      return false;
+    }
+  });
+}
+
+test.describe('DRM', () => {
+  test.beforeEach(async ({ page }) => {
+    await open(page);
+    test.skip(!(await clearKeySupported(page)), 'no Clear Key in this browser');
+  });
+
+  const playing = async (page: Page) => {
+    await expect
+      .poll(async () => (await status(page)).state, { timeout: 20_000 })
+      .toBe('playing');
+    await expect
+      .poll(async () => (await status(page)).video?.firstFrame)
+      .toBe(true);
+    const position = await page.evaluate(
+      () => window.videoTest.player.getProgress().position
+    );
+    await expect
+      .poll(() =>
+        page.evaluate(() => window.videoTest.player.getProgress().position)
+      )
+      .toBeGreaterThan(position + 1);
+    expect(await page.evaluate(() => window.videoTest.errors)).toEqual([]);
+  };
+
+  test('a protected file plays with its Clear Key keys in the source', async ({
+    page,
+  }) => {
+    await page.evaluate(
+      (keys) =>
+        window.videoTest.player.load(
+          {
+            uri: `${window.videoTest.MEDIA}/drm/hls/index.m3u8`,
+            drm: { clearkey: { keys } },
+          },
+          { autoplay: true }
+        ),
+      KEYS
+    );
+    await playing(page);
+  });
+
+  test('from a license server, with its headers', async ({ page }) => {
+    await page.evaluate(() =>
+      window.videoTest.player.load(
+        {
+          uri: `${window.videoTest.MEDIA}/drm/hls/index.m3u8`,
+          drm: {
+            clearkey: {
+              licenseUrl: `${window.videoTest.MEDIA}/drm/clearkey?token=t1`,
+              headers: { 'X-Drm-Token': 't1' },
+            },
+          },
+        },
+        { autoplay: true }
+      )
+    );
+    await playing(page);
+  });
+
+  test("the app's getLicense exchanges the license", async ({ page }) => {
+    await page.evaluate(() => {
+      const t = window.videoTest as typeof window.videoTest & {
+        asked?: string[];
+      };
+      t.asked = [];
+      return t.player.load(
+        {
+          uri: `${t.MEDIA}/drm/hls/index.m3u8`,
+          drm: {
+            clearkey: {},
+            getLicense: async (request) => {
+              t.asked!.push(request.keySystem);
+              const response = await fetch(`${t.MEDIA}/drm/clearkey`, {
+                method: 'POST',
+                body: request.challenge as BodyInit,
+              });
+              return response.arrayBuffer();
+            },
+          },
+        },
+        { autoplay: true }
+      );
+    });
+    await playing(page);
+    expect(
+      await page.evaluate(
+        () => (window.videoTest as unknown as { asked: string[] }).asked
+      )
+    ).toEqual(['clearkey']);
+  });
+
+  // The item is ready (its metadata) before a key is needed: a refused
+  // license is the player's error from then, as any failure while playing.
+  const failsWith = async (page: Page, code: string) =>
+    expect
+      .poll(async () => (await status(page)).error?.code, { timeout: 15_000 })
+      .toBe(code);
+
+  test('a license server that refuses: DRM_LICENSE_FAILED', async ({
+    page,
+  }) => {
+    await page.evaluate(() =>
+      window.videoTest.player
+        .load(
+          {
+            uri: `${window.videoTest.MEDIA}/drm/hls/index.m3u8`,
+            drm: {
+              clearkey: {
+                licenseUrl: `${window.videoTest.MEDIA}/drm/clearkey?status=403`,
+              },
+            },
+          },
+          { autoplay: true }
+        )
+        .catch(() => undefined)
+    );
+    await failsWith(page, 'DRM_LICENSE_FAILED');
+    expect((await status(page)).error?.httpStatus).toBe(403);
+  });
+
+  test('an encrypted source without drm says what is missing', async ({
+    page,
+  }) => {
+    await page.evaluate(() =>
+      window.videoTest.player
+        .load(`${window.videoTest.MEDIA}/drm/hls/index.m3u8`, {
+          autoplay: true,
+        })
+        .catch(() => undefined)
+    );
+    await failsWith(page, 'DRM_UNSUPPORTED');
+  });
+});
+
 test('an audio player has no picture to attach', async ({ page }) => {
   await open(page);
   const code = await page.evaluate(async () => {

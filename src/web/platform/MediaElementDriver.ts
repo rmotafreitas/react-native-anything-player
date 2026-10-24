@@ -44,6 +44,8 @@ import { isDashUri, shakaNamespace, type ShakaLike } from '../../core/shaka';
 import type { DashStream } from './DashStream';
 import { MseStream, mediaSourceConstructor } from './MseStream';
 import type { RemuxStream } from './RemuxStream';
+import { protect, type ProtectedItem } from './protectedSource';
+import { requestLicense } from './licenseRequests';
 import type { RemuxFormat } from '../remux/Remuxer';
 import {
   DASH_MISSING,
@@ -104,6 +106,12 @@ const OWN_SEEK_MS = 3000;
 const OWN_SEEK_SLACK_S = 2;
 
 // MediaError codes.
+const ENCRYPTED = engineError(
+  'DRM_UNSUPPORTED',
+  'The source is encrypted (DRM): give its key systems and license servers in `drm`.',
+  false
+);
+
 const MEDIA_ERR_ABORTED = 1;
 const MEDIA_ERR_SRC_NOT_SUPPORTED = 4;
 
@@ -132,6 +140,8 @@ export class MediaElementDriver implements EngineDriver {
   private dashPending = false;
   private remux: RemuxStream | null = null;
   private remuxPending = false;
+  private drm: ProtectedItem | null = null;
+  private drmPending = false;
   /** Why remuxing this source fell back to the element (CORS); it is not tried again. */
   private remuxFallback: string | null = null;
   /** The HLS part is loading (the module, then hls.js): `play()` waits for it. */
@@ -284,17 +294,30 @@ export class MediaElementDriver implements EngineDriver {
     this.flowed = false;
     this.pendingStart = request.startPosition;
     this.variantId = null;
-    const media = mediaSourceConstructor();
-    // ICY over MSE is audio's: a video plays on the element (or hls.js).
-    const streamable =
-      this.kind === 'audio' && media != null && mayStream(request.source);
-    if (streamable) {
-      this.attach();
-      this.startStream(request.source, media);
+    if (request.source.drm && !isDashUri(request.source.uri)) {
+      // The keys first: the element gets the source once they are attached.
+      this.drmPending = true;
+      this.drm = protect(this._element, request, this.observer, () => {
+        this.drmPending = false;
+        this.route(request.source);
+        if (this.playRequested) this.play();
+      });
     } else {
-      this.playPlain(request.source);
+      this.route(request.source);
     }
     if (request.playWhenReady) this.play();
+  }
+
+  /** Plays a source through MSE (live audio, for ICY) or on the element. */
+  private route(source: SourceDescriptor): void {
+    const media = mediaSourceConstructor();
+    // ICY over MSE is audio's: a video plays on the element (or hls.js).
+    if (this.kind === 'audio' && media != null && mayStream(source)) {
+      this.attach();
+      this.startStream(source, media);
+    } else {
+      this.playPlain(source);
+    }
   }
 
   play(): void {
@@ -303,7 +326,8 @@ export class MediaElementDriver implements EngineDriver {
     // hls.js is still loading: the element has no source to play yet. The
     // request is kept and runs when the stream starts (see loadHls), so the
     // play() is not lost and the element is not asked twice.
-    if (this.hlsPending || this.dashPending || this.remuxPending) return;
+    const pending = this.hlsPending || this.dashPending || this.remuxPending;
+    if (pending || this.drmPending) return;
     const generation = this.generation;
     this.playToken += 1;
     const token = this.playToken;
@@ -454,6 +478,11 @@ export class MediaElementDriver implements EngineDriver {
     on('waiting', () => this.observer.onBuffering(generation));
     if (this.kind === 'video') this.attachVideo(generation, on);
     on('ended', () => this.observer.onEnded(generation));
+    // Encrypted, and no `drm` to decrypt it: it would wait for a key forever.
+    on('encrypted', () => {
+      if (this.source?.drm == null && !this.dash)
+        this.observer.onFailed(generation, ENCRYPTED);
+    });
     on('error', () => this.onError(generation));
     on('pause', () => {
       const expected = this.expectingPause;
@@ -820,6 +849,11 @@ export class MediaElementDriver implements EngineDriver {
         onTracks: () => {
           if (live()) this.tracks?.useHls(dash);
         },
+        requestLicense: (r) =>
+          requestLicense(
+            (event) => this.observer.onLicenseRequest?.(generation, event),
+            r
+          ),
         onLoaded: () => {
           if (!live()) return;
           this.dashPending = false;
@@ -1102,6 +1136,9 @@ export class MediaElementDriver implements EngineDriver {
     this.remux?.close();
     this.remux = null;
     this.remuxPending = false;
+    this.drm?.close();
+    this.drm = null;
+    this.drmPending = false;
     this.itemSerial += 1;
     this.nativeHls = false;
     this.timed = [];

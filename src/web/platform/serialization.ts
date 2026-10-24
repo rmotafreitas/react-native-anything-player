@@ -24,6 +24,7 @@ import type {
   Rendition,
   SourceDescriptor,
   VideoEngineOptions,
+  DrmDescriptor,
 } from '../engine/types';
 import type { ProgressReading } from './MediaElementDriver';
 
@@ -218,6 +219,9 @@ export function parseSource(
   if (bool(map.refreshable) === true) descriptor.refreshable = true;
   const expiresAt = num(map.expiresAt);
   if (expiresAt != null) descriptor.expiresAt = expiresAt;
+  // Validated by normalizeDrm on the way in.
+  const drm = dict(map.drm);
+  if (drm != null) descriptor.drm = drm as unknown as DrmDescriptor;
   return [descriptor, parseNowPlaying(map.metadata)];
 }
 

@@ -14,6 +14,7 @@ import type {
   SubtitleSource,
   Thumbnail,
 } from '../types';
+import { normalizeDrm } from './drm';
 import { host } from './host';
 import { formatFromName, parseSubtitles } from './subtitles/parse';
 import { parseVtt } from './subtitles/vtt';
@@ -93,15 +94,8 @@ export function normalizeVideoSource(
   source: Source,
   resolveArtwork: (art: NonNullable<Source['poster']>) => string | null
 ): Record<string, unknown> {
-  if (source.drm != null) {
-    throw new PlayerError({
-      code: 'DRM_UNSUPPORTED',
-      message:
-        'DRM is not supported yet. See the video design notes for when it ships.',
-      recoverable: false,
-    });
-  }
   const out: Record<string, unknown> = {};
+  if (source.drm != null) out.drm = normalizeDrm(source.drm);
   if (source.renditions != null)
     out.renditions = normalizeRenditions(source.renditions);
   if (source.subtitles != null)
