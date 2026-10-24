@@ -162,6 +162,9 @@ final class PlayerController: EngineDelegate, DriverObserver {
   /// The load whose source a Cast receiver cannot reach (reported once).
   private var uncastableLoadId = -1
   private var released = false
+  /// Whether `audioSample` windows may still be emitted (guarded by `lock`):
+  /// read on the tap's and the visualizer's queues, cleared by `release`.
+  private var samplesWanted = false
 
   init(id: String, options: PlayerOptions, detachable: Bool, runtime: AnythingPlayerRuntime) {
     self.id = id
@@ -204,13 +207,15 @@ final class PlayerController: EngineDelegate, DriverObserver {
     runtime.nowPlayingChanged(self)
   }
 
-  /// Decoded-audio windows as `audioSample` events, emitted straight from the
-  /// render thread and outside the status sequence (a stream, not a state).
+  /// Decoded-audio windows as `audioSample` events, emitted from the tap's
+  /// (or the stream visualizer's) own queue, never the render thread, and
+  /// outside the status sequence (a stream, not a state).
   func setAudioSampling(enabled: Bool, points: Int) {
+    lock.sync { samplesWanted = enabled && !released }
     let emitWindow: ((AudioWindow) -> Void)? =
       enabled
       ? { [weak self] window in
-        guard let self, !self.released else { return }
+        guard let self, self.lock.sync({ self.samplesWanted }) else { return }
         self.runtime.emit([
           "playerId": self.id, "type": "audioSample",
           "waveform": window.waveform.map { Double($0) },
@@ -228,6 +233,7 @@ final class PlayerController: EngineDelegate, DriverObserver {
   func release() {
     guard !released else { return }
     released = true
+    lock.sync { samplesWanted = false }
     driver.tap.onWindow = nil
     driver.streamVisualizer.onWindow = nil
     wakeup?.cancel()

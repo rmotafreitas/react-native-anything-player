@@ -30,7 +30,20 @@ protocol AudioSessionListener: AnyObject {
 /// - Losing the output device (headphones unplugged, Bluetooth gone) pauses
 ///   anything that *wants* playback, not only what is audible — a buffering
 ///   stream would otherwise start on the loudspeaker.
+/// - The category is applied again whenever the live session no longer has
+///   it (the app, or the Sound API before any player, may have changed it).
+///   Every activation bumps `playerActivations`: the Sound API reads it and
+///   never changes a category once a Player has activated the session.
 final class AudioSessionCoordinator {
+  /// Held for every change RNAP makes to the shared session: a Player's
+  /// configuration and (de)activation, and the Sound API's ownership check
+  /// with its category change, which runs on the Sound queue.
+  static let sessionLock = NSLock()
+  /// Bumped (on main) by every successful Player activation. Any thread.
+  static var playerActivations: Int { activationsLock.sync { activations } }
+  private static let activationsLock = NSLock()
+  private static var activations = 0
+
   weak var listener: AudioSessionListener?
   private var observers: [NSObjectProtocol] = []
   private var configured: (category: String, speech: Bool, mix: Bool)?
@@ -69,9 +82,16 @@ final class AudioSessionCoordinator {
   /// Configures and activates the session for playback.
   func activate(speech: Bool, mixWithOthers: Bool) -> FocusResult {
     let session = AVAudioSession.sharedInstance()
+    Self.sessionLock.lock()
+    defer { Self.sessionLock.unlock() }
     do {
-      if configured == nil || configured?.speech != speech || configured?.mix != mixWithOthers {
-        let mode: AVAudioSession.Mode = speech ? .spokenAudio : .default
+      let mode: AVAudioSession.Mode = speech ? .spokenAudio : .default
+      // Someone else (the app, the Sound API) may have changed the live session since.
+      let changed =
+        session.category != .playback || session.mode != mode
+        || session.categoryOptions.contains(.mixWithOthers) != mixWithOthers
+        || session.routeSharingPolicy != (mixWithOthers ? .default : .longFormAudio)
+      if changed || configured == nil || configured?.speech != speech || configured?.mix != mixWithOthers {
         if mixWithOthers {
           // `.longFormAudio` cannot be combined with mixing.
           try session.setCategory(.playback, mode: mode, options: [.mixWithOthers])
@@ -85,6 +105,8 @@ final class AudioSessionCoordinator {
       // the session of a suspended app without telling it, so `active` may lie.
       try session.setActive(true)
       active = true
+      Self.activationsLock.sync { Self.activations += 1 }
+      AudioTap.refreshOutputLatency()
       return .granted
     } catch {
       // `.insufficientPriority` ('!pri'): another app (a call) owns the session.
@@ -97,7 +119,9 @@ final class AudioSessionCoordinator {
   func deactivate() {
     guard active else { return }
     active = false
-    try? AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
+    Self.sessionLock.sync {
+      _ = try? AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
+    }
   }
 
   private func handleInterruption(_ note: Notification) {
@@ -126,6 +150,7 @@ final class AudioSessionCoordinator {
         do {
           try session.setActive(true)
           active = true
+          AudioTap.refreshOutputLatency()
         } catch {
           resume = false
         }
@@ -140,6 +165,7 @@ final class AudioSessionCoordinator {
     guard let raw = note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt,
       let reason = AVAudioSession.RouteChangeReason(rawValue: raw)
     else { return }
+    AudioTap.refreshOutputLatency()
     if reason == .oldDeviceUnavailable {
       listener?.sessionOutputDisconnected()
     }

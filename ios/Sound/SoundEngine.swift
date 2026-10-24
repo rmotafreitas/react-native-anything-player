@@ -15,7 +15,9 @@ import Foundation
 /// Coexisting with `Player` (`AudioSessionCoordinator`): the engine never
 /// takes the audio session's category from anyone. It sets one only when the
 /// app still has the default (`soloAmbient`) or the category is the one this
-/// engine set earlier; a `.playback` category set by the Player is used as is.
+/// engine set earlier and no Player has activated the session since
+/// (`AudioSessionCoordinator.playerActivations`); a `.playback` category set
+/// by the Player is used as is.
 /// It never deactivates the session (the Player owns that), and it does not
 /// touch the media session or the now-playing info.
 final class SoundEngine {
@@ -47,6 +49,9 @@ final class SoundEngine {
   private var voices: [Int: (soundId: String, slot: Int)] = [:]
   private var respectSilentSwitch = false
   private var ownedCategory: AVAudioSession.Category?
+  /// `AudioSessionCoordinator.playerActivations` when this engine set `ownedCategory`:
+  /// a Player activating the session since ends the claim.
+  private var ownedAtActivations = 0
   private var idleStop: DispatchWorkItem?
   private var observers: [NSObjectProtocol] = []
   private var counter = 0
@@ -290,16 +295,26 @@ final class SoundEngine {
 
   /// Makes the audio session usable without taking it from the Player.
   private func prepareSession() {
+    // One transaction with the Player's activation (see `sessionLock`): a
+    // Player activating between the check and the change would lose its category.
+    AudioSessionCoordinator.sessionLock.lock()
+    defer { AudioSessionCoordinator.sessionLock.unlock() }
     let session = AVAudioSession.sharedInstance()
     let wanted: AVAudioSession.Category = respectSilentSwitch ? .ambient : .playback
     let current = session.category
-    let ours = ownedCategory != nil && current == ownedCategory
+    let activations = AudioSessionCoordinator.playerActivations
+    // A Player that activated the session since owns it, even if the category
+    // still reads as the one set here (`.playback` looks the same for both).
+    let ours = ownedCategory != nil && current == ownedCategory && ownedAtActivations == activations
     // The default category (`soloAmbient`) stops other apps' audio and cannot
     // play with the screen locked; the Player's `.playback` is left alone.
     if current == .soloAmbient || (ours && current != wanted) {
       if (try? session.setCategory(wanted, mode: .default, options: [.mixWithOthers])) != nil {
         ownedCategory = wanted
+        ownedAtActivations = activations
       }
+    } else if !ours {
+      ownedCategory = nil
     }
     try? session.setActive(true)
   }

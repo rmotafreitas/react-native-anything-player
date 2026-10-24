@@ -37,7 +37,14 @@ private let proxyLog = Logger(subsystem: "com.anythingplayer", category: "proxy"
 /// metadata is stripped from every upstream and re-inserted at the cadence
 /// promised in the first response (a new connection restarts its framing at
 /// zero). Short-lived upstreams are never spliced: a flapping server ends the
-/// response and the engine's backoff takes over.
+/// response and the engine's backoff takes over. A source the app marked
+/// `live: false` is never spliced: a file served without a content length
+/// ends where it ends.
+///
+/// HLS: a playlist found behind a URL without `.m3u8` (by its content type,
+/// or a redirect to a `.m3u8`) is not relayed. AVFoundation would resolve
+/// the playlist's relative segment URLs against the proxy's URL; AVPlayer is
+/// redirected (302) to the playlist's real URL instead and fetches it itself.
 ///
 /// Threading: everything runs on `queue`. Route callbacks are called on `queue`.
 final class StreamProxy {
@@ -55,6 +62,15 @@ final class StreamProxy {
     /// The compressed audio of the main endless response (ICY removed) and its
     /// content type — what a visualizer decodes. Called on the proxy queue.
     var onAudio: ((Data, String?) -> Void)? = nil
+    /// The app's `live` hint (nil: detect). `false`: never treated as an
+    /// endless stream, even without a content length (no splicing).
+    var live: Bool? = nil
+    /// The engine may reconnect (`OpenRequest.allowReconnect`). `false`: a
+    /// dropped upstream ends the response instead of being spliced.
+    var reconnect = true
+    /// The response was an HLS playlist: AVPlayer was redirected to this URL
+    /// and fetches the playlist and its segments itself. Called on the proxy queue.
+    var onRedirect: ((URL) -> Void)? = nil
   }
 
   private let queue = DispatchQueue(label: "anythingplayer.proxy")
@@ -396,6 +412,13 @@ final class StreamProxy {
     http.allHeaderFields.forEach { key, value in
       if let k = key as? String { headers[k.lowercased()] = "\(value)" }
     }
+    if upstream.head == nil, (200..<300).contains(http.statusCode),
+      Self.isPlaylist(contentType: headers["content-type"], url: http.url),
+      let location = http.url ?? upstream.request.url
+    {
+      redirect(upstream, to: location)
+      return false
+    }
     routes[upstream.token]?.onResponse(http.statusCode, headers)
     let metaint = headers["icy-metaint"].flatMap { Int($0.trimmingCharacters(in: .whitespaces)) } ?? 0
     upstream.deinterleaver = IcyDeinterleaver(metaint: metaint)
@@ -410,7 +433,8 @@ final class StreamProxy {
       proxyLog.debug("spliced upstream #\(upstream.splices)")
       return true
     }
-    upstream.endless = http.statusCode == 200 && headers["content-length"] == nil
+    upstream.endless =
+      http.statusCode == 200 && headers["content-length"] == nil && routes[upstream.token]?.live != false
     upstream.contentType = headers["content-type"]
     upstream.reframer = IcyReframer(metaint: metaint)
     var head = "HTTP/1.1 \(http.statusCode) \(HTTPURLResponse.localizedString(forStatusCode: http.statusCode))\r\n"
@@ -447,7 +471,7 @@ final class StreamProxy {
     guard !upstream.readers.isEmpty else { return }
     upstream.task = nil
     let failure = error.flatMap { ($0 as NSError).code == NSURLErrorCancelled ? nil : $0 }
-    if upstream.head != nil, upstream.endless, routes[upstream.token] != nil,
+    if upstream.head != nil, upstream.endless, routes[upstream.token]?.reconnect == true,
       let since = upstream.since, upstream.bytes > 0, Self.now - since >= Self.spliceMinUpstreamMs
     {
       upstream.splices += 1
@@ -480,6 +504,33 @@ final class StreamProxy {
           self.close(reader)
         })
     }
+  }
+
+  /// Answers every reader of `upstream` with a redirect to the playlist and
+  /// drops the upstream: AVFoundation fetches HLS itself, so relative segment
+  /// URLs resolve against the playlist's own URL, not the proxy's.
+  private func redirect(_ upstream: Upstream, to location: URL) {
+    proxyLog.debug("HLS playlist: redirecting AVPlayer to the upstream URL")
+    let readers = upstream.readers
+    upstream.readers = []
+    cancelTask(of: upstream)
+    routes[upstream.token]?.onRedirect?(location)
+    for reader in readers {
+      reader.upstream = nil
+      respond(reader, status: 302, location: location)
+    }
+  }
+
+  private static let playlistTypes: Set<String> = [
+    "application/vnd.apple.mpegurl", "application/x-mpegurl", "audio/mpegurl", "audio/x-mpegurl",
+  ]
+
+  /// An HLS playlist: by content type (parameters ignored), or by the final
+  /// URL's extension (the source redirected to a `.m3u8`).
+  static func isPlaylist(contentType: String?, url: URL?) -> Bool {
+    if url?.pathExtension.lowercased() == "m3u8" { return true }
+    guard let type = contentType?.split(separator: ";").first else { return false }
+    return playlistTypes.contains(type.trimmingCharacters(in: .whitespaces).lowercased())
   }
 
   private func cancelTask(of upstream: Upstream) {
@@ -520,8 +571,10 @@ final class StreamProxy {
     }
   }
 
-  private func respond(_ downstream: Downstream, status: Int) {
-    let head = "HTTP/1.1 \(status) \(HTTPURLResponse.localizedString(forStatusCode: status))\r\ncontent-length: 0\r\nconnection: close\r\n\r\n"
+  private func respond(_ downstream: Downstream, status: Int, location: URL? = nil) {
+    var head = "HTTP/1.1 \(status) \(HTTPURLResponse.localizedString(forStatusCode: status))\r\n"
+    if let location { head += "location: \(location.absoluteString)\r\n" }
+    head += "content-length: 0\r\nconnection: close\r\n\r\n"
     downstream.connection.send(
       content: Data(head.utf8), contentContext: .finalMessage, isComplete: true,
       completion: .contentProcessed { [weak self, weak downstream] _ in

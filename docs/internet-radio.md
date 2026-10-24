@@ -25,7 +25,9 @@ radio.on('remoteCommand', ({ command }) => { /* next/previous → switch station
 
 ![iOS stream proxy: AVPlayer talks to a loopback proxy; the app's URLSession owns the station connection, splices dropped connections and refuses late retries](assets/diagrams/ios-stream-proxy.svg)
 
-The ICY response headers (`icy-name`, `icy-genre`, `icy-br`) are read from the proxied response. HLS (`.m3u8`) is played by AVFoundation directly. The proxy only listens on loopback and needs no `Info.plist` entry (verified with `NSAllowsLocalNetworking` removed: AVPlayer's requests to `127.0.0.1` are not blocked by App Transport Security). The connection to the station is subject to ATS as usual: `https`, or an exception for cleartext stations — a blocked cleartext URL fails with `INVALID_SOURCE`.
+The ICY response headers (`icy-name`, `icy-genre`, `icy-br`) are read from the proxied response. HLS (`.m3u8`) is played by AVFoundation directly. A playlist behind a URL without the extension is recognized by the proxy from its response (an HLS content type such as `application/vnd.apple.mpegurl`, or a redirect to a `.m3u8`): AVPlayer is redirected to the playlist's real URL and fetches it and its segments itself, so relative segment URLs resolve correctly. The source's `headers` are also given to AVFoundation, as for a `.m3u8` URL, so it can send them with the playlist and segment requests. The proxy only listens on loopback and needs no `Info.plist` entry (verified with `NSAllowsLocalNetworking` removed: AVPlayer's requests to `127.0.0.1` are not blocked by App Transport Security). The connection to the station is subject to ATS as usual: `https`, or an exception for cleartext stations — a blocked cleartext URL fails with `INVALID_SOURCE`.
+
+A file served without a `Content-Length` looks like a live stream to the proxy, and the end of the file like a dropped connection, which it would splice. Load such files with `live: false` (see [Playback](playback.md#sources)): the proxy then never splices them.
 
 **Android.** Media3's ICY support de-interleaves the stream; RNAP reads the raw metadata bytes and normalizes them with the same rules as iOS.
 

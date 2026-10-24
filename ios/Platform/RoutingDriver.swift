@@ -70,7 +70,7 @@ final class RoutingDriver: EngineDriver {
     remote.open(
       OpenRequest(
         generation: request.generation, source: source, startPosition: request.startPosition,
-        playWhenReady: request.playWhenReady))
+        playWhenReady: request.playWhenReady, allowReconnect: request.allowReconnect))
   }
 
   func play() { current.play() }

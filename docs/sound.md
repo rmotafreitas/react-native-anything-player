@@ -79,7 +79,7 @@ By default, sounds play with the ringer switch on silent, as `Player` does. Game
 await Sound.configure({ respectSilentSwitch: true });
 ```
 
-`respectSilentSwitch: true` uses the `ambient` category on iOS, which the ringer switch silences. It applies when `Sound` sets the category itself (see above): while `Player` has set `.playback`, sounds follow the player's session. Android has no such switch; on the web the browser decides (iPhone Safari silences Web Audio with the switch).
+`respectSilentSwitch: true` uses the `ambient` category on iOS, which the ringer switch silences. It applies when `Sound` sets the category itself (see above): while `Player` has set `.playback`, sounds follow the player's session. Once a `Player` has activated the session, `Sound` no longer changes the category, even one it set itself before: the player keeps playing with the switch on silent and in the background. Android has no such switch; on the web the browser decides (iPhone Safari silences Web Audio with the switch).
 
 ## The web
 

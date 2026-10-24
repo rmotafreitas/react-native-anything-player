@@ -96,6 +96,7 @@ When a Cast session starts, the player on the lock screen moves to the receiver.
 | Calls, other apps, ducking | Do not pause or duck the receiver. |
 | Another player starts | The Cast session follows the player on the lock screen: the previous one returns to the phone, paused, and the new one moves to the receiver. |
 | Casting ends | The player returns to the phone **paused**, at the receiver's position, so it never suddenly plays from the phone's speaker. |
+| Sleep timer | Runs on the phone, which pauses the receiver when it fires; the receiver runs no timer. On iOS a casting app plays no audio itself, so iOS can suspend it in the background (the Cast SDK suspends its session too): with the phone locked the timer may fire late, or not until the app runs again. |
 
 The receiver fetches the source itself, so:
 
