@@ -178,6 +178,7 @@ class ConformanceTest {
           if (step.has("after") && !step.isNull("after")) step.getDouble("after") else null,
           if (step.has("fadeOut")) step.getDouble("fadeOut") else null,
         )
+      "setFades" -> h.engine.setFades(step.getDouble("in"), step.getDouble("out"))
       "handoff" ->
         h.engine.handoff(
           AudioRoute(

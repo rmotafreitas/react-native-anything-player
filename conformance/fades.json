@@ -62,7 +62,7 @@
       { "advance": 200 },
       { "expect": { "state": "stopped", "commands": ["volume(0.75)", "volume(0.50)", "volume(0.25)", "volume(0.00)", "release"] } },
       { "call": "play" },
-      { "expect": { "state": "loading", "playWhenReady": true, "commands": ["volume(1.00)", "open(gen=2,start=-,play=true)"] } }
+      { "expect": { "state": "loading", "playWhenReady": true, "commands": ["volume(1.00)", "open(gen=3,start=-,play=true)"] } }
     ]
   },
   {
@@ -397,6 +397,49 @@
       { "expect": { "commands": ["open(gen=1,start=-,play=true)", "volume(0.75)"] } },
       { "call": "handoff", "route": "cast", "name": "TV", "output": "cast:tv", "resume": true },
       { "expect": { "state": "loading", "playWhenReady": false, "commands": ["volume(0.00)", "pause", "unload", "switchOutput(cast:tv)", "volume(1.00)", "open(gen=2,start=-,play=false)"], "orderedCommands": ["volume(0.00)", "pause"] } }
+    ]
+  },
+  {
+    "name": "the item ending during a stop's fade-out stays stopped",
+    "options": { "fadeOutMs": 200 },
+    "steps": [
+      { "call": "load", "uri": "file:///music/a.mp3", "autoplay": true },
+      { "native": "ready", "duration": 120, "seekable": true },
+      { "native": "playing" },
+      { "call": "stop" },
+      { "expect": { "state": "playing", "playWhenReady": false, "commands": ["open(gen=1,start=-,play=true)"] } },
+      { "native": "ended" },
+      { "expect": { "state": "stopped", "playWhenReady": false, "ended": 0, "errors": [], "commands": ["volume(0.00)", "release"] } }
+    ]
+  },
+  {
+    "name": "a failure during a stop's fade-out stays stopped",
+    "options": { "fadeOutMs": 200 },
+    "steps": [
+      { "call": "load", "uri": "https://cdn.example/song.mp3", "autoplay": true },
+      { "native": "ready", "duration": 120, "seekable": true },
+      { "native": "playing" },
+      { "call": "stop" },
+      { "native": "failed", "code": "DECODER_ERROR", "recoverable": false },
+      { "expect": { "state": "stopped", "error": null, "errors": [], "commands": ["open(gen=1,start=-,play=true)", "volume(0.00)", "release"] } }
+    ]
+  },
+  {
+    "name": "timer and fade durations above 24 h are rejected",
+    "steps": [
+      { "call": "load", "uri": "file:///music/a.mp3", "autoplay": true },
+      { "call": "sleep", "after": 86400001, "throws": "INVALID_ARGUMENT" },
+      { "call": "sleep", "after": 1e20, "throws": "INVALID_ARGUMENT" },
+      { "call": "sleep", "after": 1000, "fadeOut": 1e20, "throws": "INVALID_ARGUMENT" },
+      { "call": "fadeTo", "value": 0.5, "ms": 1e20, "throws": "INVALID_ARGUMENT" },
+      { "call": "fadeTo", "value": 0.5, "ms": 86400001, "throws": "INVALID_ARGUMENT" },
+      { "call": "setFades", "in": 1e20, "out": 0, "throws": "INVALID_ARGUMENT" },
+      { "call": "setFades", "in": 0, "out": 86400001, "throws": "INVALID_ARGUMENT" },
+      { "expect": { "sleepAt": null, "volume": 1, "fades": 0, "commands": ["open(gen=1,start=-,play=true)"] } },
+      { "call": "sleep", "after": 86400000 },
+      { "call": "fadeTo", "value": 0.5, "ms": 86400000 },
+      { "call": "setFades", "in": 86400000, "out": 86400000 },
+      { "expect": { "sleepAt": 86400000, "volume": 0.5, "fades": 0 } }
     ]
   }
 ]

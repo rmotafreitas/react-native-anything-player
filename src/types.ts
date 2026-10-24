@@ -339,7 +339,12 @@ export interface PlayerOptions {
   id?: string;
   /** Automatic recovery (see the Recovery policy guide). */
   recovery?: {
-    /** Reconnect after recoverable failures while playback is wanted. Default `true`. */
+    /**
+     * Re-open on its own after recoverable failures, stalls and network
+     * changes while playback is wanted. `false`: a failure or a stall ends in
+     * `error` and a network change re-opens nothing (`play()` still re-opens).
+     * Default `true`.
+     */
     reconnect?: boolean;
     /** Stop recovering after this long without stable playback (`null` = never). Default 10 min. */
     giveUpAfterMs?: number | null;

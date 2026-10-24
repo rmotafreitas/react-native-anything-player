@@ -127,7 +127,7 @@
       { "call": "handoff", "route": "cast", "name": "TV", "output": "cast:tv", "resume": true },
       { "expect": { "state": "stopped", "commands": ["unload", "switchOutput(cast:tv)", "volume(1.00)"] } },
       { "call": "play" },
-      { "expect": { "state": "loading", "commands": ["open(gen=3,start=-,play=true)"] } }
+      { "expect": { "state": "loading", "commands": ["open(gen=4,start=-,play=true)"] } }
     ]
   },
   {
@@ -142,7 +142,7 @@
       { "call": "handoff", "route": "cast", "name": "TV", "output": "cast:tv", "resume": true },
       { "expect": { "state": "paused", "commands": ["unload", "switchOutput(cast:tv)", "volume(1.00)"] } },
       { "call": "play" },
-      { "expect": { "state": "loading", "commands": ["open(gen=3,start=-,play=true)"] } }
+      { "expect": { "state": "loading", "commands": ["open(gen=4,start=-,play=true)"] } }
     ]
   },
   {

@@ -152,6 +152,9 @@ struct OpenRequest: Equatable {
   /// Seconds to start at; `nil` = default (live edge / beginning).
   let startPosition: Double?
   let playWhenReady: Bool
+  /// The engine re-opens on its own (`reconnect`): a driver may then continue
+  /// a dropped live connection itself. `false`: it never reconnects.
+  var allowReconnect = true
 }
 
 /// A point-in-time reading of the native player, taken on demand.

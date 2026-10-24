@@ -122,7 +122,11 @@ final class PlaybackEngine {
   private var reconnectReason = ""
   private var backoff: Backoff
   private var offlineSkips = 0
-  private var lastNetworkEdgeAt: Int64 = Int64.min
+  /// Bumped by every network edge; `openNetworkRevision` is its value at the last open.
+  private var networkRevision = 0
+  /// The engine detected a stall native never reported (it still says playing).
+  private var silentStall = false
+  private var openNetworkRevision = -1
   private var suspectUntil: Int64 = Int64.min
   private var pauseReleaseAt: Int64?
   private var connectionReleased = false
@@ -292,7 +296,7 @@ final class PlaybackEngine {
       return
     }
     playWhenReady = false
-    if !beginFadeOut(then: .pause) { pauseIntent(cause: "pause") }
+    if !beginFadeOut(end: .pause) { pauseIntent(cause: "pause") }
     commit()
   }
 
@@ -302,7 +306,7 @@ final class PlaybackEngine {
     if fadeOutThen != nil {
       // A stop during a fade-out: stop now.
       completeFadeOut(override: .stop)
-    } else if playWhenReady && beginFadeOut(then: .stop) {
+    } else if playWhenReady && beginFadeOut(end: .stop) {
       playWhenReady = false
       interruption = nil
     } else {
@@ -320,8 +324,7 @@ final class PlaybackEngine {
     pauseReleaseAt = nil
     stallStartedAt = nil
     pausedAt = nil
-    driver.releaseConnection()
-    connectionReleased = true
+    releaseItemConnection()
     resumePosition = isLive ? nil : 0
     setState(.stopped, cause: "stop")
   }
@@ -388,7 +391,7 @@ final class PlaybackEngine {
     guard value.isFinite else {
       throw PlayerError.code(.invalidArgument, "Volume must be a finite number.", recoverable: false)
     }
-    guard durationMs.isFinite, durationMs >= 0 else { throw Self.invalidDuration("A fade duration") }
+    guard Self.validDuration(durationMs) else { throw Self.invalidDuration("A fade duration") }
     let t = now
     let from = levelAt(t)
     cancelFadeTo()
@@ -411,8 +414,8 @@ final class PlaybackEngine {
   func sleep(afterMs: Double?, fadeOutMs: Double?) throws {
     try ensureAlive()
     if let afterMs {
-      guard afterMs.isFinite, afterMs >= 0 else { throw Self.invalidDuration("The sleep delay") }
-      if let fadeOutMs, !fadeOutMs.isFinite || fadeOutMs < 0 {
+      guard Self.validDuration(afterMs) else { throw Self.invalidDuration("The sleep delay") }
+      if let fadeOutMs, !Self.validDuration(fadeOutMs) {
         throw Self.invalidDuration("The sleep fade-out")
       }
     }
@@ -433,8 +436,8 @@ final class PlaybackEngine {
   /// A fade under way keeps its course.
   func setFades(inMs: Double, outMs: Double) throws {
     try ensureAlive()
-    guard inMs.isFinite, inMs >= 0 else { throw Self.invalidDuration("A fade-in") }
-    guard outMs.isFinite, outMs >= 0 else { throw Self.invalidDuration("A fade-out") }
+    guard Self.validDuration(inMs) else { throw Self.invalidDuration("A fade-in") }
+    guard Self.validDuration(outMs) else { throw Self.invalidDuration("A fade-out") }
     options.fadeInMs = Int64(inMs.rounded())
     options.fadeOutMs = Int64(outMs.rounded())
     commit()
@@ -528,6 +531,7 @@ final class PlaybackEngine {
       stallStartedAt = nil
     }
     flowedSinceOpen = true
+    silentStall = false
     lastOpenAt = nil
     nextAttemptAt = nil
     let sample = driver.sample()
@@ -550,6 +554,8 @@ final class PlaybackEngine {
     guard accepts(gen) else { return logStale("buffering", gen) }
     // Nothing left to fade.
     completeFadeOut()
+    // Native reports the stall itself: its own `playing` will end it.
+    silentStall = false
     if state == .playing && stallPublishAt == nil {
       stallStartedAt = now
       stallPublishAt = now + RecoveryPolicy.stallDebounceMs
@@ -561,14 +567,21 @@ final class PlaybackEngine {
   func onFailed(generation gen: Int, error: PlayerError) {
     guard accepts(gen) else { return logStale("failed", gen) }
     completeFadeOut()
+    // A stop's fade-out landed: the item is gone.
+    guard accepts(gen) else { commit(); return }
     handleFailure(error)
     commit()
   }
 
   func onEnded(generation gen: Int) {
     guard accepts(gen) else { return logStale("ended", gen) }
+    if state == .ended { return logStale("ended again", gen) }
     completeFadeOut()
-    if isLive || duration == nil {
+    // A stop's fade-out landed: the item is gone.
+    guard accepts(gen) else { commit(); return }
+    // Unknown duration reads as a live stream that dropped, unless the app
+    // said the source is a file (`live: false`).
+    if source?.liveHint != false && (isLive || duration == nil) {
       handleFailure(.code(.streamEnded, "The stream closed the connection.", recoverable: true))
     } else {
       playWhenReady = false
@@ -692,7 +705,7 @@ final class PlaybackEngine {
       backoff.reset()
       offlineSkips = 0
       log("network restored", [:])
-      if playWhenReady && state != .playing {
+      if autoReconnect && state != .playing {
         attemptReconnect(reason: "network restored")
       }
     } else if previous == .online && next == .online && interfaceChanged {
@@ -700,7 +713,7 @@ final class PlaybackEngine {
       // buffer keeps playing until it drains, so only make detection eager.
       markNetworkEdge(t)
       log("network handoff", [:])
-      if playWhenReady && (state == .buffering || state == .reconnecting) {
+      if autoReconnect && (state == .buffering || state == .reconnecting) {
         attemptReconnect(reason: "network handoff")
       }
     }
@@ -711,7 +724,7 @@ final class PlaybackEngine {
   /// through its backoff deadline; audio that is wanted but not flowing is
   /// recovered now. An open that is still young is left alone.
   func appForegrounded() {
-    guard !released, playWhenReady, !remote else { return }
+    guard !released, autoReconnect, !remote else { return }
     if state == .reconnecting || state == .buffering || state == .loading {
       attemptReconnect(reason: "app foregrounded")
     }
@@ -724,8 +737,16 @@ final class PlaybackEngine {
     guard !released, !remote, source != nil, state != .idle else { return }
     log("platform reset", [:])
     completeFadeOut()
-    if state == .stopped || state == .ended || state == .error {
+    if state == .stopped || state == .ended || state == .error || connectionReleased {
+      // Nothing was open (a paused stream may have released its connection):
+      // `play()` opens it, as before the reset.
       connectionReleased = true
+      commit()
+      return
+    }
+    if !options.reconnect {
+      // Re-opening on its own is what `reconnect: false` turns off.
+      handleFailure(.code(.networkError, "The media services were reset.", recoverable: true))
       commit()
       return
     }
@@ -741,8 +762,7 @@ final class PlaybackEngine {
     if let due = pauseReleaseAt, due <= t {
       pauseReleaseAt = nil
       if state == .paused && !playWhenReady && !connectionReleased {
-        driver.releaseConnection()
-        connectionReleased = true
+        releaseItemConnection()
         log("paused stream released", [:])
       }
     }
@@ -761,7 +781,7 @@ final class PlaybackEngine {
     }
     fireSleepIfDue(t)
     stepFades(t)
-    if playWhenReady && t - lastHeartbeatAt >= RecoveryPolicy.heartbeatMs - 50 {
+    if heartbeatDue && t - lastHeartbeatAt >= RecoveryPolicy.heartbeatMs - 50 {
       lastHeartbeatAt = t
       heartbeat(t)
     }
@@ -905,6 +925,7 @@ final class PlaybackEngine {
     generation += 1
     readyForGeneration = false
     flowedSinceOpen = false
+    silentStall = false
     connectionReleased = false
     stallStartedAt = nil
     pausedAt = nil
@@ -912,6 +933,7 @@ final class PlaybackEngine {
     driftMs = 0
     pauseReleaseAt = nil
     lastOpenAt = now
+    openNetworkRevision = networkRevision
     lastPosition = startPosition ?? 0
     lastBuffered = 0
     lastBufferedAdvanceAt = now
@@ -921,7 +943,7 @@ final class PlaybackEngine {
     driver.open(
       OpenRequest(
         generation: generation, source: source, startPosition: startPosition,
-        playWhenReady: playWhenReady))
+        playWhenReady: playWhenReady, allowReconnect: options.reconnect))
   }
 
   /// Re-open the loaded source: at the live edge for live streams, at the last
@@ -993,8 +1015,7 @@ final class PlaybackEngine {
     resetRecovery()
     pauseReleaseAt = nil
     stallStartedAt = nil
-    driver.releaseConnection()
-    connectionReleased = true
+    releaseItemConnection()
     setState(.error, cause: error.code.rawValue)
     pendingEvents.append { [weak self] in self?.delegate?.engine(error: error, fatal: true) }
   }
@@ -1021,7 +1042,9 @@ final class PlaybackEngine {
 
   private var openInFlight: Bool {
     guard state == .loading, let opened = lastOpenAt, !flowedSinceOpen else { return false }
-    return opened > lastNetworkEdgeAt && now - opened < RecoveryPolicy.openGraceMs
+    // Issued after the latest network edge (a revision, not a time: an open
+    // and the edge that caused it can share a millisecond).
+    return openNetworkRevision == networkRevision && now - opened < RecoveryPolicy.openGraceMs
   }
 
   private func attemptReconnect(reason: String) {
@@ -1045,6 +1068,12 @@ final class PlaybackEngine {
     reconnectReason = reason
     reopen(reason: "reconnect: \(reason)")
   }
+
+  /// Recovery may re-open on its own: playback is wanted and reconnecting is on.
+  private var autoReconnect: Bool { playWhenReady && options.reconnect }
+
+  /// Playback is wanted, or an open is outstanding (it times out either way).
+  private var heartbeatDue: Bool { playWhenReady || state == .loading }
 
   private func heartbeat(_ t: Int64) {
     if let since = recoveringSince, let limit = options.giveUpAfterMs, t - since >= limit,
@@ -1074,11 +1103,13 @@ final class PlaybackEngine {
         // state it reports (buffering, failed) counts.
       } else {
         let limit = suspect ? RecoveryPolicy.suspectSilentStallMs : RecoveryPolicy.silentStallMs
-        if t - lastPositionAdvanceAt >= limit && rate > 0 {
+        // A native stall awaiting publication is not silent.
+        if stallPublishAt == nil && t - lastPositionAdvanceAt >= limit && rate > 0 {
           log("silent stall", ["frozenMs": "\(t - lastPositionAdvanceAt)"])
           setState(.buffering, cause: "silent stall")
           beginWaiting()
           stallStartedAt = lastPositionAdvanceAt
+          silentStall = true
         }
       }
       if let since = playingSince, t - since >= RecoveryPolicy.stablePlaybackMs {
@@ -1092,11 +1123,23 @@ final class PlaybackEngine {
       if remote {
         // No buffer to watch on a receiver: only a stall that lasts too long.
         if let stalled = stallStartedAt, t - stalled >= RecoveryPolicy.stallMaxMs {
-          attemptReconnect(reason: "stalled \(t - stalled)ms")
+          recoverStall(reason: "stalled \(t - stalled)ms")
         }
         break
       }
       let sample = driver.sample()
+      // A re-open resumes where the playhead got to during the stall; a reading
+      // behind the last trusted position (a start seek still pending) is not one.
+      let p = sample.position
+      if !isLive && p.isFinite && p >= max(lastPosition, resumePosition ?? 0) {
+        resumePosition = p
+      }
+      if silentStall && p > lastPosition + 0.05 {
+        // The stall was ours (native never left playing): the playhead moving
+        // again is the only sign it is over.
+        endSilentStall(t, p)
+        return
+      }
       if sample.bufferedPosition > lastBuffered + 0.01 {
         lastBuffered = sample.bufferedPosition
         lastBufferedAdvanceAt = t
@@ -1105,6 +1148,7 @@ final class PlaybackEngine {
       if network == .offline {
         // Nothing to re-open over. Play out the buffer, then wait for the link.
         if t - lastBufferedAdvanceAt >= RecoveryPolicy.stallDeadMs {
+          if !options.reconnect { failStall("offline"); return }
           if recoveringSince == nil { recoveringSince = stalled }
           scheduleReconnect(reason: "offline")
         }
@@ -1112,15 +1156,40 @@ final class PlaybackEngine {
       }
       let deadLimit = suspect ? RecoveryPolicy.suspectStallDeadMs : RecoveryPolicy.stallDeadMs
       if t - lastBufferedAdvanceAt >= deadLimit {
-        attemptReconnect(reason: "stalled \(t - stalled)ms with no data")
+        recoverStall(reason: "stalled \(t - stalled)ms with no data")
       } else if t - stalled >= RecoveryPolicy.stallMaxMs {
-        attemptReconnect(reason: "stalled \(t - stalled)ms")
+        recoverStall(reason: "stalled \(t - stalled)ms")
       } else if isLive && driftMs + (t - stalled) >= options.liveMaxDriftMs {
-        attemptReconnect(reason: "live drift during stall")
+        recoverStall(reason: "live drift during stall")
       }
     default:
       break
     }
+  }
+
+  /// A stall the watchdog gave up waiting on: re-open, or fail with reconnecting off.
+  private func recoverStall(reason: String) {
+    if options.reconnect { attemptReconnect(reason: reason) } else { failStall(reason) }
+  }
+
+  private func failStall(_ reason: String) {
+    log("stall, reconnect off", ["reason": reason])
+    fail(
+      .code(
+        .networkError,
+        "Playback stalled (\(reason)) and reconnecting is off.",
+        recoverable: true))
+  }
+
+  /// Native kept saying playing through a silent stall: the audio flows again.
+  private func endSilentStall(_ t: Int64, _ position: Double) {
+    silentStall = false
+    if let stalled = stallStartedAt { driftMs += t - stalled }
+    stallStartedAt = nil
+    lastPosition = position
+    lastPositionAdvanceAt = t
+    playingSince = t
+    setState(.playing, cause: "silent stall over")
   }
 
   private func armPauseRelease() {
@@ -1139,8 +1208,19 @@ final class PlaybackEngine {
     reconnectReason = ""
   }
 
+  /// Releases the item's connection and invalidates its generation: callbacks
+  /// the driver already queued for it (an end, a failure) must not move the
+  /// player out of `stopped`, `paused` or `error`. Resuming opens a new one.
+  private func releaseItemConnection() {
+    generation += 1
+    readyForGeneration = false
+    silentStall = false
+    driver.releaseConnection()
+    connectionReleased = true
+  }
+
   private func markNetworkEdge(_ t: Int64) {
-    lastNetworkEdgeAt = t
+    networkRevision += 1
     suspectUntil = t + RecoveryPolicy.networkSuspectMs
   }
 
@@ -1163,8 +1243,15 @@ final class PlaybackEngine {
 
   // MARK: - Fades & sleep timer
 
+  /// The longest sleep timer or fade: 24 h (larger values overflow native timers).
+  private static let maxTimerMs: Double = 86_400_000
+
   private static func invalidDuration(_ what: String) -> PlayerError {
-    .code(.invalidArgument, "\(what) must be a finite number ≥ 0.", recoverable: false)
+    .code(.invalidArgument, "\(what) must be a finite number from 0 to 24 h.", recoverable: false)
+  }
+
+  private static func validDuration(_ ms: Double) -> Bool {
+    ms.isFinite && ms >= 0 && ms <= maxTimerMs
   }
 
   private func levelAt(_ t: Int64) -> Double { levelRamp?.value(at: t) ?? volume }
@@ -1227,16 +1314,16 @@ final class PlaybackEngine {
   }
 
   /// Starts the fade-out of a pause or a stop; `false` when there is nothing to fade.
-  private func beginFadeOut(then: FadeOutEnd) -> Bool {
+  private func beginFadeOut(end: FadeOutEnd) -> Bool {
     let ms = remote ? 0 : options.fadeOutMs
     guard ms > 0, state == .playing, stallPublishAt == nil else { return false }
     fadeInPending = false
     rampGain(to: 0, fullScaleMs: ms)
     guard let ramp = gainRamp else { return false }
-    fadeOutThen = then
+    fadeOutThen = end
     resetRecovery()
     playingSince = nil
-    log("fade-out", ["then": then.rawValue, "ms": "\(ramp.endAt - ramp.startAt)"])
+    log("fade-out", ["end": end.rawValue, "ms": "\(ramp.endAt - ramp.startAt)"])
     return true
   }
 
@@ -1244,10 +1331,10 @@ final class PlaybackEngine {
   /// the pause or the stop.
   private func completeFadeOut(override: FadeOutEnd? = nil) {
     guard let pending = fadeOutThen else { return }
-    let then = override ?? pending
+    let end = override ?? pending
     fadeOutThen = nil
     setGain(0)
-    if then == .stop { stopNow() } else { pauseIntent(cause: "pause: faded out") }
+    if end == .stop { stopNow() } else { pauseIntent(cause: "pause: faded out") }
   }
 
   private func cancelFadeOut() {
@@ -1396,7 +1483,7 @@ final class PlaybackEngine {
     if let r = pauseReleaseAt { candidates.append(r) }
     if let p = stallPublishAt { candidates.append(p) }
     if state == .reconnecting, let a = nextAttemptAt { candidates.append(a) }
-    if playWhenReady { candidates.append(lastHeartbeatAt + RecoveryPolicy.heartbeatMs) }
+    if heartbeatDue { candidates.append(lastHeartbeatAt + RecoveryPolicy.heartbeatMs) }
     fadeWakeups(&candidates)
     return candidates.min()
   }

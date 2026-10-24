@@ -25,7 +25,7 @@
       { "advance": 60000 },
       { "expect": { "state": "paused", "commands": ["open(gen=1,start=-,play=true)", "pause", "release"] } },
       { "interruption": "ended", "shouldResume": true },
-      { "expect": { "state": "loading", "playWhenReady": true, "commands": ["open(gen=2,start=-,play=true)"] } }
+      { "expect": { "state": "loading", "playWhenReady": true, "commands": ["open(gen=3,start=-,play=true)"] } }
     ]
   },
   {

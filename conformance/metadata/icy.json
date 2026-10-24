@@ -22,5 +22,10 @@
   { "name": "garbage has no fields", "text": "hello world", "expect": { "artist": null, "title": null, "raw": {} } },
   { "name": "whitespace is trimmed", "text": "StreamTitle='  Artist   -   Title  ';", "expect": { "artist": "Artist", "title": "Title" } },
   { "name": "corrupted block without known keys is dropped", "bytes": "ffffffffffffff65616d5469746c653d2741202d2042273b", "expect": { "artist": null, "title": null, "raw": {} } },
-  { "name": "first separator wins", "text": "StreamTitle='Artist - Song - Remix';", "expect": { "artist": "Artist", "title": "Song - Remix" } }
+  { "name": "first separator wins", "text": "StreamTitle='Artist - Song - Remix';", "expect": { "artist": "Artist", "title": "Song - Remix" } },
+  { "name": "a space between fields", "text": "StreamTitle='A - B'; StreamUrl='https://img.example/c.png';", "expect": { "artist": "A", "title": "B", "artworkUri": "https://img.example/c.png", "raw": { "StreamTitle": "A - B", "StreamUrl": "https://img.example/c.png" } } },
+  { "name": "a line break between fields", "text": "StreamTitle='A - B';\r\n\tStreamUrl='https://img.example/c.png';", "expect": { "artist": "A", "title": "B", "artworkUri": "https://img.example/c.png" } },
+  { "name": "a trailing line break after the last field", "text": "StreamTitle='A - B';\n", "expect": { "artist": "A", "title": "B", "raw": { "StreamTitle": "A - B" } } },
+  { "name": "trailing spaces after the last field", "text": "StreamTitle='A - B';   ", "expect": { "artist": "A", "title": "B", "raw": { "StreamTitle": "A - B" } } },
+  { "name": "whitespace inside a value is kept", "text": "StreamTitle=' It'; s me - B ';", "expect": { "artist": "It'; s me", "title": "B", "raw": { "StreamTitle": " It'; s me - B " } } }
 ]

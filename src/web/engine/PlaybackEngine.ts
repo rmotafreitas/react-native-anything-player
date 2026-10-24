@@ -14,8 +14,14 @@
 // All three run `conformance/`.
 
 import { EngineFades } from './EngineFades';
+import { RecoveryPolicy } from './RecoveryPolicy';
 import { continuesIntent } from './status';
-import type { AudioRoute, InterruptionReason, NetworkState } from './types';
+import {
+  engineError,
+  type AudioRoute,
+  type InterruptionReason,
+  type NetworkState,
+} from './types';
 
 export type {
   EngineClock,
@@ -137,13 +143,13 @@ export class PlaybackEngine extends EngineFades {
       this.backoff.reset();
       this.offlineSkips = 0;
       this.log('network restored', {});
-      if (this._playWhenReady && this._state !== 'playing')
+      if (this.autoReconnect && this._state !== 'playing')
         this.attemptReconnect('network restored');
     } else if (previous === 'online' && next === 'online' && interfaceChanged) {
       this.markNetworkEdge(t);
       this.log('network handoff', {});
       if (
-        this._playWhenReady &&
+        this.autoReconnect &&
         (this._state === 'buffering' || this._state === 'reconnecting')
       ) {
         this.attemptReconnect('network handoff');
@@ -156,7 +162,7 @@ export class PlaybackEngine extends EngineFades {
 
   /** The app came to the foreground: recover wanted-but-silent audio now. */
   appForegrounded(): void {
-    if (this.isReleased || !this._playWhenReady || this.remote) return;
+    if (this.isReleased || !this.autoReconnect || this.remote) return;
     if (
       this._state === 'reconnecting' ||
       this._state === 'buffering' ||
@@ -181,13 +187,200 @@ export class PlaybackEngine extends EngineFades {
     if (
       this._state === 'stopped' ||
       this._state === 'ended' ||
-      this._state === 'error'
+      this._state === 'error' ||
+      this.connectionReleased
     ) {
+      // Nothing was open (a paused stream may have released its connection):
+      // `play()` opens it, as before the reset.
       this.connectionReleased = true;
+      this.commit();
+      return;
+    }
+    if (!this.options.reconnect) {
+      // Re-opening on its own is what `reconnect: false` turns off.
+      this.handleFailure(
+        engineError('NETWORK_ERROR', 'The media services were reset.', true)
+      );
       this.commit();
       return;
     }
     this.reopen('media services reset');
     this.commit();
+  }
+
+  // ── Watchdog (every heartbeat while playback is wanted or an open is outstanding) ──
+
+  protected heartbeat(t: number): void {
+    const since = this.recoveringSince;
+    const limit = this.options.giveUpAfterMs;
+    if (
+      since != null &&
+      limit != null &&
+      t - since >= limit &&
+      this._state !== 'playing'
+    ) {
+      const error =
+        this.lastError ??
+        engineError(
+          'NETWORK_ERROR',
+          `Recovery gave up after ${Math.trunc(limit / 1000)}s.`,
+          true
+        );
+      this.log('giving up', { afterMs: `${t - since}` });
+      this.fail(error);
+      return;
+    }
+    const suspect = t < this.suspectUntil;
+    switch (this._state) {
+      case 'loading': {
+        const opened = this.lastOpenAt;
+        if (opened != null && t - opened >= RecoveryPolicy.OPEN_TIMEOUT_MS) {
+          this.handleFailure(
+            engineError('TIMEOUT', 'Opening the source timed out.', true)
+          );
+        }
+        break;
+      }
+      case 'playing':
+        this.heartbeatPlaying(t, suspect);
+        break;
+      case 'buffering':
+        if (this.remote) this.heartbeatRemoteBuffering(t);
+        else this.heartbeatBuffering(t, suspect);
+        break;
+      default:
+        break;
+    }
+  }
+
+  protected heartbeatPlaying(t: number, suspect: boolean): void {
+    const sample = this.driver.sample();
+    if (!this.isLive) this.resumePosition = sample.position;
+    if (
+      sample.position > this.lastPosition + 0.05 ||
+      sample.position < this.lastPosition - 0.5
+    ) {
+      this.lastPosition = sample.position;
+      this.lastPositionAdvanceAt = t;
+    } else if (this.remote) {
+      // A receiver's position is interpolated between its reports: only the
+      // state it reports (buffering, failed) counts.
+    } else {
+      const stallLimit = suspect
+        ? RecoveryPolicy.SUSPECT_SILENT_STALL_MS
+        : RecoveryPolicy.SILENT_STALL_MS;
+      // A native stall awaiting publication is not silent.
+      if (
+        this.stallPublishAt == null &&
+        t - this.lastPositionAdvanceAt >= stallLimit &&
+        this.rate > 0
+      ) {
+        this.log('silent stall', {
+          frozenMs: `${t - this.lastPositionAdvanceAt}`,
+        });
+        this.setState('buffering', 'silent stall');
+        this.beginWaiting();
+        this.stallStartedAt = this.lastPositionAdvanceAt;
+        this.silentStall = true;
+      }
+    }
+    const playing = this.playingSince;
+    if (playing != null && t - playing >= RecoveryPolicy.STABLE_PLAYBACK_MS) {
+      this.playingSince = null;
+      this.stable = true;
+      this.backoff.reset();
+      this.offlineSkips = 0;
+      this.recoveringSince = null;
+    }
+  }
+
+  protected heartbeatBuffering(t: number, suspect: boolean): void {
+    const sample = this.driver.sample();
+    const p = sample.position;
+    this.trackResumePosition(p);
+    if (this.silentStall && p > this.lastPosition + 0.05) {
+      // The stall was ours (native never left playing): the playhead moving
+      // again is the only sign it is over.
+      this.endSilentStall(t, p);
+      return;
+    }
+    if (sample.bufferedPosition > this.lastBuffered + 0.01) {
+      this.lastBuffered = sample.bufferedPosition;
+      this.lastBufferedAdvanceAt = t;
+    }
+    const stalled = this.stallStartedAt;
+    if (stalled == null) return;
+    if (this.network === 'offline') return this.offlineStall(t, stalled);
+    const deadLimit = suspect
+      ? RecoveryPolicy.SUSPECT_STALL_DEAD_MS
+      : RecoveryPolicy.STALL_DEAD_MS;
+    if (t - this.lastBufferedAdvanceAt >= deadLimit) {
+      this.recoverStall(`stalled ${t - stalled}ms with no data`);
+    } else if (t - stalled >= RecoveryPolicy.STALL_MAX_MS) {
+      this.recoverStall(`stalled ${t - stalled}ms`);
+    } else if (
+      this.isLive &&
+      this.driftMs + (t - stalled) >= this.options.liveMaxDriftMs
+    ) {
+      this.recoverStall('live drift during stall');
+    } else {
+      // Data is arriving: give the buffer time to recover.
+    }
+  }
+
+  /**
+   * A re-open resumes where the playhead got to during a stall; a reading
+   * behind the last trusted position (a start seek still pending) is not one.
+   */
+  protected trackResumePosition(p: number): void {
+    if (
+      !this.isLive &&
+      Number.isFinite(p) &&
+      p >= Math.max(this.lastPosition, this.resumePosition ?? 0)
+    )
+      this.resumePosition = p;
+  }
+
+  /** Offline: no data for `STALL_DEAD_MS` waits for the network, in the backoff. */
+  protected offlineStall(t: number, stalled: number): void {
+    if (t - this.lastBufferedAdvanceAt < RecoveryPolicy.STALL_DEAD_MS) return;
+    if (!this.options.reconnect) return this.failStall('offline');
+    this.recoveringSince ??= stalled;
+    this.scheduleReconnect('offline');
+  }
+
+  /** No buffer to watch on a receiver: only a stall that lasts too long. */
+  protected heartbeatRemoteBuffering(t: number): void {
+    const stalled = this.stallStartedAt;
+    if (stalled != null && t - stalled >= RecoveryPolicy.STALL_MAX_MS)
+      this.recoverStall(`stalled ${t - stalled}ms`);
+  }
+
+  /** A stall the watchdog gave up waiting on: re-open, or fail with reconnecting off. */
+  protected recoverStall(reason: string): void {
+    if (this.options.reconnect) this.attemptReconnect(reason);
+    else this.failStall(reason);
+  }
+
+  protected failStall(reason: string): void {
+    this.log('stall, reconnect off', { reason });
+    this.fail(
+      engineError(
+        'NETWORK_ERROR',
+        `Playback stalled (${reason}) and reconnecting is off.`,
+        true
+      )
+    );
+  }
+
+  /** Native kept saying playing through a silent stall: the audio flows again. */
+  protected endSilentStall(t: number, position: number): void {
+    this.silentStall = false;
+    if (this.stallStartedAt != null) this.driftMs += t - this.stallStartedAt;
+    this.stallStartedAt = null;
+    this.lastPosition = position;
+    this.lastPositionAdvanceAt = t;
+    this.playingSince = t;
+    this.setState('playing', 'silent stall over');
   }
 }

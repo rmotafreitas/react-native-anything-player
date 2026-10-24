@@ -101,7 +101,11 @@ export abstract class EngineCore {
   protected reconnectReason = '';
   protected readonly backoff: Backoff;
   protected offlineSkips = 0;
-  protected lastNetworkEdgeAt = -Infinity;
+  /** Bumped by every network edge; `openNetworkRevision` is its value at the last open. */
+  protected networkRevision = 0;
+  /** The engine detected a stall native never reported (it still says playing). */
+  protected silentStall = false;
+  protected openNetworkRevision = -1;
   protected suspectUntil = -Infinity;
   protected pauseReleaseAt: number | null = null;
   protected connectionReleased = false;
@@ -328,8 +332,7 @@ export abstract class EngineCore {
     this.pauseReleaseAt = null;
     this.stallStartedAt = null;
     this.pausedAt = null;
-    this.driver.releaseConnection();
-    this.connectionReleased = true;
+    this.releaseItemConnection();
     this.resumePosition = this.isLive ? null : 0;
     this.setState('stopped', 'stop');
   }
@@ -487,6 +490,7 @@ export abstract class EngineCore {
       this.stallStartedAt = null;
     }
     this.flowedSinceOpen = true;
+    this.silentStall = false;
     this.lastOpenAt = null;
     this.nextAttemptAt = null;
     this.lastPosition = this.driver.sample().position;
@@ -505,6 +509,8 @@ export abstract class EngineCore {
       return this.logStale('buffering', generation);
     // Nothing left to fade.
     this.completeFadeOut();
+    // Native reports the stall itself: its own `playing` will end it.
+    this.silentStall = false;
     if (this._state === 'playing' && this.stallPublishAt == null) {
       this.stallStartedAt = this.now;
       this.stallPublishAt = this.now + RecoveryPolicy.STALL_DEBOUNCE_MS;
@@ -516,14 +522,25 @@ export abstract class EngineCore {
   onFailed(generation: number, error: PlayerError): void {
     if (!this.accepts(generation)) return this.logStale('failed', generation);
     this.completeFadeOut();
+    // A stop's fade-out landed: the item is gone.
+    if (!this.accepts(generation)) return this.commit();
     this.handleFailure(error);
     this.commit();
   }
 
   onEnded(generation: number): void {
     if (!this.accepts(generation)) return this.logStale('ended', generation);
+    if (this._state === 'ended')
+      return this.logStale('ended again', generation);
     this.completeFadeOut();
-    if (this.isLive || this.duration == null) {
+    // A stop's fade-out landed: the item is gone.
+    if (!this.accepts(generation)) return this.commit();
+    // Unknown duration reads as a live stream that dropped, unless the app
+    // said the source is a file (`live: false`).
+    if (
+      this._source?.liveHint !== false &&
+      (this.isLive || this.duration == null)
+    ) {
       this.handleFailure(
         engineError('STREAM_ENDED', 'The stream closed the connection.', true)
       );
@@ -584,7 +601,7 @@ export abstract class EngineCore {
     }
     this.fadeWakeup(t);
     if (
-      this._playWhenReady &&
+      this.heartbeatDue &&
       t - this.lastHeartbeatAt >= RecoveryPolicy.HEARTBEAT_MS - 50
     ) {
       this.lastHeartbeatAt = t;
@@ -602,8 +619,7 @@ export abstract class EngineCore {
       !this._playWhenReady &&
       !this.connectionReleased
     ) {
-      this.driver.releaseConnection();
-      this.connectionReleased = true;
+      this.releaseItemConnection();
       this.log('paused stream released', {});
     }
   }
@@ -737,6 +753,7 @@ export abstract class EngineCore {
     this._generation += 1;
     this.readyForGeneration = false;
     this.flowedSinceOpen = false;
+    this.silentStall = false;
     this.connectionReleased = false;
     this.stallStartedAt = null;
     this.pausedAt = null;
@@ -744,6 +761,7 @@ export abstract class EngineCore {
     this.driftMs = 0;
     this.pauseReleaseAt = null;
     this.lastOpenAt = this.now;
+    this.openNetworkRevision = this.networkRevision;
     this.lastPosition = startPosition ?? 0;
     this.lastBuffered = 0;
     this.lastBufferedAdvanceAt = this.now;
@@ -755,6 +773,7 @@ export abstract class EngineCore {
       source,
       startPosition,
       playWhenReady: this._playWhenReady,
+      allowReconnect: this.options.reconnect,
     });
   }
 
@@ -836,15 +855,14 @@ export abstract class EngineCore {
     this.resetRecovery();
     this.pauseReleaseAt = null;
     this.stallStartedAt = null;
-    this.driver.releaseConnection();
-    this.connectionReleased = true;
+    this.releaseItemConnection();
     this.setState('error', error.code);
     this.pendingEvents.push(() => this.delegate?.engineError(error, true));
   }
 
   protected scheduleReconnect(reason: string): void {
     const t = this.now;
-    if (this.recoveringSince == null) this.recoveringSince = t;
+    this.recoveringSince ??= t;
     if (this._state === 'reconnecting' && this.nextAttemptAt != null) return;
     // A healthy stream that suddenly drops reconnects immediately; repeated failures back off.
     let delay: number;
@@ -868,8 +886,10 @@ export abstract class EngineCore {
     const opened = this.lastOpenAt;
     if (this._state !== 'loading' || opened == null || this.flowedSinceOpen)
       return false;
+    // Issued after the latest network edge (a revision, not a time: an open
+    // and the edge that caused it can share a millisecond).
     return (
-      opened > this.lastNetworkEdgeAt &&
+      this.openNetworkRevision === this.networkRevision &&
       this.now - opened < RecoveryPolicy.OPEN_GRACE_MS
     );
   }
@@ -880,7 +900,7 @@ export abstract class EngineCore {
       this.log('reconnect skipped', { reason, note: 'open in flight' });
       return;
     }
-    if (this.recoveringSince == null) this.recoveringSince = this.now;
+    this.recoveringSince ??= this.now;
     if (
       !this.remote &&
       this.network === 'offline' &&
@@ -900,122 +920,18 @@ export abstract class EngineCore {
     this.reopen(`reconnect: ${reason}`);
   }
 
-  protected heartbeat(t: number): void {
-    const since = this.recoveringSince;
-    const limit = this.options.giveUpAfterMs;
-    if (
-      since != null &&
-      limit != null &&
-      t - since >= limit &&
-      this._state !== 'playing'
-    ) {
-      const error =
-        this.lastError ??
-        engineError(
-          'NETWORK_ERROR',
-          `Recovery gave up after ${Math.trunc(limit / 1000)}s.`,
-          true
-        );
-      this.log('giving up', { afterMs: `${t - since}` });
-      this.fail(error);
-      return;
-    }
-    const suspect = t < this.suspectUntil;
-    switch (this._state) {
-      case 'loading': {
-        const opened = this.lastOpenAt;
-        if (opened != null && t - opened >= RecoveryPolicy.OPEN_TIMEOUT_MS) {
-          this.handleFailure(
-            engineError('TIMEOUT', 'Opening the source timed out.', true)
-          );
-        }
-        break;
-      }
-      case 'playing':
-        this.heartbeatPlaying(t, suspect);
-        break;
-      case 'buffering':
-        if (this.remote) this.heartbeatRemoteBuffering(t);
-        else this.heartbeatBuffering(t, suspect);
-        break;
-      default:
-        break;
-    }
+  /** Recovery may re-open on its own: playback is wanted and reconnecting is on. */
+  protected get autoReconnect(): boolean {
+    return this._playWhenReady && this.options.reconnect;
   }
 
-  protected heartbeatPlaying(t: number, suspect: boolean): void {
-    const sample = this.driver.sample();
-    if (!this.isLive) this.resumePosition = sample.position;
-    if (
-      sample.position > this.lastPosition + 0.05 ||
-      sample.position < this.lastPosition - 0.5
-    ) {
-      this.lastPosition = sample.position;
-      this.lastPositionAdvanceAt = t;
-    } else if (this.remote) {
-      // A receiver's position is interpolated between its reports: only the
-      // state it reports (buffering, failed) counts.
-    } else {
-      const stallLimit = suspect
-        ? RecoveryPolicy.SUSPECT_SILENT_STALL_MS
-        : RecoveryPolicy.SILENT_STALL_MS;
-      if (t - this.lastPositionAdvanceAt >= stallLimit && this.rate > 0) {
-        this.log('silent stall', {
-          frozenMs: `${t - this.lastPositionAdvanceAt}`,
-        });
-        this.setState('buffering', 'silent stall');
-        this.beginWaiting();
-        this.stallStartedAt = this.lastPositionAdvanceAt;
-      }
-    }
-    const playing = this.playingSince;
-    if (playing != null && t - playing >= RecoveryPolicy.STABLE_PLAYBACK_MS) {
-      this.playingSince = null;
-      this.stable = true;
-      this.backoff.reset();
-      this.offlineSkips = 0;
-      this.recoveringSince = null;
-    }
+  /** Playback is wanted, or an open is outstanding (it times out either way). */
+  protected get heartbeatDue(): boolean {
+    return this._playWhenReady || this._state === 'loading';
   }
 
-  protected heartbeatBuffering(t: number, suspect: boolean): void {
-    const sample = this.driver.sample();
-    if (sample.bufferedPosition > this.lastBuffered + 0.01) {
-      this.lastBuffered = sample.bufferedPosition;
-      this.lastBufferedAdvanceAt = t;
-    }
-    const stalled = this.stallStartedAt;
-    if (stalled == null) return;
-    if (this.network === 'offline') {
-      if (t - this.lastBufferedAdvanceAt >= RecoveryPolicy.STALL_DEAD_MS) {
-        if (this.recoveringSince == null) this.recoveringSince = stalled;
-        this.scheduleReconnect('offline');
-      }
-      return;
-    }
-    const deadLimit = suspect
-      ? RecoveryPolicy.SUSPECT_STALL_DEAD_MS
-      : RecoveryPolicy.STALL_DEAD_MS;
-    if (t - this.lastBufferedAdvanceAt >= deadLimit) {
-      this.attemptReconnect(`stalled ${t - stalled}ms with no data`);
-    } else if (t - stalled >= RecoveryPolicy.STALL_MAX_MS) {
-      this.attemptReconnect(`stalled ${t - stalled}ms`);
-    } else if (
-      this.isLive &&
-      this.driftMs + (t - stalled) >= this.options.liveMaxDriftMs
-    ) {
-      this.attemptReconnect('live drift during stall');
-    } else {
-      // Data is arriving: give the buffer time to recover.
-    }
-  }
-
-  /** No buffer to watch on a receiver: only a stall that lasts too long. */
-  protected heartbeatRemoteBuffering(t: number): void {
-    const stalled = this.stallStartedAt;
-    if (stalled != null && t - stalled >= RecoveryPolicy.STALL_MAX_MS)
-      this.attemptReconnect(`stalled ${t - stalled}ms`);
-  }
+  /** The watchdog's tick (PlaybackEngine.ts): open timeout, stalls, give-up. */
+  protected abstract heartbeat(t: number): void;
 
   protected armPauseRelease(): void {
     const source = this._source;
@@ -1038,8 +954,21 @@ export abstract class EngineCore {
     this.reconnectReason = '';
   }
 
+  /**
+   * Releases the item's connection and invalidates its generation: callbacks
+   * the driver already queued for it (an end, a failure) must not move the
+   * player out of `stopped`, `paused` or `error`. Resuming opens a new one.
+   */
+  protected releaseItemConnection(): void {
+    this._generation += 1;
+    this.readyForGeneration = false;
+    this.silentStall = false;
+    this.driver.releaseConnection();
+    this.connectionReleased = true;
+  }
+
   protected markNetworkEdge(t: number): void {
-    this.lastNetworkEdgeAt = t;
+    this.networkRevision += 1;
     this.suspectUntil = t + RecoveryPolicy.NETWORK_SUSPECT_MS;
   }
 
@@ -1120,7 +1049,7 @@ export abstract class EngineCore {
     if (this.stallPublishAt != null) candidates.push(this.stallPublishAt);
     if (this._state === 'reconnecting' && this.nextAttemptAt != null)
       candidates.push(this.nextAttemptAt);
-    if (this._playWhenReady)
+    if (this.heartbeatDue)
       candidates.push(this.lastHeartbeatAt + RecoveryPolicy.HEARTBEAT_MS);
     this.fadeWakeups(candidates);
     return candidates.length > 0 ? Math.min(...candidates) : null;

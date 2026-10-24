@@ -95,6 +95,8 @@ function perform(call: string, step: Step, h: EngineHarness): void {
         (step.after as number | null | undefined) ?? null,
         (step.fadeOut as number | undefined) ?? null
       );
+    case 'setFades':
+      return h.engine.setFades(step.in as number, step.out as number);
     case 'foreground':
       return h.engine.appForegrounded();
     case 'handoff':

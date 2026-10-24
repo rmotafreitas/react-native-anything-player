@@ -28,6 +28,8 @@ Formats are whatever the platform decodes: MP3, AAC/AAC+ (ADTS), M4A/MP4, WAV, F
 
 `live: true` is optional — an indefinite duration is detected as live — but it lets live behaviour (fast start, live-edge recovery) apply from the first byte.
 
+`live: false` says the source is a file even when it does not look like one. A server that sends a finite file without a `Content-Length` (chunked transfer, typical of files generated on the fly) looks exactly like a live stream: on iOS the stream proxy would then treat the end of the file as a dropped radio connection and splice a fresh request in, so the file would start over instead of ending. Load such a file with `live: false`: it is never spliced or reported live, and it ends at its end.
+
 `headers` are sent with every request for the source (including reconnects). On iOS they go through the app's own `URLSession`; on Android through Media3's HTTP stack.
 
 ## Commands
@@ -105,8 +107,10 @@ await player.sleep(null); // cancel
 - When the timer fires, the player pauses as if the user had paused it: a pending system resume (after a call, for example) is cancelled. If the player was not playing, the timer just ends.
 - A new `sleep()` replaces the timer. Cancelling it during its fade-out brings the volume back at the same speed.
 - The timer keeps its time across reconnects, source changes and Cast handoffs.
+- Timer and fade durations (`after`, `fadeOut`, `fade.in`, `fade.out`, `fadeTo` seconds) go up to 24 h; a longer one rejects with `INVALID_ARGUMENT`.
 - `status.sleepAt` changes when the timer is set, cancelled or fires, and a `sleep` event is emitted when it fires.
 - A live stream paused by the timer releases its network connection after 30 s, as after any pause. `play()` re-opens it at the live edge.
+- While casting, the timer runs on the phone, which pauses the receiver when it fires. iOS suspends an app in the background that is not playing audio itself, and a casting app plays none: with the phone locked, the timer may fire late, or not until the app runs again. The receiver itself runs no timer.
 
 `useSleepTimer(player)` returns `{ sleepAt, remaining }`, with `remaining` in whole seconds, counted down while the app is in the foreground:
 

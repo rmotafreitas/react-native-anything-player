@@ -69,13 +69,15 @@ describe('ICY metadata conformance (web twin)', () => {
       seed = (seed * 1103515245 + 12345) % 2 ** 31;
       return seed % n;
     };
-    for (let k = 0; k < 2000; k++) {
-      const bytes = Uint8Array.from(
-        { length: rand(64) },
-        () => alphabet[rand(alphabet.length)]!
-      );
-      IcyParser.metadataFromBlock(bytes, 'artist-title');
-    }
+    expect(() => {
+      for (let k = 0; k < 2000; k++) {
+        const bytes = Uint8Array.from(
+          { length: rand(64) },
+          () => alphabet[rand(alphabet.length)]!
+        );
+        IcyParser.metadataFromBlock(bytes, 'artist-title');
+      }
+    }).not.toThrow();
   });
 
   it('backoff sequence matches the twins', () => {

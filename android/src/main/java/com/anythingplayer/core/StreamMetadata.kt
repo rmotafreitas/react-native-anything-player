@@ -42,6 +42,8 @@ enum class StreamTitleFormat(val wire: String) {
 object IcyParser {
   private val separators = listOf(" - ", " – ", " — ", " ~ ")
   private const val SEPARATOR_CHARS = "-–—~ "
+  /** Whitespace allowed between ICY fields (exactly these, in every twin). */
+  private const val FIELD_SPACE = " \t\r\n"
 
   /** Windows-1252 0x80–0x9F → Unicode (undefined bytes map to C1 controls). */
   private val cp1252High =
@@ -103,7 +105,10 @@ object IcyParser {
     var search = valueStart
     while (true) {
       val candidate = find(chars, "';", search) ?: break
-      val after = candidate + 2
+      // The value ends at the first `';` that is followed by another key (or
+      // the end), whitespace between fields allowed.
+      var after = candidate + 2
+      while (after < chars.size && FIELD_SPACE.indexOf(chars[after]) >= 0) after += 1
       if (after >= chars.size || startsKey(chars, after)) {
         end = candidate
         next = after

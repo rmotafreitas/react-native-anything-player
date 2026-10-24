@@ -66,7 +66,8 @@ enum IcyParser {
 
   /// Parses `StreamTitle='…';StreamUrl='…';` into fields. Values may contain
   /// quotes and semicolons ("Guns N' Roses"): a value ends at `';` that is
-  /// followed by the end of the block or by the next `key='`.
+  /// followed by the end of the block or by the next `key='` (whitespace
+  /// between fields allowed).
   static func parseFields(_ block: String) -> [String: String] {
     var result: [String: String] = [:]
     let chars = Array(block)
@@ -80,7 +81,8 @@ enum IcyParser {
       var next = chars.count
       var search = valueStart
       while let candidate = find(chars, "';", from: search) {
-        let after = candidate + 2
+        var after = candidate + 2
+        while after < chars.count && isFieldSpace(chars[after]) { after += 1 }
         if after >= chars.count || startsKey(chars, at: after) {
           end = candidate
           next = after
@@ -103,6 +105,15 @@ enum IcyParser {
       i = next
     }
     return result
+  }
+
+  /// Whitespace allowed between ICY fields (exactly these, in every twin).
+  private static let fieldSpace: Set<Unicode.Scalar> = [" ", "\t", "\r", "\n"]
+
+  /// Whether a character is field whitespace. A `\r\n` pair may be one
+  /// `Character` in Swift's text model, so the test walks the scalars.
+  private static func isFieldSpace(_ c: Character) -> Bool {
+    c.unicodeScalars.allSatisfy { fieldSpace.contains($0) }
   }
 
   /// Splits a StreamTitle per `format`. Returns (artist, title).

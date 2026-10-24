@@ -4,11 +4,11 @@ All recovery constants live in one file per platform — `ios/Core/RecoveryPolic
 
 | Constant | Value | Why |
 |---|---|---|
-| `heartbeatMs` | 1 s | The engine's watchdog clock while playback is wanted. Native timers keep running when React Native's JS timers are frozen in the background — the original reason recovery could not live in JS. |
+| `heartbeatMs` | 1 s | The engine's watchdog clock while playback is wanted, or while an open is outstanding. Native timers keep running when React Native's JS timers are frozen in the background — the original reason recovery could not live in JS. |
 | `stallDebounceMs` | 500 ms | ExoPlayer reports sub-second `BUFFERING` blips on healthy streams. Publishing them flickers spinners and spams events; recovery timers still count from the real stall start. |
-| `openTimeoutMs` | 12 s | A link that cannot start a stream in 12 s is unusable; the attempt fails as `TIMEOUT` and the backoff takes over. |
-| `openGraceMs` | 4 s | Two triggers landing together (a network edge and a foreground catch-up) used to re-open twice and abort the first connect mid-handshake. An open younger than this is left alone — unless it was issued before the latest network change (it rode the dead route). |
-| `silentStallMs` / suspect | 4 s / 2 s | With `automaticallyWaitsToMinimizeStalling` off (fast start for radio), AVPlayer can stay "playing" with a frozen playhead through a dead socket and report nothing. A playhead that does not move is a stall. |
+| `openTimeoutMs` | 12 s | A link that cannot start a stream in 12 s is unusable; the attempt fails as `TIMEOUT` and the backoff takes over. An open without play intent (`autoplay: false`, paused while loading, focus refused) times out too: the `load()` rejects with `TIMEOUT` instead of waiting forever. |
+| `openGraceMs` | 4 s | Two triggers landing together (a network edge and a foreground catch-up) used to re-open twice and abort the first connect mid-handshake. An open younger than this is left alone — unless it was issued before the latest network change (it rode the dead route). The engine counts network changes rather than comparing times, so an open issued by a network change in the same millisecond is still protected. |
+| `silentStallMs` / suspect | 4 s / 2 s | With `automaticallyWaitsToMinimizeStalling` off (fast start for radio), AVPlayer can stay "playing" with a frozen playhead through a dead socket and report nothing. A playhead that does not move is a stall; one that moves again ends it, with no native event needed. A re-open of a file resumes where the playhead got to. |
 | `stallDeadMs` / suspect | 3 s / 1.5 s | Progressive streams are never revived by the native players once the socket dies. No buffered progress for this long while online ⇒ dead socket ⇒ re-open. |
 | `stallMaxMs` | 20 s | A link that trickles data but never recovers is re-opened anyway. |
 | `networkSuspectMs` | 20 s | After a connectivity change (lost, restored, Wi-Fi ↔ cellular), the stream's socket is probably dead: detection becomes eager for a while. A handoff never reports "offline", but the socket dies with the old route. |
@@ -24,10 +24,12 @@ Platform-level guards, outside the shared engine:
 
 | Guard | Why |
 |---|---|
-| iOS proxy splice: only after ≥ 3 s of streaming | When a live stream's connection is dropped, the iOS stream proxy opens a fresh one and continues the same response, so AVPlayer plays on from its buffer (no gap, no state change; a `upstream spliced` diagnostic is recorded). An upstream that lived less than 3 s is never spliced: a server that accepts and closes in a loop ends the response, and the engine's backoff takes over. |
+| iOS proxy splice: only after ≥ 3 s of streaming | When a live stream's connection is dropped, the iOS stream proxy opens a fresh one and continues the same response, so AVPlayer plays on from its buffer (no gap, no state change; a `upstream spliced` diagnostic is recorded). An upstream that lived less than 3 s is never spliced: a server that accepts and closes in a loop ends the response, and the engine's backoff takes over. A source loaded with `live: false` is never spliced (a file served without `Content-Length` ends at its end). |
 | Android continuation breaker: 4 / 10 s | The Media3 playlist continuation that makes drop recovery gapless; past the limit the item ends and the engine's backoff takes over. |
 | iOS stale-pause handling | AVPlayer drops to `.paused` on a buffer underrun when auto-wait is off. Reading that as a system pause silently ended a radio; interruptions and route losses are reported separately by the session coordinator, so an unexplained pause is a stall. |
 | Android focus retry (500 ms × 8) | Android 15+ denies audio focus to background apps without a foreground service; a start requested from the background is kept as "delayed" while Media3 promotes the service. |
+
+With `recovery.reconnect: false`, nothing re-opens on its own: a recoverable failure, a stall the watchdog gives up on (dead socket, `stallMaxMs`, live drift) and a lost network all end in `error` (fatal; the stall reports `NETWORK_ERROR`), and a network restore, a foreground or a media-services reset does not re-open. The transport-level continuations (the iOS proxy splice, Android's gapless continuation, the web's MSE splice) are off too: a dropped live connection ends the stream. `play()` still re-opens.
 
 ## What recovery will not do
 

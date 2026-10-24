@@ -160,6 +160,10 @@ final class ConformanceTests: XCTestCase {
       try h.engine.sleep(
         afterMs: (step["after"] as? NSNumber)?.doubleValue,
         fadeOutMs: (step["fadeOut"] as? NSNumber)?.doubleValue)
+    case "setFades":
+      try h.engine.setFades(
+        inMs: (step["in"] as? NSNumber)?.doubleValue ?? 0,
+        outMs: (step["out"] as? NSNumber)?.doubleValue ?? 0)
     case "handoff":
       h.engine.handoff(
         route: AudioRoute(
