@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds Media3's software decoders for Android from pinned sources: FFmpeg
-# (LGPL; audio only: AC-3, E-AC-3, DTS, TrueHD, MPEG audio layer II), libvpx
+# (LGPL; audio only: AC-3, E-AC-3, DTS, TrueHD, MPEG audio), libvpx
 # (VP9) and dav1d (AV1), for arm64-v8a, armeabi-v7a, x86_64 and x86.
 #
 #   scripts/decoders/build-android.sh <work dir> <out dir>

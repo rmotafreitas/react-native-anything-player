@@ -1,10 +1,14 @@
 name: Android decoders
 # Builds Media3's software decoders from pinned sources
 # (scripts/decoders/build-android.sh) and publishes them as the GitHub Release
-# android/decoders.json names. Run by hand when Media3 or a decoder changes;
-# then put the printed checksums in decoders.json, so apps download exactly
-# these files.
+# android/decoders.json names. Run when Media3 or a decoder changes, by pushing
+# the release's tag (android-decoders-<media3>-<n>) or by hand; then put the
+# printed checksums in decoders.json, so apps download exactly these files.
+# Never marked the latest release: that stays the library's.
 on:
+  push:
+    tags:
+      - android-decoders-*
   workflow_dispatch:
     inputs:
       release:
@@ -24,6 +28,12 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: The release decoders.json names
+        env:
+          RELEASE: ${{ inputs.release || github.ref_name }}
+        run: |
+          pinned="$(node -p "require('./android/decoders.json').release")"
+          [ "$RELEASE" = "$pinned" ] || { echo "The release is $RELEASE, but android/decoders.json names $pinned" >&2; exit 1; }
       - name: Java
         uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
@@ -39,9 +49,8 @@ jobs:
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE: ${{ inputs.release }}
+          RELEASE: ${{ inputs.release || github.ref_name }}
         run: |
-          case "$RELEASE" in android-decoders-*) ;; *) echo "The tag must start with android-decoders-" >&2; exit 1 ;; esac
           {
             echo "Media3's software decoders for Android, built by scripts/decoders/build-android.sh at ${GITHUB_SHA}."
             echo "Apps get them with \`rnapVideoDecoders=true\`. FFmpeg is LGPL; see the Video guide."
@@ -52,4 +61,4 @@ jobs:
           } > "$RUNNER_TEMP/notes.md"
           gh release create "$RELEASE" "$RUNNER_TEMP"/decoders/*.aar "$RUNNER_TEMP/decoders/SHA256SUMS" \
             --repo "$GITHUB_REPOSITORY" --title "Android software decoders ($RELEASE)" \
-            --notes-file "$RUNNER_TEMP/notes.md"
+            --notes-file "$RUNNER_TEMP/notes.md" --latest=false
