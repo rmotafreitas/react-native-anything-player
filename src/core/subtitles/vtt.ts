@@ -74,14 +74,25 @@ function parseCue(lines: string[]): SubtitleCue | null {
   const start = clockMs(m[1]!);
   const end = clockMs(m[2]!);
   if (start == null || end == null || end <= start) return null;
+  return vttCue(start, end, m[3] ?? '', lines.slice(at + 1).join('\n'));
+}
+
+/**
+ * One WebVTT cue from its parts: times (ms), the settings after the
+ * timing (`align:start line:10%`) and the tagged text. Also how a browser's
+ * own `VTTCue` (a source's text track) joins the cue model.
+ */
+export function vttCue(
+  startMs: number,
+  endMs: number,
+  settings: string,
+  text: string
+): SubtitleCue | null {
   const out = new SpanBuilder(PLAIN);
-  parseTaggedText(lines.slice(at + 1).join('\n'), out, {
-    overrides: false,
-    entities: true,
-  });
-  const cue = cueOf(start, end, out);
+  parseTaggedText(text, out, { overrides: false, entities: true });
+  const cue = cueOf(startMs, endMs, out);
   if (cue.text === '') return null;
-  const s = settingsOf(m[3] ?? '');
+  const s = settingsOf(settings);
   return { ...cue, align: s.align, vertical: s.vertical, x: s.x, y: s.y };
 }
 

@@ -49,6 +49,26 @@ export interface HlsLike {
   autoLevelCapping?: number;
   /** Bits per second, hls.js's estimate. */
   readonly bandwidthEstimate?: number;
+  /** The audio renditions (`#EXT-X-MEDIA:TYPE=AUDIO`) of the variant's group. */
+  readonly audioTracks?: ReadonlyArray<HlsMediaTrack>;
+  /** The subtitle renditions (`#EXT-X-MEDIA:TYPE=SUBTITLES`). */
+  readonly subtitleTracks?: ReadonlyArray<HlsMediaTrack>;
+  /** The audio rendition playing; setting it switches. */
+  audioTrack?: number;
+  /** The subtitle rendition loaded (`-1`: none). */
+  subtitleTrack?: number;
+  /** `false`: the cues load into a hidden text track (RNAP's overlay draws them). */
+  subtitleDisplay?: boolean;
+}
+
+/** An audio or subtitle rendition, as hls.js describes it. */
+export interface HlsMediaTrack {
+  readonly name?: string;
+  readonly lang?: string;
+  readonly default?: boolean;
+  readonly forced?: boolean;
+  /** `CHARACTERISTICS` (`public.accessibility.describes-video`, …). */
+  readonly characteristics?: string;
 }
 
 /** A variant, as hls.js describes it. */
@@ -81,6 +101,10 @@ export interface HlsConstructor {
     readonly LEVEL_SWITCHED?: string;
     /** A fragment arrived: a fresh bandwidth estimate (video). */
     readonly FRAG_LOADED?: string;
+    /** The audio renditions are known (video). */
+    readonly AUDIO_TRACKS_UPDATED?: string;
+    /** The subtitle renditions are known (video). */
+    readonly SUBTITLE_TRACKS_UPDATED?: string;
   };
   /** The values of an error's `type`. */
   readonly ErrorTypes: {

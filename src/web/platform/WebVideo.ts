@@ -98,6 +98,9 @@ export class WebVideo implements SwapStage {
   // ── Subtitles ──
   private session: string | null = null;
   private readonly cues = new Map<string, SubtitleCue[]>();
+  /** The source's own text track's cues on screen now (`track:` ids). */
+  private sourceCueList: SubtitleCue[] = [];
+  private shownCues: SubtitleCue[] = [];
   private shown: number[] = [];
   private shownTrack: string | null = null;
   private cueTimer: number | null = null;
@@ -346,6 +349,13 @@ export class WebVideo implements SwapStage {
   beginSession(session: string | null): void {
     this.session = session;
     this.cues.clear();
+    this.sourceCueList = [];
+    this.refreshCues();
+  }
+
+  /** The source's own text track's active cues (the browser draws none). */
+  sourceCues(cues: SubtitleCue[]): void {
+    this.sourceCueList = cues;
     this.refreshCues();
   }
 
@@ -361,13 +371,30 @@ export class WebVideo implements SwapStage {
     this.clearCueTimer();
     const video = this.status?.video ?? null;
     const track = video?.textTrack ?? null;
+    if (track != null && track.startsWith('track:') && !this.cues.has(track)) {
+      // The source's own track: its cues as the browser reports them.
+      const source = this.sourceCueList;
+      if (track !== this.shownTrack || source !== this.shownCues) {
+        this.shownTrack = track;
+        this.shown = [];
+        this.shownCues = source;
+        this.draw(source);
+        this.host.emit('cues', { cues: source });
+      }
+      return;
+    }
     const cues = (track != null ? this.cues.get(track) : null) ?? [];
     const position = this.host.element().currentTime;
     const delay = video?.subtitleDelay ?? 0;
     const active = activeCues(cues, position, delay);
-    if (track !== this.shownTrack || !sameIndices(active, this.shown)) {
+    if (
+      track !== this.shownTrack ||
+      !sameIndices(active, this.shown) ||
+      this.shownCues.length > 0
+    ) {
       this.shownTrack = track;
       this.shown = active;
+      this.shownCues = [];
       this.draw(active.map((i) => cues[i]!));
       this.host.emit('cues', { cues: active.map((i) => cues[i]!) });
     }

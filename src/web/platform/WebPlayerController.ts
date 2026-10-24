@@ -24,6 +24,7 @@ import {
   type VideoInfo,
   type VideoVariant,
 } from '../engine/types';
+import type { MediaTrack } from '../../core/subtitles/tracks';
 import type { SubtitleCue } from '../../core/subtitles/types';
 import { AudioSampler } from './AudioSampler';
 import type { CastService } from './CastService';
@@ -683,6 +684,14 @@ export class WebPlayerController
 
   onBandwidth(generation: number, bitsPerSecond: number): void {
     this.engine.onBandwidth(generation, bitsPerSecond);
+  }
+
+  onTracks(generation: number, tracks: MediaTrack[]): void {
+    this.engine.onTracks(generation, tracks);
+  }
+
+  onSourceCues(generation: number, cues: SubtitleCue[]): void {
+    if (this.engine.accepts(generation)) this.video?.sourceCues(cues);
   }
 }
 

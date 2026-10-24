@@ -113,6 +113,50 @@ export interface VideoElementLike extends AudioElementLike, BoxLike {
   requestVideoFrameCallback?(callback: () => void): number;
   getVideoPlaybackQuality?(): { droppedVideoFrames: number };
   fastSeek?(time: number): void;
+  /** The source's own text tracks (in-band, Safari's HLS, hls.js's). */
+  readonly textTracks?: TrackListLike<TextTrackLike>;
+  /** The source's own audio tracks (Safari). */
+  readonly audioTracks?: TrackListLike<AudioTrackLike>;
+}
+
+/** `TextTrackList` / `AudioTrackList`: `addtrack`, `removetrack`, `change`. */
+export interface TrackListLike<T> extends EventTargetLike {
+  readonly length: number;
+  readonly [index: number]: T;
+}
+
+/** A `TextTrack`: subtitles or captions (also `metadata`, which RNAP skips). */
+export interface TextTrackLike extends EventTargetLike {
+  readonly kind: string;
+  readonly label: string;
+  readonly language: string;
+  /** `disabled`, `hidden` (cues, no rendering: RNAP's overlay draws them) or `showing`. */
+  mode: string;
+  readonly activeCues: {
+    readonly length: number;
+    readonly [index: number]: VttCueLike;
+  } | null;
+}
+
+/** A `VTTCue` (or a plain `TextTrackCue`, which has only times). */
+export interface VttCueLike {
+  readonly startTime: number;
+  readonly endTime: number;
+  readonly text?: string;
+  readonly line?: number | string;
+  readonly snapToLines?: boolean;
+  readonly lineAlign?: string;
+  readonly position?: number | string;
+  readonly align?: string;
+}
+
+/** An `AudioTrack` (Safari). */
+export interface AudioTrackLike {
+  readonly id: string;
+  readonly kind: string;
+  readonly label: string;
+  readonly language: string;
+  enabled: boolean;
 }
 
 /** `IntersectionObserver` / `ResizeObserver`: the view's visibility and size. */

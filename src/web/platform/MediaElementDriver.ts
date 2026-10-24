@@ -43,7 +43,10 @@ import {
 } from './dom';
 import { HLS_HINT, HLS_MISSING, isHlsType, isHlsUri } from './hlsFormats';
 import type { HlsStream } from './HlsStream';
+import { MediaTracks } from './MediaTracks';
 import { MseStream, mediaSourceConstructor } from './MseStream';
+import type { MediaTrack } from '../../core/subtitles/tracks';
+import type { SubtitleCue } from '../../core/subtitles/types';
 
 export interface DriverObserver {
   onReady(generation: number, info: ReadyInfo): void;
@@ -69,6 +72,10 @@ export interface DriverObserver {
   onVariants?(generation: number, variants: VideoVariant[]): void;
   /** Video: a bandwidth estimate, bits per second. */
   onBandwidth?(generation: number, bitsPerSecond: number): void;
+  /** Video: the source's own audio and text tracks. */
+  onTracks?(generation: number, tracks: MediaTrack[]): void;
+  /** Video: the cues of the source's text track on screen now. */
+  onSourceCues?(generation: number, cues: SubtitleCue[]): void;
 }
 
 /** What the driver plays: sound alone, or a picture too. */
@@ -175,6 +182,12 @@ export class MediaElementDriver implements EngineDriver {
   private quality: QualityConstraints | null = null;
   private variantId: string | null = null;
   private downlinkAt = 0;
+  /** Video: the current item's own tracks, and the engine's picks among them. */
+  private tracks: MediaTracks | null = null;
+  private chosenTracks: { audio: string | null; text: string | null } | null =
+    null;
+  /** The source's tracks so far: a quality switch's new file reports them again. */
+  sourceTracks: MediaTrack[] = [];
 
   constructor(
     private readonly observer: DriverObserver,
@@ -335,8 +348,9 @@ export class MediaElementDriver implements EngineDriver {
     this.hls?.setQuality(constraints);
   }
 
-  selectTracks(): void {
-    // The source's own tracks on the web come with hls.js audio and subtitle groups (not yet).
+  selectTracks(audio: string | null, text: string | null): void {
+    this.chosenTracks = { audio, text };
+    this.tracks?.select(audio, text);
   }
 
   releaseConnection(): void {
@@ -465,6 +479,22 @@ export class MediaElementDriver implements EngineDriver {
       else frame();
     });
     on('progress', () => this.readDownlink(generation));
+    // The source's own tracks: the element's lists, or hls.js's once it runs.
+    this.sourceTracks = [];
+    const tracks = new MediaTracks(video, {
+      onTracks: (list) => {
+        if (generation !== this.generation) return;
+        this.sourceTracks = list;
+        this.observer.onTracks?.(generation, list);
+      },
+      onCues: (cues) => {
+        if (generation === this.generation)
+          this.observer.onSourceCues?.(generation, cues);
+      },
+    });
+    this.tracks = tracks;
+    if (this.chosenTracks)
+      tracks.select(this.chosenTracks.audio, this.chosenTracks.text);
   }
 
   /** Chromium's Network Information estimate, for files (hls.js has its own). */
@@ -486,9 +516,17 @@ export class MediaElementDriver implements EngineDriver {
   /** Whether hls.js has to play this: an HLS source on an element that cannot. */
   private needsHls(source: SourceDescriptor, contentType: string | null) {
     const hls = isHlsUri(source.uri) || isHlsType(contentType);
+    if (!hls) return false;
+    if (this.nativeHlsFailed || this._element.canPlayType(HLS_MIME) === '')
+      return true;
+    // A video: a native HLS without track lists (Chromium's) has no
+    // qualities, caps, audio groups or subtitles to pick from; hls.js has
+    // them, where there is one. Safari's own HLS lists its tracks: it stays.
+    const video = this.videoElement;
     return (
-      hls &&
-      (this.nativeHlsFailed || this._element.canPlayType(HLS_MIME) === '')
+      video != null &&
+      video.audioTracks === undefined &&
+      hlsConstructor()?.isSupported() === true
     );
   }
 
@@ -664,6 +702,9 @@ export class MediaElementDriver implements EngineDriver {
       onBandwidth: (bps) => {
         if (live()) this.observer.onBandwidth?.(generation, bps);
       },
+      onTracks: () => {
+        if (live()) this.tracks?.useHls(hls);
+      },
     });
     this.hls = hls;
     this.observer.onNote(generation, 'hls.js', { reason: 'no native HLS' });
@@ -836,6 +877,8 @@ export class MediaElementDriver implements EngineDriver {
   private teardownItem(): void {
     this.listeners?.abort();
     this.listeners = null;
+    this.tracks?.close();
+    this.tracks = null;
     this.stream?.close();
     this.stream = null;
     this.hls?.close();

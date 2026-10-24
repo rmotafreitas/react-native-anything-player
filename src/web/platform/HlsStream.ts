@@ -20,8 +20,10 @@ import type {
   HlsLevel,
   HlsLevelDetails,
   HlsLike,
+  HlsMediaTrack,
   HlsMetadataSample,
 } from '../../core/hls';
+import type { HlsTracks } from './MediaTracks';
 import type { StreamMetadata } from '../engine/StreamMetadata';
 import {
   engineError,
@@ -46,6 +48,8 @@ export interface HlsListener {
   onVariantSwitched?(id: string): void;
   /** Video: hls.js's bandwidth estimate, bits per second. */
   onBandwidth?(bitsPerSecond: number): void;
+  /** Video: the audio or subtitle renditions changed. */
+  onTracks?(): void;
 }
 
 /** A variant's id in `status.video.qualities`. */
@@ -142,7 +146,7 @@ export function hlsFailure(
   );
 }
 
-export class HlsStream {
+export class HlsStream implements HlsTracks {
   private hls: HlsLike | null = null;
   private details: HlsLevelDetails | null = null;
   /** A fatal error was reported: later element errors are the same failure. */
@@ -161,13 +165,22 @@ export class HlsStream {
     const { Events } = this.ctor;
     const hls = new this.ctor(this.config());
     this.hls = hls;
+    // Subtitles load into hidden text tracks: RNAP's overlay draws them.
+    hls.subtitleDisplay = false;
     hls.on(Events.MANIFEST_PARSED, (_event, data) => {
       this.listener.onNote('hls manifest', {
         levels: `${data?.levels?.length ?? 0}`,
       });
       this.listener.onVariants?.(variantsOf(hls.levels ?? []));
       this.applyQuality();
+      this.listener.onTracks?.();
     });
+    for (const event of [
+      Events.AUDIO_TRACKS_UPDATED,
+      Events.SUBTITLE_TRACKS_UPDATED,
+    ]) {
+      if (event) hls.on(event, () => this.listener.onTracks?.());
+    }
     if (Events.LEVEL_SWITCHED) {
       hls.on(Events.LEVEL_SWITCHED, (_event, data) => {
         if (typeof data?.level === 'number')
@@ -196,6 +209,28 @@ export class HlsStream {
     });
     hls.loadSource(this.source.uri);
     hls.attachMedia(this.element);
+  }
+
+  // ── Video: the renditions (HlsTracks) ──
+
+  get audioTracks(): ReadonlyArray<HlsMediaTrack> {
+    return this.hls?.audioTracks ?? [];
+  }
+
+  get subtitleTracks(): ReadonlyArray<HlsMediaTrack> {
+    return this.hls?.subtitleTracks ?? [];
+  }
+
+  selectAudio(index: number): void {
+    const hls = this.hls;
+    if (hls && hls.audioTrack !== index) hls.audioTrack = index;
+  }
+
+  selectSubtitles(index: number): void {
+    const hls = this.hls;
+    if (!hls) return;
+    hls.subtitleDisplay = false;
+    if (hls.subtitleTrack !== index) hls.subtitleTrack = index;
   }
 
   /** Video: what the variants must keep to (applied once the levels are known). */

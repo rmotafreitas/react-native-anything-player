@@ -130,6 +130,59 @@ test('a rendition switch happens behind the picture, without leaving playing', a
   expect(await page.evaluate(() => window.videoTest.errors)).toEqual([]);
 });
 
+test("an HLS source's own audio and subtitle groups are tracks: picked ones play, their cues on the overlay", async ({
+  page,
+}) => {
+  await open(page);
+  await page.evaluate(() =>
+    window.videoTest.player.load(
+      `${window.videoTest.MEDIA}/video-hls/master.m3u8`,
+      { autoplay: true }
+    )
+  );
+  await expect
+    .poll(async () => (await status(page)).state, { timeout: 20_000 })
+    .toBe('playing');
+  const described = async () =>
+    ((await status(page)).video?.tracks ?? []).map(
+      (t) => `${t.kind}:${t.language}`
+    );
+  await expect
+    .poll(described, { timeout: 15_000 })
+    .toEqual(['audio:en', 'audio:es', 'subtitles:en', 'subtitles:pt']);
+  // Two pictures to choose from.
+  expect(
+    (await status(page)).video?.qualities.filter((q) => !q.audioOnly)
+  ).toHaveLength(2);
+  const tracks = (await status(page)).video!.tracks;
+  const pt = tracks.find((t) => t.language === 'pt')!.id;
+  const es = tracks.find((t) => t.language === 'es')!.id;
+  await page.evaluate((id) => window.videoTest.player.selectSubtitles(id), pt);
+  const overlay = page.locator('#stage');
+  await expect(overlay).toContainText('em português', { timeout: 15_000 });
+  // The browser draws none of its own: the overlay is the only text.
+  expect(
+    await page
+      .locator('#stage video')
+      .evaluate(
+        (v) =>
+          Array.from((v as HTMLVideoElement).textTracks).filter(
+            (t) => t.mode === 'showing'
+          ).length
+      )
+  ).toBe(0);
+  expect((await page.evaluate(() => window.videoTest.cues)).flat()).toEqual(
+    expect.arrayContaining([expect.stringContaining('português')])
+  );
+  await page.evaluate((id) => window.videoTest.player.selectAudioTrack(id), es);
+  await expect
+    .poll(async () => (await status(page)).video?.audioTrack)
+    .toBe(es);
+  await page.evaluate(() => window.videoTest.player.selectSubtitles(null));
+  await expect(overlay).not.toContainText('português');
+  expect(await page.evaluate(() => window.videoTest.errors)).toEqual([]);
+});
+
 test('an audio player has no picture to attach', async ({ page }) => {
   await open(page);
   const code = await page.evaluate(async () => {

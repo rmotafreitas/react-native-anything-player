@@ -56,6 +56,8 @@ export class SwapDriver implements LocalDriver {
   private rate = 1;
   private loop = false;
   private quality: QualityConstraints | null = null;
+  /** The engine's track picks: a switch's file plays the same ones. */
+  private tracks: { audio: string | null; text: string | null } | null = null;
   /** What both elements report to: the switch's events are intercepted here. */
   private readonly proxy: DriverObserver;
 
@@ -151,8 +153,9 @@ export class SwapDriver implements LocalDriver {
     // See MediaElementDriver.setVideoEnabled.
   }
 
-  selectTracks(): void {
-    // See MediaElementDriver.selectTracks.
+  selectTracks(audio: string | null, text: string | null): void {
+    this.tracks = { audio, text };
+    this.current.selectTracks(audio, text);
   }
 
   cancelSwap(generation: number): void {
@@ -196,6 +199,7 @@ export class SwapDriver implements LocalDriver {
     spare.setRate(this.rate);
     spare.setLoop(this.loop);
     if (this.quality) spare.setQuality(this.quality);
+    if (this.tracks) spare.selectTracks(this.tracks.audio, this.tracks.text);
     spare.open({
       ...request,
       swap: false,
@@ -221,8 +225,11 @@ export class SwapDriver implements LocalDriver {
         }
       },
       onPlaying: (generation: number) => {
-        if (switching(generation)) this.takeOver();
+        const switched = switching(generation);
+        if (switched) this.takeOver();
         f.onPlaying(generation);
+        // The engine took the switch's generation: the new file's tracks are the ones now.
+        if (switched) f.onTracks?.(generation, this.current.sourceTracks);
       },
       onBuffering: (g) => f.onBuffering(g),
       onEnded: (g) => f.onEnded(g),
@@ -236,6 +243,8 @@ export class SwapDriver implements LocalDriver {
       onFirstFrame: (g) => f.onFirstFrame?.(g),
       onVariants: (g, variants) => f.onVariants?.(g, variants),
       onBandwidth: (g, bps) => f.onBandwidth?.(g, bps),
+      onTracks: (g, tracks) => f.onTracks?.(g, tracks),
+      onSourceCues: (g, cues) => f.onSourceCues?.(g, cues),
     };
   }
 

@@ -1,4 +1,4 @@
 {
   "extends": "./tsconfig",
-  "exclude": ["e2e", "example", "example-expo", "example-react", "lib", "src/**/__tests__", "website"]
+  "exclude": ["e2e", "example", "example-expo", "example-react", "lib", "scripts/stream-server/media", "src/**/__tests__", "website"]
 }
