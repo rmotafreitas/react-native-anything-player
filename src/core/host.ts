@@ -41,6 +41,16 @@ export interface PlayerModule {
   playFromSearch(request: object, playerId: string | null): Promise<object>;
   setSearchHandlerEnabled(enabled: boolean): void;
   resolveSearchRequest(requestId: string, result: object): void;
+  /** A video command (`{ op, … }`); resolves with the status after it. */
+  videoCommand(playerId: string, command: object): Promise<object>;
+  /** Quality-of-experience numbers since the last load (`getStats`). */
+  getVideoStats(playerId: string): object;
+  /** Fetches a text file and decodes it (detecting the encoding): `{ text, charset }`. */
+  fetchText(
+    uri: string,
+    headers: object,
+    encoding: string | null
+  ): Promise<object>;
   onPlayerEvent(listener: (event: object) => void): { remove(): void };
 }
 
@@ -62,6 +72,11 @@ export interface PlayerHost {
   acceptsScheme?(scheme: string): boolean;
   /** Whether `load()` takes a `Blob` or `File` (the web). */
   readonly acceptsBlobs?: boolean;
+  /**
+   * The web: puts a video player's picture in `element` (`null` takes it
+   * out). React Native shows it with `<VideoView>` instead.
+   */
+  attachVideo?(playerId: string, element: unknown, fit?: string): void;
 }
 
 let installed: PlayerHost | null = null;

@@ -53,6 +53,84 @@ class AnythingPlayerModule(reactContext: ReactApplicationContext) : NativeAnythi
   companion object {
     const val NAME = NativeAnythingPlayerSpec.NAME
     private const val PLAYER_RELEASED_MESSAGE = "The player was released."
+
+    private fun videoUnavailable() =
+      PlayerError(
+        ErrorCode.VIDEO_UNAVAILABLE,
+        "Video players need the video module, which is not in this build yet on Android. " +
+          "It plays on the web today; see docs/video-design.md for the release plan.",
+        false,
+      )
+  }
+
+  // ── Video ──
+
+  override fun videoCommand(playerId: String, command: ReadableMap, promise: Promise) {
+    val op = command.optString("op")
+    val refreshed = if (op == "refreshed") command.optMap("source")?.let { parseSource(it).first } else null
+    command(playerId, promise) { controller ->
+      val engine = controller.engine
+      when (op) {
+        "loop" -> engine.setLoop(command.optBoolean("value") == true)
+        "seek" -> engine.seek(command.optDouble("position") ?: 0.0, command.optBoolean("exact") == true)
+        "refreshed" -> if (refreshed != null) engine.sourceRefreshed(command.optDouble("loadId")?.toInt() ?: -1, refreshed)
+        "refreshFailed" -> engine.sourceRefreshFailed(command.optDouble("loadId")?.toInt() ?: -1)
+        else -> throw videoUnavailable()
+      }
+    }
+  }
+
+  override fun getVideoStats(playerId: String): WritableMap =
+    AnythingPlayerRuntime.players[playerId]?.statsMap() ?: Arguments.createMap()
+
+  override fun fetchText(uri: String, headers: ReadableMap, encoding: String?, promise: Promise) {
+    val builder = okhttp3.Request.Builder().url(uri)
+    val it = headers.keySetIterator()
+    while (it.hasNextKey()) {
+      val key = it.nextKey()
+      headers.optString(key)?.let { value -> builder.header(key, value) }
+    }
+    val request =
+      try {
+        builder.build()
+      } catch (error: IllegalArgumentException) {
+        reject(promise, PlayerError(ErrorCode.INVALID_SOURCE, "Not a URL: $uri", false))
+        return
+      }
+    com.anythingplayer.platform.HttpConnections.client.newCall(request).enqueue(
+      object : okhttp3.Callback {
+        override fun onFailure(call: okhttp3.Call, e: java.io.IOException) {
+          reject(promise, PlayerError(ErrorCode.NETWORK_ERROR, "$uri could not be fetched (${e.message}).", true))
+        }
+
+        override fun onResponse(call: okhttp3.Call, response: okhttp3.Response) {
+          response.use {
+            if (!it.isSuccessful) {
+              val status = it.code
+              reject(
+                promise,
+                PlayerError(ErrorCode.HTTP_ERROR, "The server returned HTTP $status for $uri.", status >= 500, httpStatus = status),
+              )
+              return
+            }
+            val bytes = it.body?.bytes() ?: ByteArray(0)
+            val charset = encoding ?: com.anythingplayer.core.SubtitleCharset.detect(bytes)
+            val text =
+              try {
+                String(bytes, java.nio.charset.Charset.forName(charset))
+              } catch (error: IllegalArgumentException) {
+                String(bytes, Charsets.UTF_8)
+              }
+            promise.resolve(
+              Arguments.createMap().apply {
+                putString("text", text)
+                putString("charset", charset)
+              },
+            )
+          }
+        }
+      },
+    )
   }
 
   override fun initialize() {

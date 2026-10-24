@@ -125,7 +125,14 @@ internal fun parseSource(map: ReadableMap): Pair<SourceDescriptor, NowPlayingFie
       h.optString(key)?.let { value -> headers[key] = value }
     }
   }
-  val descriptor = SourceDescriptor(map.optString("uri") ?: "", headers, map.optBoolean("live"))
+  val descriptor =
+    SourceDescriptor(
+      map.optString("uri") ?: "",
+      headers,
+      map.optBoolean("live"),
+      refreshable = map.optBoolean("refreshable") ?: false,
+      expiresAt = map.optDouble("expiresAt")?.toLong(),
+    )
   return descriptor to parseNowPlaying(map.optMap("metadata"))
 }
 
@@ -214,6 +221,8 @@ internal fun statusToMap(status: Status, seq: Long): WritableMap =
     )
     val sleepAt = status.sleepAt
     if (sleepAt == null) putNull("sleepAt") else putDouble("sleepAt", sleepAt.toDouble())
+    // A video player's part comes with the video module (not in this build yet).
+    putNull("video")
   }
 
 internal fun metadataToMap(metadata: StreamMetadata, timestamp: Long): WritableMap =

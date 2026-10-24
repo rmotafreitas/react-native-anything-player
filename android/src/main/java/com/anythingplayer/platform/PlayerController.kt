@@ -12,6 +12,7 @@ import com.anythingplayer.core.AudioRouteKind
 import com.anythingplayer.core.DiagnosticEntry
 import com.anythingplayer.core.EngineClock
 import com.anythingplayer.core.EngineDelegate
+import com.anythingplayer.core.EngineStats
 import com.anythingplayer.core.ErrorCode
 import com.anythingplayer.core.FocusResult
 import com.anythingplayer.core.InterruptionReason
@@ -20,6 +21,7 @@ import com.anythingplayer.core.PlaybackEngine
 import com.anythingplayer.core.PlayerError
 import com.anythingplayer.core.ReadyInfo
 import com.anythingplayer.core.SourceDescriptor
+import com.anythingplayer.core.RefreshReason
 import com.anythingplayer.core.Status
 import com.anythingplayer.core.StreamMetadata
 import com.anythingplayer.core.TrackClock
@@ -391,6 +393,30 @@ internal class PlayerController(
     }
   }
 
+  override fun engineRequestsSourceRefresh(loadId: Int, reason: RefreshReason) {
+    emit(
+      "refreshRequest",
+      Arguments.createMap().apply {
+        putInt("loadId", loadId)
+        putString("reason", reason.wire)
+      },
+    )
+  }
+
+  /** `getStats()`: the engine's counters (any thread). */
+  fun statsMap(): WritableMap {
+    val stats = statsSnapshot
+    return Arguments.createMap().apply {
+      stats.startupMs?.let { putDouble("startupMs", it.toDouble()) } ?: putNull("startupMs")
+      putInt("rebufferCount", stats.rebufferCount)
+      putDouble("rebufferMs", stats.rebufferMs.toDouble())
+      putInt("qualitySwitches", stats.qualitySwitches)
+      putInt("audioOnlySwitches", stats.audioOnlySwitches)
+      putNull("droppedFrames")
+      putNull("bandwidth")
+    }
+  }
+
   override fun engineWakeupAt(at: Long?) {
     handler.removeCallbacks(wakeup)
     if (!released && at != null) {
@@ -398,7 +424,11 @@ internal class PlayerController(
     }
     // Every engine entry ends here: refresh the progress snapshot JS reads.
     progressSnapshot = ProgressSnapshot(driver.progress(), AndroidClock.monotonicMs, AndroidClock.wallMs)
+    statsSnapshot = engine.stats
   }
+
+  /** The engine's counters as of its last entry (read from the JS thread). */
+  @Volatile private var statsSnapshot = EngineStats()
 
   // ── DriverObserver (main thread) ──
 

@@ -8,6 +8,7 @@
 import { WEB_ONLY_SCHEMES, installHost } from '../core/host';
 import { browser } from './platform/dom';
 import { webModule } from './platform/WebModule';
+import type { ContentFit } from './platform/WebVideo';
 
 installHost({
   module: webModule,
@@ -30,6 +31,8 @@ installHost({
   resolveAsset: () => null,
   acceptsScheme: (scheme) => WEB_ONLY_SCHEMES.has(scheme),
   acceptsBlobs: true,
+  attachVideo: (playerId, element, fit) =>
+    webModule().attachVideo(playerId, element, fit as ContentFit | undefined),
 });
 
 export { Player } from '../core/Player';

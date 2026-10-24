@@ -60,6 +60,7 @@ export class WebRuntime implements PlayerRuntime {
     this.start();
     this.players.set(controller.id, controller);
     controller.engine.networkChanged(this.network, false);
+    this.describeSurroundings(controller);
     this.listener?.onControllerAdded(controller);
     // The system controls answer as soon as a player with a session exists:
     // a Play with nothing loaded is forwarded to the app (see `remote`).
@@ -142,6 +143,41 @@ export class WebRuntime implements PlayerRuntime {
     g.document?.addEventListener('visibilitychange', () => {
       if (g.document?.visibilityState === 'visible')
         this.players.forEach((p) => p.engine.appForegrounded());
+      // A hidden tab is the web's background (`whenBackgrounded`).
+      else this.players.forEach((p) => p.engine.appBackgrounded());
+    });
+    g.navigator?.connection?.addEventListener('change', () =>
+      this.players.forEach((p) => this.describeCost(p))
+    );
+    g.addEventListener?.('languagechange', () =>
+      this.players.forEach((p) => this.describeLanguages(p))
+    );
+  }
+
+  /** What a new player needs to know about the page: hidden, metered, its languages. */
+  private describeSurroundings(controller: WebPlayerController): void {
+    if (browser().document?.visibilityState === 'hidden')
+      controller.engine.appBackgrounded();
+    this.describeCost(controller);
+    this.describeLanguages(controller);
+  }
+
+  /** Chromium's Network Information: cellular is metered, and Data Saver. */
+  private describeCost(controller: WebPlayerController): void {
+    const connection = browser().navigator?.connection;
+    controller.engine.networkCostChanged(
+      connection?.type === 'cellular',
+      connection?.saveData === true
+    );
+  }
+
+  private describeLanguages(controller: WebPlayerController): void {
+    const languages = browser().navigator?.languages ?? [];
+    controller.engine.systemPreferencesChanged({
+      languages: [...languages],
+      // Browsers do not tell pages about the OS's caption settings.
+      captions: false,
+      audioDescriptions: false,
     });
   }
 

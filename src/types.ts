@@ -1,4 +1,15 @@
 import type { PlayerError } from './errors';
+import type { MediaTrack } from './core/subtitles/tracks';
+import type { SubtitleCue, SubtitleFormat } from './core/subtitles/types';
+
+export type { MediaTrack, TrackKind } from './core/subtitles/tracks';
+export type {
+  CueAlign,
+  CueSpan,
+  CueVertical,
+  SubtitleCue,
+  SubtitleFormat,
+} from './core/subtitles/types';
 
 /**
  * Playback state. Native owns it; JS mirrors it.
@@ -119,6 +130,9 @@ export type PlayerErrorCode =
   | 'CAST_UNAVAILABLE'
   | 'CAST_UNSUPPORTED_SOURCE'
   | 'SOUND_UNAVAILABLE'
+  | 'VIDEO_UNAVAILABLE'
+  | 'DRM_UNSUPPORTED'
+  | 'SUBTITLE_LOAD_FAILED'
   | 'INTERNAL_ERROR';
 
 /**
@@ -192,6 +206,56 @@ export interface PlayerStatus {
    * set (see `Player.sleep`).
    */
   sleepAt: number | null;
+  /** The picture, its qualities and tracks; `null` for an audio player. */
+  video: VideoStatus | null;
+}
+
+/** Why a video player plays its sound alone. */
+export type AudioOnlyReason =
+  /** `setListenOnly(true)`. */
+  | 'listen'
+  /** The app is in the background with `whenBackgrounded: 'audio'`. */
+  | 'background'
+  /** The network is too slow for any picture (`fallbackToAudio`). */
+  | 'fallback';
+
+/** One quality of a video: an HLS/DASH variant, or one of `renditions`. */
+export interface VideoQuality {
+  /** Pass it to `selectQuality`. */
+  id: string;
+  /** Pixels, `null` when unknown. */
+  height: number | null;
+  /** Bits per second, `null` when unknown. */
+  bitrate: number | null;
+  label: string | null;
+  /** Sound only. */
+  audioOnly: boolean;
+}
+
+/** `status.video`: what a video player shows and can show. */
+export interface VideoStatus {
+  /** The picture's size in pixels, `null` until known. */
+  width: number | null;
+  height: number | null;
+  hdr: boolean;
+  /** A frame of the current source has been shown (hide the poster). */
+  firstFrame: boolean;
+  /** Why the sound plays alone, `null` while the picture plays. */
+  audioOnly: AudioOnlyReason | null;
+  pictureInPicture: boolean;
+  fullscreen: boolean;
+  qualities: VideoQuality[];
+  /** The quality playing, `null` when unknown. */
+  quality: string | null;
+  /** The quality the app picked, `null` for automatic. */
+  selectedQuality: string | null;
+  /** The source's audio and text tracks, then the app's subtitle files. */
+  tracks: MediaTrack[];
+  audioTrack: string | null;
+  /** The subtitles shown, `null` for none. */
+  textTrack: string | null;
+  /** Seconds the subtitles are shown later (negative: earlier). */
+  subtitleDelay: number;
 }
 
 /** A progress reading. Positions are seconds. */
@@ -244,6 +308,9 @@ export interface MediaMetadata {
 // eslint-disable-next-line sonarjs/redundant-type-aliases -- Public API name documents Metro asset references.
 export type AssetModule = number;
 
+/** An image: a URL or file URI, an `Artwork`, or `require('./cover.png')`. */
+export type ArtworkInput = string | Artwork | AssetModule;
+
 /** What the lock screen / notification shows for a source (app-provided). */
 export interface NowPlayingMetadata {
   /** Title (e.g. a song, or a station name). */
@@ -253,7 +320,7 @@ export interface NowPlayingMetadata {
   /** Album. */
   album?: string;
   /** Remote URL, local file URI, or `require('./cover.png')`. */
-  artwork?: string | Artwork | AssetModule;
+  artwork?: ArtworkInput;
   /**
    * The song's length in seconds. On a live stream (radio), giving it shows
    * the *song's* progress on the lock screen / notification instead of a
@@ -289,6 +356,86 @@ export interface Source {
   live?: boolean;
   /** Lock-screen metadata (e.g. station name and logo). Stream metadata updates on top. */
   metadata?: NowPlayingMetadata;
+  /** Video: separate files of this video at different qualities (`uri` is then ignored). */
+  renditions?: Rendition[];
+  /** Video: subtitle files, besides the source's own tracks. */
+  subtitles?: SubtitleSource[];
+  /**
+   * Called on a 401/403 and a minute before `expiresAt`, to get a fresh
+   * source (a newly signed URL, a new token in `headers`). Playback goes on
+   * where it was. While JavaScript is not running, the player retries the old
+   * source with the usual backoff.
+   */
+  refresh?: (request: SourceRefreshRequest) => Promise<SourceInput>;
+  /** Epoch ms when the URL stops working (a signed URL's expiry). */
+  expiresAt?: number;
+  /** Video: shown until the first frame. */
+  poster?: ArtworkInput;
+  /** Video: a WebVTT track of thumbnail sprites, for `getThumbnail`. */
+  thumbnails?: string;
+  /** Reserved for DRM (`DRM_UNSUPPORTED` until it ships). */
+  drm?: DrmConfig;
+}
+
+/**
+ * One file of a video at one quality (`Source.renditions`). Leave out what
+ * you do not know: RNAP reads the height and bitrate from the file.
+ */
+export interface Rendition {
+  uri: string;
+  /** Default: the source's headers. */
+  headers?: Record<string, string>;
+  height?: number;
+  bitrate?: number;
+  /** Shown in quality menus, e.g. `'1080p'`. */
+  label?: string;
+  /** The sound alone: the last step of `fallbackToAudio` and of `whenBackgrounded: 'audio'`. */
+  audioOnly?: boolean;
+}
+
+/** A subtitle file for `Source.subtitles` or `Player.addSubtitles`. */
+export interface SubtitleSource {
+  /** Default: `sub:<index>`. Pass it to `selectSubtitles`. */
+  id?: string;
+  /** Where the file is. */
+  uri?: string;
+  /** Or its contents. */
+  text?: string;
+  /** BCP 47 (`pt-BR`) or ISO 639 (`por`). */
+  language?: string;
+  label?: string;
+  /** Default: from the file name, else from the contents. */
+  format?: SubtitleFormat;
+  /** `captions`: for the deaf and hard of hearing (SDH). Default `subtitles`. */
+  kind?: 'subtitles' | 'captions';
+  /** Only what is not in the audio's language (signs, foreign lines). */
+  forced?: boolean;
+  default?: boolean;
+  /** The file's text encoding (`windows-1252`, `shift_jis`…). Default: detected. */
+  encoding?: string;
+  /** HTTP headers for `uri`. Default: the source's. */
+  headers?: Record<string, string>;
+}
+
+/** Why `Source.refresh` is called. */
+export interface SourceRefreshRequest {
+  /** `unauthorized`: the server answered 401/403. `expiring`: `expiresAt` is a minute away. */
+  reason: 'unauthorized' | 'expiring';
+}
+
+/**
+ * DRM, by key system: each platform uses the one it supports. Reserved: until
+ * DRM ships, a source with `drm` is rejected with `DRM_UNSUPPORTED`.
+ */
+export interface DrmConfig {
+  fairplay?: {
+    licenseUrl: string;
+    certificateUrl: string;
+    headers?: Record<string, string>;
+  };
+  widevine?: { licenseUrl: string; headers?: Record<string, string> };
+  playready?: { licenseUrl: string; headers?: Record<string, string> };
+  clearkey?: { keys?: Record<string, string>; licenseUrl?: string };
 }
 
 /** What `load()` accepts: a {@link Source}, a URI, or `require('./file.mp3')`. */
@@ -404,6 +551,11 @@ export interface PlayerOptions {
   /** Start with diagnostics enabled (see `setDiagnosticsEnabled`). */
   diagnostics?: boolean;
   /**
+   * A video player: `true` for the defaults. On iOS and Android it needs the
+   * video module (`npx rnap add video`); without it, `VIDEO_UNAVAILABLE`.
+   */
+  video?: boolean | VideoOptions;
+  /**
    * Emit `progress` events this often (ms) while playing. They come from a
    * native timer, so they also run JS where the app's own timers are frozen
    * (Android in the background). Off by default; `getProgress()` is
@@ -468,6 +620,102 @@ export interface PlayerEventMap {
   searchPlay: (event: SearchPlayEvent) => void;
   /** The sleep timer ran out (`status.sleepAt` is back to `null`). */
   sleep: (event: SleepEvent) => void;
+  /** Video: the subtitles on screen changed (the selected text track's). */
+  cues: (cues: SubtitleCue[]) => void;
+  /** Video: the first frame of the source was shown. */
+  firstFrame: () => void;
+  /** Video: Picture in Picture started or ended. */
+  pictureInPictureChange: (active: boolean) => void;
+  /** Video: fullscreen started or ended. */
+  fullscreenChange: (active: boolean) => void;
+}
+
+/** `PlayerOptions.video`. */
+export interface VideoOptions {
+  /**
+   * When the app goes to the background: `pause` (default on iOS and
+   * Android), `audio` (keep the sound and the lock screen, stop the picture;
+   * the default on the web, where a hidden tab plays on) or `pip` (Picture
+   * in Picture; pause when it is not possible).
+   */
+  whenBackgrounded?: 'pause' | 'audio' | 'pip';
+  /**
+   * A decorative loop: muted, looping, no audio focus or lock screen, paused
+   * while off screen or in the background.
+   */
+  ambient?: boolean;
+  /** Keep the screen on while playing in a visible view. Default `true`. */
+  keepAwake?: boolean;
+  /** A muted video takes audio focus and the lock screen anyway. Default `false`. */
+  focusWhenMuted?: boolean;
+  /**
+   * On a network too slow for any picture, play the sound alone and bring
+   * the picture back when it recovers. Default `false`; an object tunes the
+   * thresholds.
+   */
+  fallbackToAudio?: boolean | AudioFallbackOptions;
+  quality?: VideoQualityOptions;
+  tracks?: {
+    /** The user's languages, in order (default: the device's). */
+    languages?: string[];
+    /** Follow the OS's captions and audio-description settings. Default `true`. */
+    followSystem?: boolean;
+  };
+}
+
+/** The audio-only fallback's thresholds (`fallbackToAudio`). */
+export interface AudioFallbackOptions {
+  /** Drop when the bandwidth stays under this × the lowest video quality… (1.2) */
+  dropBelowRatio?: number;
+  /** …for this long, ms (10 000). */
+  dropAfterMs?: number;
+  /** Or after this many stalls… (2) */
+  dropAfterStalls?: number;
+  /** …within this window, ms (30 000). */
+  stallWindowMs?: number;
+  /** Return above this × the lowest video quality… (1.5) */
+  returnAboveRatio?: number;
+  /** …for this long, ms (30 000). */
+  returnAfterMs?: number;
+}
+
+/** Quality caps (`video.quality`). */
+export interface VideoQualityOptions {
+  /** The tallest picture, pixels. */
+  maxResolution?: number;
+  /** Bits per second. */
+  maxBitrate?: number;
+  /** Caps on cellular and other metered networks. */
+  cellular?: { maxResolution?: number; maxBitrate?: number };
+  /** Where automatic quality starts (default `auto`: by the network). */
+  startQuality?: 'auto' | 'lowest' | 'highest' | number;
+  /** Data Saver, Low Data Mode, `saveData`: at most 480p. Default `true`. */
+  followDataSaver?: boolean;
+  /** Never more pixels than the view shows. Default `true`. */
+  capToView?: boolean;
+}
+
+/** Quality-of-experience numbers since the last `load()` (`getStats()`). */
+export interface PlaybackStats {
+  /** `load()` to the first sound, ms; `null` until then. */
+  startupMs: number | null;
+  rebufferCount: number;
+  rebufferMs: number;
+  qualitySwitches: number;
+  audioOnlySwitches: number;
+  /** Frames the platform dropped, when it says. */
+  droppedFrames: number | null;
+  /** The last bandwidth estimate, bits per second. */
+  bandwidth: number | null;
+}
+
+/** A seek-preview image (`getThumbnail`): `uri`, cropped to the rectangle when one is given. */
+export interface Thumbnail {
+  uri: string;
+  x: number | null;
+  y: number | null;
+  width: number | null;
+  height: number | null;
 }
 
 /**
@@ -599,7 +847,7 @@ export interface CatalogItem {
   /** Genre ("jazz", "news"). */
   genre?: string;
   /** Remote URL, local file URI, or `require('./cover.png')`. */
-  artwork?: string | Artwork | AssetModule;
+  artwork?: ArtworkInput;
   /** What to play. Its `metadata` defaults to this item's title, artist, album and artwork. */
   source: SourceInput;
   /** Other names people say for it: `["Radio One", "BBC 1"]`. */

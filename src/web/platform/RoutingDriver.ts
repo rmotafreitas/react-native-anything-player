@@ -4,19 +4,24 @@
 // the native `RoutingDriver`s.
 
 import type { EngineDriver } from '../engine/PlaybackEngine';
-import type { OpenRequest, PlaybackSample } from '../engine/types';
+import type {
+  OpenRequest,
+  PlaybackSample,
+  QualityConstraints,
+} from '../engine/types';
 import type { CastDriver } from './CastDriver';
-import type { MediaElementDriver, ProgressReading } from './MediaElementDriver';
+import type { ProgressReading } from './MediaElementDriver';
+import type { LocalDriver } from './SwapDriver';
 
 export class RoutingDriver implements EngineDriver {
-  private target: MediaElementDriver | CastDriver;
+  private target: LocalDriver | CastDriver;
   /** Made on the first handoff to Cast (its code loads with the Cast SDK). */
   private cast: CastDriver | null = null;
   private volume = 1;
   private rate = 1;
 
   constructor(
-    readonly local: MediaElementDriver,
+    readonly local: LocalDriver,
     private readonly makeCast: () => CastDriver | null
   ) {
     this.target = local;
@@ -26,6 +31,11 @@ export class RoutingDriver implements EngineDriver {
   destroy(): void {
     this.local.destroy();
     this.cast?.dispose();
+  }
+
+  /** The current output, as the engine sees drivers (the video calls are optional). */
+  private get engineTarget(): EngineDriver {
+    return this.target;
   }
 
   /** Whether the audio plays on the Cast receiver. */
@@ -45,8 +55,29 @@ export class RoutingDriver implements EngineDriver {
     this.target.pause();
   }
 
-  seek(seconds: number): void {
-    this.target.seek(seconds);
+  seek(seconds: number, exact = false): void {
+    if (exact) this.target.seek(seconds, true);
+    else this.target.seek(seconds);
+  }
+
+  setVideoEnabled(enabled: boolean): void {
+    this.engineTarget.setVideoEnabled?.(enabled);
+  }
+
+  setQuality(constraints: QualityConstraints): void {
+    this.engineTarget.setQuality?.(constraints);
+  }
+
+  setLoop(loop: boolean): void {
+    this.engineTarget.setLoop?.(loop);
+  }
+
+  cancelSwap(generation: number): void {
+    this.engineTarget.cancelSwap?.(generation);
+  }
+
+  selectTracks(audio: string | null, text: string | null): void {
+    this.engineTarget.selectTracks?.(audio, text);
   }
 
   releaseConnection(): void {

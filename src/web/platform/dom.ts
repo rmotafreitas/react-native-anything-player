@@ -77,6 +77,63 @@ export interface AudioElementLike extends EventTargetLike {
   appendChild(child: SourceElementLike): void;
 }
 
+/** What every element RNAP styles has. */
+export interface BoxLike {
+  readonly style: Record<string, string>;
+  className: string;
+  readonly parentNode: { removeChild(child: unknown): unknown } | null;
+  setAttribute(name: string, value: string): void;
+  requestFullscreen?(): Promise<void>;
+  webkitRequestFullscreen?(): void;
+}
+
+/** A styled box: the video stage, the subtitle overlay and its lines. */
+export interface ElementLike extends EventTargetLike, BoxLike {
+  textContent: string | null;
+  appendChild(child: unknown): unknown;
+  removeChild(child: unknown): unknown;
+  replaceChildren?(...children: unknown[]): void;
+}
+
+/** A `<video>`: an audio element with a picture. */
+export interface VideoElementLike extends AudioElementLike, BoxLike {
+  readonly videoWidth: number;
+  readonly videoHeight: number;
+  poster: string;
+  loop: boolean;
+  playsInline: boolean;
+  requestPictureInPicture?(): Promise<unknown>;
+  /** Safari's Picture in Picture and fullscreen. */
+  webkitSupportsPresentationMode?(mode: string): boolean;
+  webkitSetPresentationMode?(mode: string): void;
+  readonly webkitPresentationMode?: string;
+  /** iPhone Safari's only fullscreen: the native player. */
+  webkitEnterFullscreen?(): void;
+  webkitExitFullscreen?(): void;
+  requestVideoFrameCallback?(callback: () => void): number;
+  getVideoPlaybackQuality?(): { droppedVideoFrames: number };
+  fastSeek?(time: number): void;
+}
+
+/** `IntersectionObserver` / `ResizeObserver`: the view's visibility and size. */
+export interface ObserverLike {
+  observe(target: unknown): void;
+  disconnect(): void;
+}
+
+export interface IntersectionEntryLike {
+  readonly isIntersecting: boolean;
+  readonly intersectionRatio: number;
+}
+
+export interface ResizeEntryLike {
+  readonly contentRect: { readonly width: number; readonly height: number };
+}
+
+export interface WakeLockSentinelLike {
+  release(): Promise<void>;
+}
+
 export interface SourceBufferLike extends EventTargetLike {
   mode: string;
   readonly updating: boolean;
@@ -112,6 +169,7 @@ export interface ResponseLike {
   readonly status: number;
   readonly headers: HeadersLike;
   readonly body: { getReader(): ReaderLike } | null;
+  arrayBuffer?(): Promise<ArrayBuffer>;
 }
 
 export type MediaSessionAction =
@@ -275,6 +333,9 @@ export interface ScriptElementLike {
 
 export interface NetworkInformationLike extends EventTargetLike {
   readonly type?: string;
+  /** Mbps (Chromium). */
+  readonly downlink?: number;
+  readonly saveData?: boolean;
 }
 
 export interface BrowserGlobals {
@@ -282,15 +343,40 @@ export interface BrowserGlobals {
     readonly visibilityState: string;
     readonly head?: { appendChild(node: ScriptElementLike): void };
     createElement(tag: 'audio'): AudioElementLike;
+    createElement(tag: 'video'): VideoElementLike;
+    createElement(tag: 'div' | 'span'): ElementLike;
     createElement(tag: 'source'): SourceElementLike;
     createElement(tag: 'script'): ScriptElementLike;
+    readonly fullscreenElement?: unknown;
+    readonly webkitFullscreenElement?: unknown;
+    exitFullscreen?(): Promise<void>;
+    webkitExitFullscreen?(): void;
+    readonly pictureInPictureElement?: unknown;
+    exitPictureInPicture?(): Promise<void>;
   };
   navigator?: {
     readonly onLine: boolean;
     readonly userAgent?: string;
     readonly mediaSession?: MediaSessionLike;
     readonly connection?: NetworkInformationLike;
+    readonly languages?: readonly string[];
+    readonly wakeLock?: {
+      request(type: 'screen'): Promise<WakeLockSentinelLike>;
+    };
   };
+  screen?: {
+    orientation?: { lock?(o: string): Promise<void>; unlock?(): void };
+  };
+  devicePixelRatio?: number;
+  matchMedia?(query: string): { readonly matches: boolean };
+  IntersectionObserver?: new (
+    callback: (entries: IntersectionEntryLike[]) => void,
+    options?: { threshold?: number[] }
+  ) => ObserverLike;
+  ResizeObserver?: new (
+    callback: (entries: ResizeEntryLike[]) => void
+  ) => ObserverLike;
+  TextDecoder?: new (label: string) => { decode(bytes: Uint8Array): string };
   location?: { readonly href: string; readonly origin: string };
   addEventListener?: EventTargetLike['addEventListener'];
   readonly isSecureContext?: boolean;
@@ -325,7 +411,7 @@ export interface BrowserGlobals {
     url: string,
     init: {
       headers: Record<string, string>;
-      signal: AbortSignalLike;
+      signal?: AbortSignalLike;
       cache: string;
       mode: string;
     }

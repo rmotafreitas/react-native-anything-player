@@ -350,6 +350,87 @@ public final class AnythingPlayerBridge: NSObject {
     }
   }
 
+  // MARK: Video
+
+  /// Loop, an exact seek and a refreshed source work for every player; the
+  /// picture's commands need the video module (not in this build yet).
+  @objc(videoCommand:command:resolve:reject:)
+  public func videoCommand(
+    _ id: String, command: NSDictionary,
+    resolve: @escaping (Any?) -> Void, reject: @escaping (String, String, NSError?) -> Void
+  ) {
+    let op = command["op"] as? String ?? ""
+    let refreshed = (command["source"] as? NSDictionary).map { SourceDescriptor.parse($0).0 }
+    DispatchQueue.main.async { [weak self] in
+      guard let controller = self?.runtime.player(id) else {
+        return Self.reject(reject, PlayerError.code(.playerReleased, "The player was released.", recoverable: false))
+      }
+      let engine = controller.engine
+      let loadId = (command["loadId"] as? NSNumber)?.intValue ?? -1
+      do {
+        switch op {
+        case "loop": try engine.setLoop(command["value"] as? Bool ?? false)
+        case "seek":
+          try engine.seek(
+            to: (command["position"] as? NSNumber)?.doubleValue ?? 0, exact: command["exact"] as? Bool ?? false)
+        case "refreshed": if let refreshed { engine.sourceRefreshed(loadId: loadId, source: refreshed) }
+        case "refreshFailed": engine.sourceRefreshFailed(loadId: loadId)
+        default:
+          throw PlayerError.code(
+            .videoUnavailable,
+            "Video players need the video module, which is not in this build yet on iOS. "
+              + "It plays on the web today; see docs/video-design.md for the release plan.",
+            recoverable: false)
+        }
+        resolve(controller.statusDictionary())
+      } catch let error as PlayerError {
+        Self.reject(reject, error)
+      } catch {
+        Self.reject(reject, PlayerError.code(.internalError, "\(error)", recoverable: false))
+      }
+    }
+  }
+
+  @objc(videoStats:)
+  public func videoStats(_ id: String) -> NSDictionary {
+    (runtime.player(id)?.statsDictionary() ?? [:]) as NSDictionary
+  }
+
+  /// A text file (subtitles, a thumbnail track), decoded with the encoding detected.
+  @objc(fetchText:headers:encoding:resolve:reject:)
+  public func fetchText(
+    _ uri: String, headers: NSDictionary, encoding: String?,
+    resolve: @escaping (Any?) -> Void, reject: @escaping (String, String, NSError?) -> Void
+  ) {
+    guard let url = URL(string: uri) else {
+      return Self.reject(reject, PlayerError.code(.invalidSource, "Not a URL: \(uri)", recoverable: false))
+    }
+    var request = URLRequest(url: url)
+    headers.forEach { key, value in
+      if let k = key as? String, let v = value as? String { request.setValue(v, forHTTPHeaderField: k) }
+    }
+    URLSession.shared.dataTask(with: request) { data, response, error in
+      if let error {
+        return Self.reject(
+          reject,
+          PlayerError.code(.networkError, "\(uri) could not be fetched (\(error.localizedDescription)).", recoverable: true))
+      }
+      let status = (response as? HTTPURLResponse)?.statusCode ?? 200
+      guard (200..<300).contains(status) else {
+        var failure = PlayerError.code(
+          .httpError, "The server returned HTTP \(status) for \(uri).", recoverable: status >= 500)
+        failure.httpStatus = status
+        return Self.reject(reject, failure)
+      }
+      let bytes = [UInt8](data ?? Data())
+      let charset = encoding ?? SubtitleCharset.detect(bytes)
+      let text =
+        String(bytes: bytes, encoding: SubtitleCharset.encoding(charset))
+        ?? String(decoding: bytes, as: UTF8.self)
+      resolve(["text": text, "charset": charset])
+    }.resume()
+  }
+
   @objc public func setSearchHandlerEnabled(_ enabled: Bool) {
     let runtime = self.runtime
     DispatchQueue.main.async { runtime.voice.handlerEnabled = enabled }

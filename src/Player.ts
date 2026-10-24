@@ -46,6 +46,17 @@ installHost({
   get acceptsBlobs() {
     return Platform.OS === 'web';
   },
+  // React Native Web: the browser engine puts the picture in a page element
+  // (`<VideoView>` gives it its own). A device shows it in a native view.
+  get attachVideo() {
+    const web = NativeAnythingPlayer as unknown as {
+      attachVideo?: (id: string, element: unknown, fit?: string) => void;
+    } | null;
+    return Platform.OS === 'web' && web?.attachVideo
+      ? (id: string, element: unknown, fit?: string) =>
+          web.attachVideo!(id, element, fit)
+      : undefined;
+  },
 });
 
 export {

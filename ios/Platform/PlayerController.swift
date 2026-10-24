@@ -80,7 +80,9 @@ extension SourceDescriptor {
       if let k = key as? String, let v = value as? String { headers[k] = v }
     }
     let descriptor = SourceDescriptor(
-      uri: source["uri"] as? String ?? "", headers: headers, liveHint: source["live"] as? Bool)
+      uri: source["uri"] as? String ?? "", headers: headers, liveHint: source["live"] as? Bool,
+      refreshable: source["refreshable"] as? Bool ?? false,
+      expiresAt: (source["expiresAt"] as? NSNumber)?.int64Value)
     return (descriptor, NowPlayingFields(source["metadata"] as? NSDictionary))
   }
 
@@ -142,6 +144,8 @@ final class PlayerController: EngineDelegate, DriverObserver {
   private var snapshotStatus = Status()
   private var snapshotSeq: Int64 = 0
   private var snapshotProgress = (ProgressReading(), Int64(0), Int64(0))
+  /// The engine's counters as of its last entry (read from the JS thread).
+  private var snapshotStats = EngineStats()
   private var snapshotMetadata: (StreamMetadata, Int64)?
   private var diagnostics: [DiagnosticEntry] = []
   private var diagnosticsOn = false
@@ -474,6 +478,24 @@ final class PlayerController: EngineDelegate, DriverObserver {
     }
   }
 
+  func engine(refreshRequested loadId: Int, reason: RefreshReason) {
+    emit("refreshRequest", ["loadId": loadId, "reason": reason.rawValue])
+  }
+
+  /// `getStats()`: the engine's counters (any thread).
+  func statsDictionary() -> [String: Any] {
+    let s = lock.sync { snapshotStats }
+    return [
+      "startupMs": Serialization.optional(s.startupMs),
+      "rebufferCount": s.rebufferCount,
+      "rebufferMs": s.rebufferMs,
+      "qualitySwitches": s.qualitySwitches,
+      "audioOnlySwitches": s.audioOnlySwitches,
+      "droppedFrames": NSNull(),
+      "bandwidth": NSNull(),
+    ]
+  }
+
   func engine(wakeupAt: Int64?) {
     wakeup?.cancel()
     wakeup = nil
@@ -486,7 +508,11 @@ final class PlayerController: EngineDelegate, DriverObserver {
     // Every engine entry ends here: refresh the progress snapshot JS reads.
     let reading = routing.progress()
     let clock = SystemClock.shared
-    lock.sync { snapshotProgress = (reading, clock.monotonicMs, clock.wallMs) }
+    let stats = engine.stats
+    lock.sync {
+      snapshotProgress = (reading, clock.monotonicMs, clock.wallMs)
+      snapshotStats = stats
+    }
     runtime.keepaliveCheck()
   }
 
@@ -548,6 +574,8 @@ enum Serialization {
       "rate": s.rate,
       "route": ["kind": s.route.kind.rawValue, "name": optional(s.route.name)],
       "sleepAt": optional(s.sleepAt),
+      // A video player's part comes with the video module (not in this build yet).
+      "video": NSNull(),
     ]
     if let i = s.interruption {
       dict["interruption"] = ["reason": i.reason.rawValue, "resumable": i.resumable, "since": i.since]

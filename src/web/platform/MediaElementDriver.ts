@@ -29,13 +29,17 @@ import {
   type InterruptionReason,
   type OpenRequest,
   type PlaybackSample,
+  type QualityConstraints,
   type ReadyInfo,
   type SourceDescriptor,
+  type VideoInfo,
+  type VideoVariant,
 } from '../engine/types';
 import {
   browser,
   type AbortControllerLike,
   type AudioElementLike,
+  type VideoElementLike,
 } from './dom';
 import { HLS_HINT, HLS_MISSING, isHlsType, isHlsUri } from './hlsFormats';
 import type { HlsStream } from './HlsStream';
@@ -57,7 +61,21 @@ export interface DriverObserver {
   ): void;
   /** The element changed (a new one replaced a tapped one); the sampler re-attaches. */
   onElementReplaced(element: AudioElementLike): void;
+  /** Video: the picture's size (and the variant playing). */
+  onVideoInfo?(generation: number, info: VideoInfo): void;
+  /** Video: the first frame was shown. */
+  onFirstFrame?(generation: number): void;
+  /** Video: an adaptive source's variants. */
+  onVariants?(generation: number, variants: VideoVariant[]): void;
+  /** Video: a bandwidth estimate, bits per second. */
+  onBandwidth?(generation: number, bitsPerSecond: number): void;
 }
+
+/** What the driver plays: sound alone, or a picture too. */
+export type MediaKind = 'audio' | 'video';
+
+/** How often a bandwidth estimate is read from the Network Information API. */
+const DOWNLINK_EVERY_MS = 2000;
 
 type HlsParts = typeof import('./HlsStream');
 
@@ -109,6 +127,12 @@ type Timed = { time: number; fire: () => void };
 /** A source whose bytes the page itself holds (a picked file). */
 const LOCAL_URI = /^(blob|data):/i;
 
+/** A network source that may be a live stream (not HLS, not marked a file): read through MSE. */
+function mayStream(source: SourceDescriptor): boolean {
+  if (!isNetworkSource(source) || source.liveHint === false) return false;
+  return !isHlsUri(source.uri);
+}
+
 /** What `canPlayType` answers for HLS in browsers that play it natively (Safari, Android). */
 const HLS_MIME = 'application/vnd.apple.mpegurl';
 
@@ -147,16 +171,26 @@ export class MediaElementDriver implements EngineDriver {
   private playToken = 0;
   private volume = 1;
   private rate = 1;
+  private loop = false;
+  private quality: QualityConstraints | null = null;
+  private variantId: string | null = null;
+  private downlinkAt = 0;
 
   constructor(
     private readonly observer: DriverObserver,
-    private readonly titleFormat: StreamTitleFormat
+    private readonly titleFormat: StreamTitleFormat,
+    readonly kind: MediaKind = 'audio'
   ) {
     this._element = this.createElement();
   }
 
   get element(): AudioElementLike {
     return this._element;
+  }
+
+  /** The `<video>` of a video driver (`null` for audio). */
+  get videoElement(): VideoElementLike | null {
+    return this.kind === 'video' ? (this._element as VideoElementLike) : null;
   }
 
   /**
@@ -179,7 +213,25 @@ export class MediaElementDriver implements EngineDriver {
   }
 
   private createElement(): AudioElementLike {
-    const element = browser().document!.createElement('audio');
+    const document = browser().document!;
+    if (this.kind === 'video') {
+      const video = document.createElement('video');
+      video.preload = 'auto';
+      video.playsInline = true;
+      // iPhone Safari before `playsInline` was a property.
+      video.setAttribute('playsinline', '');
+      video.setAttribute('webkit-playsinline', '');
+      video.loop = this.loop;
+      Object.assign(video.style, {
+        width: '100%',
+        height: '100%',
+        display: 'block',
+        objectFit: 'contain',
+        backgroundColor: 'black',
+      });
+      return video;
+    }
+    const element = document.createElement('audio');
     element.preload = 'auto';
     return element;
   }
@@ -203,12 +255,11 @@ export class MediaElementDriver implements EngineDriver {
     this.allowReconnect = request.allowReconnect;
     this.flowed = false;
     this.pendingStart = request.startPosition;
+    this.variantId = null;
     const media = mediaSourceConstructor();
+    // ICY over MSE is audio's: a video plays on the element (or hls.js).
     const streamable =
-      media != null &&
-      isNetworkSource(request.source) &&
-      request.source.liveHint !== false &&
-      !isHlsUri(request.source.uri);
+      this.kind === 'audio' && media != null && mayStream(request.source);
     if (streamable) {
       this.attach();
       this.startStream(request.source, media);
@@ -257,13 +308,35 @@ export class MediaElementDriver implements EngineDriver {
     this._element.pause();
   }
 
-  seek(seconds: number): void {
+  seek(seconds: number, exact = false): void {
     if (this._element.readyState === 0) {
       this.pendingStart = seconds;
       return;
     }
-    this._element.currentTime = seconds;
+    const video = this.videoElement;
+    // A scrub lands on the nearest keyframe (fast); `exact` on the frame.
+    if (!exact && video?.fastSeek) video.fastSeek(seconds);
+    else this._element.currentTime = seconds;
     this.pumpTimed();
+  }
+
+  setLoop(loop: boolean): void {
+    this.loop = loop;
+    const video = this.videoElement;
+    if (video) video.loop = loop;
+  }
+
+  setVideoEnabled(): void {
+    // A browser decodes what the element plays: audio-only variants save the data.
+  }
+
+  setQuality(constraints: QualityConstraints): void {
+    this.quality = constraints;
+    this.hls?.setQuality(constraints);
+  }
+
+  selectTracks(): void {
+    // The source's own tracks on the web come with hls.js audio and subtitle groups (not yet).
   }
 
   releaseConnection(): void {
@@ -343,6 +416,7 @@ export class MediaElementDriver implements EngineDriver {
       this.pumpTimed();
     });
     on('waiting', () => this.observer.onBuffering(generation));
+    if (this.kind === 'video') this.attachVideo(generation, on);
     on('ended', () => this.observer.onEnded(generation));
     on('error', () => this.onError(generation));
     on('pause', () => {
@@ -362,6 +436,46 @@ export class MediaElementDriver implements EngineDriver {
     });
     on('timeupdate', () => this.pumpTimed());
     on('seeked', () => this.pumpTimed());
+  }
+
+  /** The picture's size, the first frame, and a coarse bandwidth for files. */
+  private attachVideo(
+    generation: number,
+    on: (type: string, handler: () => void) => void
+  ): void {
+    const video = this._element as VideoElementLike;
+    const info = () => {
+      if (video.videoWidth > 0 && video.videoHeight > 0)
+        this.observer.onVideoInfo?.(generation, {
+          width: video.videoWidth,
+          height: video.videoHeight,
+          hdr: false,
+          variantId: this.variantId,
+        });
+    };
+    on('loadedmetadata', info);
+    on('resize', info);
+    on('loadeddata', () => {
+      const frame = () => {
+        if (generation === this.generation)
+          this.observer.onFirstFrame?.(generation);
+      };
+      if (video.requestVideoFrameCallback)
+        video.requestVideoFrameCallback(frame);
+      else frame();
+    });
+    on('progress', () => this.readDownlink(generation));
+  }
+
+  /** Chromium's Network Information estimate, for files (hls.js has its own). */
+  private readDownlink(generation: number): void {
+    if (this.hls != null) return;
+    const now = Date.now();
+    if (now - this.downlinkAt < DOWNLINK_EVERY_MS) return;
+    this.downlinkAt = now;
+    const mbps = browser().navigator?.connection?.downlink;
+    if (mbps != null && Number.isFinite(mbps) && mbps > 0)
+      this.observer.onBandwidth?.(generation, mbps * 1_000_000);
   }
 
   private liveOffset(): number | null {
@@ -532,10 +646,29 @@ export class MediaElementDriver implements EngineDriver {
       onNote: (event, details) => {
         if (live()) this.observer.onNote(generation, event, details);
       },
+      onVariants: (variants) => {
+        if (live()) this.observer.onVariants?.(generation, variants);
+      },
+      onVariantSwitched: (id) => {
+        if (!live()) return;
+        this.variantId = id;
+        const video = this.videoElement;
+        if (video && video.videoWidth > 0)
+          this.observer.onVideoInfo?.(generation, {
+            width: video.videoWidth,
+            height: video.videoHeight,
+            hdr: false,
+            variantId: id,
+          });
+      },
+      onBandwidth: (bps) => {
+        if (live()) this.observer.onBandwidth?.(generation, bps);
+      },
     });
     this.hls = hls;
     this.observer.onNote(generation, 'hls.js', { reason: 'no native HLS' });
     hls.start();
+    if (this.quality) hls.setQuality(this.quality);
   }
 
   /** Reports an HLS failure from a microtask: not from inside open(). */

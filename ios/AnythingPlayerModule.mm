@@ -310,6 +310,30 @@ static void RNAPInstallIntentHandler(void)
   [_bridge playFromSearch:request playerId:playerId resolve:resolve reject:reject];
 }
 
+#pragma mark - Video
+
+- (void)videoCommand:(NSString *)playerId
+             command:(NSDictionary *)command
+             resolve:(RCTPromiseResolveBlock)resolve
+              reject:(RCTPromiseRejectBlock)reject
+{
+  [_bridge videoCommand:playerId command:command resolve:resolve reject:reject];
+}
+
+- (NSDictionary *)getVideoStats:(NSString *)playerId
+{
+  return [_bridge videoStats:playerId];
+}
+
+- (void)fetchText:(NSString *)uri
+          headers:(NSDictionary *)headers
+         encoding:(NSString *)encoding
+          resolve:(RCTPromiseResolveBlock)resolve
+           reject:(RCTPromiseRejectBlock)reject
+{
+  [_bridge fetchText:uri headers:headers encoding:encoding resolve:resolve reject:reject];
+}
+
 - (void)setSearchHandlerEnabled:(BOOL)enabled
 {
   [_bridge setSearchHandlerEnabled:enabled];

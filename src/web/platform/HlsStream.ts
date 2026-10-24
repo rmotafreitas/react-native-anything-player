@@ -17,6 +17,7 @@ import type { PlayerError } from '../../errors';
 import type {
   HlsConstructor,
   HlsErrorData,
+  HlsLevel,
   HlsLevelDetails,
   HlsLike,
   HlsMetadataSample,
@@ -24,8 +25,10 @@ import type {
 import type { StreamMetadata } from '../engine/StreamMetadata';
 import {
   engineError,
+  type QualityConstraints,
   type ReadyInfo,
   type SourceDescriptor,
+  type VideoVariant,
 } from '../engine/types';
 import { browser, type AudioElementLike } from './dom';
 import { id3Metadata } from './Id3';
@@ -37,6 +40,47 @@ export interface HlsListener {
   onFailure(error: PlayerError): void;
   /** A diagnostics note. */
   onNote(event: string, details: Record<string, string>): void;
+  /** Video: the variants, once the master playlist is parsed. */
+  onVariants?(variants: VideoVariant[]): void;
+  /** Video: the variant playing changed. */
+  onVariantSwitched?(id: string): void;
+  /** Video: hls.js's bandwidth estimate, bits per second. */
+  onBandwidth?(bitsPerSecond: number): void;
+}
+
+/** A variant's id in `status.video.qualities`. */
+const variantId = (index: number) => `v${index}`;
+
+/** An audio-only level: an audio codec and no picture. */
+function isAudioOnly(level: HlsLevel): boolean {
+  return !level.videoCodec && !!level.audioCodec && !level.height;
+}
+
+/** hls.js levels as qualities. */
+export function variantsOf(levels: ReadonlyArray<HlsLevel>): VideoVariant[] {
+  return levels.map((level, i) => ({
+    id: variantId(i),
+    height: level.height || null,
+    bitrate: level.bitrate || null,
+    audioOnly: isAudioOnly(level),
+    label: level.name ?? null,
+  }));
+}
+
+/** The highest level the caps allow (`-1`: none are needed). */
+export function levelCap(
+  levels: ReadonlyArray<HlsLevel>,
+  c: QualityConstraints
+): number {
+  if (c.maxHeight == null && c.maxBitrate == null) return -1;
+  let cap = -1;
+  levels.forEach((level, i) => {
+    const tall = c.maxHeight != null && (level.height ?? 0) > c.maxHeight;
+    const heavy = c.maxBitrate != null && (level.bitrate ?? 0) > c.maxBitrate;
+    if (!tall && !heavy && !isAudioOnly(level)) cap = i;
+  });
+  // Nothing fits: the lowest video level, rather than none at all.
+  return cap >= 0 ? cap : levels.findIndex((l) => !isAudioOnly(l));
 }
 
 /** hls.js `ErrorDetails.MANIFEST_LOAD_ERROR`: the playlist itself could not be loaded. */
@@ -104,6 +148,7 @@ export class HlsStream {
   /** A fatal error was reported: later element errors are the same failure. */
   failed = false;
   private closed = false;
+  private constraints: QualityConstraints | null = null;
 
   constructor(
     private readonly element: AudioElementLike,
@@ -120,7 +165,22 @@ export class HlsStream {
       this.listener.onNote('hls manifest', {
         levels: `${data?.levels?.length ?? 0}`,
       });
+      this.listener.onVariants?.(variantsOf(hls.levels ?? []));
+      this.applyQuality();
     });
+    if (Events.LEVEL_SWITCHED) {
+      hls.on(Events.LEVEL_SWITCHED, (_event, data) => {
+        if (typeof data?.level === 'number')
+          this.listener.onVariantSwitched?.(variantId(data.level));
+      });
+    }
+    if (Events.FRAG_LOADED) {
+      hls.on(Events.FRAG_LOADED, () => {
+        const bps = hls.bandwidthEstimate;
+        if (bps != null && Number.isFinite(bps) && bps > 0)
+          this.listener.onBandwidth?.(bps);
+      });
+    }
     hls.on(Events.LEVEL_LOADED, (_event, data) => {
       this.details = (data?.details as HlsLevelDetails | undefined) ?? null;
     });
@@ -136,6 +196,35 @@ export class HlsStream {
     });
     hls.loadSource(this.source.uri);
     hls.attachMedia(this.element);
+  }
+
+  /** Video: what the variants must keep to (applied once the levels are known). */
+  setQuality(constraints: QualityConstraints): void {
+    this.constraints = constraints;
+    this.applyQuality();
+  }
+
+  private applyQuality(): void {
+    const hls = this.hls;
+    const c = this.constraints;
+    const levels = hls?.levels;
+    if (hls == null || c == null || levels == null || levels.length === 0)
+      return;
+    hls.autoLevelCapping = levelCap(levels, c);
+    hls.currentLevel = this.pinnedLevel(levels, c);
+  }
+
+  /** The level to hold (`-1`: automatic): the app's pick, or audio only. */
+  private pinnedLevel(
+    levels: ReadonlyArray<HlsLevel>,
+    c: QualityConstraints
+  ): number {
+    if (c.audioOnly) {
+      const audio = levels.findIndex(isAudioOnly);
+      if (audio >= 0) return audio;
+    }
+    if (c.pinned == null) return -1;
+    return levels.findIndex((_, i) => variantId(i) === c.pinned);
   }
 
   /** Detaches from the element and frees hls.js. */

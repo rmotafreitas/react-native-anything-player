@@ -8,13 +8,16 @@
 
 import { PlayerError, toPlayerError } from '../../errors';
 import type { PlayerModule } from '../../core/host';
+import { detectCharset } from '../../core/subtitles/charset';
 import { browser } from './dom';
 import {
   parseFade,
   parseNowPlaying,
   parseOptions,
   parseSource,
+  parseVideoParts,
 } from './serialization';
+import type { ContentFit } from './WebVideo';
 import { WebCatalog, type StoredItem } from './WebCatalog';
 import { WebOutputs } from './WebOutputs';
 import { WebPlayerController } from './WebPlayerController';
@@ -100,7 +103,8 @@ export class WebModule implements PlayerModule {
         fields,
         typeof o.autoplay === 'boolean' ? o.autoplay : null,
         typeof o.startPosition === 'number' ? o.startPosition : null,
-        objectUrl
+        objectUrl,
+        parseVideoParts(source)
       );
       // An autoplay refusal leaves the load ready-but-paused (see status.interruption).
       controller.takePlayAttempt();
@@ -298,6 +302,74 @@ export class WebModule implements PlayerModule {
     this.catalog.answer(requestId, result);
   }
 
+  // ── Video ──
+
+  videoCommand(playerId: string, command: object): Promise<object> {
+    const controller = this.runtime.players.get(playerId);
+    if (!controller) return Promise.reject(released());
+    let result: Promise<void> | void;
+    try {
+      // Synchronously: fullscreen and Picture in Picture need the user's tap.
+      result = controller.videoCommand(command as Record<string, unknown>);
+    } catch (error) {
+      return Promise.reject(asError(error));
+    }
+    return Promise.resolve(result).then(
+      () => controller.statusMap(),
+      (error: unknown) => {
+        throw asError(error);
+      }
+    );
+  }
+
+  getVideoStats(playerId: string): object {
+    const controller = this.runtime.players.get(playerId);
+    if (!controller) throw released();
+    return controller.statsMap();
+  }
+
+  /** Puts a video player's picture in a page element (`attachTo`, `<VideoView>`). */
+  attachVideo(playerId: string, element: unknown, fit?: ContentFit): void {
+    const controller = this.runtime.players.get(playerId);
+    if (!controller) throw released();
+    controller.attachVideo(element, fit);
+  }
+
+  async fetchText(
+    uri: string,
+    headers: object,
+    encoding: string | null
+  ): Promise<object> {
+    const g = browser();
+    let response;
+    try {
+      response = await g.fetch(uri, {
+        headers: headers as Record<string, string>,
+        cache: 'default',
+        mode: 'cors',
+      });
+    } catch (error) {
+      throw new PlayerError({
+        code: 'NETWORK_ERROR',
+        message: `${uri} could not be fetched (${String(error)}).`,
+        recoverable: true,
+        platform: 'web',
+      });
+    }
+    if (!response.ok) {
+      throw new PlayerError({
+        code: 'HTTP_ERROR',
+        message: `The server returned HTTP ${response.status} for ${uri}.`,
+        recoverable: response.status >= 500,
+        httpStatus: response.status,
+        platform: 'web',
+      });
+    }
+    const bytes = new Uint8Array(await response.arrayBuffer!());
+    const charset = encoding ?? detectCharset(bytes);
+    return { text: decode(bytes, charset), charset };
+  }
+
   onPlayerEvent(listener: Listener): { remove(): void } {
     this.listeners.add(listener);
     return { remove: () => this.listeners.delete(listener) };
@@ -378,6 +450,17 @@ export class WebModule implements PlayerModule {
       this.queue = [];
       for (const e of events) this.listeners.forEach((listener) => listener(e));
     });
+  }
+}
+
+/** Decodes in the given encoding (UTF-8 when the browser does not know it). */
+function decode(bytes: Uint8Array, charset: string): string {
+  const Decoder = browser().TextDecoder;
+  if (!Decoder) return String.fromCharCode(...bytes);
+  try {
+    return new Decoder(charset).decode(bytes);
+  } catch {
+    return new Decoder('utf-8').decode(bytes);
   }
 }
 

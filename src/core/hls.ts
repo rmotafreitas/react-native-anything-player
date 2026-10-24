@@ -41,6 +41,24 @@ export interface HlsLike {
   on(event: string, listener: (event: string, data: any) => void): void;
   /** Seconds behind the live edge (hls.js 1.x), when it knows. */
   readonly latency?: number;
+  /** The variants (video): height, bitrate, codecs. */
+  readonly levels?: ReadonlyArray<HlsLevel>;
+  /** The variant playing, or `-1` for automatic; setting it switches now. */
+  currentLevel?: number;
+  /** The highest variant automatic switching may pick (`-1`: no cap). */
+  autoLevelCapping?: number;
+  /** Bits per second, hls.js's estimate. */
+  readonly bandwidthEstimate?: number;
+}
+
+/** A variant, as hls.js describes it. */
+export interface HlsLevel {
+  readonly height?: number;
+  readonly width?: number;
+  readonly bitrate?: number;
+  readonly name?: string;
+  readonly videoCodec?: string;
+  readonly audioCodec?: string;
 }
 
 /** The slice of the hls.js class that RNAP uses: `import Hls from 'hls.js'`. */
@@ -59,6 +77,10 @@ export interface HlsConstructor {
     readonly FRAG_PARSING_METADATA: string;
     /** An error, fatal or not. */
     readonly ERROR: string;
+    /** The variant playing changed (video). */
+    readonly LEVEL_SWITCHED?: string;
+    /** A fragment arrived: a fresh bandwidth estimate (video). */
+    readonly FRAG_LOADED?: string;
   };
   /** The values of an error's `type`. */
   readonly ErrorTypes: {

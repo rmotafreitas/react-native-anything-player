@@ -106,6 +106,9 @@ enum ErrorCode: String {
   case castUnavailable = "CAST_UNAVAILABLE"
   case castUnsupportedSource = "CAST_UNSUPPORTED_SOURCE"
   case soundUnavailable = "SOUND_UNAVAILABLE"
+  case videoUnavailable = "VIDEO_UNAVAILABLE"
+  case drmUnsupported = "DRM_UNSUPPORTED"
+  case subtitleLoadFailed = "SUBTITLE_LOAD_FAILED"
 }
 
 struct PlayerError: Error, Equatable {

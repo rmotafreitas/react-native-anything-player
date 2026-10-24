@@ -98,6 +98,11 @@ export abstract class EngineQuality extends EngineFades {
     audioOnlySwitches: 0,
   };
 
+  /** The last bandwidth estimate, bits per second (`getStats`). */
+  get bandwidthEstimate(): number | null {
+    return this.bandwidth;
+  }
+
   /** Why the sound plays alone, if it does (EngineVideo.ts). */
   protected abstract get audioOnlyReason(): AudioOnlyReason | null;
   /** Sends what changed about the picture (EngineVideo.ts). */
