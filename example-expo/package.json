@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "main": "index.ts",
   "dependencies": {
-    "@expo/metro-runtime": "~57.0.17",
+    "@expo/metro-runtime": "~58.0.14",
     "expo": "~57.0.31",
     "expo-dev-client": "~57.0.20",
     "expo-status-bar": "~57.0.1",
