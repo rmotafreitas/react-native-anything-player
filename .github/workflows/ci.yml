@@ -290,10 +290,12 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup
       # The media is deterministic: generated (apt + ffmpeg) only when the
-      # script changes. A slow apt mirror once took 24 of the job's 30 minutes.
-      - name: Cache the test radio's media
+      # script changes, and saved at once, so a run that times out later still
+      # leaves it for the next one. A slow apt mirror took 23 of the job's 30
+      # minutes installing ffmpeg with its recommended packages.
+      - name: Restore the test radio's media
         id: test-media
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: scripts/stream-server/media
           key: test-media-${{ hashFiles('scripts/stream-server/generate-media.sh') }}
@@ -301,8 +303,14 @@ jobs:
         if: steps.test-media.outputs.cache-hit != 'true'
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y -q ffmpeg
+          sudo apt-get install -y -q --no-install-recommends ffmpeg
           bash scripts/stream-server/generate-media.sh
+      - name: Save the test radio's media
+        if: steps.test-media.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: scripts/stream-server/media
+          key: ${{ steps.test-media.outputs.cache-primary-key }}
       - name: Cache npm downloads
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
