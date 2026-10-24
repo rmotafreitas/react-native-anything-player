@@ -306,6 +306,15 @@ test('App Intents: a folder group, a name to quote, a missing group', () => {
     Object.values(refs).some((r) => r.path === '"my-app/RNAPAppIntents.swift"')
   );
 
+  // Backslashes and quotes are escaped, and an escaped name still matches.
+  const odd = xcodeProject({ name: '"a\\\\b \\"c\\""' });
+  appIntents.addAppIntentsSource(odd, { projectName: 'a\\b "c"' });
+  assert.ok(
+    Object.values(odd.hash.project.objects.PBXFileReference).some(
+      (r) => r.path === '"a\\\\b \\"c\\"/RNAPAppIntents.swift"'
+    )
+  );
+
   assert.throws(
     () =>
       appIntents.addAppIntentsSource(xcodeProject({ name: 'Other' }), {

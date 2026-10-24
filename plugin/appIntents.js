@@ -12,12 +12,16 @@ const FILE = 'RNAPAppIntents.swift';
 const APPLICATION = 'com.apple.product-type.application';
 
 function unquote(value) {
-  return typeof value === 'string' ? value.replace(/^"(.*)"$/, '$1') : value;
+  if (typeof value !== 'string') return value;
+  const quoted = /^"(.*)"$/s.exec(value);
+  return quoted ? quoted[1].replace(/\\(.)/gs, '$1') : value;
 }
 
 /** Quotes what a pbxproj needs quoted (as Xcode writes it). */
 function quote(value) {
-  return /^[\w./]+$/.test(value) ? value : `"${value.replace(/"/g, '\\"')}"`;
+  return /^[\w./]+$/.test(value)
+    ? value
+    : `"${value.replace(/[\\"]/g, '\\$&')}"`;
 }
 
 function entries(section = {}) {

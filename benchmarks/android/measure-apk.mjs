@@ -516,9 +516,12 @@ function main() {
     return rows;
   };
 
-  const previous = fs.existsSync(out)
-    ? JSON.parse(fs.readFileSync(out, 'utf8'))
-    : null;
+  let previous = null;
+  try {
+    previous = JSON.parse(fs.readFileSync(out, 'utf8'));
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
   const bare = !only || only.some((id) => LIBRARIES.some((l) => l.id === id));
   const expo = !only || only.some((id) => EXPO_IDS.includes(id));
   // RNAP is packed from this checkout only when it is being measured.
