@@ -111,12 +111,12 @@ export function primaryLanguage(tag: string | null | undefined): string | null {
 
 /** The languages to look for, in order, without repeats. */
 function wanted(p: TrackPreferences): string[] {
-  const order: string[] = [];
+  const order = new Set<string>();
   for (const tag of [...p.languages, ...p.systemLanguages]) {
     const lang = primaryLanguage(tag);
-    if (lang != null && !order.includes(lang)) order.push(lang);
+    if (lang != null) order.add(lang);
   }
-  return order;
+  return [...order];
 }
 
 /** The first track by language preference, then by `rank` (lower first). */

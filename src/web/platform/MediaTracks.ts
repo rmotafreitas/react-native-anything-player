@@ -105,14 +105,20 @@ export class MediaTracks {
     private readonly element: VideoElementLike,
     private readonly sink: TrackSink
   ) {
-    for (const list of [element.textTracks, element.audioTracks]) {
-      if (!list) continue;
-      for (const type of ['addtrack', 'removetrack', 'change']) {
-        list.addEventListener(type, this.onList);
-        this.unlisten.push(() => list.removeEventListener(type, this.onList));
-      }
-    }
+    this.watch(element.textTracks);
+    this.watch(element.audioTracks);
     this.refresh();
+  }
+
+  /** A track list's changes re-read the tracks. */
+  private watch(
+    tracks: VideoElementLike['textTracks'] | VideoElementLike['audioTracks']
+  ): void {
+    if (!tracks) return;
+    for (const type of ['addtrack', 'removetrack', 'change']) {
+      tracks.addEventListener(type, this.onList);
+      this.unlisten.push(() => tracks.removeEventListener(type, this.onList));
+    }
   }
 
   /** hls.js plays the source: its renditions are the tracks (called again when they change). */
