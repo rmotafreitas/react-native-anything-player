@@ -5,6 +5,7 @@
 
 import {
   BYTES_PER_SECOND,
+  FakeAudioContext,
   icyChunk,
   install,
   ranges,
@@ -153,6 +154,39 @@ describe('plain element', () => {
       playWhenReady: false,
       interruption: { reason: 'autoplay-blocked', resumable: false },
     });
+  });
+
+  it('does not blame a later command for a play() the media controls started', async () => {
+    const id = module.createPlayer({});
+    const element = await loadFile(id);
+    element.playBehavior = 'block';
+    world.session.trigger('play');
+    await flush();
+    expect(status(id).interruption).toMatchObject({
+      reason: 'autoplay-blocked',
+    });
+    // Nobody asked for that play() through a command: setVolume has no refusal to report.
+    await expect(module.setVolume(id, 0.5)).resolves.toBeDefined();
+    await expect(module.seekTo(id, 5)).resolves.toBeDefined();
+  });
+
+  it('lets a late refusal of a replaced play() leave the newer one running', async () => {
+    const id = module.createPlayer({});
+    const element = await loadFile(id);
+    element.playBehavior = 'defer';
+    const first = module.play(id);
+    await module.pause(id);
+    const second = module.play(id);
+    await flush();
+    // The first attempt is refused late; the second one is the one that counts.
+    element.pendingPlays[0]!.reject(
+      Object.assign(new Error('blocked'), { name: 'NotAllowedError' })
+    );
+    element.pendingPlays[1]!.resolve();
+    await flush();
+    await Promise.all([first, second]);
+    expect(status(id).interruption).toBeNull();
+    expect(status(id).playWhenReady).toBe(true);
   });
 
   it('keeps an autoplay load ready but paused when autoplay is refused', async () => {
@@ -590,10 +624,11 @@ describe('live streams through MSE', () => {
 
   async function openStream(
     response: Parameters<FakeWorld['fetch']['respond']>[0] = { headers: ICY },
-    uri = 'https://radio.example/live'
+    uri = 'https://radio.example/live',
+    playerOptions: object = {}
   ) {
     world.fetch.respond(response);
-    const id = module.createPlayer({});
+    const id = module.createPlayer(playerOptions);
     const loading = module.load(
       id,
       { uri, headers: { 'User-Agent': 'RNAP' } },
@@ -821,6 +856,24 @@ describe('live streams through MSE', () => {
     expect(element.mediaSource!.readyState).toBe('ended');
   });
 
+  it('does not splice a dropped connection with reconnecting off', async () => {
+    const headers = { 'content-type': 'audio/mpeg', 'icy-metaint': '1024' };
+    const { element, body } = await openStream(
+      { headers },
+      'https://radio.example/live',
+      { recovery: { reconnect: false } }
+    );
+    element.becomeReady(Number.POSITIVE_INFINITY);
+    element.startPlaying();
+    for (let i = 0; i < 33; i++) body().push(icyChunk(1024, null));
+    await flush();
+    await jest.advanceTimersByTimeAsync(3_000); // would earn a splice
+    body().fail(new Error('connection reset'));
+    await flush();
+    expect(world.fetch.requests).toHaveLength(1);
+    expect(element.mediaSource!.readyState).toBe('ended');
+  });
+
   it('does not splice a short-lived connection, however much it sent (a flapping server)', async () => {
     const headers = { 'content-type': 'audio/mpeg', 'icy-metaint': '1024' };
     const { element, body } = await openStream({ headers });
@@ -880,25 +933,51 @@ describe('live streams through MSE', () => {
     expect(buffer().bytes).toBe(32 * BYTES_PER_SECOND);
     expect(buffer().removed).toEqual([[0, 15]]);
 
-    buffer().quotaFailures = 3;
-    body().push(new Uint8Array(10));
-    await jest.advanceTimersByTimeAsync(5_000);
-    expect(diagnostics(id)).toContain('append dropped');
-
     buffer().appendError = new Error('broken');
     body().push(new Uint8Array(10));
     await jest.advanceTimersByTimeAsync(100);
     expect(diagnostics(id)).toContain('stream ended');
   });
 
+  it('ends the stream when the buffer stays full, instead of leaving a hole in it', async () => {
+    const headers = { 'content-type': 'audio/mpeg', 'icy-metaint': '0' };
+    const { id, element, body } = await openStream({ headers });
+    const request = world.fetch.last();
+    body().push(new Uint8Array(BYTES_PER_SECOND));
+    await flush();
+    element.mediaSource!.buffers[0]!.quotaFailures = 3;
+    body().push(new Uint8Array(10));
+    await jest.advanceTimersByTimeAsync(5_000);
+    expect(diagnostics(id)).toContain('append dropped');
+    expect(diagnostics(id)).toContain('stream ended');
+    // The connection is closed and the element plays out what it has.
+    expect(request.signal.aborted).toBe(true);
+    expect(element.mediaSource!.readyState).toBe('ended');
+  });
+
+  it('lets go of a pending append when closed while the buffer is busy', async () => {
+    const headers = { 'content-type': 'audio/mpeg', 'icy-metaint': '0' };
+    const { id, element, body } = await openStream({ headers });
+    const buffer = element.mediaSource!.buffers[0]!;
+    buffer.updating = true; // an append that never ends
+    body().push(new Uint8Array(BYTES_PER_SECOND));
+    await flush();
+    expect(buffer.listenerCount('updateend')).toBe(1);
+    await module.reset(id);
+    await flush();
+    expect(buffer.listenerCount('updateend')).toBe(0);
+  });
+
   it('uses the managed media source on iOS', async () => {
     uninstall();
     setup({ mediaSource: 'managed' });
-    const { element } = await openStream();
+    const { id, element } = await openStream();
     // Headers cannot reach an AirPlay receiver: no alternative source, no AirPlay.
     expect(element.disableRemotePlayback).toBe(true);
     expect(element.children).toHaveLength(1);
     expect(element.mediaSource).not.toBeNull();
+    await module.reset(id);
+    expect(element.children).toHaveLength(0);
   });
 
   it.each([
@@ -959,6 +1038,65 @@ describe('visualizer', () => {
     const count = ofType('audioSample').length;
     await jest.advanceTimersByTimeAsync(200);
     expect(ofType('audioSample')).toHaveLength(count);
+  });
+
+  /** A streamed item on a sampling player, tapped once the audio context runs. */
+  async function sampleStream(id: string) {
+    world.fetch.respond({ headers: { 'content-type': 'audio/mpeg' } });
+    module.setAudioSampling(id, true, 64);
+    module
+      .load(id, { uri: 'https://app.example/live' }, {})
+      .catch(() => undefined);
+    await flush();
+    const element = world.element();
+    world.fetch.last().body.push(new Uint8Array(100));
+    element.becomeReady(Number.POSITIVE_INFINITY);
+    await flush();
+    await module.play(id);
+    element.startPlaying();
+    await flush();
+    return element;
+  }
+
+  it('closes the audio context and drops the taps when the player is released', async () => {
+    const id = module.createPlayer({});
+    await sampleStream(id);
+    const [context] = FakeAudioContext.instances;
+    expect(context!.state).toBe('running');
+    await module.releasePlayer(id);
+    await flush();
+    expect(context!.state).toBe('closed');
+    expect(context!.sourceNodes.every((n) => n.disconnected)).toBe(true);
+    expect(context!.analysers.every((a) => a.disconnected)).toBe(true);
+    const count = ofType('audioSample').length;
+    await jest.advanceTimersByTimeAsync(200);
+    expect(ofType('audioSample')).toHaveLength(count);
+  });
+
+  it('releases a player whose audio context cannot be closed', async () => {
+    const id = module.createPlayer({});
+    await sampleStream(id);
+    FakeAudioContext.failClose = true;
+    await expect(module.releasePlayer(id)).resolves.toBeUndefined();
+    await flush();
+  });
+
+  it('reports no sampling when the browser refuses another audio context', async () => {
+    FakeAudioContext.failConstruct = true;
+    const id = module.createPlayer({});
+    world.fetch.respond({ headers: { 'content-type': 'audio/mpeg' } });
+    expect(module.setAudioSampling(id, true, 64)).toBe(true);
+    const loading = module.load(id, { uri: 'https://app.example/live' }, {});
+    await flush();
+    const element = world.element();
+    world.fetch.last().body.push(new Uint8Array(100));
+    element.becomeReady(Number.POSITIVE_INFINITY);
+    await flush();
+    await loading;
+    // The load committed and plays on: sampling is simply not available.
+    await expect(module.play(id)).resolves.toBeDefined();
+    expect(FakeAudioContext.instances).toHaveLength(0);
+    expect(world.element().volume).toBe(1);
   });
 
   it('reports no support without Web Audio', () => {

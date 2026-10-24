@@ -130,6 +130,40 @@ function fail(
   return new PlayerError({ code, message, recoverable, platform: 'web' });
 }
 
+async function bytesOf(source: SoundSource): Promise<ArrayBuffer> {
+  if ('blob' in source)
+    return (
+      source.blob as unknown as { arrayBuffer(): Promise<ArrayBuffer> }
+    ).arrayBuffer();
+  const fetchFn = globals().fetch;
+  if (!fetchFn) throw fail('INTERNAL_ERROR', 'This browser has no fetch().');
+  let response: ResponseBody;
+  try {
+    response = await fetchFn(source.uri);
+  } catch (cause) {
+    throw fail(
+      'NETWORK_ERROR',
+      `Could not fetch the sound (${String(cause)}). A page on another origin needs CORS headers.`,
+      true
+    );
+  }
+  if (!response.ok)
+    throw new PlayerError({
+      code:
+        response.status === 404 || response.status === 410
+          ? 'SOURCE_NOT_FOUND'
+          : 'HTTP_ERROR',
+      message: `The server returned HTTP ${response.status}.`,
+      recoverable:
+        response.status >= 500 ||
+        response.status === 408 ||
+        response.status === 429,
+      platform: 'web',
+      httpStatus: response.status,
+    });
+  return response.arrayBuffer();
+}
+
 function blocked(): PlayerError {
   return fail(
     'AUTOPLAY_BLOCKED',
@@ -187,40 +221,6 @@ export function createWebSoundBackend(
     context = created;
     if (created.state !== 'running') listenForGesture(created);
     return created;
-  }
-
-  async function bytesOf(source: SoundSource): Promise<ArrayBuffer> {
-    if ('blob' in source)
-      return (
-        source.blob as unknown as { arrayBuffer(): Promise<ArrayBuffer> }
-      ).arrayBuffer();
-    const fetchFn = globals().fetch;
-    if (!fetchFn) throw fail('INTERNAL_ERROR', 'This browser has no fetch().');
-    let response: ResponseBody;
-    try {
-      response = await fetchFn(source.uri);
-    } catch (cause) {
-      throw fail(
-        'NETWORK_ERROR',
-        `Could not fetch the sound (${String(cause)}). A page on another origin needs CORS headers.`,
-        true
-      );
-    }
-    if (!response.ok)
-      throw new PlayerError({
-        code:
-          response.status === 404 || response.status === 410
-            ? 'SOURCE_NOT_FOUND'
-            : 'HTTP_ERROR',
-        message: `The server returned HTTP ${response.status}.`,
-        recoverable:
-          response.status >= 500 ||
-          response.status === 408 ||
-          response.status === 429,
-        platform: 'web',
-        httpStatus: response.status,
-      });
-    return response.arrayBuffer();
   }
 
   function release(voice: Voice): void {
@@ -340,12 +340,11 @@ export function createWebSoundBackend(
     },
 
     stopSound(soundId) {
-      for (const voice of [...(sounds.get(soundId)?.active ?? [])])
-        stopVoice(voice);
+      for (const voice of sounds.get(soundId)?.active ?? []) stopVoice(voice);
     },
 
     stopAll() {
-      for (const voice of [...voices.values()]) stopVoice(voice);
+      for (const voice of voices.values()) stopVoice(voice);
     },
 
     async unlock() {

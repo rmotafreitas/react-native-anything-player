@@ -114,7 +114,7 @@ function isXingFrame(
   const sideInfo = mpeg1 ? XING_SIDE_INFO_MPEG1 : XING_SIDE_INFO_MPEG2;
   const offset = at + 4 + sideInfo[mono ? 0 : 1]!;
   if (offset + 4 > at + header.length) return false;
-  const tag = String.fromCharCode(
+  const tag = String.fromCodePoint(
     bytes[offset]!,
     bytes[offset + 1]!,
     bytes[offset + 2]!,
@@ -207,7 +207,7 @@ function id3Length(bytes: Uint8Array, at: number): number {
   const available = bytes.length - at;
   const prefix = Math.min(3, available);
   for (let i = 0; i < prefix; i++) {
-    if (bytes[at + i] !== 'ID3'.charCodeAt(i)) return 0;
+    if (bytes[at + i] !== 'ID3'.codePointAt(i)) return 0;
   }
   if (available < ID3_HEADER_BYTES) return -1;
   // Version and revision are below 0xff and the size is four 7-bit bytes.

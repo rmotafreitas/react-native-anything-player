@@ -17,7 +17,6 @@ import {
 
 import { MP4_TYPES } from './MseStream';
 
-export type { AudioCodec } from './AudioFrames';
 export { MP4_TYPES };
 
 export interface MuxOutput {
@@ -107,7 +106,7 @@ class BoxWriter {
   }
 
   ascii(text: string): this {
-    for (let i = 0; i < text.length; i++) this.u8(text.charCodeAt(i));
+    for (let i = 0; i < text.length; i++) this.u8(text.codePointAt(i)!);
     return this;
   }
 

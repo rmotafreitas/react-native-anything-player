@@ -575,7 +575,7 @@ describe('errors', () => {
     FakeHls.last().destroy = () => {
       throw new Error('boom');
     };
-    await module.releasePlayer(id);
+    await expect(module.releasePlayer(id)).resolves.toBeUndefined();
   });
 });
 

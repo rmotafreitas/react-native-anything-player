@@ -78,7 +78,7 @@ export class RoutingDriver implements EngineDriver {
   }
 
   private castDriver(): CastDriver | null {
-    if (!this.cast) this.cast = this.makeCast();
+    this.cast ??= this.makeCast();
     return this.cast;
   }
 

@@ -19,7 +19,7 @@ function syncsafe(bytes: Uint8Array, at: number): number {
 }
 
 function ascii(bytes: Uint8Array, at: number, length: number): string {
-  return String.fromCharCode(...bytes.subarray(at, at + length));
+  return String.fromCodePoint(...bytes.subarray(at, at + length));
 }
 
 function utf16(bytes: Uint8Array, bigEndianByDefault: boolean): string {
@@ -39,7 +39,7 @@ function utf16(bytes: Uint8Array, bigEndianByDefault: boolean): string {
     const unit = big
       ? (bytes[i]! << 8) | bytes[i + 1]!
       : (bytes[i + 1]! << 8) | bytes[i]!;
-    out += String.fromCharCode(unit);
+    out += String.fromCodePoint(unit);
   }
   return out;
 }
@@ -57,7 +57,7 @@ function textOf(body: Uint8Array): string {
     }
   }
   const value = text.subarray(0, end);
-  if (encoding === 0) return String.fromCharCode(...value);
+  if (encoding === 0) return String.fromCodePoint(...value);
   if (encoding === 3) return IcyParser.decode(value);
   return utf16(value, encoding === 2);
 }

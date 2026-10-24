@@ -108,7 +108,7 @@ export interface MseFormat {
  * The MSE format for a stream's Content-Type, or `null` when MSE cannot play
  * it. The raw type wins; the MP4 form is for browsers that only take that.
  */
-export function mseFormat(
+function mseFormat(
   contentType: string | null,
   ctor: MediaSourceConstructor
 ): MseFormat | null {
@@ -181,6 +181,8 @@ export function discard(response: ResponseLike): void {
 export class MseStream {
   private mediaSource: MediaSourceLike | null = null;
   private buffer: SourceBufferLike | null = null;
+  /** The callers waiting for the source buffer to finish what it is doing. */
+  private readonly idleWaiters = new Set<() => void>();
   private objectUrl: string | null = null;
   private abort: (() => void) | null = null;
   private closed = false;
@@ -206,7 +208,9 @@ export class MseStream {
     private readonly format: StreamTitleFormat,
     private readonly listener: MseStreamListener,
     /** This source already streamed through fetch (CORS is known to work). */
-    private readonly corsProven = false
+    private readonly corsProven = false,
+    /** A dropped connection may be spliced (off with `reconnect: false`). */
+    private readonly mayReconnect = true
   ) {}
 
   /** Seconds of received audio not yet heard. */
@@ -262,7 +266,9 @@ export class MseStream {
     this.closed = true;
     this.abort?.();
     this.abort = null;
-    for (const node of this.sources) this.element.removeChild(node);
+    // An append that is still running will never report: let its waiters go.
+    for (const done of [...this.idleWaiters]) done();
+    for (const node of this.sources) node.remove();
     this.sources = [];
     if (this.objectUrl) browser().URL.revokeObjectURL(this.objectUrl);
     this.objectUrl = null;
@@ -286,7 +292,10 @@ export class MseStream {
     if (!response || !(await this.accept(response, first))) return;
     this.listener.onConnected();
     this.announceStation(response);
-    const metaint = parseInt(response.headers.get('icy-metaint') ?? '0', 10);
+    const metaint = Number.parseInt(
+      response.headers.get('icy-metaint') ?? '0',
+      10
+    );
     const reader = response.body!.getReader();
     const base = this.totalBytes;
     const openedAt = monotonicNow();
@@ -517,7 +526,7 @@ export class MseStream {
           cause
         )
       );
-    } else if (bytes > 0 && ms >= SPLICE_MIN_UPSTREAM_MS) {
+    } else if (this.mayReconnect && bytes > 0 && ms >= SPLICE_MIN_UPSTREAM_MS) {
       this.listener.onNote('connection dropped', {
         bytes: `${bytes}`,
         upstreamMs: `${Math.round(ms)}`,
@@ -617,13 +626,15 @@ export class MseStream {
       }
       await this.sleep(1000);
     }
-    if (!this.closed) {
-      this.listener.onNote('append dropped', {
-        bytes: `${data.length}`,
-        reason: 'buffer full',
-      });
-    }
-    return !this.closed;
+    if (this.closed) return false;
+    // Skipping the chunk would leave a hole (in an MP4 remux, a missing
+    // init or fragment breaks the timeline): end the stream, the engine
+    // reconnects under its backoff.
+    this.listener.onNote('append dropped', {
+      bytes: `${data.length}`,
+      reason: 'buffer full',
+    });
+    return this.stop('the buffer stayed full');
   }
 
   /** One append; `false` when the buffer is full (QuotaExceededError). */
@@ -654,12 +665,14 @@ export class MseStream {
 
   private idle(): Promise<void> {
     const buffer = this.buffer;
-    if (!buffer?.updating) return Promise.resolve();
+    if (this.closed || !buffer?.updating) return Promise.resolve();
     return new Promise((resolve) => {
       const done = () => {
         buffer.removeEventListener('updateend', done);
+        this.idleWaiters.delete(done);
         resolve();
       };
+      this.idleWaiters.add(done);
       buffer.addEventListener('updateend', done);
     });
   }

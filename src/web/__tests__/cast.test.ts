@@ -191,6 +191,22 @@ describe('the sender SDK', () => {
     });
   });
 
+  it('tries to load the SDK again when configured after a failed load', async () => {
+    const first = module.configureCast({});
+    world.scripts[0]!.onerror!();
+    await first;
+    expect(castOf().state).toBe('unavailable');
+    const second = module.configureCast({});
+    expect(castOf().state).toBe('initializing');
+    expect(world.scripts).toHaveLength(2);
+    cast.install();
+    cast.setDevicesAvailable(true);
+    (globalThis as { __onGCastApiAvailable?: (ok: boolean) => void })
+      .__onGCastApiAvailable!(true);
+    await second;
+    expect(castOf().state).toBe('notConnected');
+  });
+
   it.each([
     [
       'Firefox',
@@ -877,6 +893,31 @@ describe('titles while casting', () => {
     expect((module.getMetadata(id) as any).metadata.title).toBe('B');
   });
 
+  it('does not put the old stream’s titles on the item that replaced it', async () => {
+    const id = await casting();
+    const old = world.fetch.last();
+    world.fetch.respond({ headers: ICY });
+    const loading = module.load(
+      id,
+      { uri: 'https://radio.example/other.mp3', live: true },
+      { autoplay: true }
+    );
+    loading.catch(() => undefined);
+    // The old connection still has titles in flight.
+    old.body.push(icyChunk(16_000, 'Old - Song'));
+    await flush();
+    const fresh = world.fetch.last();
+    expect(fresh).not.toBe(old);
+    expect(fresh.url).toBe('https://radio.example/other.mp3');
+    fresh.body.push(icyChunk(16_000, 'New - Tune'));
+    await flush();
+    const titles = ofType('metadata').map(
+      (e) => (e.metadata as { title: string }).title
+    );
+    expect(titles).not.toContain('Song');
+    expect(titles).toContain('Tune');
+  });
+
   it('reconnects with a growing wait while the player is casting', async () => {
     await casting();
     const count = () => world.fetch.requests.length;
@@ -972,7 +1013,7 @@ describe('titles while casting', () => {
     world.fetch.respond({ headers: ICY });
     await module.play(id);
     await flush();
-    expect(world.fetch.requests.length).toBe(count + 1);
+    expect(world.fetch.requests).toHaveLength(count + 1);
   });
 
   it('switches to the new source when the source changes', async () => {

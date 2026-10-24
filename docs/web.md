@@ -81,7 +81,7 @@ About 30 KB of JavaScript (minified and gzipped) on page load, the same for all 
 | HLS (`.m3u8`) | the `<audio>` element where the browser plays HLS (Safari, Android); elsewhere [hls.js](#hls) | ID3 titles (hls.js) | the engine reconnects | live: seconds behind the edge (hls.js) |
 | A picked `File` / `Blob`, a `blob:` or `data:` URL | the `<audio>` element, seekable, [see Local files](#local-files) | – | – | – |
 
-Reading the stream itself is what makes radio work properly on the web: RNAP owns the connection, so it de-interleaves ICY metadata (the same parser as native, the same charset repair) and delivers each title when its audio is heard. It closes the connection the moment the player releases it. And when a connection that stayed up for at least 3 s drops, a fresh one is spliced into the same buffer without stopping, reported as a [`discontinuity`](events.md#events) once its audio plays. A connection that drops sooner (a flapping server) ends the stream instead, and the engine's backoff paces the reconnects.
+Reading the stream itself is what makes radio work properly on the web: RNAP owns the connection, so it de-interleaves ICY metadata (the same parser as native, the same charset repair) and delivers each title when its audio is heard. It closes the connection the moment the player releases it. And when a connection that stayed up for at least 3 s drops, a fresh one is spliced into the same buffer without stopping, reported as a [`discontinuity`](events.md#events) once its audio plays. A connection that drops sooner (a flapping server) ends the stream instead, and the engine's backoff paces the reconnects. The same goes for a source buffer that stays full: after three retries the stream ends (the element plays out what it has) rather than skipping a chunk and leaving a hole.
 
 Anything RNAP cannot read falls back to the plain element, which still plays and still recovers. The diagnostics trace says why (`plain playback` with a reason).
 
@@ -179,7 +179,7 @@ Browsers refuse to start audible playback without a user gesture. RNAP reports i
 - `play()` (or a `load(…, { autoplay: true })`) that the browser refuses rejects with **`AUTOPLAY_BLOCKED`** (recoverable).
 - The status says `playWhenReady: false, interruption: { reason: 'autoplay-blocked' }` until playback starts.
 
-Call `play()` from a click or tap handler; the same call then succeeds.
+Call `play()` from a click or tap handler; the same call then succeeds. Only the command that made the refused `play()` rejects: one that the system started (a media key, the lock screen, an automatic resume after a call) shows up in the status alone, and does not fail the next `setVolume()` or `seekTo()`.
 
 ```ts
 player.play().catch((error) => {
@@ -217,7 +217,7 @@ The engine is the same, so are the rules in [Recovery policy](recovery.md): stal
 | Audio focus | one app at a time | none: other tabs and apps play alongside |
 | `audio.contentType`, `audio.mixWithOthers`, `android.*` | honoured | ignored |
 | Volume on iOS Safari | honoured | fixed by the system (`setVolume` has no effect; `setMuted` works) |
-| Visualizer | every source | streams read through `fetch()` (Web Audio cannot read a cross-origin `<audio>` without CORS) |
+| Visualizer | every source | streams read through `fetch()` (Web Audio cannot read a cross-origin `<audio>` without CORS); each player has its own audio context, closed on `release()` (browsers limit them), and a browser that refuses another one just reports no sampling |
 
 ## Expo Go
 
