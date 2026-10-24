@@ -15,60 +15,78 @@ const ROOT = path.resolve(
 const pkg = JSON.parse(
   fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')
 );
-const output = execFileSync(
-  'npm',
-  ['pack', '--dry-run', '--json', '--ignore-scripts'],
-  {
+const run = (command, args) =>
+  execFileSync(command, args, {
     cwd: ROOT,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'ignore'],
-  }
-);
-const packed = new Set(
-  JSON.parse(output.slice(output.search(/^\[/m)))[0].files.map((f) => f.path)
-);
+  });
+const npmOutput = run('npm', [
+  'pack',
+  '--dry-run',
+  '--json',
+  '--ignore-scripts',
+]);
+// Yarn reads `files` differently from npm (a bare nested folder once matched
+// nothing), and Jenkins and the Expo example pack with Yarn: check both.
+const packers = {
+  npm: new Set(
+    JSON.parse(npmOutput.slice(npmOutput.search(/^\[/m)))[0].files.map(
+      (f) => f.path
+    )
+  ),
+  yarn: new Set(
+    run('yarn', ['pack', '--dry-run', '--json'])
+      .split('\n')
+      .filter((line) => line.startsWith('{"location"'))
+      .map((line) => JSON.parse(line).location)
+  ),
+};
 
-test('ships the Codegen specs the app builds its native glue from', () => {
-  const dir = pkg.codegenConfig.jsSrcsDir;
-  const specs = fs
-    .readdirSync(path.join(ROOT, dir))
-    .filter((f) => /\.(ts|tsx|js)$/.test(f));
-  assert.ok(specs.length > 0);
-  for (const spec of specs)
-    assert.ok(packed.has(`${dir}/${spec}`), `${dir}/${spec} is not packed`);
-});
+for (const [packer, packed] of Object.entries(packers)) {
+  test(`${packer}: ships the Codegen specs the app builds its native glue from`, () => {
+    const dir = pkg.codegenConfig.jsSrcsDir;
+    const specs = fs
+      .readdirSync(path.join(ROOT, dir))
+      .filter((f) => /\.(ts|tsx|js)$/.test(f));
+    assert.ok(specs.length > 0);
+    for (const spec of specs)
+      assert.ok(packed.has(`${dir}/${spec}`), `${dir}/${spec} is not packed`);
+  });
 
-test('ships the native build files', () => {
-  for (const file of [
-    'android/build.gradle',
-    'app.plugin.js',
-    'lib/cli/rnap.mjs',
-  ].filter(
-    (f) => f !== 'lib/cli/rnap.mjs' || fs.existsSync(path.join(ROOT, f))
-  ))
-    assert.ok(packed.has(file), `${file} is not packed`);
-  assert.ok(
-    [...packed].some((f) => f.endsWith('.podspec')),
-    'no podspec is packed'
-  );
-});
+  test(`${packer}: ships the native build files`, () => {
+    for (const file of [
+      'android/build.gradle',
+      'app.plugin.js',
+      'lib/cli/rnap.mjs',
+    ].filter(
+      (f) => f !== 'lib/cli/rnap.mjs' || fs.existsSync(path.join(ROOT, f))
+    ))
+      assert.ok(packed.has(file), `${file} is not packed`);
+    assert.ok(
+      [...packed].some((f) => f.endsWith('.podspec')),
+      'no podspec is packed'
+    );
+  });
 
-test('ships every file the exports map points to (after a build)', (t) => {
-  if (!fs.existsSync(path.join(ROOT, 'lib/module/index.js')))
-    return t.skip('lib/ is not built');
-  // Conditions nest (`./sound` picks a file per platform): follow them all.
-  const targets = (entry) =>
-    typeof entry === 'string'
-      ? [entry]
-      : Object.entries(entry)
-          .filter(
-            ([condition]) => condition !== 'react-native-anything-player-source'
-          )
-          .flatMap(([, target]) => targets(target));
-  for (const entry of Object.values(pkg.exports))
-    for (const target of targets(entry))
-      assert.ok(
-        packed.has(target.replace(/^\.\//, '')),
-        `${target} is not packed`
-      );
-});
+  test(`${packer}: ships every file the exports map points to (after a build)`, (t) => {
+    if (!fs.existsSync(path.join(ROOT, 'lib/module/index.js')))
+      return t.skip('lib/ is not built');
+    // Conditions nest (`./sound` picks a file per platform): follow them all.
+    const targets = (entry) =>
+      typeof entry === 'string'
+        ? [entry]
+        : Object.entries(entry)
+            .filter(
+              ([condition]) =>
+                condition !== 'react-native-anything-player-source'
+            )
+            .flatMap(([, target]) => targets(target));
+    for (const entry of Object.values(pkg.exports))
+      for (const target of targets(entry))
+        assert.ok(
+          packed.has(target.replace(/^\.\//, '')),
+          `${target} is not packed`
+        );
+  });
+}

@@ -10,6 +10,8 @@ yarn run check:ci
 Both GitHub Actions and Jenkins call that command. It scans complete Git history
 and current tracked/unignored files for secrets, then runs `check:quality`:
 
+- The Bob package build first, so the package-contents tests check this commit's
+  `lib/`, not a stale one or none.
 - Regression tests for the gate tooling, the Expo config plugin and the CLI.
 - Dependency audit: unreviewed high/critical findings fail; registry failures fail
   closed. Narrow, version/path-specific exceptions match the app and remain visible.
@@ -18,7 +20,7 @@ and current tracked/unignored files for secrets, then runs `check:quality`:
 - TypeDoc (`yarn docs:api`): every public export, field and method needs a TSDoc
   comment, and every `{@link}` must resolve. The generated pages are the site's
   API reference.
-- React Doctor (zero findings in the library), then the Bob package build.
+- React Doctor (zero findings in the library).
 
 `check:quality` omits only Git-history scanning so the app can call it inside its
 isolated source copy; the app performs the full history scan before checking its

@@ -28,7 +28,6 @@ updates:
         update-types: [version-update:semver-major, version-update:semver-minor]
       # RN bundles an exact React renderer, including patch version equality.
       - dependency-name: 'react'
-      - dependency-name: 'react-test-renderer'
       # These tools must move with the renderer they internally instantiate.
       - dependency-name: '@testing-library/react-native'
       - dependency-name: 'test-renderer'

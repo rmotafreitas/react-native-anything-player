@@ -50,7 +50,8 @@ pipeline {
         sh '''
           set -eux
           git config --global --add safe.directory "$WORKSPACE"
-          rm -rf coverage junit.xml
+          # A stale lib/ from an earlier build would be checked by the package tests.
+          rm -rf coverage junit.xml lib
           . scripts/ci-cache.sh
           corepack enable
           echo "node $(node --version) / yarn $(yarn --version)"

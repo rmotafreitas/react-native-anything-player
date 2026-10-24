@@ -34,6 +34,7 @@
       "types": "./lib/typescript/src/sound/web.d.ts",
       "default": "./lib/module/sound/web.js"
     },
+    "./app.plugin.js": "./app.plugin.js",
     "./package.json": "./package.json"
   },
   "files": [
@@ -41,7 +42,7 @@
     "!lib/**/*.map",
     "!lib/typescript/src/web/engine",
     "!lib/typescript/src/web/platform",
-    "src/native",
+    "src/native/**",
     "android",
     "ios",
     "*.podspec",
@@ -84,7 +85,7 @@
     "test:tooling": "node --test scripts/__tests__/*.test.mjs",
     "doctor:gate": "node scripts/react-doctor-gate.mjs",
     "check:ci": "yarn run check:secrets && yarn run check:quality",
-    "check:quality": "yarn run test:tooling && yarn run check:audit && yarn run lint && yarn run typecheck && yarn run docs:api && yarn run test:coverage && yarn run doctor:gate && yarn run prepare",
+    "check:quality": "yarn run prepare && yarn run test:tooling && yarn run check:audit && yarn run lint && yarn run typecheck && yarn run docs:api && yarn run test:coverage && yarn run doctor:gate",
     "doctor": "react-doctor"
   },
   "keywords": [
@@ -130,7 +131,6 @@
     "@types/node": "^26.6.4",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19",
-    "@types/react-test-renderer": "^19",
     "del-cli": "^8.0.1",
     "eslint": "^9.39.5",
     "eslint-config-prettier": "^10.1.8",
@@ -147,7 +147,6 @@
     "react-dom": "19.2.3",
     "react-native": "0.86.3",
     "react-native-builder-bob": "^0.43.2",
-    "react-test-renderer": "19.2.3",
     "test-renderer": "1.2.0",
     "turbo": "^2.11.8",
     "typedoc": "^0.28.20",
