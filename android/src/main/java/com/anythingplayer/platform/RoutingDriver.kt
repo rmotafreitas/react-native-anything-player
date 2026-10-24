@@ -3,6 +3,7 @@ package com.anythingplayer.platform
 import com.anythingplayer.core.EngineDriver
 import com.anythingplayer.core.OpenRequest
 import com.anythingplayer.core.PlaybackSample
+import com.anythingplayer.core.QualityConstraints
 
 /** An [EngineDriver] that can also report the extra readings behind the progress snapshot. */
 internal interface Output : EngineDriver {
@@ -47,12 +48,17 @@ internal class RoutingDriver(
   override fun play() = target.play()
   override fun pause() = target.pause()
   override fun seek(seconds: Double) = target.seek(seconds)
+  override fun seek(seconds: Double, exact: Boolean) = target.seek(seconds, exact)
   override fun releaseConnection() = target.releaseConnection()
   override fun unload() = target.unload()
   override fun setVolume(effective: Double) = target.setVolume(effective)
   override fun setRate(rate: Double) = target.setRate(rate)
   override fun sample(): PlaybackSample = target.sample()
   override fun progress(): ProgressReading = target.progress()
+  override fun setVideoEnabled(enabled: Boolean) = target.setVideoEnabled(enabled)
+  override fun setQuality(constraints: QualityConstraints) = target.setQuality(constraints)
+  override fun setLoop(loop: Boolean) = target.setLoop(loop)
+  override fun cancelSwap(generation: Int) = target.cancelSwap(generation)
 
   /** Frees the remote output; the local driver is destroyed by its owner. */
   fun destroyRemote() {

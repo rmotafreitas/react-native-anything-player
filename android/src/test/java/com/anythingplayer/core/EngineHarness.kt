@@ -25,6 +25,10 @@ class FakeDriver(private val clock: FakeClock) : EngineDriver {
   private var anchorTime = 0L
   private var anchorPosition = 0.0
   private var anchorBuffered = 0.0
+  /** The item an `open(swap = true)` is preparing, and where it starts. */
+  var swapGeneration: Int? = null
+    private set
+  private var swapStart = 0.0
 
   fun setMotion(next: Motion) {
     val current = sample()
@@ -56,7 +60,16 @@ class FakeDriver(private val clock: FakeClock) : EngineDriver {
 
   override fun open(request: OpenRequest) {
     val start = request.startPosition?.let(::f1) ?: "-"
-    commands.add("open(gen=${request.generation},start=$start,play=${request.playWhenReady})")
+    val rendition = request.rendition?.let { ",r=$it" } ?: ""
+    val swap = if (request.swap) ",swap" else ""
+    commands.add("open(gen=${request.generation},start=$start,play=${request.playWhenReady}$rendition$swap)")
+    if (request.swap) {
+      // Prepared behind the current item: its playhead is not this one's.
+      swapGeneration = request.generation
+      swapStart = request.startPosition ?: 0.0
+      return
+    }
+    swapGeneration = null
     anchorPosition = request.startPosition ?: 0.0
     anchorBuffered = anchorPosition
     anchorTime = clock.monotonicMs
@@ -76,9 +89,31 @@ class FakeDriver(private val clock: FakeClock) : EngineDriver {
     }
   }
   override fun pause() { commands.add("pause") }
-  override fun seek(seconds: Double) {
-    commands.add("seek(${f1(seconds)})")
+  override fun seek(seconds: Double) = seek(seconds, false)
+  override fun seek(seconds: Double, exact: Boolean) {
+    commands.add("seek(${f1(seconds)}${if (exact) ",exact" else ""})")
     setPosition(seconds)
+  }
+  override fun setVideoEnabled(enabled: Boolean) { commands.add("video(${if (enabled) "on" else "off"})") }
+  override fun setQuality(constraints: QualityConstraints) {
+    val c = constraints
+    commands.add(
+      "quality(maxH=${c.maxHeight ?: "-"},maxBps=${c.maxBitrate ?: "-"},pin=${c.pinned ?: "-"},audioOnly=${c.audioOnly})",
+    )
+  }
+  override fun setLoop(loop: Boolean) { commands.add("loop($loop)") }
+  override fun cancelSwap(generation: Int) {
+    commands.add("cancelSwap(gen=$generation)")
+    if (swapGeneration == generation) swapGeneration = null
+  }
+
+  /** The swap's item shows its first frame: its playhead becomes the one. */
+  fun completeSwap() {
+    swapGeneration = null
+    anchorPosition = swapStart
+    anchorBuffered = swapStart + 10
+    anchorTime = clock.monotonicMs
+    motion = Motion.FLOWING
   }
   override fun releaseConnection() { commands.add("release") }
   override fun unload() { commands.add("unload") }
@@ -104,6 +139,8 @@ class Recorder : EngineDelegate {
   var fades = 0
   val diagnostics = mutableListOf<DiagnosticEntry>()
   var wakeupAt: Long? = null
+  /** Source refreshes asked for, `loadId:reason`. */
+  val refreshes = mutableListOf<String>()
   /** Ordering invariant breaches (an event delivered before its status). */
   val violations = mutableListOf<String>()
 
@@ -141,6 +178,7 @@ class Recorder : EngineDelegate {
   }
   override fun engineDiagnostic(entry: DiagnosticEntry) { diagnostics.add(entry) }
   override fun engineWakeupAt(at: Long?) { wakeupAt = at }
+  override fun engineRequestsSourceRefresh(loadId: Int, reason: RefreshReason) { refreshes.add("$loadId:${reason.wire}") }
 }
 
 /** Engine + fakes wired together, with a clock that fires wake-ups in order. */
