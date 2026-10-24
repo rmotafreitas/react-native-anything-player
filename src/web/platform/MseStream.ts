@@ -267,7 +267,8 @@ export class MseStream {
     this.abort?.();
     this.abort = null;
     // An append that is still running will never report: let its waiters go.
-    for (const done of [...this.idleWaiters]) done();
+    // Each waiter removes itself; deleting the current entry is safe mid-iteration.
+    for (const done of this.idleWaiters) done();
     for (const node of this.sources) node.remove();
     this.sources = [];
     if (this.objectUrl) browser().URL.revokeObjectURL(this.objectUrl);
