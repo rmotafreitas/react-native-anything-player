@@ -1,0 +1,291 @@
+[
+  {
+    "name": "srt: numbered blocks, CRLF, a BOM, comma and dot milliseconds",
+    "text": "﻿1\r\n00:00:01,000 --> 00:00:02,500\r\nHello\r\nworld\r\n\r\n2\r\n00:00:03.250 --> 00:00:04.000\r\nAgain\r\n",
+    "expect": [
+      {
+        "start": 1,
+        "end": 2.5,
+        "text": "Hello\nworld",
+        "align": "center",
+        "vertical": "bottom",
+        "x": null,
+        "y": null
+      },
+      {
+        "start": 3.25,
+        "end": 4,
+        "text": "Again"
+      }
+    ]
+  },
+  {
+    "name": "srt: no numbers, no hours, sorted by start",
+    "format": "srt",
+    "text": "00:05,000 --> 00:06,000\nSecond\n\n00:01,000 --> 00:02,000\nFirst\n",
+    "expect": [
+      {
+        "start": 1,
+        "end": 2,
+        "text": "First"
+      },
+      {
+        "start": 5,
+        "end": 6,
+        "text": "Second"
+      }
+    ]
+  },
+  {
+    "name": "srt: tags become styled runs",
+    "text": "1\n00:00:01,000 --> 00:00:02,000\n<b>Bold</b> and <i>italic <u>under</u></i> <font color=\"#ff0000\">red</font>\n",
+    "expect": [
+      {
+        "start": 1,
+        "end": 2,
+        "text": "Bold and italic under red",
+        "spans": [
+          {
+            "text": "Bold",
+            "bold": true
+          },
+          {
+            "text": " and "
+          },
+          {
+            "text": "italic ",
+            "italic": true
+          },
+          {
+            "text": "under",
+            "italic": true,
+            "underline": true
+          },
+          {
+            "text": " "
+          },
+          {
+            "text": "red",
+            "color": "#ff0000"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "srt: a fansub {\\an8} moves the line to the top, {\\i1} turns italic on",
+    "text": "1\n00:00:01,000 --> 00:00:02,000\n{\\an8}{\\i1}Sign text{\\i0}\n",
+    "expect": [
+      {
+        "start": 1,
+        "end": 2,
+        "text": "Sign text",
+        "spans": [
+          {
+            "text": "Sign text",
+            "italic": true
+          }
+        ],
+        "align": "center",
+        "vertical": "top"
+      }
+    ]
+  },
+  {
+    "name": "srt: a block with a broken timing or no text is dropped",
+    "text": "1\n00:00:01,000 -> 00:00:02,000\nBroken\n\n2\n00:00:03,000 --> 00:00:04,000\n\n3\n00:00:05,000 --> 00:00:04,000\nBackwards\n\n4\n00:00:06,000 --> 00:00:07,000\nKept\n",
+    "expect": [
+      {
+        "start": 6,
+        "end": 7,
+        "text": "Kept"
+      }
+    ]
+  },
+  {
+    "name": "vtt: header, ids, settings, entities, voice and class tags",
+    "text": "WEBVTT\nKind: captions\n\nNOTE a comment\n\nintro\n00:00:01.000 --> 00:00:02.000 align:left line:10% position:20%\n<v Roger>Fish &amp; chips</v>\n\n00:01:02.500 --> 00:01:03.000 line:0\n<c.yellow>Top</c> &lt;3\n",
+    "expect": [
+      {
+        "start": 1,
+        "end": 2,
+        "text": "Fish & chips",
+        "align": "left",
+        "vertical": "top",
+        "x": 0.2,
+        "y": 0.1
+      },
+      {
+        "start": 62.5,
+        "end": 63,
+        "text": "Top <3",
+        "align": "center",
+        "vertical": "top",
+        "x": null,
+        "y": null
+      }
+    ]
+  },
+  {
+    "name": "vtt: ruby annotations and karaoke timestamps are not text",
+    "text": "WEBVTT\n\n00:00:01.000 --> 00:00:03.000\n<ruby>漢<rt>かん</rt></ruby>字 <00:00:02.000>next\n",
+    "expect": [
+      {
+        "start": 1,
+        "end": 3,
+        "text": "漢字 next"
+      }
+    ]
+  },
+  {
+    "name": "vtt: STYLE and REGION blocks are skipped, hours are optional",
+    "text": "WEBVTT\n\nSTYLE\n::cue { color: lime }\n\nREGION\nid:r1 width:40%\n\n01:00:00.000 --> 01:00:01.000 align:end\nLate\n",
+    "expect": [
+      {
+        "start": 3600,
+        "end": 3601,
+        "text": "Late",
+        "align": "right"
+      }
+    ]
+  },
+  {
+    "name": "ass: styles, overrides, \\N, \\h, \\pos, drawings dropped",
+    "text": "[Script Info]\nScriptType: v4.00+\nPlayResX: 1920\nPlayResY: 1080\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,48,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,0,2,10,10,10,1\nStyle: Sign,Arial,40,&H0000FFFF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,2,0,8,10,10,10,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:03.50,Default,,0,0,0,,Hello,\\Nworld{\\b1}!{\\b0}\nComment: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,not shown\nDialogue: 0,0:00:02.00,0:00:04.00,Sign,,0,0,0,,{\\pos(960,540)\\an5}Sign\\hhere\nDialogue: 0,0:00:05.00,0:00:06.00,Default,,0,0,0,,{\\p1}m 0 0 l 100 0 100 100{\\p0}{\\c&H0000FF&}Red\n",
+    "expect": [
+      {
+        "start": 1,
+        "end": 3.5,
+        "text": "Hello,\nworld!",
+        "spans": [
+          {
+            "text": "Hello,\nworld",
+            "color": "#ffffff"
+          },
+          {
+            "text": "!",
+            "bold": true,
+            "color": "#ffffff"
+          }
+        ],
+        "align": "center",
+        "vertical": "bottom",
+        "x": null,
+        "y": null
+      },
+      {
+        "start": 2,
+        "end": 4,
+        "text": "Sign here",
+        "spans": [
+          {
+            "text": "Sign here",
+            "bold": true,
+            "color": "#ffff00"
+          }
+        ],
+        "align": "center",
+        "vertical": "middle",
+        "x": 0.5,
+        "y": 0.5
+      },
+      {
+        "start": 5,
+        "end": 6,
+        "text": "Red",
+        "spans": [
+          {
+            "text": "Red",
+            "color": "#ff0000"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "ass: SSA v4 legacy alignment, no PlayRes (384x288), unknown style falls back to Default",
+    "text": "[Script Info]\nScriptType: v4.00\n\n[V4 Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, TertiaryColour, BackColour, Bold, Italic, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, AlphaLevel, Encoding\nStyle: Default,Arial,20,16777215,65535,65535,-2147483640,0,-1,1,2,0,6,30,30,10,0,0\n\n[Events]\nFormat: Marked, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: Marked=0,0:00:01.00,0:00:02.00,Nope,,0000,0000,0000,,{\\pos(192,144)}Centre top\n",
+    "expect": [
+      {
+        "start": 1,
+        "end": 2,
+        "text": "Centre top",
+        "spans": [
+          {
+            "text": "Centre top",
+            "italic": true,
+            "color": "#ffffff"
+          }
+        ],
+        "align": "center",
+        "vertical": "top",
+        "x": 0.5,
+        "y": 0.5
+      }
+    ]
+  },
+  {
+    "name": "ttml: timing (clock, offset, frames), spans, br, styles and regions",
+    "text": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<tt xmlns=\"http://www.w3.org/ns/ttml\" xmlns:tts=\"http://www.w3.org/ns/ttml#styling\" xmlns:ttp=\"http://www.w3.org/ns/ttml#parameter\" ttp:frameRate=\"25\">\n<head><styling><style xml:id=\"s1\" tts:color=\"yellow\" tts:fontStyle=\"italic\"/></styling>\n<layout><region xml:id=\"bottom\" tts:origin=\"10% 80%\" tts:extent=\"80% 10%\" tts:displayAlign=\"after\" tts:textAlign=\"center\"/><region xml:id=\"top\" tts:origin=\"10% 5%\" tts:extent=\"80% 10%\" tts:displayAlign=\"before\"/></layout></head>\n<body region=\"bottom\"><div begin=\"10s\">\n<p begin=\"00:00:01.000\" end=\"00:00:02.500\">Hello <span tts:fontWeight=\"bold\">bold</span><br/>  second   line </p>\n<p begin=\"5s\" dur=\"1s\" style=\"s1\" region=\"top\">Styled &amp; up</p>\n<p begin=\"00:00:07:12\" end=\"8s\">Frames</p>\n</div></body></tt>\n",
+    "expect": [
+      {
+        "start": 11,
+        "end": 12.5,
+        "text": "Hello bold\nsecond line",
+        "spans": [
+          {
+            "text": "Hello "
+          },
+          {
+            "text": "bold",
+            "bold": true
+          },
+          {
+            "text": "\nsecond line"
+          }
+        ],
+        "align": "center",
+        "vertical": "bottom",
+        "x": 0.5,
+        "y": 0.9
+      },
+      {
+        "start": 15,
+        "end": 16,
+        "text": "Styled & up",
+        "spans": [
+          {
+            "text": "Styled & up",
+            "italic": true,
+            "color": "#ffff00"
+          }
+        ],
+        "align": "center",
+        "vertical": "top",
+        "x": 0.5,
+        "y": 0.05
+      },
+      {
+        "start": 17.48,
+        "end": 18,
+        "text": "Frames"
+      }
+    ]
+  },
+  {
+    "name": "sniff: a file without a hint is recognised by its content",
+    "text": "WEBVTT\n\n00:00.500 --> 00:01.000\nSniffed\n",
+    "expect": [
+      {
+        "start": 0.5,
+        "end": 1,
+        "text": "Sniffed"
+      }
+    ]
+  },
+  {
+    "name": "sniff: text that is no known format has no cues",
+    "text": "just some words\n",
+    "expect": []
+  }
+]

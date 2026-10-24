@@ -1,0 +1,104 @@
+[
+  {
+    "name": "overlapping cues, gaps and the end",
+    "cues": [
+      [
+        1,
+        3
+      ],
+      [
+        2,
+        4
+      ],
+      [
+        6,
+        7
+      ]
+    ],
+    "checks": [
+      {
+        "position": 0,
+        "active": [],
+        "next": 1
+      },
+      {
+        "position": 1,
+        "active": [
+          0
+        ],
+        "next": 2
+      },
+      {
+        "position": 2.5,
+        "active": [
+          0,
+          1
+        ],
+        "next": 3
+      },
+      {
+        "position": 3,
+        "active": [
+          1
+        ],
+        "next": 4
+      },
+      {
+        "position": 4,
+        "active": [],
+        "next": 6
+      },
+      {
+        "position": 6.5,
+        "active": [
+          2
+        ],
+        "next": 7
+      },
+      {
+        "position": 7,
+        "active": [],
+        "next": null
+      }
+    ]
+  },
+  {
+    "name": "a positive delay shows the cues later, a negative one earlier",
+    "cues": [
+      [
+        10,
+        12
+      ]
+    ],
+    "checks": [
+      {
+        "position": 10,
+        "delay": 0.5,
+        "active": [],
+        "next": 10.5
+      },
+      {
+        "position": 12.25,
+        "delay": 0.5,
+        "active": [
+          0
+        ],
+        "next": 12.5
+      },
+      {
+        "position": 9,
+        "delay": -1,
+        "active": [
+          0
+        ],
+        "next": 11
+      },
+      {
+        "position": 11,
+        "delay": -1,
+        "active": [],
+        "next": null
+      }
+    ]
+  }
+]
