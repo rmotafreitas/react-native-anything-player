@@ -7245,7 +7245,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"esbuild@npm:^0.25.0":
+"esbuild@npm:^0.25.0, esbuild@npm:^0.25.12":
   version: 0.25.12
   resolution: "esbuild@npm:0.25.12"
   dependencies:
@@ -11834,6 +11834,7 @@ __metadata:
     "@types/react": "npm:^19.2.0"
     "@types/react-dom": "npm:^19"
     del-cli: "npm:^8.0.1"
+    esbuild: "npm:^0.25.12"
     eslint: "npm:^9.39.5"
     eslint-config-prettier: "npm:^10.1.8"
     eslint-plugin-ft-flow: "npm:^3.0.11"
