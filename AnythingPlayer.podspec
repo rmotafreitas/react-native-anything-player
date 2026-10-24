@@ -29,6 +29,11 @@ rnap_flag =
   end
 rnap_cast_enabled = rnap_flag.call("RNAP_CAST", "rnap.cast")
 rnap_car_enabled = rnap_flag.call("RNAP_CAR", "rnap.car")
+# Video players (`new Player({ video })`, `<VideoView>`) are opt-in the same
+# way (`RNAP_VIDEO=1 pod install`, or `"rnap.video": "true"`; the Expo
+# plugin's `video` option): ios/Video is compiled only with it. AVFoundation
+# and AVKit are linked anyway, so it adds tens of KB.
+rnap_video_enabled = rnap_flag.call("RNAP_VIDEO", "rnap.video")
 
 # The Sound API is opt-in the same way (`RNAP_SOUND=1 pod install`, or
 # `"rnap.sound": "true"`; the Expo plugin's `sound` option): without it
@@ -65,15 +70,17 @@ Pod::Spec.new do |s|
   # Core/ is platform-free (also unit-tested with `swift test`), Platform/ is
   # the AVFoundation/MediaPlayer layer, AnythingPlayerModule.mm the TurboModule
   # shim, RNAPRoutePickerView.mm the Fabric AirPlay button, Cast/ the optional
-  # Google Cast layer, CarPlay/ the optional CarPlay layer, Sound/ and
+  # Google Cast layer, CarPlay/ the optional CarPlay layer, Video/ the
+  # optional video module (RNAPVideoView.mm, its Fabric view, is always
+  # there: an empty box without it), Sound/ and
   # AnythingPlayerSoundModule.mm the Sound API (its engine compiled only with
   # RNAP_SOUND). IntentsExtension/ (the app's Siri extension target) and
   # AppIntents/ (Siri shortcuts, compiled by the app target: iOS reads App
   # Intents from the app's own code) are templates, never part of the pod.
-  sources = ["ios/Core/**/*.swift", "ios/Platform/**/*.swift", "ios/AnythingPlayerModule.{h,mm}", "ios/RNAPRoutePickerView.mm", "ios/Sound/**/*.swift", "ios/AnythingPlayerSoundModule.{h,mm}"]
+  sources = ["ios/Core/**/*.swift", "ios/Platform/**/*.swift", "ios/AnythingPlayerModule.{h,mm}", "ios/RNAPRoutePickerView.mm", "ios/RNAPVideoView.mm", "ios/Sound/**/*.swift", "ios/AnythingPlayerSoundModule.{h,mm}"]
   s.exclude_files = ["ios/IntentsExtension/**", "ios/AppIntents/**"]
   s.private_header_files = "ios/AnythingPlayerModule.h", "ios/AnythingPlayerSoundModule.h"
-  frameworks = ["AVFoundation", "AVKit", "AudioToolbox", "Intents", "MediaPlayer", "MediaToolbox", "Network", "UIKit"]
+  frameworks = ["AVFoundation", "AVKit", "AudioToolbox", "CoreMedia", "CoreText", "Intents", "MediaAccessibility", "MediaPlayer", "MediaToolbox", "Network", "UIKit"]
   s.swift_version = "5.9"
 
   conditions = ["$(inherited)"]
@@ -87,6 +94,11 @@ Pod::Spec.new do |s|
   if rnap_sound_enabled
     Pod::UI.puts "[AnythingPlayer] Sound API enabled".green
     conditions << "RNAP_SOUND"
+  end
+  if rnap_video_enabled
+    Pod::UI.puts "[AnythingPlayer] Video enabled".green
+    sources << "ios/Video/**/*.swift"
+    conditions << "RNAP_VIDEO"
   end
   if rnap_car_enabled
     Pod::UI.puts "[AnythingPlayer] CarPlay enabled".green

@@ -56,6 +56,52 @@ struct PlayerOptions {
       titleFormat = StreamTitleFormat(rawValue: metadata["streamTitleFormat"] as? String ?? "") ?? .artistTitle
       useStreamMetadata = metadata["useStreamMetadataForNowPlaying"] as? Bool ?? true
     }
+    // Without the video module there is no video player: JS sees
+    // `status.video == null` and throws VIDEO_UNAVAILABLE.
+    if VideoSupport.available { engine.video = Self.video(dict["video"]) }
+  }
+
+  /// `PlayerOptions.video`: `true` takes every default; absent or `false`, an audio player.
+  static func video(_ value: Any?) -> VideoEngineOptions? {
+    if let on = value as? Bool { return on ? VideoEngineOptions() : nil }
+    guard let map = value as? NSDictionary else { return nil }
+    var v = VideoEngineOptions()
+    v.whenBackgrounded = BackgroundMode(rawValue: map["whenBackgrounded"] as? String ?? "") ?? .pause
+    v.ambient = map["ambient"] as? Bool ?? false
+    v.keepAwake = map["keepAwake"] as? Bool ?? true
+    v.focusWhenMuted = map["focusWhenMuted"] as? Bool ?? false
+    if let on = map["fallbackToAudio"] as? Bool {
+      v.fallback = on ? FallbackPolicy() : nil
+    } else if let f = map["fallbackToAudio"] as? NSDictionary {
+      var policy = FallbackPolicy()
+      if let x = (f["dropBelowRatio"] as? NSNumber)?.doubleValue { policy.dropBelowRatio = x }
+      if let x = (f["dropAfterMs"] as? NSNumber)?.int64Value { policy.dropAfterMs = x }
+      if let x = (f["dropAfterStalls"] as? NSNumber)?.intValue { policy.dropAfterStalls = x }
+      if let x = (f["stallWindowMs"] as? NSNumber)?.int64Value { policy.stallWindowMs = x }
+      if let x = (f["returnAboveRatio"] as? NSNumber)?.doubleValue { policy.returnAboveRatio = x }
+      if let x = (f["returnAfterMs"] as? NSNumber)?.int64Value { policy.returnAfterMs = x }
+      v.fallback = policy
+    }
+    if let q = map["quality"] as? NSDictionary {
+      v.quality.maxHeight = (q["maxResolution"] as? NSNumber)?.intValue
+      v.quality.maxBitrate = (q["maxBitrate"] as? NSNumber)?.int64Value
+      let cellular = q["cellular"] as? NSDictionary
+      v.quality.cellularMaxHeight = (cellular?["maxResolution"] as? NSNumber)?.intValue
+      v.quality.cellularMaxBitrate = (cellular?["maxBitrate"] as? NSNumber)?.int64Value
+      switch q["startQuality"] {
+      case let name as String where name == "lowest": v.quality.startQuality = .lowest
+      case let name as String where name == "highest": v.quality.startQuality = .highest
+      case let height as NSNumber: v.quality.startQuality = .height(height.intValue)
+      default: v.quality.startQuality = .auto
+      }
+      v.quality.followDataSaver = q["followDataSaver"] as? Bool ?? true
+      v.quality.capToView = q["capToView"] as? Bool ?? true
+    }
+    if let t = map["tracks"] as? NSDictionary {
+      v.tracks.languages = t["languages"] as? [String] ?? []
+      v.tracks.followSystem = t["followSystem"] as? Bool ?? true
+    }
+    return v
   }
 }
 
@@ -79,9 +125,26 @@ extension SourceDescriptor {
     (source["headers"] as? NSDictionary)?.forEach { key, value in
       if let k = key as? String, let v = value as? String { headers[k] = v }
     }
+    let renditions = (source["renditions"] as? [NSDictionary]).flatMap { list -> [Rendition]? in
+      guard !list.isEmpty else { return nil }
+      return list.map { r in
+        var rh: [String: String]?
+        if let h = r["headers"] as? NSDictionary {
+          var parsed: [String: String] = [:]
+          h.forEach { key, value in
+            if let k = key as? String, let v = value as? String { parsed[k] = v }
+          }
+          rh = parsed
+        }
+        return Rendition(
+          uri: r["uri"] as? String ?? "", headers: rh, height: (r["height"] as? NSNumber)?.intValue,
+          bitrate: (r["bitrate"] as? NSNumber)?.int64Value, label: r["label"] as? String,
+          audioOnly: r["audioOnly"] as? Bool ?? false)
+      }
+    }
     let descriptor = SourceDescriptor(
       uri: source["uri"] as? String ?? "", headers: headers, liveHint: source["live"] as? Bool,
-      refreshable: source["refreshable"] as? Bool ?? false,
+      renditions: renditions, refreshable: source["refreshable"] as? Bool ?? false,
       expiresAt: (source["expiresAt"] as? NSNumber)?.int64Value)
     return (descriptor, NowPlayingFields(source["metadata"] as? NSDictionary))
   }
@@ -134,8 +197,13 @@ final class PlayerController: EngineDelegate, DriverObserver {
   /// The app chose the id: the player survives a JS reload and JS re-attaches
   /// to it (`createPlayer` with the same id). Otherwise a reload releases it.
   let detachable: Bool
-  /// The local AVPlayer driver (visualizer taps, media-services rebuilds).
-  let driver: AVPlayerDriver
+  /// A video player's picture side (`nil`: an audio player).
+  private(set) var picture: VideoPicture?
+  /// An audio player's AVPlayer driver.
+  private let audioDriver: AVPlayerDriver?
+  /// The AVPlayer the sound (and the picture) plays from now (visualizer
+  /// taps, media-services rebuilds).
+  var driver: AVPlayerDriver { picture?.primary ?? audioDriver! }
   let routing: RoutingDriver
   let engine: PlaybackEngine
   private unowned let runtime: AnythingPlayerRuntime
@@ -175,13 +243,21 @@ final class PlayerController: EngineDelegate, DriverObserver {
     self.options = options
     self.detachable = detachable
     self.runtime = runtime
-    driver = AVPlayerDriver(titleFormat: options.titleFormat)
-    routing = RoutingDriver(local: driver)
+    // The picture side first (the routing driver plays through it), told
+    // about this controller once it exists.
+    let video = options.engine.video != nil ? VideoSupport.create(titleFormat: options.titleFormat) : nil
+    audioDriver = video == nil ? AVPlayerDriver(titleFormat: options.titleFormat) : nil
+    routing = RoutingDriver(local: video?.output ?? audioDriver!)
     engine = PlaybackEngine(driver: routing, clock: SystemClock.shared, options: options.engine)
-    driver.observer = self
+    picture = video
+    audioDriver?.observer = self
     routing.observer = self
     routing.describe = { [weak self] in self?.nowPlaying() ?? NowPlayingInfo() }
     engine.delegate = self
+    picture?.attach(to: self)
+    // JS reads the status right after creating the player, before the engine
+    // published one: a video player's starts with its `video` part.
+    snapshotStatus = engine.status
   }
 
   /// Whether the audio plays on another device (Cast). Main thread.
@@ -191,12 +267,19 @@ final class PlayerController: EngineDelegate, DriverObserver {
 
   /// `completion` runs once the load settles (ready, superseded or failed).
   func load(_ source: SourceDescriptor, fields: NowPlayingFields, autoplay: Bool?, start: Double?,
-            completion: @escaping LoadCompletion) throws {
+            parts: VideoLoadParts = VideoLoadParts(), completion: @escaping LoadCompletion) throws {
     sourceFields = fields
     overrides = NowPlayingFields(nil)
     trackClock = nil
-    lock.sync { snapshotMetadata = nil }
+    lock.sync {
+      snapshotMetadata = nil
+      lastBandwidth = nil
+      droppedFrames = nil
+    }
+    picture?.load(parts)
     try engine.load(source, autoplay: autoplay, startPosition: start)
+    // The app's subtitle files are tracks from the start (their cues follow).
+    if picture != nil && !parts.subtitles.isEmpty { engine.setAppTracks(parts.subtitles) }
     pendingLoads[engine.loadId] = completion
     runtime.nowPlayingChanged(self)
   }
@@ -227,19 +310,26 @@ final class PlayerController: EngineDelegate, DriverObserver {
           "outputLatency": window.outputLatency, "timestamp": Double(window.timestampMs),
         ])
       } : nil
-    driver.tap.points = points
-    driver.tap.onWindow = emitWindow
-    driver.streamVisualizer.points = points
-    driver.streamVisualizer.onWindow = emitWindow
-    driver.setSampling(enabled)
+    for d in drivers {
+      d.tap.points = points
+      d.tap.onWindow = emitWindow
+      d.streamVisualizer.points = points
+      d.streamVisualizer.onWindow = emitWindow
+      d.setSampling(enabled)
+    }
   }
+
+  /// Every AVPlayer driver: the audio player's one, or a video player's two.
+  private var drivers: [AVPlayerDriver] { picture?.drivers ?? [audioDriver].compactMap { $0 } }
 
   func release() {
     guard !released else { return }
     released = true
     lock.sync { samplesWanted = false }
-    driver.tap.onWindow = nil
-    driver.streamVisualizer.onWindow = nil
+    for d in drivers {
+      d.tap.onWindow = nil
+      d.streamVisualizer.onWindow = nil
+    }
     wakeup?.cancel()
     progressTimer?.cancel()
     progressTimer = nil
@@ -247,19 +337,33 @@ final class PlayerController: EngineDelegate, DriverObserver {
     icyReader = nil
     engine.release()
     routing.destroy()
+    picture?.destroy()
     pendingLoads.removeAll()
   }
 
   /// The app returned to the foreground.
   func appForegrounded() {
+    picture?.appForegrounded()
     engine.appForegrounded()
     icyReader?.reconnectNow()
   }
 
-  /// Media services were reset: rebuild the AVPlayer and re-open.
+  /// The app went to the background (`whenBackgrounded`, video players).
+  func appBackgrounded() {
+    guard let picture else { return }
+    picture.appBackgrounded()
+    engine.appBackgrounded()
+  }
+
+  /// Media services were reset: rebuild the AVPlayers and re-open.
   func mediaServicesReset() {
-    driver.rebuild()
+    drivers.forEach { $0.rebuild() }
     engine.platformReset()
+  }
+
+  /// Emits a player event with a payload of its own (`cues`), ordered like every other.
+  func emitEvent(_ type: String, _ payload: [String: Any]) {
+    emit(type, payload)
   }
 
   // MARK: - Snapshots (any thread)
@@ -394,6 +498,7 @@ final class PlayerController: EngineDelegate, DriverObserver {
     trackClock?.setRunning(status.state == .playing, now: SystemClock.shared.monotonicMs)
     updateProgressTicks(status.state)
     updateIcyReader(status)
+    picture?.statusChanged(status)
     runtime.statusChanged(self)
   }
 
@@ -491,10 +596,14 @@ final class PlayerController: EngineDelegate, DriverObserver {
       "rebufferMs": s.rebufferMs,
       "qualitySwitches": s.qualitySwitches,
       "audioOnlySwitches": s.audioOnlySwitches,
-      "droppedFrames": NSNull(),
-      "bandwidth": NSNull(),
+      "droppedFrames": Serialization.optional(lock.sync { droppedFrames }),
+      "bandwidth": Serialization.optional(lock.sync { lastBandwidth }),
     ]
   }
+
+  /// The access log's last bandwidth and dropped frames (guarded by `lock`).
+  private var lastBandwidth: Double?
+  private var droppedFrames: Int?
 
   func engine(wakeupAt: Int64?) {
     wakeup?.cancel()
@@ -540,7 +649,30 @@ final class PlayerController: EngineDelegate, DriverObserver {
     let reading = routing.progress()
     let clock = SystemClock.shared
     lock.sync { snapshotProgress = (reading, clock.monotonicMs, clock.wallMs) }
+    picture?.positionJumped()
     runtime.nowPlayingChanged(self)
+  }
+
+  func driverVideoInfo(generation: Int, info: VideoInfo) { engine.onVideoInfo(generation: generation, info: info) }
+
+  /// The picture's first frame is on screen (the video module's layer says so).
+  func driverFirstFrame(generation: Int) { engine.onFirstFrame(generation: generation) }
+
+  func driverTracks(generation: Int, tracks: [MediaTrack], variants: [VideoVariant]) {
+    engine.onTracks(generation: generation, tracks: tracks)
+    engine.onVariants(generation: generation, variants: variants)
+  }
+
+  func driverSourceCues(generation: Int, cues: [OverlayCue]) {
+    if engine.accepts(generation) { picture?.sourceCues(cues) }
+  }
+
+  func driverAccessLog(generation: Int, bitsPerSecond: Double?, droppedFrames: Int?) {
+    lock.sync {
+      if let bitsPerSecond { lastBandwidth = bitsPerSecond }
+      if let droppedFrames { self.droppedFrames = droppedFrames }
+    }
+    if let bitsPerSecond { engine.onBandwidth(generation: generation, bitsPerSecond: bitsPerSecond) }
   }
 
   func driverNote(generation: Int, event: String, details: [String: String]) {
@@ -574,8 +706,7 @@ enum Serialization {
       "rate": s.rate,
       "route": ["kind": s.route.kind.rawValue, "name": optional(s.route.name)],
       "sleepAt": optional(s.sleepAt),
-      // A video player's part comes with the video module (not in this build yet).
-      "video": NSNull(),
+      "video": s.video.map(video) ?? NSNull(),
     ]
     if let i = s.interruption {
       dict["interruption"] = ["reason": i.reason.rawValue, "resumable": i.resumable, "since": i.since]
@@ -589,6 +720,28 @@ enum Serialization {
       dict["reconnect"] = NSNull()
     }
     return dict
+  }
+
+  static func video(_ v: VideoStatus) -> [String: Any] {
+    [
+      "width": optional(v.width), "height": optional(v.height), "hdr": v.hdr, "firstFrame": v.firstFrame,
+      "audioOnly": optional(v.audioOnly?.rawValue), "pictureInPicture": v.pictureInPicture,
+      "qualities": v.qualities.map { q in
+        [
+          "id": q.id, "height": optional(q.height), "bitrate": optional(q.bitrate), "audioOnly": q.audioOnly,
+          "label": optional(q.label),
+        ] as [String: Any]
+      },
+      "quality": optional(v.quality), "selectedQuality": optional(v.selectedQuality),
+      "tracks": v.tracks.map { t in
+        [
+          "id": t.id, "kind": t.kind.rawValue, "language": optional(t.language), "label": optional(t.label),
+          "forced": t.forced, "default": t.isDefault, "sdh": t.sdh, "describesVideo": t.describesVideo,
+        ] as [String: Any]
+      },
+      "audioTrack": optional(v.audioTrack), "textTrack": optional(v.textTrack), "subtitleDelay": v.subtitleDelay,
+      "fullscreen": v.fullscreen,
+    ]
   }
 
   static func error(_ e: PlayerError) -> [String: Any] {

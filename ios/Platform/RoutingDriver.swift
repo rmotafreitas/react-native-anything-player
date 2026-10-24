@@ -18,7 +18,7 @@ protocol RemoteOutputDriver: EngineDriver {
 final class RoutingDriver: EngineDriver {
   static let localOutput = "local"
 
-  let local: AVPlayerDriver
+  let local: LocalOutput
   /// Builds the driver for a remote output id (`cast:<device>`); `nil` when
   /// remote outputs are not compiled in.
   var makeRemote: ((String) -> RemoteOutputDriver?)?
@@ -36,7 +36,7 @@ final class RoutingDriver: EngineDriver {
   /// told up front, and the source rarely says.
   private var knownLive: (uri: String, live: Bool)?
 
-  init(local: AVPlayerDriver) {
+  init(local: LocalOutput) {
     self.local = local
   }
 

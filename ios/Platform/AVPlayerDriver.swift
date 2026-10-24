@@ -1,5 +1,7 @@
 import AVFoundation
+import CoreMedia
 import Foundation
+import UIKit
 
 /// What a driver (the AVPlayer adapter, a Cast receiver) reports, always
 /// tagged with its generation.
@@ -21,6 +23,33 @@ protocol DriverObserver: AnyObject {
   /// the media time (s) the new upstream's audio starts at.
   func driverDiscontinuity(generation: Int, position: Double)
   var isOffline: Bool { get }
+  /// Video: the picture's size and the variant playing.
+  func driverVideoInfo(generation: Int, info: VideoInfo)
+  /// Video: the source's own audio and text tracks, and an adaptive source's variants.
+  func driverTracks(generation: Int, tracks: [MediaTrack], variants: [VideoVariant])
+  /// Video: the cues of the source's text track on screen now.
+  func driverSourceCues(generation: Int, cues: [OverlayCue])
+  /// Video: a bandwidth estimate (bits per second) and the dropped frames so far.
+  func driverAccessLog(generation: Int, bitsPerSecond: Double?, droppedFrames: Int?)
+}
+
+/// Audio players have no picture, tracks or cues.
+extension DriverObserver {
+  func driverVideoInfo(generation: Int, info: VideoInfo) {}
+  func driverTracks(generation: Int, tracks: [MediaTrack], variants: [VideoVariant]) {}
+  func driverSourceCues(generation: Int, cues: [OverlayCue]) {}
+  func driverAccessLog(generation: Int, bitsPerSecond: Double?, droppedFrames: Int?) {}
+}
+
+/// A video's tracks as the engine lists them, and how to find each again.
+struct MappedMedia {
+  var tracks: [MediaTrack] = []
+  /// Track id (`track:a:<i>`, `track:t:<i>`) → its group and option.
+  var options: [String: (group: AVMediaSelectionGroup, option: AVMediaSelectionOption)] = [:]
+  var legible: AVMediaSelectionGroup?
+  var variants: [VideoVariant] = []
+  /// Variant id → its peak bitrate and height (caps pin it; the access log names it).
+  var variantCaps: [String: (peak: Double?, height: Int?)] = [:]
 }
 
 /// Readings for the progress snapshot (not needed by the engine).
@@ -51,7 +80,9 @@ struct ProgressReading {
 ///   which misses repeated ICY updates) delivers metadata when it is *heard*.
 /// - Progressive HTTP(S) sources are played through `StreamProxy`, so the
 ///   app owns every connection (see there for what that fixes).
-final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPushDelegate {
+final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPushDelegate,
+  AVPlayerItemLegibleOutputPushDelegate
+{
   private(set) var player = AVPlayer()
   /// Decoded-PCM tap for visualizers; attached to each item while sampling is on.
   let tap = AudioTap()
@@ -112,15 +143,38 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
   /// Media times (s) where a spliced upstream's audio starts, not heard yet.
   private var pendingSplices: [Double] = []
 
-  init(titleFormat: StreamTitleFormat) {
+  // MARK: Video
+  /// A video player: a picture, tracks, variants, cues; never proxied.
+  let video: Bool
+  private var legibleOutput: AVPlayerItemLegibleOutput?
+  private var looping = false
+  private var quality: QualityConstraints?
+  private var chosenTracks: (audio: String?, text: String?)?
+  private var videoDisabled = false
+  private(set) var mapped = MappedMedia()
+  fileprivate var videoObservers: [NSKeyValueObservation] = []
+  fileprivate var videoNotifications: [NSObjectProtocol] = []
+  /// The access log's indicated bitrate: which variant plays.
+  fileprivate var indicatedBitrate: Double?
+
+  init(titleFormat: StreamTitleFormat, video: Bool = false) {
     self.titleFormat = titleFormat
+    self.video = video
     super.init()
     configurePlayer()
   }
 
+  /// The generation of the item it holds (the video module names first frames with it).
+  var currentGeneration: Int { generation }
+
   private func configurePlayer() {
     player.automaticallyWaitsToMinimizeStalling = true
     player.volume = volume
+    if video {
+      // The engine picks the tracks and keeps the screen awake itself.
+      player.appliesMediaSelectionCriteriaAutomatically = false
+      player.preventsDisplaySleepDuringVideoPlayback = false
+    }
     playerObservers = [
       player.observe(\.timeControlStatus, options: [.new]) { [weak self] player, _ in
         DispatchQueue.main.async { self?.timeControlChanged(player.timeControlStatus) }
@@ -168,7 +222,9 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
     station = (nil, nil)
     upstreamError = nil
     let asset: AVURLAsset
-    if Self.proxies(url) {
+    mapped = MappedMedia()
+    // A video goes to AVFoundation directly: range requests, and no ICY to read.
+    if !video && Self.proxies(url) {
       let gen = generation
       proxied = StreamProxy.shared.register(
         StreamProxy.Route(
@@ -238,6 +294,7 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
     output.setDelegate(self, queue: .main)
     newItem.add(output)
     metadataOutput = output
+    if video { setUpVideo(newItem) }
     observe(newItem, generation: generation)
     item = newItem
     player.automaticallyWaitsToMinimizeStalling = !liveHint
@@ -267,6 +324,20 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
     pendingSeek = seconds
     let time = CMTime(seconds: seconds, preferredTimescale: 1000)
     player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
+      DispatchQueue.main.async {
+        guard let self, self.pendingSeek == seconds else { return }
+        self.pendingSeek = nil
+        self.observer?.driverPositionChanged()
+      }
+    }
+  }
+
+  /// A video's scrub lands on the nearest keyframe (fast) unless `exact`; audio is always exact.
+  func seek(to seconds: Double, exact: Bool) {
+    guard video, !exact else { return seek(to: seconds) }
+    pendingSeek = seconds
+    let time = CMTime(seconds: seconds, preferredTimescale: 1000)
+    player.seek(to: time, toleranceBefore: .positiveInfinity, toleranceAfter: .positiveInfinity) { [weak self] _ in
       DispatchQueue.main.async {
         guard let self, self.pendingSeek == seconds else { return }
         self.pendingSeek = nil
@@ -437,6 +508,17 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
       center.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main) {
         [weak self] _ in
         guard let self, self.isCurrent(item, gen) else { return }
+        if self.looping && !self.itemIsLive {
+          // Start over in place: no ended event, no new item.
+          self.player.seek(to: .zero, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
+            DispatchQueue.main.async {
+              guard let self, self.isCurrent(item, gen), self.playWanted else { return }
+              self.player.playImmediately(atRate: self.rate)
+              self.observer?.driverPositionChanged()
+            }
+          }
+          return
+        }
         self.ended = true
         self.observer?.driverEnded(generation: gen)
       },
@@ -502,6 +584,12 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
       item.remove(output)
     }
     metadataOutput = nil
+    if let output = legibleOutput, let item {
+      output.setDelegate(nil, queue: nil)
+      item.remove(output)
+    }
+    legibleOutput = nil
+    tearDownVideo()
     item = nil
   }
 
@@ -530,6 +618,7 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
       // completes (the stream never ends) and outlives the item — a phantom
       // listener on the station's server. Live metadata is timed anyway.
       if !isLive { loadAssetMetadata(changed.asset, gen) }
+      if video { loadMedia(changed, gen) }
       itemIsLive = isLive
       if samplingEnabled { attachSampling(changed) }
       if let start = pendingStart, !isLive {
@@ -703,5 +792,245 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
     if uri.hasPrefix("/") { return URL(fileURLWithPath: uri) }
     guard let url = URL(string: uri), url.scheme != nil else { return nil }
     return url
+  }
+}
+
+// MARK: - Video
+
+extension AVPlayerDriver {
+  /// A video item's extras: the source's subtitles as cues (the overlay draws
+  /// them; AVFoundation's own rendering is off), the picture's size, the
+  /// access log (bandwidth, the variant playing, dropped frames), the caps.
+  fileprivate func setUpVideo(_ item: AVPlayerItem) {
+    let legible = AVPlayerItemLegibleOutput(mediaSubtypesForNativeRepresentation: [])
+    legible.suppressesPlayerRendering = true
+    legible.setDelegate(self, queue: .main)
+    item.add(legible)
+    legibleOutput = legible
+    applyQuality(item)
+    let gen = generation
+    itemObserversExtra(item, gen)
+  }
+
+  private func itemObserversExtra(_ item: AVPlayerItem, _ gen: Int) {
+    // Added to the item's observers: torn down with them.
+    videoObservers = [
+      item.observe(\.presentationSize, options: [.new]) { [weak self] item, _ in
+        DispatchQueue.main.async { self?.reportVideoInfo(item, gen) }
+      }
+    ]
+    videoNotifications = [
+      NotificationCenter.default.addObserver(forName: .AVPlayerItemNewAccessLogEntry, object: item, queue: .main) {
+        [weak self] _ in
+        guard let self, self.generation == gen, let event = item.accessLog()?.events.last else { return }
+        let observed = event.observedBitrate
+        let dropped = event.numberOfDroppedVideoFrames
+        self.indicatedBitrate = event.indicatedBitrate > 0 ? event.indicatedBitrate : nil
+        self.observer?.driverAccessLog(
+          generation: gen, bitsPerSecond: observed.isFinite && observed > 0 ? observed : nil,
+          droppedFrames: dropped >= 0 ? dropped : nil)
+        self.reportVideoInfo(item, gen)
+      }
+    ]
+  }
+
+  fileprivate func tearDownVideo() {
+    videoObservers.forEach { $0.invalidate() }
+    videoObservers = []
+    videoNotifications.forEach { NotificationCenter.default.removeObserver($0) }
+    videoNotifications = []
+    indicatedBitrate = nil
+  }
+
+  private func reportVideoInfo(_ item: AVPlayerItem, _ gen: Int) {
+    guard generation == gen, item === self.item else { return }
+    let size = item.presentationSize
+    guard size.width > 0, size.height > 0 else { return }
+    observer?.driverVideoInfo(
+      generation: gen, info: VideoInfo(width: Int(size.width), height: Int(size.height), hdr: false, variantId: playingVariant(size)))
+  }
+
+  /// The variant playing: the access log's indicated bitrate, else the only one this tall.
+  private func playingVariant(_ size: CGSize) -> String? {
+    guard !mapped.variantCaps.isEmpty else { return nil }
+    if let indicated = indicatedBitrate {
+      let best = mapped.variantCaps.min { a, b in
+        abs((a.value.peak ?? 0) - indicated) < abs((b.value.peak ?? 0) - indicated)
+      }
+      if let best { return best.key }
+    }
+    let tall = mapped.variantCaps.filter { $0.value.height == Int(size.height) }
+    return tall.count == 1 ? tall.first?.key : nil
+  }
+
+  /// The source's audio and text options and an HLS source's variants, once the item is ready.
+  fileprivate func loadMedia(_ item: AVPlayerItem, _ gen: Int) {
+    let asset = item.asset
+    Task { @MainActor [weak self] in
+      var media = MappedMedia()
+      for (audio, characteristic) in [(true, AVMediaCharacteristic.audible), (false, AVMediaCharacteristic.legible)] {
+        guard let group = try? await asset.loadMediaSelectionGroup(for: characteristic) else { continue }
+        if !audio { media.legible = group }
+        for (i, option) in group.options.enumerated() {
+          let id = "track:\(audio ? "a" : "t"):\(i)"
+          media.options[id] = (group, option)
+          media.tracks.append(Self.track(id, option, audio: audio))
+        }
+      }
+      if let urlAsset = asset as? AVURLAsset { Self.variants(urlAsset, into: &media) }
+      guard let self, self.generation == gen, self.item === item else { return }
+      self.mapped = media
+      // Picks made before the tracks were known apply now.
+      self.applyTracks(item)
+      self.applyQuality(item)
+      self.observer?.driverTracks(generation: gen, tracks: media.tracks, variants: media.variants)
+      self.reportVideoInfo(item, gen)
+    }
+  }
+
+  private static func track(_ id: String, _ option: AVMediaSelectionOption, audio: Bool) -> MediaTrack {
+    let sdh =
+      option.hasMediaCharacteristic(.transcribesSpokenDialogForAccessibility)
+      || option.hasMediaCharacteristic(.describesMusicAndSoundForAccessibility)
+    return MediaTrack(
+      id: id, kind: audio ? .audio : (sdh ? .captions : .subtitles),
+      language: option.extendedLanguageTag ?? option.locale?.identifier, label: option.displayName,
+      forced: option.hasMediaCharacteristic(.containsOnlyForcedSubtitles),
+      isDefault: false, sdh: sdh,
+      describesVideo: option.hasMediaCharacteristic(.describesVideoForAccessibility))
+  }
+
+  /// An HLS master playlist's variants, tallest last; an audio-only one if it lists one.
+  private static func variants(_ asset: AVURLAsset, into media: inout MappedMedia) {
+    let list = asset.variants
+    guard list.count > 1 else { return }
+    for (i, variant) in list.enumerated() {
+      let id = "v\(i)"
+      let size = variant.videoAttributes?.presentationSize
+      let height = size.map { Int($0.height) }.flatMap { $0 > 0 ? $0 : nil }
+      let peak = variant.peakBitRate ?? variant.averageBitRate
+      media.variantCaps[id] = (peak, height)
+      media.variants.append(
+        VideoVariant(
+          id: id, height: height, bitrate: peak.map { Int64($0) }, audioOnly: variant.videoAttributes == nil, label: nil))
+    }
+  }
+
+  // MARK: Commands
+
+  func setVideoEnabled(_ enabled: Bool) {
+    videoDisabled = !enabled
+    // A file's video track stops decoding; an HLS source's picture stops
+    // with its layers (the video module detaches them, QA1668).
+    item?.tracks.filter { $0.assetTrack?.mediaType == .video }.forEach { $0.isEnabled = enabled }
+  }
+
+  func setQuality(_ constraints: QualityConstraints) {
+    quality = constraints
+    if let item { applyQuality(item) }
+  }
+
+  func selectTracks(audio: String?, text: String?) {
+    chosenTracks = (audio, text)
+    if let item { applyTracks(item) }
+  }
+
+  func setLoop(_ loop: Bool) {
+    looping = loop
+  }
+
+  /// AVPlayer's ABR under the engine's caps; a pinned variant caps at it, audio only at the lowest.
+  fileprivate func applyQuality(_ item: AVPlayerItem) {
+    guard video else { return }
+    let c = quality
+    var height = c?.maxHeight
+    var peak = c?.maxBitrate.map(Double.init) ?? 0
+    if let pinned = c?.pinned, let caps = mapped.variantCaps[pinned] {
+      if let h = caps.height { height = h }
+      if let p = caps.peak { peak = p }
+    }
+    if c?.audioOnly == true,
+      let audio = mapped.variants.first(where: { $0.audioOnly }), let p = mapped.variantCaps[audio.id]?.peak
+    {
+      peak = p
+    }
+    // Wide enough for any aspect: the height is the cap.
+    item.preferredMaximumResolution = height.map { CGSize(width: CGFloat($0) * 4, height: CGFloat($0)) } ?? .zero
+    item.preferredPeakBitRate = peak
+  }
+
+  fileprivate func applyTracks(_ item: AVPlayerItem) {
+    guard video, let chosen = chosenTracks else { return }
+    if let audio = chosen.audio, let entry = mapped.options[audio] { item.select(entry.option, in: entry.group) }
+    // No text option of the source's: none, or an app file on the overlay.
+    if let legible = mapped.legible {
+      if let text = chosen.text, let entry = mapped.options[text] {
+        item.select(entry.option, in: entry.group)
+      } else {
+        item.select(nil, in: legible)
+        observer?.driverSourceCues(generation: generation, cues: [])
+      }
+    }
+  }
+
+  // MARK: AVPlayerItemLegibleOutputPushDelegate
+
+  func legibleOutput(
+    _ output: AVPlayerItemLegibleOutput, didOutputAttributedStrings strings: [NSAttributedString],
+    nativeSampleBuffers nativeSamples: [Any], forItemTime itemTime: CMTime
+  ) {
+    guard output === legibleOutput else { return }
+    let at = itemTime.seconds.isFinite ? itemTime.seconds : 0
+    observer?.driverSourceCues(generation: generation, cues: strings.map { LegibleCues.cue($0, at: at) })
+  }
+}
+
+/// The legible output's attributed strings (CoreMedia text markup) as overlay cues.
+enum LegibleCues {
+  private static let bold = kCMTextMarkupAttribute_BoldStyle as String
+  private static let italic = kCMTextMarkupAttribute_ItalicStyle as String
+  private static let underline = kCMTextMarkupAttribute_UnderlineStyle as String
+  private static let foreground = kCMTextMarkupAttribute_ForegroundColorARGB as String
+  private static let alignment = kCMTextMarkupAttribute_Alignment as String
+  private static let line = kCMTextMarkupAttribute_OrthogonalLinePositionPercentageRelativeToWritingDirection as String
+  private static let position = kCMTextMarkupAttribute_TextPositionPercentageRelativeToWritingDirection as String
+  private static let lefts: Set<String> = [kCMTextMarkupAlignmentType_Left as String, kCMTextMarkupAlignmentType_Start as String]
+  private static let rights: Set<String> = [kCMTextMarkupAlignmentType_Right as String, kCMTextMarkupAlignmentType_End as String]
+
+  static func cue(_ string: NSAttributedString, at time: Double) -> OverlayCue {
+    var cue = OverlayCue(start: time, end: time, spans: [])
+    let whole = NSRange(location: 0, length: string.length)
+    string.enumerateAttributes(in: whole) { attributes, range, _ in
+      var span = OverlaySpan(text: (string.string as NSString).substring(with: range))
+      for (key, value) in attributes {
+        switch key.rawValue {
+        case bold: span.bold = (value as? Bool) ?? false
+        case italic: span.italic = (value as? Bool) ?? false
+        case underline: span.underline = (value as? Bool) ?? false
+        case foreground: span.color = color(value)
+        case alignment:
+          let name = value as? String ?? ""
+          cue.align = lefts.contains(name) ? "left" : rights.contains(name) ? "right" : "center"
+        case line:
+          if let p = (value as? NSNumber)?.doubleValue {
+            cue.y = p / 100
+            cue.vertical = p < 50 ? "top" : "bottom"
+          }
+        case position:
+          if let p = (value as? NSNumber)?.doubleValue { cue.x = p / 100 }
+        default: break
+        }
+      }
+      cue.spans.append(span)
+    }
+    return cue
+  }
+
+  /// `[A, R, G, B]` in 0...1.
+  private static func color(_ value: Any) -> UIColor? {
+    guard let parts = value as? [NSNumber], parts.count == 4 else { return nil }
+    return UIColor(
+      red: CGFloat(parts[1].doubleValue), green: CGFloat(parts[2].doubleValue), blue: CGFloat(parts[3].doubleValue),
+      alpha: CGFloat(parts[0].doubleValue))
   }
 }

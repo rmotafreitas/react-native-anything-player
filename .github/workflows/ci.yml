@@ -171,6 +171,7 @@ jobs:
       # The Sound API and CarPlay are opt-in too: built in the same leg as Cast.
       RNAP_SOUND: ${{ matrix.cast == 'on' && '1' || '0' }}
       RNAP_CAR: ${{ matrix.cast == 'on' && '1' || '0' }}
+      RNAP_VIDEO: ${{ matrix.cast == 'on' && '1' || '0' }}
       RCT_USE_RN_DEP: 1
       RCT_USE_PREBUILT_RNCORE: 1
 
@@ -261,6 +262,10 @@ jobs:
           if [ "$RNAP_CAR" = 1 ] && [ "$car" != 1 ]; then echo "CarPlay sources missing from the Pods project"; exit 1; fi
           if [ "$RNAP_CAR" != 1 ] && [ "$car" = 1 ]; then echo "CarPlay sources present with RNAP_CAR off"; exit 1; fi
           echo "CarPlay compiled: $car"
+          if grep -q "VideoOutput.swift" example/ios/Pods/Pods.xcodeproj/project.pbxproj; then video=1; else video=0; fi
+          if [ "$RNAP_VIDEO" = 1 ] && [ "$video" != 1 ]; then echo "Video sources missing from the Pods project"; exit 1; fi
+          if [ "$RNAP_VIDEO" != 1 ] && [ "$video" = 1 ]; then echo "Video sources present with RNAP_VIDEO off"; exit 1; fi
+          echo "Video compiled: $video"
 
 
   build-docs:
