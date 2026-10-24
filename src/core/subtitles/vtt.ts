@@ -159,6 +159,19 @@ function settingsFor(cue: SubtitleCue): string {
   return out.join(' ');
 }
 
+/** A cue's text as WebVTT markup: bold, italic and underline kept, colours dropped. */
+export function vttCueText(cue: SubtitleCue): string {
+  return cue.spans
+    .map((span) => {
+      let t = escapeText(span.text);
+      if (span.underline) t = `<u>${t}</u>`;
+      if (span.italic) t = `<i>${t}</i>`;
+      if (span.bold) t = `<b>${t}</b>`;
+      return t;
+    })
+    .join('');
+}
+
 /**
  * Cues as a WebVTT file (bold, italic, underline and placement kept;
  * colours need a stylesheet WebVTT players rarely read, so they go). How an
@@ -169,15 +182,7 @@ export function cuesToVtt(cues: readonly SubtitleCue[], delay = 0): string {
   const blocks = cues
     .filter((cue) => cue.end + delay > 0)
     .map((cue) => {
-      const text = cue.spans
-        .map((span) => {
-          let t = escapeText(span.text);
-          if (span.underline) t = `<u>${t}</u>`;
-          if (span.italic) t = `<i>${t}</i>`;
-          if (span.bold) t = `<b>${t}</b>`;
-          return t;
-        })
-        .join('');
+      const text = vttCueText(cue);
       const timing = `${clock(cue.start + delay)} --> ${clock(cue.end + delay)}`;
       return `${timing} ${settingsFor(cue)}\n${text}`;
     });

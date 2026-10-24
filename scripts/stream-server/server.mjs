@@ -33,6 +33,9 @@
 //               Spanish, WebVTT subtitles in English and Portuguese
 // Video DASH:   GET /video-dash/manifest.mpd  the same as CMAF DASH (360p, 720p)
 //               (Range supported; `?delay=MS` slows the response)
+// Remux:        GET /remux/movie.mkv (two audio languages, SubRip and ASS),
+//               /remux/movie.ts, /remux/movie.webm (Range supported)
+//               GET /live.ts   a live MPEG-TS channel (paced, looping)
 // Control:      GET /control?down=1|0     refuse every new stream connection
 //               GET /control?stall=1|0    freeze every open stream
 //               GET /control?drop=1       destroy every open stream now
@@ -96,6 +99,23 @@ if (existsSync(join(here, 'media', 'dash-video'))) {
       FILES[`/video-dash/${name}`] = { body: media(`dash-video/${name}`), type };
   }
 }
+/** Optional (generate-media.sh): Matroska, MPEG-TS and WebM, at /remux/. */
+const REMUX_TYPES = {
+  '.mkv': 'video/x-matroska',
+  '.ts': 'video/mp2t',
+  '.webm': 'video/webm',
+};
+/** A minute of MPEG-TS sent as a live channel (/live.ts), looping. */
+let LIVE_TS = null;
+if (existsSync(join(here, 'media', 'remux'))) {
+  for (const name of readdirSync(join(here, 'media', 'remux'))) {
+    const type = REMUX_TYPES[extname(name)];
+    if (type && name !== 'live.ts')
+      FILES[`/remux/${name}`] = { body: media(`remux/${name}`), type };
+  }
+  if (existsSync(join(here, 'media', 'remux', 'live.ts')))
+    LIVE_TS = media('remux/live.ts');
+}
 const BYTES_PER_SECOND = 128_000 / 8;
 const LIVE_STREAMS = {
   '/live.mp3': { body: PROGRAM, type: 'audio/mpeg', rate: BYTES_PER_SECOND },
@@ -103,6 +123,15 @@ const LIVE_STREAMS = {
   ...(PROGRAM_AAC
     ? {
         '/live.aac': { body: PROGRAM_AAC, type: 'audio/aac', rate: 8_000 },
+      }
+    : {}),
+  ...(LIVE_TS
+    ? {
+        '/live.ts': {
+          body: LIVE_TS,
+          type: 'video/mp2t',
+          rate: Math.ceil(LIVE_TS.length / 60),
+        },
       }
     : {}),
 };

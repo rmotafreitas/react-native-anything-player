@@ -1,0 +1,58 @@
+{
+  "muxed": [
+    256,
+    257
+  ],
+  "tracks": [
+    {
+      "id": 256,
+      "kind": "video",
+      "codec": "avc1.4D500B",
+      "entry": "avc1",
+      "config": "014d500bffe10017674d500beca105fcb808800000030080000019078912cb01000468efbc80",
+      "objectType": 0,
+      "timescale": 90000,
+      "width": 128,
+      "height": 72,
+      "sar": "1:1",
+      "sampleRate": 0,
+      "channels": 0,
+      "language": null,
+      "name": null,
+      "default": false,
+      "forced": false,
+      "unsupported": null
+    },
+    {
+      "id": 257,
+      "kind": "audio",
+      "codec": "mp4a.40.2",
+      "entry": "mp4a",
+      "config": "1190",
+      "objectType": 64,
+      "timescale": 48000,
+      "width": 0,
+      "height": 0,
+      "sar": "1:1",
+      "sampleRate": 48000,
+      "channels": 2,
+      "language": null,
+      "name": null,
+      "default": false,
+      "forced": false,
+      "unsupported": null
+    }
+  ],
+  "segments": {
+    "main.mp4": [
+      "ftyp 28",
+      "moov 1073",
+      "moof 816",
+      "mdat 9160",
+      "moof 960",
+      "mdat 11980",
+      "moof 1008",
+      "mdat 12564"
+    ]
+  }
+}

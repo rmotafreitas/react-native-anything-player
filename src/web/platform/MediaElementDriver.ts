@@ -19,72 +19,53 @@ import {
   type HlsConstructor,
 } from '../../core/hls';
 import type { EngineDriver } from '../engine/PlaybackEngine';
-import type {
-  StreamMetadata,
-  StreamTitleFormat,
-} from '../engine/StreamMetadata';
+import type { StreamTitleFormat } from '../engine/StreamMetadata';
 import {
   engineError,
   isNetworkSource,
-  type InterruptionReason,
   type OpenRequest,
   type PlaybackSample,
   type QualityConstraints,
   type ReadyInfo,
   type SourceDescriptor,
-  type VideoInfo,
-  type VideoVariant,
 } from '../engine/types';
 import {
   browser,
+  monotonicNow,
   type AbortControllerLike,
   type AudioElementLike,
   type VideoElementLike,
 } from './dom';
-import { HLS_HINT, HLS_MISSING, isHlsType, isHlsUri } from './hlsFormats';
+import { HLS_MISSING, isHlsType, isHlsUri } from './hlsFormats';
+import { elementError } from './elementErrors';
 import type { HlsStream } from './HlsStream';
 import { MediaTracks } from './MediaTracks';
 import { isDashUri, shakaNamespace, type ShakaLike } from '../../core/shaka';
 import type { DashStream } from './DashStream';
 import { MseStream, mediaSourceConstructor } from './MseStream';
+import type { RemuxStream } from './RemuxStream';
+import type { RemuxFormat } from '../remux/Remuxer';
+import {
+  DASH_MISSING,
+  loadDashParts,
+  loadRemuxParts,
+  maySniff,
+  remuxFormatOf,
+  type DashParts,
+  type RemuxParts,
+} from './sourceParts';
 import type { MediaTrack } from '../../core/subtitles/tracks';
-import type { SubtitleCue } from '../../core/subtitles/types';
 
-export interface DriverObserver {
-  onReady(generation: number, info: ReadyInfo): void;
-  onPlaying(generation: number): void;
-  onBuffering(generation: number): void;
-  onEnded(generation: number): void;
-  onFailed(generation: number, error: PlayerError): void;
-  onPausedExternally(generation: number, reason: InterruptionReason): void;
-  onStreamMetadata(generation: number, metadata: StreamMetadata): void;
-  onDiscontinuity(generation: number, position: number): void;
-  onNote(
-    generation: number,
-    event: string,
-    details: Record<string, string>
-  ): void;
-  /** The element changed (a new one replaced a tapped one); the sampler re-attaches. */
-  onElementReplaced(element: AudioElementLike): void;
-  /** Video: the picture's size (and the variant playing). */
-  onVideoInfo?(generation: number, info: VideoInfo): void;
-  /** Video: the first frame was shown. */
-  onFirstFrame?(generation: number): void;
-  /** Video: an adaptive source's variants. */
-  onVariants?(generation: number, variants: VideoVariant[]): void;
-  /** Video: a bandwidth estimate, bits per second. */
-  onBandwidth?(generation: number, bitsPerSecond: number): void;
-  /** Video: the source's own audio and text tracks. */
-  onTracks?(generation: number, tracks: MediaTrack[]): void;
-  /** Video: the cues of the source's text track on screen now. */
-  onSourceCues?(generation: number, cues: SubtitleCue[]): void;
-  /** Video: the user played, paused or sought with the browser's own controls. */
-  onUserCommand?(
-    generation: number,
-    command: 'play' | 'pause' | 'seek',
-    position: number
-  ): void;
-}
+export type {
+  DriverObserver,
+  PlayAttempt,
+  ProgressReading,
+} from './driverObserver';
+import type {
+  DriverObserver,
+  PlayAttempt,
+  ProgressReading,
+} from './driverObserver';
 
 /** What the driver plays: sound alone, or a picture too. */
 export type MediaKind = 'audio' | 'video';
@@ -93,25 +74,6 @@ export type MediaKind = 'audio' | 'video';
 const DOWNLINK_EVERY_MS = 2000;
 
 type HlsParts = typeof import('./HlsStream');
-type DashParts = typeof import('./DashStream');
-
-/** The Shaka glue, once loaded (it is only needed for DASH). */
-let dashLoading: Promise<DashParts | null> | null = null;
-
-/** Loads the Shaka glue once; a failed load is tried again next time. */
-function loadDashParts(): Promise<DashParts | null> {
-  dashLoading ??= import('./DashStream').then(
-    (parts) => parts,
-    () => {
-      dashLoading = null;
-      return null;
-    }
-  );
-  return dashLoading;
-}
-
-const DASH_MISSING =
-  'DASH needs Shaka Player on the web: `import shaka from "shaka-player"` and `configureShaka(shaka)` (or load it with a <script>).';
 
 /** The hls.js glue, once loaded (it is only needed with hls.js). */
 let hlsParts: HlsParts | null = null;
@@ -137,23 +99,12 @@ onHlsConfigured(() => {
   loadHlsParts().catch(() => undefined);
 });
 
-/** What a play() attempt came to: the module rejects `play` on `blocked`. */
-export type PlayAttempt = 'started' | 'blocked' | 'failed';
-
-/** Live progress for the module's synchronous `getProgress`. */
-export interface ProgressReading {
-  position: number;
-  duration: number | null;
-  buffered: number;
-  liveOffset: number | null;
-  isPlaying: boolean;
-  rate: number;
-}
+/** An element seek this soon after RNAP's, near its target, is RNAP's. */
+const OWN_SEEK_MS = 3000;
+const OWN_SEEK_SLACK_S = 2;
 
 // MediaError codes.
 const MEDIA_ERR_ABORTED = 1;
-const MEDIA_ERR_NETWORK = 2;
-const MEDIA_ERR_DECODE = 3;
 const MEDIA_ERR_SRC_NOT_SUPPORTED = 4;
 
 type Timed = { time: number; fire: () => void };
@@ -179,6 +130,10 @@ export class MediaElementDriver implements EngineDriver {
   /** A DASH source's Shaka player, and whether it is still loading. */
   private dash: DashStream | null = null;
   private dashPending = false;
+  private remux: RemuxStream | null = null;
+  private remuxPending = false;
+  /** Why remuxing this source fell back to the element (CORS); it is not tried again. */
+  private remuxFallback: string | null = null;
   /** The HLS part is loading (the module, then hls.js): `play()` waits for it. */
   private hlsPending = false;
   /** Items torn down so far: a loading HLS part knows whether its item is gone. */
@@ -218,8 +173,24 @@ export class MediaElementDriver implements EngineDriver {
     null;
   /** The source's tracks so far: a quality switch's new file reports them again. */
   sourceTracks: MediaTrack[] = [];
-  /** A seek RNAP made (the element's `seeking` that follows is not the user's). */
-  private ownSeek = false;
+  /**
+   * The last seek RNAP made: a `seeking` near its target, soon after, is not
+   * the user's. (A flag cleared on `seeked` is not enough: WebKit reports the
+   * previous seek's `seeked` before the next one's `seeking`, and the two
+   * would chase each other.)
+   */
+  private ownSeek: { position: number; at: number } | null = null;
+
+  private markOwnSeek(position: number): void {
+    this.ownSeek = { position, at: monotonicNow() };
+  }
+
+  /** Whether the element's seek is one RNAP asked for (near its target, within seconds; a keyframe seek lands nearby). */
+  private isOwnSeek(): boolean {
+    const own = this.ownSeek;
+    if (!own || monotonicNow() - own.at > OWN_SEEK_MS) return false;
+    return Math.abs(this.position() - own.position) < OWN_SEEK_SLACK_S;
+  }
 
   /** The browser's own controls are on the picture: what the element does unasked is the user. */
   private get userControlled(): boolean {
@@ -249,15 +220,22 @@ export class MediaElementDriver implements EngineDriver {
    * Audio, and out of a Remote Playback receiver's reach.
    */
   get isStreamed(): boolean {
-    const fed = this.stream != null || this.hls != null || this.dash != null;
-    const loading = this.hlsPending || this.dashPending;
+    const fed =
+      this.stream != null ||
+      this.hls != null ||
+      this.dash != null ||
+      this.remux != null;
+    const loading = this.hlsPending || this.dashPending || this.remuxPending;
     return fed || loading || LOCAL_URI.test(this.source?.uri ?? '');
   }
 
   /** Whether the current item is live (read through MSE, or an HLS playlist without an end). */
   private get isLive(): boolean {
     return (
-      this.stream != null || this.hls?.live === true || this.dash?.live === true
+      this.stream != null ||
+      this.hls?.live === true ||
+      this.dash?.live === true ||
+      this.remux?.live === true
     );
   }
 
@@ -299,6 +277,7 @@ export class MediaElementDriver implements EngineDriver {
       this.sourcePlayed = false;
       this.corsProven = false;
       this.nativeHlsFailed = false;
+      this.remuxFallback = null;
     }
     this.source = request.source;
     this.allowReconnect = request.allowReconnect;
@@ -324,7 +303,7 @@ export class MediaElementDriver implements EngineDriver {
     // hls.js is still loading: the element has no source to play yet. The
     // request is kept and runs when the stream starts (see loadHls), so the
     // play() is not lost and the element is not asked twice.
-    if (this.hlsPending || this.dashPending) return;
+    if (this.hlsPending || this.dashPending || this.remuxPending) return;
     const generation = this.generation;
     this.playToken += 1;
     const token = this.playToken;
@@ -363,8 +342,13 @@ export class MediaElementDriver implements EngineDriver {
       return;
     }
     const video = this.videoElement;
+    // Already there (the user's own seek, reported back): nothing to do.
+    if (Math.abs(this._element.currentTime - seconds) < 0.01) {
+      this.pumpTimed();
+      return;
+    }
     // A scrub lands on the nearest keyframe (fast); `exact` on the frame.
-    this.ownSeek = true;
+    this.markOwnSeek(seconds);
     if (!exact && video?.fastSeek) video.fastSeek(seconds);
     else this._element.currentTime = seconds;
     this.pumpTimed();
@@ -495,11 +479,8 @@ export class MediaElementDriver implements EngineDriver {
         this.observer.onUserCommand?.(generation, 'play', this.position());
     });
     on('seeking', () => {
-      if (this.userControlled && !this.ownSeek)
+      if (this.userControlled && !this.isOwnSeek())
         this.observer.onUserCommand?.(generation, 'seek', this.position());
-    });
-    on('seeked', () => {
-      this.ownSeek = false;
     });
     on('timeupdate', () => this.pumpTimed());
     on('seeked', () => this.pumpTimed());
@@ -600,6 +581,16 @@ export class MediaElementDriver implements EngineDriver {
       this.startDash(source);
       return;
     }
+    const remux =
+      this.remuxFallback == null && mediaSourceConstructor()
+        ? remuxFormatOf(source.uri, this._element)
+        : null;
+    if (remux) {
+      this.attach();
+      this.clearSource();
+      this.startRemux(source, remux);
+      return;
+    }
     const hls = this.needsHls(source, contentType);
     this.nativeHls = !hls && (isHlsUri(source.uri) || isHlsType(contentType));
     // hls.js feeds the element from a MediaSource: the audio is same-origin.
@@ -651,6 +642,105 @@ export class MediaElementDriver implements EngineDriver {
     // Loading the element anew dropped the play() that was pending.
     if (this.playRequested) this.play();
     return true;
+  }
+
+  private clearSource(): void {
+    if (this._element.src === '') return;
+    this._element.removeAttribute('src');
+    this._element.load();
+  }
+
+  /**
+   * The element could not open a source (an MKV, an IPTV channel without an
+   * extension): before anything played, RNAP tries remuxing it, the
+   * container told by its first bytes.
+   */
+  private retryWithRemux(generation: number): boolean {
+    const source = this.source;
+    if (this.remux || this.remuxPending || this.remuxFallback != null)
+      return false;
+    if (this.sourcePlayed || !source || !mediaSourceConstructor()) return false;
+    if (!maySniff(source.uri)) return false;
+    if (!isNetworkSource(source) && !LOCAL_URI.test(source.uri)) return false;
+    this.remuxFallback = 'tried';
+    this.listeners?.abort();
+    this.clearSource();
+    this.observer.onNote(generation, 'remux', {
+      reason: 'the element could not open the source',
+    });
+    this.attach();
+    this.startRemux(source, null);
+    return true;
+  }
+
+  /** Matroska, WebM, MPEG-TS: remuxed to MP4 in the page (loaded on first use). */
+  private startRemux(
+    source: SourceDescriptor,
+    format: RemuxFormat | null
+  ): void {
+    const generation = this.generation;
+    const item = this.itemSerial;
+    const media = mediaSourceConstructor()!;
+    this.remuxPending = true;
+    loadRemuxParts().then(
+      (parts) => {
+        if (generation !== this.generation || item !== this.itemSerial) return;
+        this.remuxPending = false;
+        if (!parts) {
+          this.failHls(
+            generation,
+            'The remuxer did not load. Check the connection and try again.',
+            true
+          );
+          return;
+        }
+        this.startRemuxStream(source, generation, media, format, parts);
+        // Asked to play while the remuxer loaded.
+        if (this.playRequested) this.play();
+      },
+      () => undefined
+    );
+  }
+
+  private startRemuxStream(
+    source: SourceDescriptor,
+    generation: number,
+    media: NonNullable<ReturnType<typeof mediaSourceConstructor>>,
+    format: RemuxFormat | null,
+    parts: RemuxParts
+  ): void {
+    const live = () => generation === this.generation && this.remux === remux;
+    const remux: RemuxStream = new parts.RemuxStream(
+      this._element,
+      source,
+      media,
+      format,
+      this.kind === 'video',
+      {
+        onFailure: (error) => {
+          if (live()) this.observer.onFailed(generation, error);
+        },
+        onFallback: (reason) => {
+          if (!live()) return;
+          this.observer.onNote(generation, 'plain playback', { reason });
+          remux.close();
+          this.remux = null;
+          this.remuxFallback = reason;
+          this.listeners?.abort();
+          this.clearSource();
+          this.playPlain(source);
+          if (this.playRequested) this.play();
+        },
+        onNote: (event, details) => {
+          if (live()) this.observer.onNote(generation, event, details);
+        },
+        onTracks: () => {
+          if (live()) this.tracks?.useHls(remux);
+        },
+      }
+    );
+    this.remux = remux;
+    remux.start();
   }
 
   /** DASH: no browser plays it itself, Shaka Player does (registered by the app). */
@@ -946,14 +1036,16 @@ export class MediaElementDriver implements EngineDriver {
     const info =
       this.hls?.readyInfo() ??
       this.dash?.readyInfo() ??
+      this.remux?.readyInfo() ??
       this.elementReadyInfo();
     if (
       info.duration != null &&
       this.pendingStart != null &&
       this.pendingStart > 0
     ) {
-      this.ownSeek = true;
-      element.currentTime = Math.min(this.pendingStart, info.duration);
+      const start = Math.min(this.pendingStart, info.duration);
+      this.markOwnSeek(start);
+      element.currentTime = start;
     }
     this.pendingStart = null;
     this.observer.onReady(generation, info);
@@ -972,10 +1064,10 @@ export class MediaElementDriver implements EngineDriver {
     const error = this._element.error;
     if (!error || error.code === MEDIA_ERR_ABORTED) return;
     // hls.js already reported the failure that stopped the element.
-    if (this.hls?.failed || this.dash?.failed) return;
+    if (this.hls?.failed || this.dash?.failed || this.remux?.failed) return;
     if (
       error.code === MEDIA_ERR_SRC_NOT_SUPPORTED &&
-      this.retryWithHls(generation)
+      (this.retryWithHls(generation) || this.retryWithRemux(generation))
     )
       return;
     this.observer.onFailed(
@@ -985,53 +1077,13 @@ export class MediaElementDriver implements EngineDriver {
   }
 
   private mapError(code: number, message: string): PlayerError {
-    const details = {
-      platformDomain: 'MediaError',
-      platformCode: code,
-      cause: message || undefined,
-    };
-    const navigator = browser().navigator;
-    if (navigator && !navigator.onLine) {
-      return engineError(
-        'NETWORK_UNAVAILABLE',
-        'The device is offline.',
-        true,
-        details
-      );
-    }
-    if (code === MEDIA_ERR_NETWORK) {
-      return engineError(
-        'NETWORK_ERROR',
-        'A network error interrupted the download.',
-        true,
-        details
-      );
-    }
-    if (code === MEDIA_ERR_DECODE) {
-      return engineError(
-        'DECODER_ERROR',
-        'The audio could not be decoded.',
-        this.flowed,
-        details
-      );
-    }
-    // MEDIA_ERR_SRC_NOT_SUPPORTED: browsers also report a refused or missing
-    // resource this way. A source that played before is a server failing.
-    if (this.sourcePlayed) {
-      return engineError(
-        'NETWORK_ERROR',
-        'The server stopped serving the source.',
-        true,
-        details
-      );
-    }
-    return engineError(
-      'UNSUPPORTED_FORMAT',
-      'The browser could not open the source (unsupported format, or the server refused it).' +
-        (this.nativeHls ? HLS_HINT : ''),
-      false,
-      details
-    );
+    return elementError(code, message, {
+      offline: browser().navigator?.onLine === false,
+      flowed: this.flowed,
+      sourcePlayed: this.sourcePlayed,
+      nativeHls: this.nativeHls,
+      remuxFallback: this.remuxFallback,
+    });
   }
 
   private teardownItem(): void {
@@ -1047,6 +1099,9 @@ export class MediaElementDriver implements EngineDriver {
     this.dash?.close();
     this.dash = null;
     this.dashPending = false;
+    this.remux?.close();
+    this.remux = null;
+    this.remuxPending = false;
     this.itemSerial += 1;
     this.nativeHls = false;
     this.timed = [];

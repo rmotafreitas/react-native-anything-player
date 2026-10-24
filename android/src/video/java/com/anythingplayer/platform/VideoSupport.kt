@@ -12,6 +12,8 @@ import androidx.media3.exoplayer.text.TextOutput
 import androidx.media3.exoplayer.text.TextRenderer
 import androidx.media3.exoplayer.video.MediaCodecVideoRenderer
 import androidx.media3.exoplayer.video.VideoRendererEventListener
+import androidx.media3.extractor.DefaultExtractorsFactory
+import androidx.media3.extractor.text.DefaultSubtitleParserFactory
 import com.facebook.react.uimanager.ViewManager
 
 // The build with the video module (`rnapVideo=true`, see `android/build.gradle`):
@@ -42,6 +44,14 @@ internal object VideoSupport {
   fun playerRegistered() = VideoSurfaceView.playerRegistered()
 
   fun viewManagers(): List<ViewManager<*, *>> = listOf(VideoViewManager())
+
+  /**
+   * A video's own subtitles (Matroska's SubRip, ASS and WebVTT, MP4's
+   * tx3g and TTML) are parsed as they are extracted, into the cues the text
+   * renderer takes; without it Media3 1.4+ lists them as unsupported.
+   */
+  fun subtitles(extractors: DefaultExtractorsFactory): DefaultExtractorsFactory =
+    extractors.setTextTrackTranscodingEnabled(true).setSubtitleParserFactory(DefaultSubtitleParserFactory())
 
   /**
    * A video player's picture and text renderers. Decoder fallback is on: a

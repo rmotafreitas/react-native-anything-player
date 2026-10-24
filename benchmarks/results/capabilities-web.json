@@ -31,6 +31,16 @@
           "values": { "rnap": "yes", "howler": "no", "plyr": "app", "vidstack": "yes", "reactPlayer": "yes", "icecast": "no" }
         },
         {
+          "label": "DASH",
+          "evidence": "RNAP: configureShaka(shaka) with the app's Shaka Player. Vidstack loads dash.js itself; react-player plays DASH (dash-video-element). Plyr's docs have the app attach a DASH library. howler.js and icecast-metadata-player play what the browser plays, and no browser plays DASH.",
+          "values": { "rnap": "yes", "howler": "no", "plyr": "app", "vidstack": "yes", "reactPlayer": "yes", "icecast": "no" }
+        },
+        {
+          "label": "MPEG-TS files and live channels; Matroska's audio languages and subtitles",
+          "evidence": "RNAP remuxes MPEG-TS and Matroska to MP4 in the page (Media Source Extensions, nothing decoded): IPTV channels play, and a Matroska file's audio tracks and SubRip/ASS subtitles are tracks. The others play what the browser plays: no browser plays MPEG-TS, and one that plays Matroska lists none of its tracks.",
+          "values": { "rnap": "yes", "howler": "no", "plyr": "no", "vidstack": "no", "reactPlayer": "no", "icecast": "no" }
+        },
+        {
           "label": "Visualizer data for live streams",
           "evidence": "RNAP: audioSample events for streams read through MSE and local files. The others expose the element (or Howler.ctx), for the app's own AnalyserNode.",
           "values": { "rnap": "partial", "howler": "app", "plyr": "app", "vidstack": "app", "reactPlayer": "app", "icecast": "app" }

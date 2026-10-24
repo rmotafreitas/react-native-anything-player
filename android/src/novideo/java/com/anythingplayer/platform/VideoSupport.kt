@@ -31,6 +31,8 @@ internal object VideoSupport {
 
   fun playerRegistered() = Unit
 
+  fun subtitles(extractors: androidx.media3.extractor.DefaultExtractorsFactory) = extractors
+
   fun renderers(
     context: Context,
     codecs: androidx.media3.exoplayer.mediacodec.MediaCodecAdapter.Factory,

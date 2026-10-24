@@ -132,7 +132,8 @@ export function mediaSourceConstructor(): MediaSourceSupport | null {
   return null;
 }
 
-function httpError(status: number): PlayerError {
+/** The failure for an HTTP error status. */
+export function httpError(status: number): PlayerError {
   if (status === 404 || status === 410) {
     return engineError(
       'SOURCE_NOT_FOUND',

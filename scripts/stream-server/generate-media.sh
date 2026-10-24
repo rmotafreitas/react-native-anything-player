@@ -124,4 +124,48 @@ ffmpeg -loglevel error -y -i media/video-360.mp4 -i media/video-720.mp4 \
   -adaptation_sets "id=0,streams=v id=1,streams=a" \
   -init_seg_name 'init-$RepresentationID$.m4s' -media_seg_name 'chunk-$RepresentationID$-$Number%05d$.m4s' \
   media/dash-video/manifest.mpd
-ls -la media media/hls-video media/dash-video | head -24
+# Containers browsers and AVPlayer do not read, for RNAP's remux: the video
+# as Matroska (two audio languages, SubRip and ASS subtitles, a keyframe every
+# 2 s), as an MPEG-TS file, as WebM (VP9 and Opus), and a minute of MPEG-TS
+# the server sends as a live channel (/live.ts).
+rm -rf media/remux && mkdir -p media/remux
+cat > media/remux/subs.srt <<'SRT'
+1
+00:00:00,500 --> 00:00:04,000
+Matroska <i>subtitles</i>
+
+2
+00:00:04,000 --> 00:00:30,000
+Still the Matroska subtitles
+SRT
+cat > media/remux/subs.ass <<'ASS'
+[Script Info]
+ScriptType: v4.00+
+PlayResX: 640
+PlayResY: 360
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,Arial,24,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,1,0,2,10,10,10,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:00.50,0:00:04.00,Default,,0,0,0,,{\b1}Legendas{\b0} em ASS
+Dialogue: 0,0:00:04.00,0:00:30.00,Default,,0,0,0,,{\an8}Ainda em ASS
+ASS
+X264="-c:v libx264 -preset veryfast -profile:v main -g 50 -keyint_min 50 -sc_threshold 0 -b:v 400k -pix_fmt yuv420p"
+ffmpeg -loglevel error -y -i media/video-360.mp4 \
+  -f lavfi -i "sine=frequency=330:duration=30:sample_rate=48000" \
+  -f lavfi -i "sine=frequency=550:duration=30:sample_rate=44100" \
+  -i media/remux/subs.srt -i media/remux/subs.ass \
+  -map 0:v -map 1:a -map 2:a -map 3 -map 4 -t 30 $X264 -c:a aac -b:a 96k -ac 2 -c:s:0 srt -c:s:1 ass \
+  -metadata:s:a:0 language=eng -metadata:s:a:0 title=English \
+  -metadata:s:a:1 language=por -metadata:s:a:1 title=Português \
+  -metadata:s:s:0 language=eng -metadata:s:s:1 language=por -metadata:s:s:1 title=ASS \
+  -disposition:a:0 default -disposition:a:1 0 -disposition:s:0 0 -disposition:s:1 0 media/remux/movie.mkv
+ffmpeg -loglevel error -y -i media/video-360.mp4 -t 30 $X264 -c:a aac -b:a 96k -ac 2 -f mpegts media/remux/movie.ts
+ffmpeg -loglevel error -y -i media/video-360.mp4 -t 60 $X264 -c:a aac -b:a 96k -ac 2 -f mpegts media/remux/live.ts
+ffmpeg -loglevel error -y -i media/video-360.mp4 -t 10 -c:v libvpx-vp9 -deadline realtime -cpu-used 8 -g 50 -b:v 300k \
+  -c:a libopus -b:a 64k media/remux/movie.webm
+
+ls -la media media/hls-video media/dash-video media/remux | head -40

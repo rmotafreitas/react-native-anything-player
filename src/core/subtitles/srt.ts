@@ -43,6 +43,21 @@ export function cueOf(
   };
 }
 
+/** A cue from SubRip-tagged text and its times (ms): a SubRip block, or a Matroska `S_TEXT/UTF8` frame. */
+export function srtTextCue(
+  text: string,
+  startMs: number,
+  endMs: number
+): SubtitleCue | null {
+  const out = new SpanBuilder(PLAIN);
+  parseTaggedText(normalizeText(text), out, {
+    overrides: true,
+    entities: false,
+  });
+  const cue = cueOf(startMs, endMs, out);
+  return cue.text === '' ? null : cue;
+}
+
 function parseBlock(lines: string[]): SubtitleCue | null {
   const at = lines.findIndex((l) => TIMING.test(l));
   if (at < 0 || at > 1) return null;
@@ -50,13 +65,7 @@ function parseBlock(lines: string[]): SubtitleCue | null {
   const start = clockMs(m[1]!);
   const end = clockMs(m[2]!);
   if (start == null || end == null || end <= start) return null;
-  const out = new SpanBuilder(PLAIN);
-  parseTaggedText(lines.slice(at + 1).join('\n'), out, {
-    overrides: true,
-    entities: false,
-  });
-  const cue = cueOf(start, end, out);
-  return cue.text === '' ? null : cue;
+  return srtTextCue(lines.slice(at + 1).join('\n'), start, end);
 }
 
 export function parseSrt(text: string): SubtitleCue[] {

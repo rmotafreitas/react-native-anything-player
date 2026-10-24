@@ -39,7 +39,9 @@ A file is fetched with the source's headers (or its own `headers`), retried with
 
 ## The source's own tracks
 
-An HLS manifest's subtitle groups and audio languages, captions in the stream (CEA-608/708) and an MP4's or MKV's text tracks are tracks too, with `track:` ids. AVPlayer, ExoPlayer and hls.js read them; the overlay draws their cues like a file's. On the web, Safari's own HLS lists them itself, and everywhere else a video player plays HLS with hls.js (a browser's native HLS without track lists, like Chromium's, has none to pick from).
+An HLS manifest's subtitle groups and audio languages, a DASH manifest's, captions in the stream (CEA-608/708), and an MP4's or Matroska file's audio and text tracks are tracks too, with `track:` ids. AVPlayer, ExoPlayer, hls.js and Shaka read them; the overlay draws their cues like a file's. On the web, Safari's own HLS lists them itself, and everywhere else a video player plays HLS with hls.js (a browser's native HLS without track lists, like Chromium's, has none to pick from).
+
+A Matroska file's SubRip, ASS and WebVTT tracks work on every platform: ExoPlayer reads them on Android, and on iOS and the web RNAP's remuxer takes them out of the file ([Video](video.md#matroska-webm-and-mpeg-ts)). ASS keeps its text, bold, italic and placement on the web; on iOS it reaches AVPlayer as WebVTT (text, and `\an7`–`\an9` at the top). Bitmap subtitles (PGS, VobSub, DVB) are listed as unsupported.
 
 ## Choosing
 

@@ -117,6 +117,12 @@ export interface VideoElementLike extends AudioElementLike, BoxLike {
   fastSeek?(time: number): void;
   /** The source's own text tracks (in-band, Safari's HLS, hls.js's). */
   readonly textTracks?: TrackListLike<TextTrackLike>;
+  /** A text track of the page's own (a remuxed Matroska file's subtitles). */
+  addTextTrack?(
+    kind: string,
+    label?: string,
+    language?: string
+  ): WritableTextTrackLike;
   /** The source's own audio tracks (Safari). */
   readonly audioTracks?: TrackListLike<AudioTrackLike>;
 }
@@ -138,6 +144,20 @@ export interface TextTrackLike extends EventTargetLike {
     readonly length: number;
     readonly [index: number]: VttCueLike;
   } | null;
+}
+
+/** A text track the page fills (`addTextTrack`). */
+export interface WritableTextTrackLike extends TextTrackLike {
+  addCue(cue: unknown): void;
+}
+
+/** A `VTTCue` the page makes, placed like a WebVTT cue's settings would. */
+export interface WritableVttCue {
+  align: string;
+  line: number | string;
+  snapToLines: boolean;
+  lineAlign: string;
+  position: number | string;
 }
 
 /** A `VTTCue` (or a plain `TextTrackCue`, which has only times). */
@@ -187,6 +207,8 @@ export interface SourceBufferLike extends EventTargetLike {
   appendBuffer(data: Uint8Array): void;
   remove(start: number, end: number): void;
   abort(): void;
+  /** Takes segments of another codec from now on (a remuxed file's other audio track). */
+  changeType?(type: string): void;
 }
 
 export interface MediaSourceLike extends EventTargetLike {
@@ -460,6 +482,7 @@ export interface BrowserGlobals {
   __onGCastApiAvailable?: (available: boolean) => void;
   MediaSource?: MediaSourceConstructor;
   ManagedMediaSource?: MediaSourceConstructor;
+  VTTCue?: new (start: number, end: number, text: string) => WritableVttCue;
   MediaMetadata?: new (init: {
     title?: string;
     artist?: string;

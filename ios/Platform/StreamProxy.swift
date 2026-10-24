@@ -80,6 +80,8 @@ final class StreamProxy {
   /// The last port bound: a replacement listener tries it first.
   private var lastPort: UInt16?
   private var routes: [String: Route] = [:]
+  /// Files AVPlayer cannot read, served as HLS (`/r-<token>/<file>`).
+  private var remuxes: [String: RemuxSession] = [:]
   /// Recently retired tokens (bounded: an older late request gets 404, which
   /// is just as final — it never reaches the station either).
   private var retired = Set<String>()
@@ -130,6 +132,33 @@ final class StreamProxy {
       let ext = route.url.pathExtension
       components.path = "/" + token + (ext.isEmpty ? "" : "." + ext)
       return components.url
+    }
+  }
+
+  /// Serves `session` (a remuxed file) as HLS; the URL of its master
+  /// playlist, `nil` when the listener cannot start.
+  func registerRemux(_ session: RemuxSession) -> URL? {
+    healListener()
+    return queue.sync {
+      guard ensureListening() else { return nil }
+      let token = UUID().uuidString.lowercased()
+      remuxes[token] = session
+      return URL(string: "http://127.0.0.1:\(port)/r-\(token)/master.m3u8")
+    }
+  }
+
+  /// Stops serving a remuxed file; later requests get 410.
+  func retireRemux(_ master: URL) {
+    let parts = master.path.split(separator: "/")
+    guard let first = parts.first, first.hasPrefix("r-") else { return }
+    let token = String(first.dropFirst(2))
+    queue.async { [self] in
+      remuxes.removeValue(forKey: token)?.close()
+      if retired.insert(token).inserted {
+        retiredOrder.append(token)
+        if retiredOrder.count > Self.retiredMemory { retired.remove(retiredOrder.removeFirst()) }
+      }
+      for downstream in downstreams.values where downstream.token == token { close(downstream) }
     }
   }
 
@@ -353,6 +382,7 @@ final class StreamProxy {
     let lines = head.components(separatedBy: "\r\n")
     let parts = lines.first?.split(separator: " ") ?? []
     guard parts.count >= 2 else { return respond(downstream, status: 400) }
+    if parts[1].hasPrefix("/r-") { return serveRemux(downstream, path: String(parts[1]), head: parts[0] == "HEAD") }
     let token = Self.token(of: URL(string: "http://h" + String(parts[1])))
     downstream.token = token
     if token == Self.healthPath { return respond(downstream, status: 204) }
@@ -569,6 +599,37 @@ final class StreamProxy {
       upstream.suspended = false
       upstream.task?.resume()
     }
+  }
+
+  /// A remuxed file's playlist or segment (`/r-<token>/<file>`).
+  private func serveRemux(_ downstream: Downstream, path: String, head: Bool) {
+    let parts = path.split(separator: "?")[0].split(separator: "/")
+    guard parts.count == 2 else { return respond(downstream, status: 400) }
+    let token = String(parts[0].dropFirst(2))
+    downstream.token = token
+    guard let session = remuxes[token] else {
+      return respond(downstream, status: retired.contains(token) ? 410 : 404)
+    }
+    session.serve(String(parts[1])) { [weak self, weak downstream] response in
+      self?.queue.async {
+        guard let self, let downstream, !downstream.closed else { return }
+        self.respond(downstream, response, head: head)
+      }
+    }
+  }
+
+  private func respond(_ downstream: Downstream, _ response: RemuxSession.Response, head: Bool) {
+    var text = "HTTP/1.1 \(response.status) \(HTTPURLResponse.localizedString(forStatusCode: response.status))\r\n"
+    text += "content-type: \(response.contentType)\r\n"
+    text += "content-length: \(response.body.count)\r\ncache-control: no-cache\r\nconnection: close\r\n\r\n"
+    var data = Data(text.utf8)
+    if !head { data.append(response.body) }
+    downstream.connection.send(
+      content: data, contentContext: .finalMessage, isComplete: true,
+      completion: .contentProcessed { [weak self, weak downstream] _ in
+        guard let self, let downstream else { return }
+        self.close(downstream)
+      })
   }
 
   private func respond(_ downstream: Downstream, status: Int, location: URL? = nil) {

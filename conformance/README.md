@@ -44,6 +44,7 @@ Each file holds an array of scenarios:
 | `{"native": "pausedExternally", "reason": "system"}` | the platform paused by itself |
 | `"gen": 1` or `"gen": "prev"` on native steps | generation the event belongs to (default: current) |
 | `{"driver": "flowing" \| "frozen" \| "trickle"}` | fake playhead: advances 1 s/s / stops / only the buffer grows (0.5 s/s) |
+| `{"driver": "loaded", "value": 60}` | the whole file is buffered (to `value` s): the playhead advances 1 s/s, the buffer stays |
 | `{"driver": "reentrant"}` | the fake driver reports ready/playing synchronously from inside `open`/`play` (as ExoPlayer can) |
 | `{"driver": "position", "value": 42}` | set the fake playhead |
 | `{"interruption": "began", "reason": "interruption", "resumable": true}` | system pause |
@@ -198,6 +199,25 @@ in JS), `subtitles/charset.json` (bytes → encoding), `subtitles/schedule.json`
 `tracks/select.json` (tracks and preferences → the starting audio and text
 tracks) are run by `src/__tests__/subtitles.test.ts`, `SubtitleTest.kt` and
 `SubtitleTests.swift`.
+
+## DASH to HLS (`dash/`)
+
+Each manifest (`<name>.mpd`) and the HLS playlists iOS makes of it
+(`<name>.hls/`), compared by `DashToHlsTests.swift`; `RNAP_WRITE_GOLDEN=1`
+rewrites them. Android plays DASH with ExoPlayer, the web with Shaka.
+
+## Remux (`remux/`)
+
+Matroska, WebM, MPEG-TS and M2TS files (`generate.sh` makes them with ffmpeg
+and mkvmerge) and, in `<file>.out/`, what the remuxer makes of them: the
+tracks (`tracks.json`), the subtitle cues (`cues.json`), the fragmented MP4
+of the picture with the default sound (`main.mp4`) and of each other sound
+(`audio-<id>.mp4`). The TypeScript twin writes them
+(`RNAP_WRITE_GOLDEN=1 npx jest containerRemux`, which also checks that any
+chunking gives the same bytes); `RemuxTests.swift` must match them byte for
+byte, and `RemuxHlsTests.swift` checks that segments read on their own (from
+a Cues entry, or a bitrate guess read again from earlier) hold exactly the
+whole file's fragments.
 
 ## Fades and the sleep timer (`fades.json`)
 

@@ -26,6 +26,7 @@ The player and the view are separate. Unmounting `<VideoView>` does not stop the
 |---|---|
 | `'https://…/master.m3u8'` | HLS: the player picks the quality as the network allows (under [RNAP's caps](#quality)), with the manifest's audio languages and subtitles as [tracks](subtitles.md#the-sources-own-tracks) |
 | `'https://…/manifest.mpd'` | DASH, the same way ([below](#dash)) |
+| `'https://…/movie.mkv'`, `.webm`, `.ts`, an IPTV channel | Matroska, WebM and MPEG-TS, on demand or live, with the file's audio languages and subtitles as [tracks](subtitles.md#the-sources-own-tracks) ([below](#matroska-webm-and-mpeg-ts)) |
 | `'https://…/episode.mp4'`, `file://…`, `require('./intro.mp4')` | a file, streamed as it downloads |
 | `{ renditions: [...] }` | separate files of one video at different qualities: RNAP picks one and [switches between them](#renditions) behind the picture |
 | `{ uri, subtitles: [...] }` | [subtitle files](subtitles.md) (SubRip, WebVTT, TTML, ASS) next to the video |
@@ -50,6 +51,26 @@ await player.load({
 | Android | ExoPlayer plays it. Media3's DASH module is in every video app; an audio-only app adds it with `rnapDash=true` in `android/gradle.properties`, and a video app that never plays DASH drops it with `rnapDash=false`. Without it, a `.mpd` fails with `UNSUPPORTED_FORMAT` saying so. |
 | iOS | AVPlayer has no DASH, so RNAP rewrites the manifest as HLS playlists that point at the manifest's own segments (fragmented MP4, the CMAF profile most packagers emit), on demand and live. Nothing to install. A manifest addressed by byte ranges (`SegmentBase`) is refused with `UNSUPPORTED_FORMAT`. |
 | Web | [Shaka Player](web.md#dash), registered with `configureShaka(shaka)` |
+
+### Matroska, WebM and MPEG-TS
+
+ExoPlayer reads these containers itself. AVPlayer and most browsers do not, so RNAP remuxes them there: it gives the frames another container (fragmented MP4) and leaves the decoding to the platform. Nothing is transcoded, so the picture and sound are the file's, at the cost of a little CPU.
+
+| Platform | How |
+|---|---|
+| Android | ExoPlayer plays them, with the file's audio tracks and its SubRip, ASS and WebVTT subtitles |
+| iOS | RNAP serves the file to AVPlayer as HLS from the app (the same loopback server as streams): a segment is remuxed when AVPlayer asks for it, from the byte the file's Cues name (Matroska) or its bitrate suggests (MPEG-TS). Each audio track and subtitle track is an HLS rendition, so AVPlayer lists them as it does for any HLS source. A live MPEG-TS channel becomes a live playlist, and a dropped connection is reopened |
+| Web | RNAP reads the file with `fetch()` and feeds the element through Media Source Extensions. Matroska is always remuxed, which is what lists its audio languages and subtitles. WebM and MPEG-TS are remuxed only where the browser does not play them (no browser plays MPEG-TS). Seeks use the same Cues and bitrate guesses |
+
+Picking another audio track remuxes it from where the picture is. A file's subtitles (SubRip, ASS, WebVTT) are drawn by RNAP's overlay; bitmap subtitles (PGS, VobSub, DVB) are listed as unsupported.
+
+A source whose URL names no format (an IPTV channel's path, a picked file) is tried as it is first. If the platform cannot open it, RNAP sniffs its first bytes and remuxes it when it is Matroska or MPEG-TS.
+
+What it needs:
+
+- **The codecs:** the platform has to decode them. H.264, HEVC, VP9 and AV1 video play wherever the platform has a decoder. AAC, MP3, AC-3, E-AC-3, Opus and FLAC sound play where the platform has those. AC-3 and E-AC-3 are Safari and Apple devices only, and Chromium takes no MP3 inside MP4, so such a track is left out there. A codec the platform lacks (MPEG-2, VC-1, DTS, TrueHD, Vorbis) fails with `UNSUPPORTED_FORMAT` naming it; software decoders are [planned](video-design.md#software-decoders).
+- **On the web, CORS:** the server must allow cross-origin reads (`Access-Control-Allow-Origin`), with range requests for seeking. Without CORS, the element gets the URL as it is, which works where the browser reads the container itself (Matroska and WebM in Chromium and Firefox), without the tracks.
+- **On iOS, range requests:** a file is read by ranges. A live channel needs none.
 
 ## The view
 

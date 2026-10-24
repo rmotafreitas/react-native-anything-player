@@ -1,0 +1,58 @@
+{
+  "muxed": [
+    1,
+    2
+  ],
+  "tracks": [
+    {
+      "id": 1,
+      "kind": "video",
+      "codec": "vp09.00.10.08",
+      "entry": "vp09",
+      "config": "000a800202020000",
+      "objectType": 0,
+      "timescale": 1000,
+      "width": 128,
+      "height": 72,
+      "sar": "1:1",
+      "sampleRate": 0,
+      "channels": 0,
+      "language": "und",
+      "name": null,
+      "default": false,
+      "forced": false,
+      "unsupported": null
+    },
+    {
+      "id": 2,
+      "kind": "audio",
+      "codec": "opus",
+      "entry": "Opus",
+      "config": "000101380000bb80000000",
+      "objectType": 0,
+      "timescale": 48000,
+      "width": 0,
+      "height": 0,
+      "sar": "1:1",
+      "sampleRate": 48000,
+      "channels": 1,
+      "language": "und",
+      "name": null,
+      "default": false,
+      "forced": false,
+      "unsupported": null
+    }
+  ],
+  "segments": {
+    "main.mp4": [
+      "ftyp 28",
+      "moov 1027",
+      "moof 960",
+      "mdat 15476",
+      "moof 952",
+      "mdat 15605",
+      "moof 952",
+      "mdat 13481"
+    ]
+  }
+}

@@ -134,6 +134,8 @@ A `Player` with a picture ([guide](video.md), [subtitles](subtitles.md)).
 | | iOS | Android | Chromium | Firefox | Safari | iPhone, iPad |
 |---|---|---|---|---|---|---|
 | `<VideoView>` / `attachTo`, files and HLS | ✓ ² | ✓ ¹ | ✓ ³ | ✓ ³ | ✓ | ✓ † |
+| DASH | ◐ ² ⁶ | ✓ ¹ | ✓ ⁷ | ✓ ⁷ | ✓ ⁷ | ✓ ⁷ † |
+| Matroska, WebM and MPEG-TS (files and live channels), their audio languages and subtitles | ✓ ² ⁸ | ✓ ¹ | ✓ ⁸ | ✓ ⁸ | ✓ ⁸ | ✓ ⁸ † |
 | Quality caps (the view, metered networks, Data Saver) and `selectQuality` | ✓ ² | ✓ ¹ | ✓ ³ | ✓ ³ | ◐ ⁴ | ◐ ⁴ † |
 | Separate quality files switched behind the picture | ✓ ² | ✓ ¹ | ✓ | ✓ | ✓ | ✓ † |
 | The source's audio languages and subtitles | ✓ ² | ✓ ¹ | ✓ ³ | ✓ ³ | ✓ | ✓ † |
@@ -149,6 +151,9 @@ A `Player` with a picture ([guide](video.md), [subtitles](subtitles.md)).
 3. HLS with hls.js ([`configureHls`](web.md#hls)); a video player takes it over Chromium's own HLS, which lists no tracks or qualities.
 4. Safari's own HLS picks its quality itself: no caps or pins there. Separate quality files are RNAP's to switch, under every cap.
 5. iPhone Safari's fullscreen is the system player, with its own controls and captions.
+6. CMAF DASH (fragmented MP4 segments), rewritten as HLS for AVPlayer; a manifest addressed by byte ranges (`SegmentBase`) is refused.
+7. With Shaka Player ([`configureShaka`](web.md#dash)).
+8. Remuxed (nothing is decoded): the platform needs the codecs, and on the web the server needs CORS. Chromium takes no MP3 inside these; AC-3 and E-AC-3 play on Apple devices only ([Video](video.md#matroska-webm-and-mpeg-ts)).
 
 ## Sound effects
 

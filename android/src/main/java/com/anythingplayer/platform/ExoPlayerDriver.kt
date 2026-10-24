@@ -574,7 +574,8 @@ internal class ExoPlayerDriver(
         .setUserAgent(userAgent ?: Util.getUserAgent(context, "RNAP"))
         .setDefaultRequestProperties(headers.filterKeys { !it.equals("User-Agent", ignoreCase = true) })
     // CBR seeking: MP3s without a Xing/VBRI header are seekable too (like iOS).
-    val extractors = DefaultExtractorsFactory().setConstantBitrateSeekingEnabled(true)
+    var extractors = DefaultExtractorsFactory().setConstantBitrateSeekingEnabled(true)
+    if (video) extractors = VideoSupport.subtitles(extractors)
     return DefaultMediaSourceFactory(DefaultDataSource.Factory(context, http), extractors)
       .setLoadErrorHandlingPolicy(AnythingPlayerLoadErrorPolicy())
       .createMediaSource(MediaItem.Builder().setUri(resolveUri(request.source.uri)).setMediaId(mediaId).build())

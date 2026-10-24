@@ -216,7 +216,12 @@ test("the browser's own controls: their play, pause and seek are the user's", as
       page.evaluate(() => window.videoTest.player.getProgress().position)
     )
     .toBeGreaterThanOrEqual(29.5);
-  await video.evaluate((v) => (v as HTMLVideoElement).play());
+  // The play button: its promise is not awaited (WebKitGTK resolves it
+  // only with a `playing` event it may not send while data is still
+  // arriving; RNAP takes the running playhead as playing).
+  await video.evaluate((v) => {
+    (v as HTMLVideoElement).play().catch(() => undefined);
+  });
   await expect.poll(async () => (await status(page)).state).toBe('playing');
   expect((await status(page)).playWhenReady).toBe(true);
   // Turned off again: the element has none.
@@ -265,6 +270,155 @@ test('DASH plays through Shaka Player: its pictures are qualities, caps and pins
       page.evaluate(() => window.videoTest.player.getProgress().position)
     )
     .toBeGreaterThanOrEqual(40);
+  expect(await page.evaluate(() => window.videoTest.errors)).toEqual([]);
+});
+
+test('a Matroska file plays remuxed: its audio languages and subtitles are tracks, its Cues seek', async ({
+  page,
+}) => {
+  await open(page);
+  await page.evaluate(() =>
+    window.videoTest.player.load(`${window.videoTest.MEDIA}/remux/movie.mkv`, {
+      autoplay: true,
+    })
+  );
+  await expect
+    .poll(async () => (await status(page)).state, { timeout: 20_000 })
+    .toBe('playing');
+  const described = async () =>
+    ((await status(page)).video?.tracks ?? []).map(
+      (t) => `${t.kind}:${t.language}:${t.label}`
+    );
+  await expect
+    .poll(described, { timeout: 15_000 })
+    .toEqual([
+      'audio:eng:English',
+      'audio:por:Português',
+      'subtitles:eng:null',
+      'subtitles:por:ASS',
+    ]);
+  expect((await status(page)).duration).toBeCloseTo(30, 0);
+  const video = (await status(page)).video!;
+  expect([video.width, video.height]).toEqual([640, 360]);
+  const tracks = video.tracks;
+  const por = tracks.find(
+    (t) => t.kind === 'audio' && t.language === 'por'
+  )!.id;
+  const srt = tracks.find(
+    (t) => t.kind !== 'audio' && t.language === 'eng'
+  )!.id;
+  const ass = tracks.find(
+    (t) => t.kind !== 'audio' && t.language === 'por'
+  )!.id;
+  // SubRip from the file, drawn by the overlay (the browser draws none).
+  await page.evaluate((id) => window.videoTest.player.selectSubtitles(id), srt);
+  const overlay = page.locator('#stage');
+  await expect(overlay).toContainText('Matroska subtitles', {
+    timeout: 15_000,
+  });
+  expect(
+    await page
+      .locator('#stage video')
+      .evaluate(
+        (v) =>
+          Array.from((v as HTMLVideoElement).textTracks).filter(
+            (t) => t.mode === 'showing'
+          ).length
+      )
+  ).toBe(0);
+  // Another audio language: muxed from where the picture is.
+  const before = await page.evaluate(
+    () => window.videoTest.player.getProgress().position
+  );
+  await page.evaluate(
+    (id) => window.videoTest.player.selectAudioTrack(id),
+    por
+  );
+  await expect
+    .poll(async () => (await status(page)).video?.audioTrack)
+    .toBe(por);
+  await expect
+    .poll(async () => (await status(page)).state, { timeout: 15_000 })
+    .toBe('playing');
+  expect(
+    await page.evaluate(() => window.videoTest.player.getProgress().position)
+  ).toBeGreaterThanOrEqual(before - 2.5);
+  // A seek past what is buffered starts at the cluster the Cues name.
+  await page.evaluate(() => window.videoTest.player.seekTo(20));
+  await expect
+    .poll(
+      () => page.evaluate(() => window.videoTest.player.getProgress().position),
+      { timeout: 15_000 }
+    )
+    .toBeGreaterThanOrEqual(20.5);
+  await page.evaluate((id) => window.videoTest.player.selectSubtitles(id), ass);
+  await expect(overlay).toContainText('Ainda em ASS', { timeout: 15_000 });
+  expect(await page.evaluate(() => window.videoTest.errors)).toEqual([]);
+});
+
+test('an MPEG-TS file plays remuxed, with its duration, and seeks by its bitrate', async ({
+  page,
+}) => {
+  await open(page);
+  await page.evaluate(() =>
+    window.videoTest.player.load(`${window.videoTest.MEDIA}/remux/movie.ts`, {
+      autoplay: true,
+    })
+  );
+  await expect
+    .poll(async () => (await status(page)).state, { timeout: 20_000 })
+    .toBe('playing');
+  expect((await status(page)).duration).toBeCloseTo(30, 0);
+  expect((await status(page)).isLive).toBe(false);
+  await page.evaluate(() => window.videoTest.player.seekTo(22));
+  await expect
+    .poll(
+      () => page.evaluate(() => window.videoTest.player.getProgress().position),
+      { timeout: 15_000 }
+    )
+    .toBeGreaterThanOrEqual(22.5);
+  await expect.poll(async () => (await status(page)).state).toBe('playing');
+  expect(await page.evaluate(() => window.videoTest.errors)).toEqual([]);
+});
+
+test('a live MPEG-TS channel plays remuxed, as live', async ({ page }) => {
+  await open(page);
+  await page.evaluate(() =>
+    window.videoTest.player.load(`${window.videoTest.MEDIA}/live.ts`, {
+      autoplay: true,
+    })
+  );
+  await expect
+    .poll(async () => (await status(page)).state, { timeout: 20_000 })
+    .toBe('playing');
+  expect((await status(page)).isLive).toBe(true);
+  const at = await page.evaluate(
+    () => window.videoTest.player.getProgress().position
+  );
+  await expect
+    .poll(
+      () => page.evaluate(() => window.videoTest.player.getProgress().position),
+      { timeout: 10_000 }
+    )
+    .toBeGreaterThan(at + 2);
+  expect((await status(page)).video?.height).toBe(360);
+  expect(await page.evaluate(() => window.videoTest.errors)).toEqual([]);
+});
+
+test('WebM plays: natively, or remuxed where the browser has no WebM', async ({
+  page,
+}) => {
+  await open(page);
+  await page.evaluate(() =>
+    window.videoTest.player.load(`${window.videoTest.MEDIA}/remux/movie.webm`, {
+      autoplay: true,
+    })
+  );
+  await expect
+    .poll(async () => (await status(page)).state, { timeout: 20_000 })
+    .toBe('playing');
+  const video = (await status(page)).video!;
+  expect([video.width, video.height]).toEqual([640, 360]);
   expect(await page.evaluate(() => window.videoTest.errors)).toEqual([]);
 });
 

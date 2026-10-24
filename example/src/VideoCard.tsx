@@ -63,6 +63,27 @@ export const VIDEO_SOURCES: Array<{ label: string; source: () => Source }> = [
       metadata: { title: 'Test pattern (HLS)', artist: 'RNAP' },
     }),
   },
+  {
+    label: 'MKV + tracks',
+    source: () => ({
+      uri: `${STREAM_HOST}/remux/movie.mkv`,
+      metadata: { title: 'Test pattern (Matroska)', artist: 'RNAP' },
+    }),
+  },
+  {
+    label: 'MPEG-TS',
+    source: () => ({
+      uri: `${STREAM_HOST}/remux/movie.ts`,
+      metadata: { title: 'Test pattern (MPEG-TS)', artist: 'RNAP' },
+    }),
+  },
+  {
+    label: 'Live TS',
+    source: () => ({
+      uri: `${STREAM_HOST}/live.ts`,
+      metadata: { title: 'Test channel (live MPEG-TS)', artist: 'RNAP' },
+    }),
+  },
 ];
 
 function Small({

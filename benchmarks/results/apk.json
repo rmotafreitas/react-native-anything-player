@@ -143,17 +143,17 @@
       },
       "r8": {
         "apkBytes": 1366667,
-        "dexBytes": 1006734,
+        "dexBytes": 1007190,
         "nativeBytes": 94432,
         "resourceBytes": 261631,
-        "otherBytes": 5181
+        "otherBytes": 5169
       },
       "noR8": {
         "apkBytes": 4044373,
-        "dexBytes": 3229180,
+        "dexBytes": 3230056,
         "nativeBytes": 94432,
         "resourceBytes": 673161,
-        "otherBytes": 5230
+        "otherBytes": 5216
       }
     },
     {

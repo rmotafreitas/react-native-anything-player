@@ -132,6 +132,12 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
   private var proxied: URL?
   /// A DASH item's manifest rewriter (AVPlayer reads its HLS playlists).
   private var dashLoader: DashLoader?
+  /// A file AVPlayer cannot read (Matroska, WebM, MPEG-TS), served to it as HLS.
+  private var remuxSession: RemuxSession?
+  private var remuxURL: URL?
+  /// A source the item failed to open, retried remuxed (its container told by its bytes).
+  private var forcedRemux: URL?
+  private var lastRequest: OpenRequest?
   /// The upstream response had no length (or ICY): a live stream.
   private var unbounded = false
   /// The proxy found an HLS playlist and redirected AVPlayer to it: the
@@ -207,6 +213,8 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
     finiteHint = request.source.liveHint == false
     playWanted = request.playWhenReady
     pendingStart = request.startPosition.flatMap { $0 > 0 ? $0 : nil }
+    if lastRequest?.source.uri != request.source.uri { forcedRemux = nil }
+    lastRequest = request
 
     guard let url = Self.resolveURL(request.source.uri) else {
       let gen = generation
@@ -225,8 +233,15 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
     upstreamError = nil
     let asset: AVURLAsset
     mapped = MappedMedia()
+    // Matroska, WebM and MPEG-TS: remuxed, served as HLS (RemuxSession).
+    let remuxFormat = RemuxSession.format(of: url)
+    if remuxFormat != nil || forcedRemux == url {
+      let session = RemuxSession(url: url, headers: request.source.headers, format: remuxFormat)
+      remuxSession = session
+      remuxURL = StreamProxy.shared.registerRemux(session)
+    }
     // A video goes to AVFoundation directly: range requests, and no ICY to read.
-    if !video && Self.proxies(url) {
+    if remuxSession == nil && !video && Self.proxies(url) {
       let gen = generation
       proxied = StreamProxy.shared.register(
         StreamProxy.Route(
@@ -290,7 +305,9 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
     // if the proxy redirects it to an HLS playlist (the proxy also sets them).
     var options: [String: Any] = [:]
     if !request.source.headers.isEmpty { options["AVURLAssetHTTPHeaderFieldsKey"] = request.source.headers }
-    if DashLoader.isDash(url) {
+    if let remuxURL {
+      asset = AVURLAsset(url: remuxURL, options: options)
+    } else if DashLoader.isDash(url) {
       // AVPlayer plays HLS, not DASH: the manifest is rewritten (DashToHls).
       let loader = DashLoader(manifest: url, headers: request.source.headers)
       dashLoader = loader
@@ -583,6 +600,9 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
     proxied = nil
     dashLoader?.cancel()
     dashLoader = nil
+    if let remuxURL { StreamProxy.shared.retireRemux(remuxURL) }
+    remuxURL = nil
+    remuxSession = nil
     // Abort the asset's loading now: otherwise AVFoundation can keep the
     // stream's HTTP connection open (and downloading) after the item is gone.
     item?.cancelPendingSeeks()
@@ -658,7 +678,7 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
 
   private func fail(_ gen: Int, _ error: Error?) {
     // A DASH manifest that could not be fetched or rewritten says why.
-    if let failure = dashLoader?.failure {
+    if let failure = dashLoader?.failure ?? remuxSession?.failure {
       observer?.driverFailed(generation: gen, error: failure)
       return
     }
@@ -667,7 +687,27 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
     let mapped = ErrorMapping.map(
       upstreamError ?? error, httpStatus: upstreamError == nil ? lastHTTPStatus : nil,
       offline: observer?.isOffline ?? false, hadPlayed: playedGeneration == gen)
+    if retryRemuxed(gen, mapped) { return }
     observer?.driverFailed(generation: gen, error: mapped)
+  }
+
+  /// A source AVPlayer could not open (an IPTV channel's MPEG-TS behind a URL
+  /// without an extension): before anything played, it is tried once more,
+  /// remuxed, its container told by its first bytes.
+  private func retryRemuxed(_ gen: Int, _ error: PlayerError) -> Bool {
+    guard error.code == .unsupportedFormat, remuxSession == nil, dashLoader == nil, playedGeneration != gen,
+      let request = lastRequest, request.generation == gen, let url = Self.resolveURL(request.source.uri),
+      forcedRemux != url, url.pathExtension.lowercased() != "m3u8"
+    else { return false }
+    guard url.isFileURL || ["http", "https"].contains(url.scheme?.lowercased() ?? "") else { return false }
+    forcedRemux = url
+    observer?.driverNote(generation: gen, event: "remux", details: ["reason": "AVPlayer could not open the source"])
+    // Not from inside the item's status callback: the item goes.
+    DispatchQueue.main.async { [weak self] in
+      guard let self, self.generation == gen else { return }
+      self.open(request)
+    }
+    return true
   }
 
   private func timeControlChanged(_ status: AVPlayer.TimeControlStatus) {

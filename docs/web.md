@@ -171,6 +171,16 @@ With Shaka loaded by a `<script>` (it then sits on `window.shaka`), the call is 
 
 What hls.js does for HLS, Shaka does for DASH, under the same rules: Shaka's ABR picks the picture under RNAP's [caps](video.md#quality) and `selectQuality` pins one; the manifest's audio languages and text tracks are the [source's tracks](subtitles.md#the-sources-own-tracks), drawn by RNAP's overlay; the source's `headers` go on every request; a critical Shaka error is a failure the engine recovers from with a new Shaka instance under its [backoff](recovery.md) (an HTTP 404/410 is `SOURCE_NOT_FOUND`).
 
+## Matroska, WebM and MPEG-TS
+
+A `.mkv`, `.webm` or `.ts` file, or a live MPEG-TS channel, plays on video and audio players through RNAP's remuxer: the file is read with `fetch()` (range requests, for seeking) and its frames go into fragmented MP4 for Media Source Extensions, with nothing decoded. The details are in [Video](video.md#matroska-webm-and-mpeg-ts).
+
+- **When.** Matroska is always remuxed: a browser that plays it itself hides its audio tracks and subtitles. WebM and MPEG-TS are remuxed only where the browser does not play them (`canPlayType`); no browser plays MPEG-TS. A source with no extension that the element cannot open is sniffed and remuxed if it is either container.
+- **Seeking.** It uses a Matroska file's Cues (read from where its SeekHead says), or for MPEG-TS a guess by the bitrate corrected after the landing. A server without range requests is read again from the start.
+- **Duration.** It comes from a Matroska file's Info, or from an MPEG-TS file's last timestamps (one range request to its tail). A stream without a length is live.
+- **Tracks.** The file's audio tracks and its SubRip, ASS and WebVTT subtitles are the source's tracks. A picked audio track is remuxed from where the picture is, which needs `SourceBuffer.changeType` when its codec differs.
+- **Code size.** The remuxer and its glue load on first use, so a page that never plays these files does not carry them.
+
 ## Local files
 
 A file the user picked or dropped plays by passing it straight to `load()`:
