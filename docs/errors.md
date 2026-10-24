@@ -27,7 +27,7 @@ Native details are never dropped: `AVFoundationErrorDomain -11800` comes with th
 |---|---|---|
 | `INVALID_SOURCE` | no | empty/unsupported URI, cleartext HTTP blocked by ATS / network-security config, no permission to read; a `File`/`Blob` or `blob:`/`data:` URL outside the web |
 | `SOURCE_NOT_FOUND` | no | missing file, HTTP 404/410 |
-| `UNSUPPORTED_FORMAT` | no | container/codec the device cannot decode, server returned non-audio; web: HLS in a browser without native HLS when hls.js is not [configured](web.md#hls) |
+| `UNSUPPORTED_FORMAT` | no | container/codec the device cannot decode (for a video's sound alone, a non-fatal `error` while the picture plays: [software decoders](video.md#software-decoders)), server returned non-audio; web: HLS in a browser without native HLS when hls.js is not [configured](web.md#hls) |
 | `DECODER_ERROR` | if it had played | corrupt data (a glitch in a stream that was playing is retried) |
 | `NETWORK_UNAVAILABLE` | yes | the device is offline |
 | `NETWORK_ERROR` | yes | connection refused/reset, DNS, TLS failure (TLS: no) |

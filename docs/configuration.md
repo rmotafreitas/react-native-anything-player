@@ -72,11 +72,13 @@ Three more switches were measured and left out, because they would save little o
 | `Info.plist` | `RNAPCastReceiverId` | your own Cast receiver on iOS |
 | `android/gradle.properties` | `rnapSound=true` | build the [Sound API](sound.md) in (a `SoundPool`: no extra library) |
 | `pod install` | `RNAP_SOUND=1` (or `"rnap.sound": "true"` in `ios/Podfile.properties.json`) | build the Sound API in on iOS |
-| `android/gradle.properties` | `rnapVideo=true` | build [video](video.md) in: the views, the video and text renderers and, unless `rnapDash=false`, Media3's DASH module (126 KB more in a release APK with R8) |
+| `android/gradle.properties` | `rnapVideo=true` | build [video](video.md) in: the views, the video and text renderers and, unless `rnapDash=false`, Media3's DASH module (142 KB more in a release APK with R8) |
 | `android/gradle.properties` | `rnapDash=true` / `rnapDash=false` | DASH (`.mpd`) for an audio-only app, or none for a video app |
+| `android/gradle.properties` | `rnapVideoDecoders=true` (or `ffmpeg,vp9,av1`, a list) | the [software decoders](video.md#software-decoders): Dolby, DTS and MPEG audio with FFmpeg, VP9, AV1, for what the device cannot decode |
+| `android/gradle.properties` | `rnapDecodersDir=/path` | take the software decoders from a folder instead of RNAP's GitHub release |
 | `pod install` | `RNAP_VIDEO=1` (or `"rnap.video": "true"` in `ios/Podfile.properties.json`) | build video in on iOS (DASH needs nothing: RNAP rewrites CMAF DASH as HLS for AVPlayer) |
 | Expo config plugin | `["react-native-anything-player", { "backgroundAudio": false }]` | do not add the iOS `audio` background mode |
-| Expo config plugin | `cast`, `siri`, `assistant`, `sound`, `car`, `video` | Google Cast, Siri (extension and shortcuts), Google Assistant / Gemini, the Sound API, CarPlay and Android Auto, video with Picture in Picture: see [Getting started](getting-started.md#expo) |
+| Expo config plugin | `cast`, `siri`, `assistant`, `sound`, `car`, `video`, `videoDecoders` | Google Cast, Siri (extension and shortcuts), Google Assistant / Gemini, the Sound API, CarPlay and Android Auto, video with Picture in Picture, Android's software decoders: see [Getting started](getting-started.md#expo) |
 
 The recovery timings that are *not* configurable are fixed on purpose; [recovery.md](recovery.md) explains each.
 

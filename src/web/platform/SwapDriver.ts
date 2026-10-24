@@ -248,6 +248,7 @@ export class SwapDriver implements LocalDriver {
       onUserCommand: (g, command, position) =>
         f.onUserCommand?.(g, command, position),
       onLicenseRequest: (g, request) => f.onLicenseRequest?.(g, request),
+      onWarning: (g, error) => f.onWarning?.(g, error),
     };
   }
 

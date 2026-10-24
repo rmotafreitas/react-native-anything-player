@@ -746,6 +746,10 @@ export class WebPlayerController
     }
   }
 
+  onWarning(generation: number, error: PlayerError): void {
+    if (this.engine.accepts(generation)) this.engineError(error, false);
+  }
+
   onLicenseRequest(generation: number, request: LicenseRequestEvent): void {
     if (this.engine.accepts(generation))
       this.emit('licenseRequest', { ...request });

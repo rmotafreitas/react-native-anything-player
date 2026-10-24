@@ -89,6 +89,14 @@ export const VIDEO_SOURCES: Array<{ label: string; source: () => Source }> = [
     }),
   },
   {
+    // Most phones have no AC-3 decoder: the software decoders play it.
+    label: 'AC-3 audio',
+    source: () => ({
+      uri: `${STREAM_HOST}/remux/codec-ac3.mkv`,
+      metadata: { title: 'Test pattern (AC-3)', artist: 'RNAP' },
+    }),
+  },
+  {
     label: 'DRM keys',
     source: () => ({
       uri: `${STREAM_HOST}/drm/hls/index.m3u8`,

@@ -168,7 +168,7 @@ test('size --json reports this project against the default build', (t) => {
   assert.equal(result.json.measured.abi, 'arm64-v8a');
   assert.deepEqual(result.json.android.base, data.android.base);
   assert.deepEqual(result.json.android.total, data.android.base);
-  assert.equal(result.json.android.modules.length, 8);
+  assert.equal(result.json.android.modules.length, 9);
   assert.equal(
     result.json.android.modules.find((item) => item.id === 'cast').cost.r8,
     1484123

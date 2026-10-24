@@ -66,7 +66,8 @@ What an app's users download: each library built into a React Native 0.86 app, i
 | RNAP with Cast (`rnapCast=true`) | 2,657 KB | 11,072 KB | 1,228 KB | 102 KB | 1,213 KB |
 | RNAP with the Sound API (`rnapSound=true`) | 1,208 KB | 3,854 KB | 874 KB | 92 KB | 242 KB |
 | RNAP with Android Auto (`rnapCar=true`) | 1,209 KB | 3,854 KB | 867 KB | 92 KB | 242 KB |
-| RNAP with video (`rnapVideo=true`, DASH included) | 1,335 KB | 3,950 KB | 983 KB | 92 KB | 255 KB |
+| RNAP with video (`rnapVideo=true`, DASH included) | 1,351 KB | 3,966 KB | 990 KB | 92 KB | 255 KB |
+| RNAP with video and its software decoders (`rnapVideoDecoders=true`) | 4,215 KB | 6,830 KB | 1,009 KB | 2,910 KB | 255 KB |
 | RNTP 5 (Cast always in) | 2,670 KB | 10,956 KB | 1,306 KB | 55 KB | 1,213 KB |
 | react-native-video | 1,272 KB | 3,384 KB | 762 KB | 0 | 487 KB |
 | react-native-audio-pro | 849 KB | 2,587 KB | 659 KB | 0 | 184 KB |
@@ -83,7 +84,7 @@ Built 2026-10-22 (`benchmarks/results/apk.json`); the code, native and resource 
 How to read it:
 
 - **R8 is where the size goes.** Media3 is large on disk and mostly unused by any one app: R8 removes two thirds of what the Media3-based players add. Turn it on for release builds; RNAP needs no rules of its own (see [Configuration](configuration.md#release-builds-and-r8)).
-- **RNAP is shaped for R8.** It builds ExoPlayer with only the audio and metadata renderers, so the video, subtitle and image code is removed, and Android compiles only its module's C++, not the iOS-only AirPlay button's. Release 1.1.0 added 1,400 KB with R8 and 1.1.1 added 1,176 KB; 1.2.0, with the sleep timer, fades and the browse tree, added 1,192 KB, and the next release adds 1,208 KB. The Sound API and Android Auto cost almost nothing on top (SoundPool and a manifest entry). Video is the one module that brings Media3 code back: the video and text renderers and DASH, 126 KB with R8 (`rnapDash=false` leaves DASH out).
+- **RNAP is shaped for R8.** It builds ExoPlayer with only the audio and metadata renderers, so the video, subtitle and image code is removed, and Android compiles only its module's C++, not the iOS-only AirPlay button's. Release 1.1.0 added 1,400 KB with R8 and 1.1.1 added 1,176 KB; 1.2.0, with the sleep timer, fades and the browse tree, added 1,192 KB, and the next release adds 1,208 KB. The Sound API and Android Auto cost almost nothing on top (SoundPool and a manifest entry). Video is the one module that brings Media3 code back: the video and text renderers and DASH, 142 KB with R8 (`rnapDash=false` leaves DASH out). Its software decoders are native libraries, 2.8 MB more for one ABI (about 1.2 MB to download), and only for apps that turn them on.
 - **Same work, same size.** react-native-audio-pro is smaller with less to do (no HLS, no output picker, no recovery). With Cast in, RNAP and RNTP 5 land within 45 KB of each other: the Cast framework is most of it.
 - **Native code that R8 cannot touch:** react-native-audio-api ships FFmpeg and its audio engine as native libraries, and react-native-nitro-sound its C++ through Nitro.
 - **Expo modules need the Expo runtime.** An app that does not use Expo yet adds 3,912 KB with R8 for the runtime (its core modules and their C++) before the module itself. An app already on Expo pays only the module: 1,076 KB for expo-audio, 747 KB for expo-av.

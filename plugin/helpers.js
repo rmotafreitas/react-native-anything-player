@@ -51,6 +51,7 @@ function resolveOptions(options = {}) {
             options.video.pictureInPicture !== false,
         }
       : null,
+    videoDecoders: options.videoDecoders === true,
   };
 }
 
@@ -154,7 +155,13 @@ function applyGradleProperties(entries, resolved) {
     (e) =>
       !(
         e.type === 'property' &&
-        ['rnapCast', 'rnapSound', 'rnapCar', 'rnapVideo'].includes(e.key)
+        [
+          'rnapCast',
+          'rnapSound',
+          'rnapCar',
+          'rnapVideo',
+          'rnapVideoDecoders',
+        ].includes(e.key)
       )
   );
   if (resolved.cast)
@@ -165,6 +172,8 @@ function applyGradleProperties(entries, resolved) {
     out.push({ type: 'property', key: 'rnapCar', value: 'true' });
   if (resolved.video)
     out.push({ type: 'property', key: 'rnapVideo', value: 'true' });
+  if (resolved.videoDecoders)
+    out.push({ type: 'property', key: 'rnapVideoDecoders', value: 'true' });
   return out;
 }
 

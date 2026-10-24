@@ -57,6 +57,16 @@ export function deriveSizeData(apk, size) {
     if (base && entry)
       modules[id] = { r8: entry.r8 - base.r8, noR8: entry.noR8 - base.noR8 };
   }
+  // The software decoders come with video: what they add to it.
+  const video = apkBytes(apk.libraries.find((item) => item.id === 'rnapVideo'));
+  const decoders = apkBytes(
+    apk.libraries.find((item) => item.id === 'rnapVideoDecoders')
+  );
+  if (video && decoders)
+    modules['video-decoders'] = {
+      r8: decoders.r8 - video.r8,
+      noR8: decoders.noR8 - video.noR8,
+    };
 
   const web = [];
   for (const page of size.web ?? []) {

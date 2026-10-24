@@ -75,6 +75,8 @@ internal object VideoSupport {
         video,
         MAX_DROPPED_FRAMES_TO_NOTIFY,
       ),
+      // The software decoders (when built in), for what the platform cannot decode.
+      *DecoderExtensions.video(handler, video, ALLOWED_JOINING_TIME_MS, MAX_DROPPED_FRAMES_TO_NOTIFY).toTypedArray(),
       TextRenderer(text, handler.looper),
     )
 }

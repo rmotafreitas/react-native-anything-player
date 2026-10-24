@@ -28,6 +28,7 @@ test('every module has an id, a description, a platform and a docs anchor', () =
     'sound',
     'car',
     'video',
+    'video-decoders',
   ]);
   for (const id of MODULE_IDS) {
     const module = findModule(id);
@@ -42,7 +43,16 @@ test('every module has an id, a description, a platform and a docs anchor', () =
 test('the Expo plugin options come from the registry', () => {
   assert.deepEqual(
     expoOptions().map((option) => option.key),
-    ['cast', 'siri', 'assistant', 'backgroundAudio', 'sound', 'car', 'video']
+    [
+      'cast',
+      'siri',
+      'assistant',
+      'backgroundAudio',
+      'sound',
+      'car',
+      'video',
+      'videoDecoders',
+    ]
   );
 });
 
@@ -59,7 +69,7 @@ test('modules lists every module and where its state comes from', (t) => {
     android: true,
   });
   assert.equal(result.json.summary.on, 3);
-  assert.equal(result.json.summary.total, 8);
+  assert.equal(result.json.summary.total, 9);
 
   const hls = byId(result.json, 'hls');
   assert.equal(hls.effective, true);
@@ -90,7 +100,7 @@ test('modules prints the one-line summary and the next commands', (t) => {
   const root = bareGood(t);
   const result = runCli(['modules'], { cwd: root });
   assert.equal(result.status, 0);
-  assert.match(result.stdout, /3 of 8 on/);
+  assert.match(result.stdout, /3 of 9 on/);
   assert.match(result.stdout, /npx rnap add <module>/);
   assert.match(result.stdout, /npx rnap size/);
   assert.match(result.stdout, /64 KB of the default build/);

@@ -50,6 +50,8 @@ export interface DriverObserver {
   ): void;
   /** Protected content needs a license from the app's `drm.getLicense`. */
   onLicenseRequest?(generation: number, request: LicenseRequestEvent): void;
+  /** A problem that does not stop playback (a video's sound the browser cannot decode). */
+  onWarning?(generation: number, error: PlayerError): void;
 }
 
 /** What a play() attempt came to: the module rejects `play` on `blocked`. */

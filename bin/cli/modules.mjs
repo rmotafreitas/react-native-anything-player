@@ -154,6 +154,17 @@ export const MODULES = [
     },
     docs: 'docs/video.md#enabling-it',
   },
+  {
+    id: 'video-decoders',
+    label: 'Software decoders',
+    description:
+      "Android: decodes what the device cannot (AC-3, E-AC-3, DTS, TrueHD and MPEG audio with FFmpeg; VP9; AV1). Downloaded once from RNAP's GitHub release, checksums pinned.",
+    defaultOn: false,
+    platforms: ['android'],
+    gradle: { key: 'rnapVideoDecoders', on: 'true', off: 'false' },
+    expo: { key: 'videoDecoders' },
+    docs: 'docs/video.md#software-decoders',
+  },
 ];
 
 export const MODULE_IDS = MODULES.map((module) => module.id);

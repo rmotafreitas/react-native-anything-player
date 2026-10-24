@@ -73,6 +73,20 @@ const LIBRARIES = [
     install: ['@rnap'],
     gradle: { rnapVideo: 'true' },
   },
+  {
+    // Before a decoders release is published, RNAP_DECODERS_DIR names a
+    // folder of them (scripts/decoders/build-android.sh).
+    id: 'rnapVideoDecoders',
+    label: 'RNAP with video and its software decoders',
+    install: ['@rnap'],
+    gradle: {
+      rnapVideo: 'true',
+      rnapVideoDecoders: 'true',
+      ...(process.env.RNAP_DECODERS_DIR
+        ? { rnapDecodersDir: process.env.RNAP_DECODERS_DIR }
+        : {}),
+    },
+  },
   { id: 'rntp5', label: 'RNTP 5', install: ['@rntp/player'] },
   { id: 'rntp4', label: 'RNTP 4', install: ['react-native-track-player@4'] },
   { id: 'video', label: 'react-native-video', install: ['react-native-video'] },

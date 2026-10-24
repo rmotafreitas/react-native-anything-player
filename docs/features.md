@@ -145,6 +145,8 @@ A `Player` with a picture ([guide](video.md), [subtitles](subtitles.md)).
 | Picture in Picture, `whenBackgrounded: 'pip'` | ✓ ² | ✓ ¹ | ✓ | – | ✓ | ✓ † |
 | `nativeControls` | ✓ ² (AVKit's) | ✓ ¹ (RNAP's) | ✓ | ✓ | ✓ | ✓ † |
 | On a Cast receiver, with the app's subtitle files | ✓ ² † | ✓ ¹ † | ✓ † | – | – | – |
+| Software decoders for codecs the device lacks (Dolby, DTS and MPEG audio, VP9, AV1) | – | ✓ ¹ ¹² | – | – | – | – |
+| A video's sound it cannot decode: the picture plays, a non-fatal error names the codec | ◐ ² ¹³ | ✓ ¹ | ✓ | ✓ | ✓ | ✓ † |
 | DRM: license servers, Clear Key keys in the source, or the app's `getLicense` | ◐ ² ⁹ | ✓ ¹ ¹⁰ | ✓ ¹¹ | ✓ ¹¹ | ◐ ⁹ † | ◐ ⁹ † |
 
 1. Opt-in: a build option (`video` in the Expo plugin, `npx rnap add video`). Tried on the Android emulator (a file, separate quality files with SubRip, HLS with two audio languages and WebVTT subtitles, Picture in Picture, fullscreen, controls); not yet on a device †.
@@ -158,6 +160,8 @@ A `Player` with a picture ([guide](video.md), [subtitles](subtitles.md)).
 9. FairPlay only, with HLS ([DRM](video.md#drm)).
 10. Widevine, PlayReady or Clear Key, whichever the device has; Clear Key tried on the emulator.
 11. Widevine, PlayReady or Clear Key, whichever the browser has, through Media Source Extensions (HLS with hls.js, DASH with Shaka); Clear Key in CI.
+12. A build option (`videoDecoders` in the Expo plugin, `npx rnap add video-decoders`), used only for what the device cannot decode. The sound decoders were tried on the emulator; the VP9 and AV1 pictures render wrongly on emulators and are not yet tried on a device †.
+13. The picture plays without the sound, but no error says why yet.
 
 ## Sound effects
 

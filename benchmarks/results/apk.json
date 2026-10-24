@@ -142,18 +142,43 @@
         "rnapVideo": "true"
       },
       "r8": {
-        "apkBytes": 1366667,
-        "dexBytes": 1007190,
+        "apkBytes": 1383051,
+        "dexBytes": 1013658,
         "nativeBytes": 94432,
         "resourceBytes": 261631,
-        "otherBytes": 5169
+        "otherBytes": 5180
       },
       "noR8": {
-        "apkBytes": 4044373,
-        "dexBytes": 3230056,
+        "apkBytes": 4060815,
+        "dexBytes": 3247966,
         "nativeBytes": 94432,
         "resourceBytes": 673161,
-        "otherBytes": 5216
+        "otherBytes": 5222
+      }
+    },
+    {
+      "id": "rnapVideoDecoders",
+      "label": "RNAP with video and its software decoders",
+      "name": "react-native-anything-player",
+      "version": "1.2.1",
+      "gradle": {
+        "rnapVideo": "true",
+        "rnapVideoDecoders": "true",
+        "rnapDecodersDir": "/home/rmotafreitas/rnap-decoders/out"
+      },
+      "r8": {
+        "apkBytes": 4316079,
+        "dexBytes": 1033659,
+        "nativeBytes": 2979896,
+        "resourceBytes": 261631,
+        "otherBytes": 5168
+      },
+      "noR8": {
+        "apkBytes": 6993843,
+        "dexBytes": 3259877,
+        "nativeBytes": 2979896,
+        "resourceBytes": 673161,
+        "otherBytes": 5232
       }
     },
     {

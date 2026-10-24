@@ -36,6 +36,7 @@ test('defaults: background audio and the assistant, no Cast, no Siri', () => {
     assistant: true,
     car: false,
     video: null,
+    videoDecoders: false,
   });
   assert.equal(
     helpers.resolveOptions({ backgroundAudio: false }).backgroundAudio,

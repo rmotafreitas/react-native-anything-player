@@ -69,9 +69,53 @@ A source whose URL names no format (an IPTV channel's path, a picked file) is tr
 
 What it needs:
 
-- **The codecs:** the platform has to decode them. H.264, HEVC, VP9 and AV1 video play wherever the platform has a decoder. AAC, MP3, AC-3, E-AC-3, Opus and FLAC sound play where the platform has those. AC-3 and E-AC-3 are Safari and Apple devices only, and Chromium takes no MP3 inside MP4, so such a track is left out there. A codec the platform lacks (MPEG-2, VC-1, DTS, TrueHD, Vorbis) fails with `UNSUPPORTED_FORMAT` naming it; software decoders are [planned](video-design.md#software-decoders).
+- **The codecs:** the platform has to decode them. H.264, HEVC, VP9 and AV1 video play wherever the platform has a decoder. AAC, MP3, AC-3, E-AC-3, Opus and FLAC sound play where the platform has those. AC-3 and E-AC-3 are Safari and Apple devices only, and Chromium takes no MP3 inside MP4, so such a track is left out there. What happens to a codec the platform lacks is [below](#software-decoders).
 - **On the web, CORS:** the server must allow cross-origin reads (`Access-Control-Allow-Origin`), with range requests for seeking. Without CORS, the element gets the URL as it is, which works where the browser reads the container itself (Matroska and WebM in Chromium and Firefox), without the tracks.
 - **On iOS, range requests:** a file is read by ranges. A live channel needs none.
+
+## Software decoders
+
+The platform decodes what it can, in hardware where it has it. When it has no decoder for a codec:
+
+- **The picture** fails the load with `UNSUPPORTED_FORMAT`, naming the codec.
+- **The sound of a video** is left out and the picture plays. On Android and the web a non-fatal `UNSUPPORTED_FORMAT` (`error` event, `fatal: false`) names the codec; iOS does not report it yet. With no picture (an audio player), it fails the load.
+
+On Android, RNAP's software decoders fill the common gaps:
+
+| Decoder | Plays |
+|---|---|
+| FFmpeg (audio only) | AC-3, E-AC-3 (Dolby Digital Plus; Atmos plays as its 5.1 or 7.1 base), DTS and DTS-HD, TrueHD, MPEG audio layers I and II (DVB and IPTV channels) |
+| libvpx | VP9 |
+| dav1d | AV1 |
+
+```properties
+# android/gradle.properties (or `npx rnap add video-decoders`, or Expo's `videoDecoders: true`)
+rnapVideoDecoders=true
+# or only some of them:
+rnapVideoDecoders=ffmpeg,av1
+```
+
+They come after the platform's decoders: a codec the phone decodes itself never goes to them. Most phones need FFmpeg for Dolby and DTS sound. VP9 and AV1 matter on older phones: Android has decoded VP9 itself since Android 4.4, and AV1 since Android 10. `UNSUPPORTED_FORMAT` for a codec they cover says to add them.
+
+What they add to a release APK with R8, for one device (arm64-v8a; stores serve one ABI):
+
+| | In the APK | To download |
+|---|--:|--:|
+| FFmpeg (sound) | 1,215 KB | about 580 KB |
+| libvpx (VP9) | 536 KB | about 235 KB |
+| dav1d (AV1) | 1,067 KB | about 455 KB |
+| All three | 2,864 KB | about 1.2 MB |
+
+Android keeps native libraries uncompressed in the APK, so the download is the smaller number ([measured](comparison.md)).
+
+Media3 does not publish these decoders, so RNAP builds them from pinned sources (`scripts/decoders/build-android.sh`, in CI) and publishes them as a GitHub release. The first build downloads them once into Gradle's cache and checks them against SHA-256 sums pinned in the package (`android/decoders.json`). Two properties change that:
+
+- `rnapDecodersDir=/path/to/folder`: use a folder of `media3-decoder-*.aar` instead (an offline build, your own build).
+- An app that pins another Media3 version (`rnapMedia3Version`) needs decoders built for it: run the script for that version and point `rnapDecodersDir` at its output.
+
+Licences: FFmpeg is LGPL 2.1 or later (built without any GPL or non-free part), libvpx and dav1d are BSD. The app's notices must list them, and LGPL lets users replace the FFmpeg library. Some of these formats are patented: RNAP licenses no codec, so check what your markets need for Dolby and DTS.
+
+iOS and the web have no software decoders yet ([design](video-design.md#software-decoders)): AVPlayer and the browsers play what they play, and the rules above apply.
 
 ## DRM
 

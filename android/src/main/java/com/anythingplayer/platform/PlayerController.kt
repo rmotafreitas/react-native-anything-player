@@ -534,6 +534,10 @@ internal class PlayerController(
 
   override fun isOffline(): Boolean = runtime.networkState == com.anythingplayer.core.NetworkState.OFFLINE
 
+  override fun onWarning(generation: Int, error: PlayerError) {
+    if (engine.accepts(generation)) engineError(error, fatal = false)
+  }
+
   override fun onLicenseRequest(generation: Int, ask: LicenseAsk) {
     if (!engine.accepts(generation)) return LicenseRequests.cancel(ask.requestId, "The source was replaced.")
     emit(

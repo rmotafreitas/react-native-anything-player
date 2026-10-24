@@ -167,6 +167,13 @@ ffmpeg -loglevel error -y -i media/video-360.mp4 -t 30 $X264 -c:a aac -b:a 96k -
 ffmpeg -loglevel error -y -i media/video-360.mp4 -t 60 $X264 -c:a aac -b:a 96k -ac 2 -f mpegts media/remux/live.ts
 ffmpeg -loglevel error -y -i media/video-360.mp4 -t 10 -c:v libvpx-vp9 -deadline realtime -cpu-used 8 -g 50 -b:v 300k \
   -c:a libopus -b:a 64k media/remux/movie.webm
+# Codecs few devices decode, for the software decoders: AC-3, DTS and MPEG
+# audio layer II (DVB channels) sound, and AV1 video.
+ffmpeg -loglevel error -y -i media/video-360.mp4 -t 10 $X264 -c:a ac3 -b:a 192k media/remux/codec-ac3.mkv
+ffmpeg -loglevel error -y -i media/video-360.mp4 -t 10 $X264 -c:a dca -strict -2 -ar 48000 media/remux/codec-dts.mkv
+ffmpeg -loglevel error -y -i media/video-360.mp4 -t 10 $X264 -c:a mp2 -b:a 192k -f mpegts media/remux/codec-mp2.ts
+ffmpeg -loglevel error -y -i media/video-360.mp4 -t 10 -c:v libsvtav1 -preset 12 -g 50 -b:v 300k \
+  -c:a libopus -b:a 64k media/remux/codec-av1.mkv
 
 # DRM: the video as fragmented MP4 HLS, encrypted (CENC) with a Clear Key
 # by encrypt-fmp4.mjs (browsers decrypt only fragmented MP4, and ffmpeg's own

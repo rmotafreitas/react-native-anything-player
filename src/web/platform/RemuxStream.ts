@@ -67,7 +67,21 @@ export interface RemuxListener {
   onNote(event: string, details: Record<string, string>): void;
   /** The audio or text tracks are known. */
   onTracks?(): void;
+  /** A problem that does not stop playback (a sound this browser cannot decode). */
+  onWarning?(error: PlayerError): void;
 }
+
+/** A sound's codec as people name it. */
+const SOUND_NAMES: Record<string, string> = {
+  'ac-3': 'AC-3',
+  'ec-3': 'E-AC-3',
+  'mp4a.6B': 'MP3',
+  'opus': 'Opus',
+  'flac': 'FLAC',
+  'A_DTS': 'DTS',
+  'A_TRUEHD': 'TrueHD',
+  'A_VORBIS': 'Vorbis',
+};
 
 /** Reading pauses while this much is buffered ahead of the playhead. */
 const MAX_AHEAD_S = 30;
@@ -178,6 +192,8 @@ export class RemuxStream implements HlsTracks {
   private audioId: number | null = null;
   private mime: string | null = null;
   private unsupportedVideo: string | null = null;
+  /** The sound this browser cannot decode was reported. */
+  private soundReported = false;
   private readonly codecs = new Map<RemuxTrack, string | null>();
   private readonly texts = new Map<number, WritableTextTrackLike>();
   private readonly scripts = new Map<number, AssScript>();
@@ -473,12 +489,32 @@ export class RemuxStream implements HlsTracks {
       if (!video && videos.length > 0) this.unsupportedVideo = videos[0]!.codec;
     }
     const audios = this.audioOptions(tracks);
+    this.reportSilence(video, audios, tracks);
     const audio =
       audios.find((t) => t.id === this.audioId) ??
       audios.find((t) => t.default) ??
       audios[0];
     this.audioId = audio?.id ?? null;
     return { video: video?.id ?? null, audio: this.audioId };
+  }
+
+  /** The picture plays, and no sound of the file can: say why, once. */
+  private reportSilence(
+    video: RemuxTrack | null,
+    audios: readonly RemuxTrack[],
+    tracks: readonly RemuxTrack[]
+  ): void {
+    const sound = tracks.find((t) => t.kind === 'audio');
+    if (!video || audios.length > 0 || !sound || this.soundReported) return;
+    this.soundReported = true;
+    const codec = sound.unsupported ?? sound.codec ?? 'an unknown codec';
+    this.listener.onWarning?.(
+      engineError(
+        'UNSUPPORTED_FORMAT',
+        `This browser cannot decode the sound (${SOUND_NAMES[codec] ?? codec}). The picture plays without it.`,
+        false
+      )
+    );
   }
 
   private audioOptions(

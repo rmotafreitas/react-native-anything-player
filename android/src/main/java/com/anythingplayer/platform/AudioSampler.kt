@@ -79,6 +79,8 @@ internal class AudioSampler(context: Context) : TeeAudioProcessor.AudioBufferSin
           .setAudioProcessors(arrayOf<AudioProcessor>(tee))
           .build()
           .also { audioSink = it }
+      // The platform's decoders first; the software ones (when built in) for
+      // what it cannot decode.
       val audio: Array<Renderer> =
         arrayOf(
           MediaCodecAudioRenderer(
@@ -90,6 +92,7 @@ internal class AudioSampler(context: Context) : TeeAudioProcessor.AudioBufferSin
             audioListener,
             sink,
           ),
+          *DecoderExtensions.audio(handler, audioListener, sink).toTypedArray(),
           MetadataRenderer(metadataOutput, handler.looper),
         )
       // The video module's renderers (none without it: audio apps stay slim).

@@ -91,6 +91,11 @@ internal interface DriverObserver {
     // Audio players need none.
   }
 
+  /** A problem that does not stop playback (a video's sound it cannot decode). */
+  fun onWarning(generation: Int, error: PlayerError) {
+    // Nothing to tell by default.
+  }
+
   /** The source's `drm.getLicense` must answer a key request (see [LicenseRequests]). */
   fun onLicenseRequest(generation: Int, ask: LicenseAsk) {
     LicenseRequests.cancel(ask.requestId, "Nothing can answer the license request.")
@@ -172,6 +177,8 @@ internal class ExoPlayerDriver(
   private var currentRequest: OpenRequest? = null
   /** HTTP calls per playlist item (media id), cancelled when the item goes. */
   private val itemCalls = LinkedHashMap<String, CallRegistry>()
+  /** The generation whose unplayable tracks were reported (once per item). */
+  private var reportedGeneration = -1
   /** The current source's DRM (`null`: a clear source), and the key system it uses here. */
   private var sourceDrm: SourceDrm? = null
   private var keySystem: KeySystem? = null
@@ -304,11 +311,7 @@ internal class ExoPlayerDriver(
       override fun onTracksChanged(tracks: Tracks) {
         val p = player ?: return
         val gen = currentGeneration(p) ?: return
-        if (lockedOut(tracks)) {
-          val error = PlayerError(ErrorCode.DRM_UNSUPPORTED, lockedOutMessage(), false)
-          report { observer.onFailed(gen, error) }
-          return
-        }
+        if (reportUnplayable(tracks, gen)) return
         if (!video) return
         val found = ExoVideo.map(tracks)
         mapped = found
@@ -589,12 +592,35 @@ internal class ExoPlayerDriver(
   }
 
   /**
-   * Encrypted tracks no key system here can open: ExoPlayer would leave them
-   * unselected and play the rest (or nothing) as if all were well.
+   * Tracks this device cannot play, which ExoPlayer would leave out, playing
+   * the rest (or nothing) as if all were well. Encrypted ones, the picture, or
+   * the sound of what has no picture fail the source; a video's sound alone
+   * is reported once, and the picture plays. `true`: the source failed.
    */
-  private fun lockedOut(tracks: Tracks): Boolean {
-    val locked = tracks.groups.filter { g -> g.length > 0 && (0 until g.length).all { g.getTrackSupport(it) == C.FORMAT_UNSUPPORTED_DRM } }
-    return locked.any { l -> l.type != C.TRACK_TYPE_TEXT && tracks.groups.none { it.type == l.type && it.isSelected } }
+  private fun reportUnplayable(tracks: Tracks, gen: Int): Boolean {
+    if (reportedGeneration == gen) return false
+    val picture = if (video) unplayable(tracks, C.TRACK_TYPE_VIDEO) else null
+    val sound = unplayable(tracks, C.TRACK_TYPE_AUDIO)
+    val hasPicture = video && tracks.groups.any { it.type == C.TRACK_TYPE_VIDEO }
+    val installed = DecoderExtensions.installed
+    val error =
+      when {
+        picture?.drm == true || sound?.drm == true -> PlayerError(ErrorCode.DRM_UNSUPPORTED, lockedOutMessage(), false)
+        picture != null -> PlayerError(ErrorCode.UNSUPPORTED_FORMAT, unplayableMessage("the picture", picture, installed), false)
+        sound != null && !hasPicture ->
+          PlayerError(ErrorCode.UNSUPPORTED_FORMAT, unplayableMessage("the sound", sound, installed), false)
+        else -> null
+      }
+    if (error == null && sound == null) return false
+    reportedGeneration = gen
+    if (error != null) {
+      report { observer.onFailed(gen, error) }
+      return true
+    }
+    val warning =
+      PlayerError(ErrorCode.UNSUPPORTED_FORMAT, unplayableMessage("the sound", sound!!, installed, "The picture plays without it."), false)
+    report { observer.onWarning(gen, warning) }
+    return false
   }
 
   private fun lockedOutMessage(): String {

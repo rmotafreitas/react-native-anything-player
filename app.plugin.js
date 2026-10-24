@@ -14,6 +14,9 @@
 //   `rnap.video`). Picture in Picture (default on) marks the main activity
 //   `supportsPictureInPicture` with the config changes it handles, and keeps
 //   iOS's `audio` background mode it needs. See docs/video.md.
+// - `videoDecoders` (default false): Android's software decoders, for what
+//   the device cannot decode (Gradle property `rnapVideoDecoders`). See
+//   docs/video.md#software-decoders.
 // - `siri` (true or `{ usageDescription, appIntents }`): the Siri capability,
 //   the Intents extension that hands requests to the app, and (unless
 //   `appIntents` is false) the App Intents of Siri shortcuts, Spotlight and the

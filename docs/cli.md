@@ -92,6 +92,8 @@ The middle column is where the state comes from: `default`, `android/gradle.prop
 | `background-audio` | iOS | on | `audio` in `UIBackgroundModes`, or the Expo plugin's `backgroundAudio` |
 | `sound` | Android, iOS | off | `rnapSound` (Android), `rnap.sound` in `ios/Podfile.properties.json` ([Sound](sound.md#enabling-it)); the Expo plugin's `sound` |
 | `car` | Android, iOS | off | `rnapCar` (Android Auto), `rnap.car` in `ios/Podfile.properties.json` (CarPlay); the Expo plugin's `car` ([Cars & watches](cars-and-watches.md)) |
+| `video` | Android, iOS | off | `rnapVideo` (Android), `rnap.video` in `ios/Podfile.properties.json`; the Expo plugin's `video` ([Video](video.md#enabling-it)) |
+| `video-decoders` | Android | off | `rnapVideoDecoders` in `android/gradle.properties`; the Expo plugin's `videoDecoders` ([Software decoders](video.md#software-decoders)) |
 
 Sound and Car have no size in the table above yet: `rnap modules` and `rnap size` report them as "not measured in the APK" until the benchmark has a build with each switch on.
 

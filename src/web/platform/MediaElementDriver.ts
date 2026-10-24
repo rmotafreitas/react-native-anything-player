@@ -766,6 +766,9 @@ export class MediaElementDriver implements EngineDriver {
         onTracks: () => {
           if (live()) this.tracks?.useHls(remux);
         },
+        onWarning: (error) => {
+          if (live()) this.observer.onWarning?.(generation, error);
+        },
       }
     );
     this.remux = remux;

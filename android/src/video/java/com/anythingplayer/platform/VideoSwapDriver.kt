@@ -245,5 +245,7 @@ internal class VideoSwapDriver(
     override fun onPositionJump(generation: Int) = observer.onPositionJump(generation)
 
     override fun onLicenseRequest(generation: Int, ask: LicenseAsk) = observer.onLicenseRequest(generation, ask)
+
+    override fun onWarning(generation: Int, error: PlayerError) = observer.onWarning(generation, error)
   }
 }

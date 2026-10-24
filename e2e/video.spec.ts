@@ -381,6 +381,25 @@ test('an MPEG-TS file plays remuxed, with its duration, and seeks by its bitrate
   expect(await page.evaluate(() => window.videoTest.errors)).toEqual([]);
 });
 
+test('a sound no browser decodes (MPEG audio layer II) leaves the picture playing, and says so', async ({
+  page,
+}) => {
+  await open(page);
+  await page.evaluate(() =>
+    window.videoTest.player.load(
+      `${window.videoTest.MEDIA}/remux/codec-mp2.ts`,
+      { autoplay: true }
+    )
+  );
+  await expect
+    .poll(async () => (await status(page)).state, { timeout: 20_000 })
+    .toBe('playing');
+  await expect
+    .poll(() => page.evaluate(() => window.videoTest.errors))
+    .toEqual(['UNSUPPORTED_FORMAT:recoverable']);
+  expect((await status(page)).error).toBeNull();
+});
+
 test('a live MPEG-TS channel plays remuxed, as live', async ({ page }) => {
   await open(page);
   await page.evaluate(() =>
