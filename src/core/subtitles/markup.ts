@@ -277,7 +277,7 @@ export function decodeEntities(text: string): string {
       if (name.startsWith('#')) {
         const hex = name[1] === 'x' || name[1] === 'X';
         const code = Number.parseInt(name.slice(hex ? 2 : 1), hex ? 16 : 10);
-        return Number.isFinite(code) ? String.fromCodePoint(code) : whole;
+        return code <= 0x10ffff ? String.fromCodePoint(code) : whole;
       }
       return ENTITIES[name.toLowerCase()] ?? whole;
     }
@@ -285,7 +285,11 @@ export function decodeEntities(text: string): string {
 }
 
 /** Applies an HTML-like tag (`b`, `/i`, `font color="red"`, `c.yellow`…). */
-function htmlTag(raw: string, out: SpanBuilder, colors: string[]): void {
+function htmlTag(
+  raw: string,
+  out: SpanBuilder,
+  colors: Array<string | null>
+): void {
   const closing = raw.startsWith('/');
   const body = closing ? raw.slice(1) : raw;
   const name = (/^[a-zA-Z]+/.exec(body)?.[0] ?? '').toLowerCase();
@@ -302,13 +306,13 @@ function fontTag(
   body: string,
   closing: boolean,
   out: SpanBuilder,
-  colors: string[]
+  colors: Array<string | null>
 ): void {
   if (closing) {
     out.style.color = colors.pop() ?? out.base.color;
     return;
   }
-  colors.push(out.style.color ?? '');
+  colors.push(out.style.color);
   const value = /color\s*=\s*["']?([^"'\s>]+)/i.exec(body)?.[1];
   const color = value != null ? htmlColor(value) : null;
   if (color != null) out.style.color = color;
@@ -324,7 +328,7 @@ export function parseTaggedText(
   out: SpanBuilder,
   options: { overrides: boolean; entities: boolean }
 ): void {
-  const colors: string[] = [];
+  const colors: Array<string | null> = [];
   let run = '';
   let skipUntil: string | null = null;
   const flush = () => {
@@ -362,7 +366,7 @@ function blockEnd(text: string, i: number, overrides: boolean): number {
 function tagEffect(
   inner: string,
   out: SpanBuilder,
-  colors: string[],
+  colors: Array<string | null>,
   skipUntil: string | null
 ): string | null {
   const name = inner.trim().toLowerCase();

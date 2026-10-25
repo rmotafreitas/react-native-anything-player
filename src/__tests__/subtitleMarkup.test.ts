@@ -115,9 +115,10 @@ describe('decodeEntities', () => {
     expect(decodeEntities(text)).toBe(expected);
   });
 
-  test('leaves a numeric entity too large for a number alone', () => {
+  test('leaves a numeric entity too large for a number, or past Unicode, alone', () => {
     const text = `&#${'9'.repeat(400)};`;
     expect(decodeEntities(text)).toBe(text);
+    expect(decodeEntities('hi &#x110000; there')).toBe('hi &#x110000; there');
   });
 
   test('leaves an unknown entity and a bare ampersand alone', () => {
@@ -343,6 +344,13 @@ describe('SubRip and WebVTT tags', () => {
       { text: 'a', color: '#ff0000' },
       { text: 'b', color: '#0000ff' },
       { text: 'c', color: '#ff0000' },
+    ]);
+  });
+
+  test('the text after a closed font has no colour', () => {
+    expect(tagged('<font color="red">x</font>y').build()).toEqual([
+      { text: 'x', color: '#ff0000' },
+      { text: 'y' },
     ]);
   });
 
