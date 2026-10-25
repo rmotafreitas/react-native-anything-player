@@ -16,9 +16,12 @@ import type {
 } from '../types';
 import { normalizeDrm } from './drm';
 import { host } from './host';
-import { formatFromName, parseSubtitles } from './subtitles/parse';
-import { parseVtt } from './subtitles/vtt';
 import type { SubtitleCue } from './subtitles/types';
+
+// The parsers load with the first subtitle or thumbnail file: a web bundler
+// splits them off, so a page without subtitles never downloads them.
+const parsers = () => import('./subtitles/parse');
+const vtt = () => import('./subtitles/vtt');
 
 function invalid(message: string): PlayerError {
   return new PlayerError({
@@ -256,16 +259,16 @@ export class SubtitleLoader {
   ): Promise<void> {
     const alive = () => this.session === session;
     try {
-      const text =
+      const [text, { formatFromName, parseSubtitles }] = await Promise.all([
         source.text ??
-        (
-          await fetchText(
+          fetchText(
             source.uri!,
             { ...headers, ...source.headers },
             source.encoding ?? null,
             alive
-          )
-        ).text;
+          ).then((file) => file.text),
+        parsers(),
+      ]);
       if (!alive()) return;
       const format = source.format ?? formatFromName(source.uri);
       const cues = parseSubtitles(text, format);
@@ -332,8 +335,11 @@ export class ThumbnailTrack {
   ) {}
 
   async at(time: number): Promise<Thumbnail | null> {
-    this.cues ??= fetchText(this.uri, this.headers, null, () => true).then(
-      ({ text }) =>
+    this.cues ??= Promise.all([
+      fetchText(this.uri, this.headers, null, () => true),
+      vtt(),
+    ]).then(
+      ([{ text }, { parseVtt }]) =>
         parseVtt(text).map((cue) => ({
           start: cue.start,
           end: cue.end,

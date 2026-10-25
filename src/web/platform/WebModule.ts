@@ -8,7 +8,6 @@
 
 import { PlayerError, toPlayerError } from '../../errors';
 import type { PlayerModule } from '../../core/host';
-import { detectCharset } from '../../core/subtitles/charset';
 import { browser } from './dom';
 import {
   parseFade,
@@ -371,7 +370,9 @@ export class WebModule implements PlayerModule {
       });
     }
     const bytes = new Uint8Array(await response.arrayBuffer!());
-    const charset = encoding ?? detectCharset(bytes);
+    const charset =
+      encoding ??
+      (await import('../../core/subtitles/charset')).detectCharset(bytes);
     return { text: decode(bytes, charset), charset };
   }
 
