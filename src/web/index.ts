@@ -1,9 +1,15 @@
-// `react-native-anything-player/web`: the player for any web page, with no
-// React or React Native. The same `Player` API, on the browser engine.
-//
-//   import { Player } from 'react-native-anything-player/web';
-//   const player = new Player();
-//   button.onclick = () => player.load('https://radio.example/stream', { autoplay: true });
+/**
+ * `react-native-anything-player/web`: the player for any web page, with no
+ * React or React Native. The same `Player` API, on the browser engine.
+ *
+ * ```ts
+ * import { Player } from 'react-native-anything-player/web';
+ * const player = new Player();
+ * button.onclick = () => player.load('https://radio.example/stream', { autoplay: true });
+ * ```
+ *
+ * @module web
+ */
 
 import { WEB_ONLY_SCHEMES, installHost } from '../core/host';
 import { browser } from './platform/dom';
