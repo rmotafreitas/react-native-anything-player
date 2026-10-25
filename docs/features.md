@@ -249,4 +249,4 @@ See [Cars & watches](cars-and-watches.md).
 | `npx rnap add` / `remove` (build modules) | ✓ | ✓ | – (a page downloads Cast, HLS and the MP4 remuxer only when it uses them) |
 | TypeScript types | ✓ | ✓ | ✓ |
 | Zero runtime JS dependencies | ✓ | ✓ | ✓ (hls.js is optional and yours to add) |
-| Size in a release build | not measured yet | about 1.2 MB of a release APK, with R8 ([measured](comparison.md#added-to-a-release-apk)) | about 30 KB of JS on page load ([measured](comparison.md#react-and-plain-web-pages)) |
+| Size in a release build | not measured yet | about 1.2 MB of a release APK, with R8 ([measured](comparison.md#added-to-a-release-apk)) | about 55 KB of JS on page load ([measured](comparison.md#react-and-plain-web-pages)) |

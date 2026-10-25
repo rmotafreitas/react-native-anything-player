@@ -112,7 +112,7 @@ What they add to a release APK with R8, for one device (arm64-v8a; stores serve 
 | dav1d (AV1) | 1,067 KB | about 455 KB |
 | All three | 2,864 KB | about 1.2 MB |
 
-Android keeps native libraries uncompressed in the APK, so the download is the smaller number ([measured](comparison.md)).
+Each row is the release's arm64-v8a libraries; the download is their gzip size, since Android keeps native libraries uncompressed in the APK and the store compresses it. All three were [measured](comparison.md#added-to-a-release-apk) together in a release APK: 2,864 KB.
 
 Media3 does not publish these decoders, so RNAP builds them from pinned sources (`scripts/decoders/build-android.sh`, in CI) and publishes them as a GitHub release. The first build downloads them once into Gradle's cache and checks them against SHA-256 sums pinned in the package (`android/decoders.json`). Two properties change that:
 

@@ -69,7 +69,14 @@ esm.sh serves packages from npm, so the snippet works once RNAP is published the
 
 ### What a page loads
 
-About 30 KB of JavaScript (minified and gzipped) on page load, the same for all three entries. Three parts load only when they are needed, as separate files with bundlers that split code (Vite, webpack, Next.js, esbuild with `splitting`, Metro on Expo web): Google Cast's driver, after `configureCast()` has loaded the Cast SDK; the hls.js glue (the driver and its ID3 reader), as soon as hls.js is registered with `configureHls()` (or found on `window.Hls`), so it is ready before a source plays; and the MP4 repackaging, the first time a browser needs it (Firefox). Together they are about 8 KB. [Comparison & benchmarks](comparison.md#react-and-plain-web-pages) puts this next to the other web audio libraries.
+About 55 KB of JavaScript (minified and gzipped) on page load, about the same for all three entries. About 25 KB of it is video (the engine's video rules and the stage), loaded whether a page plays video or not. The rest loads only when it is needed, as separate files with bundlers that split code (Vite, webpack, Next.js, esbuild with `splitting`, Metro on Expo web):
+
+- Google Cast's driver, after `configureCast()` has loaded the Cast SDK;
+- the hls.js glue (the driver and its ID3 reader), as soon as hls.js is registered with `configureHls()` (or found on `window.Hls`), so it is ready before a source plays; the Shaka glue for DASH;
+- the MP4 repackaging and the Matroska, WebM and MPEG-TS remuxer, the first time a browser needs them;
+- DRM, for a protected source; the subtitle parsers, with the first subtitle file.
+
+Together they are about 38 KB. [Comparison & benchmarks](comparison.md#react-and-plain-web-pages) puts this next to the other web audio libraries.
 
 ## How a stream is played
 
