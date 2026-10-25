@@ -142,6 +142,28 @@ describe("Shaka's errors as RNAP's", () => {
     });
   });
 
+  test('DRM errors are the DRM codes, as on the browser’s own DRM path', () => {
+    expect(dash.shakaFailure(error(6, 6001))).toMatchObject({
+      code: 'DRM_UNSUPPORTED',
+      recoverable: false,
+    });
+    const refused = (status: number) =>
+      dash.shakaFailure(error(6, 6007, [error(1, 1001, ['uri', status])]));
+    expect(refused(503)).toMatchObject({
+      code: 'DRM_LICENSE_FAILED',
+      recoverable: true,
+      httpStatus: 503,
+      message: 'The DRM server returned HTTP 503.',
+    });
+    expect(refused(403)).toMatchObject({ recoverable: false, httpStatus: 403 });
+    // A response the CDM rejected.
+    expect(dash.shakaFailure(error(6, 6008))).toMatchObject({
+      code: 'DRM_LICENSE_FAILED',
+      recoverable: false,
+      platformCode: 6008,
+    });
+  });
+
   test('a manifest Shaka cannot read is UNSUPPORTED_FORMAT, not recoverable', () => {
     expect(dash.shakaFailure(error(4, 4001))).toMatchObject({
       code: 'UNSUPPORTED_FORMAT',

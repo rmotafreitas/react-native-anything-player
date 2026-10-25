@@ -119,12 +119,51 @@ const pictureId = (videoId: number) => `v${videoId}`;
 /** Shaka's error categories (`shaka.util.Error.Category`). */
 const NETWORK = 1;
 const MEDIA = 3;
+const DRM = 6;
 const BAD_HTTP_STATUS = 1001;
+/** No key system the source gives works here; the CDM would not start. */
+const NO_KEY_SYSTEM = new Set([6001, 6002]);
+const LICENSE_REQUEST_FAILED = 6007;
 const CRITICAL = 2;
 
 let polyfilled = false;
 
 /** The failure for a critical Shaka error. */
+/** Shaka's DRM errors, as the same codes as the browser's own DRM path (WebDrm). */
+function drmFailure(
+  error: ShakaError,
+  details: Record<string, unknown>
+): PlayerError {
+  if (NO_KEY_SYSTEM.has(error.code))
+    return engineError(
+      'DRM_UNSUPPORTED',
+      'This browser has none of the key systems the source is packaged for.',
+      false,
+      details
+    );
+  // A failed license request carries the network error behind it.
+  const cause = error.data?.[0] as ShakaError | undefined;
+  const status =
+    error.code === LICENSE_REQUEST_FAILED &&
+    cause?.code === BAD_HTTP_STATUS &&
+    typeof cause.data?.[1] === 'number'
+      ? (cause.data[1] as number)
+      : null;
+  if (status != null)
+    return engineError(
+      'DRM_LICENSE_FAILED',
+      `The DRM server returned HTTP ${status}.`,
+      status >= 500 || status === 429,
+      { ...details, httpStatus: status }
+    );
+  return engineError(
+    'DRM_LICENSE_FAILED',
+    'The content could not be decrypted (no license).',
+    false,
+    details
+  );
+}
+
 export function shakaFailure(error: ShakaError): PlayerError {
   const details = {
     platformDomain: 'shaka',
@@ -163,6 +202,7 @@ export function shakaFailure(error: ShakaError): PlayerError {
       details
     );
   }
+  if (error.category === DRM) return drmFailure(error, details);
   if (error.category === MEDIA)
     return engineError(
       'DECODER_ERROR',
