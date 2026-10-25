@@ -254,11 +254,13 @@ function walk(dir, out = []) {
 
 /**
  * RNAP's opt-in parts: Google Cast (`cast`), the Sound API (`sound`), CarPlay
- * and Android Auto (`car`), and the Siri templates an app compiles only with
- * `siri`. Reported apart from what every app compiles.
+ * and Android Auto (`car`), video (`video`), and the Siri templates an app
+ * compiles only with `siri`. Reported apart from what every app compiles.
  */
 const OPT_IN_NATIVE =
   /[\\/](ios[\\/](Cast|CarPlay|Sound|AppIntents|IntentsExtension)|android[\\/]src[\\/](cast|castcar|car|sound))[\\/]/;
+/** RNAP's video module (react-native-video's own `ios/Video` is all of it). */
+const RNAP_VIDEO_NATIVE = /[\\/](ios[\\/]Video|android[\\/]src[\\/]video)[\\/]/;
 
 function countLines(files) {
   let bytes = 0;
@@ -272,7 +274,7 @@ function countLines(files) {
 }
 
 /** Native sources that compile into an app (tests, examples and builds excluded), and RNAP's opt-in ones apart. */
-function nativeFootprint(pkgDir) {
+function nativeFootprint(pkgDir, name) {
   const files = [
     ...walk(path.join(pkgDir, 'ios')),
     ...walk(path.join(pkgDir, 'apple')),
@@ -288,8 +290,10 @@ function nativeFootprint(pkgDir) {
           f
         )
     );
-  const optIn = files.filter((f) => OPT_IN_NATIVE.test(f));
-  const always = files.filter((f) => !OPT_IN_NATIVE.test(f));
+  const isOptIn = (f) =>
+    OPT_IN_NATIVE.test(f) || (name === R && RNAP_VIDEO_NATIVE.test(f));
+  const optIn = files.filter(isOptIn);
+  const always = files.filter((f) => !isOptIn(f));
   return optIn.length > 0
     ? { ...countLines(always), optIn: countLines(optIn) }
     : countLines(always);
@@ -577,7 +581,7 @@ async function main() {
       jsGzipBytes: js?.gzip ?? null,
       runtimeDependencies: Object.keys(manifest.dependencies ?? {}),
       requiredPeers: peers,
-      native: nativeFootprint(dir),
+      native: nativeFootprint(dir, pkg.name),
       androidDependencies: androidDependencies(dir),
       optInAndroidDependencies: androidDependencies(dir, { optIn: true }),
       vendoredBinaries: vendoredBinaries(dir),
