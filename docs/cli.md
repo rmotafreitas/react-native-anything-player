@@ -14,13 +14,11 @@
 
 ## Running
 
-No install:
+Without installing it, name the package (`rnap` is the binary it installs, not a package of its own):
 
 ```sh
-npx rnap doctor
+npx react-native-anything-player doctor
 ```
-
-`react-native-anything-player` installs the `rnap` binary, so `npx react-native-anything-player doctor` runs the same CLI. The short name is what the rest of this page uses.
 
 Until the package is on npm, run it from the release tarball:
 
@@ -28,7 +26,7 @@ Until the package is on npm, run it from the release tarball:
 npx --package=https://github.com/rmotafreitas/react-native-anything-player/releases/latest/download/react-native-anything-player.tgz rnap doctor
 ```
 
-Installed (`npm install react-native-anything-player`, or the tarball), the commands are:
+Installed (`npm install react-native-anything-player`, or the tarball), `rnap` is on the path and is the name the rest of this page uses:
 
 ```sh
 npx rnap doctor
@@ -36,7 +34,7 @@ npx rnap modules
 npx rnap add cast
 ```
 
-Node 20 or newer. The bundled CLI has no runtime dependencies and reads files only, except `--url` (one request per URL) and `info` (it runs `npm --version` and `yarn --version`).
+Node 20 or newer. The bundled CLI has no runtime dependencies. `modules`, `size`, `doctor` and `info` only read files; `init`, `add`, `remove` and `migrate` write them, after showing a diff. The exceptions that read more: `--url` (one GET per redirect hop, so up to six requests per URL) and `info` (it runs `npm --version` and `yarn --version`).
 
 ## Options
 
@@ -95,7 +93,7 @@ The middle column is where the state comes from: `default`, `android/gradle.prop
 | `video` | Android, iOS | off | `rnapVideo` (Android), `rnap.video` in `ios/Podfile.properties.json`; the Expo plugin's `video` ([Video](video.md#enabling-it)) |
 | `video-decoders` | Android | off | `rnapVideoDecoders` in `android/gradle.properties`; the Expo plugin's `videoDecoders` ([Software decoders](video.md#software-decoders)) |
 
-Sound and Car have no size in the table above yet: `rnap modules` and `rnap size` report them as "not measured in the APK" until the benchmark has a build with each switch on.
+Sound and Car are measured, and each adds less than 1 KB to a release APK; `rnap modules` and `rnap size` print that.
 
 The defaults describe the Expo plugin and the measured release build. A bare app reads its native files: `rnapHls=false` is off even though HLS is on by default.
 
@@ -129,7 +127,7 @@ The doctor reports a `module-conflict` warning when the Expo plugin and a native
 | `expo-sdk` | error / warning | Expo SDK 54 or newer (the first with RN 0.80), and that `expo` is a dependency | Upgrade Expo |
 | `library-installed` | error / info | `react-native-anything-player` resolves, in `node_modules` or in a workspace | `npm install react-native-anything-player` |
 | `expo-plugin` | error | The plugin is in `expo.plugins` | Add it, then rebuild or `npx expo prebuild` |
-| `expo-plugin-options` | error / warning | The options are the ones the registry knows: `backgroundAudio`, `cast`, `siri`, `assistant`, `sound`, `car`. Cast takes `receiverApplicationId` and `localNetworkUsageDescription`; Siri takes `usageDescription` and `appIntents` | Fix the plugin entry in app.json |
+| `expo-plugin-options` | error / warning | The options are the ones the registry knows: `backgroundAudio`, `cast`, `siri`, `assistant`, `sound`, `car`, `video`, `videoDecoders`. Cast takes `receiverApplicationId` and `localNetworkUsageDescription`; Siri takes `usageDescription` and `appIntents` | Fix the plugin entry in app.json |
 | `expo-config-js` | info | app.config.js/ts cannot be evaluated. Expo checks then read app.json only | Verify by hand |
 | `new-arch-ios` | error | New Architecture is not switched off (`Podfile.properties.json`, `RCT_NEW_ARCH_ENABLED`, `newArchEnabled` in app.json) | Enable it, then `pod install` |
 | `new-arch-android` | error | `newArchEnabled=true` in `android/gradle.properties` | Enable it, then rebuild |
@@ -156,11 +154,11 @@ The doctor reports a `module-conflict` warning when the Expo plugin and a native
 | `android-minsdk` | error | `minSdkVersion` 24 or newer | Raise it |
 | `android-compilesdk` | warning | `compileSdkVersion` 36 or newer, what RNAP compiles against | Raise it |
 | `android-cast` | warning | `rnapCast=true` when Cast is on for iOS or in the plugin | Add the property, then rebuild |
-| `android-assistant` | error / warning | The main activity has the `MEDIA_PLAY_FROM_SEARCH` filter and calls `AnythingPlayer.handleIntent` in `onCreate` and `onNewIntent`. Expo: the plugin does it unless `assistant: false` | Follow [Voice assistants](voice.md#google-assistant-gemini) |
+| `android-assistant` | error / warning | The main activity has the `MEDIA_PLAY_FROM_SEARCH` filter and calls `AnythingPlayer.handleIntent` in `onCreate` and `onNewIntent`. Expo: the plugin does it unless `assistant: false` | Follow [Voice assistants](voice.md#google-assistant-and-gemini) |
 
 ### Streams
 
-`--url`, plus `rnap.urls` in package.json with `--package-urls`. Redirects are followed up to five times, only to `http(s)` URLs, and never from a public host to a private address (loopback, private ranges, link-local metadata endpoints):
+`--url`, plus `rnap.urls` in package.json with `--package-urls`. Redirects are followed up to five times, only to `http(s)` URLs, and never from a public host to a private address written in the URL (loopback, private ranges, link-local metadata endpoints). Only the literal host or IP is checked: a public name that resolves to a private address is not caught:
 
 ```json
 {

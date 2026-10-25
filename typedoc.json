@@ -1,6 +1,12 @@
 {
   "$schema": "https://typedoc.org/schema.json",
-  "entryPoints": ["src/index.tsx", "src/sound/api.ts"],
+  "entryPoints": [
+    "src/index.tsx",
+    "src/sound/api.ts",
+    "src/video/index.ts",
+    "src/web/index.ts",
+    "src/react/index.ts"
+  ],
   "tsconfig": "tsconfig.build.json",
   "out": "docs/api",
   "cleanOutputDir": true,

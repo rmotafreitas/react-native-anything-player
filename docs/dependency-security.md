@@ -28,5 +28,5 @@ the Ruby version and Gemfile.lock. Dependabot monitors both examples and Ruby ge
 React Native 0.86's presets use Babel 7 and support ESLint 8/9. RNAP's Babel 8 and
 ESLint 10 proposals are deferred through scoped major-version rules. React/RN minor
 upgrades require a coordinated native-template migration. Patch/security updates
-continue. The API uses ESLint 10 and TypeScript 6; both ESM and CommonJS entry points
-are loaded after every build before reusable CI artifacts are published.
+continue. RNAP uses ESLint 9 and TypeScript 6. The package ships ESM only, and
+`scripts/check-lib.mjs` checks the built ESM imports after every build.

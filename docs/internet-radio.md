@@ -79,7 +79,7 @@ A paused live stream keeps downloading audio that resuming will never play, so i
 | Playhead frozen without a native report | "Silent stall": detected after 4 s (2 s after a network change). |
 | Slow link (data trickles in) | Left alone for up to 20 s; the live-edge rule still applies. |
 | Recoverable failure | Reconnect: immediately after stable playback, then 1 s, 2 s, 4 s … 30 s (±20 % jitter). |
-| Offline | Attempts are skipped (every third runs as a probe); the moment connectivity returns, it re-opens. |
+| Offline | Attempts are skipped (after 3 skipped in a row, the next runs as a probe); the moment connectivity returns, it re-opens. |
 | Wi-Fi ↔ cellular handoff | Stall detection becomes eager; a stall in progress re-opens immediately. |
 | HTTP 404/410/403/401, unsupported format | Fatal: `state: 'error'`, no retries. |
 | 10 minutes without stable playback | Gives up (`recovery.giveUpAfterMs`, `null` = never). |

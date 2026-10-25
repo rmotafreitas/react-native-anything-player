@@ -34,10 +34,11 @@ const player = new Player({
   },
   diagnostics: false,        // stream engine traces as 'diagnostic' events and to the native log
   progressInterval: 0,       // ms between 'progress' events from a native timer while playing; 0 = off
+  video: false,              // true, or an options object, makes a video player (see Video)
 });
 ```
 
-Options are fixed for the player's lifetime, except `fade`, which `setFade()` replaces ([Sleep timer and fades](playback.md#sleep-timer-and-fades)). The audio-session configuration (iOS category/mode) follows the player that last requested playback.
+`video` turns the player into a video player and takes its own options (`whenBackgrounded`, `ambient`, `quality`, `tracks`…): they are in [Video](video.md). Options are fixed for the player's lifetime, except `fade`, which `setFade()` replaces ([Sleep timer and fades](playback.md#sleep-timer-and-fades)). The audio-session configuration (iOS category/mode) follows the player that last requested playback.
 
 With an `id`, a player outlives the JavaScript that created it, and `new Player({ id })` attaches to the native player with that id (one Siri or Google Assistant started, or one that kept playing across a reload), keeping its options. See [Voice assistants](voice.md#playing-a-request).
 
@@ -77,7 +78,7 @@ Three more switches were measured and left out, because they would save little o
 | `android/gradle.properties` | `rnapVideoDecoders=true` (or `ffmpeg,vp9,av1`, a list) | the [software decoders](video.md#software-decoders): Dolby, DTS and MPEG audio with FFmpeg, VP9, AV1, for what the device cannot decode |
 | `android/gradle.properties` | `rnapDecodersDir=/path` | take the software decoders from a folder instead of RNAP's GitHub release |
 | `pod install` | `RNAP_VIDEO=1` (or `"rnap.video": "true"` in `ios/Podfile.properties.json`) | build video in on iOS (DASH needs nothing: RNAP rewrites CMAF DASH as HLS for AVPlayer) |
-| Expo config plugin | `["react-native-anything-player", { "backgroundAudio": false }]` | do not add the iOS `audio` background mode |
+| Expo config plugin | `["react-native-anything-player", { "backgroundAudio": false }]` | do not add the iOS `audio` background mode, unless `video` has Picture in Picture on: that needs the mode, so the plugin still adds it |
 | Expo config plugin | `cast`, `siri`, `assistant`, `sound`, `car`, `video`, `videoDecoders` | Google Cast, Siri (extension and shortcuts), Google Assistant / Gemini, the Sound API, CarPlay and Android Auto, video with Picture in Picture, Android's software decoders: see [Getting started](getting-started.md#expo) |
 
 The recovery timings that are *not* configurable are fixed on purpose; [recovery.md](recovery.md) explains each.

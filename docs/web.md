@@ -13,9 +13,9 @@ npx expo install react-dom react-native-web @expo/metro-runtime
 npx expo start --web
 ```
 
-### React (react-dom: Vite, Next.js, Create React App)
+### React DOM
 
-Import `react-native-anything-player/react`: the `Player`, the same hooks as on React Native, and `<button>` versions of `<RoutePicker />` and `<CastButton />` (they take `className` and `style`). No React Native import, so `react-native` does not need to be installed.
+For Vite, Next.js and other React DOM apps, import `react-native-anything-player/react`: the `Player`, the same hooks as on React Native, and `<button>` versions of `<RoutePicker />` and `<CastButton />` (they take `className` and `style`). No React Native import, so `react-native` does not need to be installed.
 
 ```tsx
 import { useEffect, useState } from 'react';
@@ -169,7 +169,7 @@ configureShaka(shaka);
 
 With Shaka loaded by a `<script>` (it then sits on `window.shaka`), the call is optional. Without it, a DASH load fails with `UNSUPPORTED_FORMAT` and a message that says to install Shaka and call `configureShaka`. RNAP's DASH code is loaded on first use, so a page that never plays DASH does not carry it.
 
-What hls.js does for HLS, Shaka does for DASH, under the same rules: Shaka's ABR picks the picture under RNAP's [caps](video.md#quality) and `selectQuality` pins one; the manifest's audio languages and text tracks are the [source's tracks](subtitles.md#the-sources-own-tracks), drawn by RNAP's overlay; the source's `headers` go on every request; a critical Shaka error is a failure the engine recovers from with a new Shaka instance under its [backoff](recovery.md) (an HTTP 404/410 is `SOURCE_NOT_FOUND`).
+What hls.js does for HLS, Shaka does for DASH, under the same rules: Shaka's ABR picks the picture under RNAP's [caps](video.md#quality) and `selectQuality` pins one; the manifest's audio languages and text tracks are the [source's tracks](subtitles.md#tracks-in-the-file), drawn by RNAP's overlay; the source's `headers` go on every request; a critical Shaka error is a failure the engine recovers from with a new Shaka instance under its [backoff](recovery.md) (an HTTP 404/410 is `SOURCE_NOT_FOUND`).
 
 ## Matroska, WebM and MPEG-TS
 
@@ -218,7 +218,7 @@ player.play().catch((error) => {
 
 ## Sound effects
 
-`Sound` plays short effects through Web Audio, with no build step and no Player: `import { Sound } from 'react-native-anything-player/sound'` (or from `/web` or `/react`). The audio context starts on the first tap, click or key press, and `play()` before one throws `AUTOPLAY_BLOCKED`. The [Sound guide](sound.md) has the API.
+`Sound` plays short effects through Web Audio, with no build step and no Player: `import { Sound } from 'react-native-anything-player/sound'` (only from there: `/web` and `/react` do not export it). The audio context starts on the first tap, click or key press, and `play()` before one throws `AUTOPLAY_BLOCKED`. The [Sound guide](sound.md) has the API.
 
 ## Lock screen and media keys
 
@@ -246,7 +246,7 @@ The engine is the same, so are the rules in [Recovery policy](recovery.md): stal
 | Audio focus | one app at a time | none: other tabs and apps play alongside |
 | `audio.contentType`, `audio.mixWithOthers`, `android.*` | honoured | ignored |
 | Volume on iOS Safari | honoured | fixed by the system (`setVolume` has no effect; `setMuted` works) |
-| Visualizer | every source | streams read through `fetch()` (Web Audio cannot read a cross-origin `<audio>` without CORS); each player has its own audio context, closed on `release()` (browsers limit them), and a browser that refuses another one just reports no sampling |
+| Visualizer | every source, except HLS on iOS ([why](visualizer.md)) | streams read through `fetch()` (Web Audio cannot read a cross-origin `<audio>` without CORS); each player has its own audio context, closed on `release()` (browsers limit them), and a browser that refuses another one just reports no sampling |
 
 ## Expo Go
 

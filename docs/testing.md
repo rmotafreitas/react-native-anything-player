@@ -13,7 +13,7 @@ RNAP is tested at six layers. Everything below runs locally; the device layers n
 
 ## Engine conformance
 
-`conformance/*.json` is the executable specification of the engine: 178 scenarios driven by a fake clock and a recording driver — command races (`load` A/B/C, play/pause storms), stale events, stalls (native, silent, trickling, sub-debounce, recovering on their own), dead sockets, open timeouts with and without play intent, late callbacks after a stop, offline probing, restore and handoff edges, backoff and its reset, give-up, live drift, paused-stream release, interruptions and focus results, media-services reset, and re-entrant driver callbacks, output handoffs to and from a Cast receiver with the rules that hold while casting, fades and the sleep timer, and video: the background modes, Picture in Picture, ambient and muted players, quality caps, renditions switched behind the picture, the audio-only fallback and source refresh. The Swift, Kotlin and TypeScript engines must produce exactly the same driver commands, states and events. A recorder-level invariant also checks that `ended`/`error` are never delivered before the status that implies them. `conformance/metadata/icy.json` holds the ICY normalization cases (charsets, quoting, malformed blocks, splitting), and `conformance/catalog/` the voice catalog's text normalization and search ranking (accents, Turkish i, final sigma, ß, CJK, typos, filler words, structured requests). See [conformance/README.md](../conformance/README.md) for the format.
+`conformance/*.json` is the executable specification of the engine: 181 scenarios driven by a fake clock and a recording driver — command races (`load` A/B/C, play/pause storms), stale events, stalls (native, silent, trickling, sub-debounce, recovering on their own), dead sockets, open timeouts with and without play intent, late callbacks after a stop, offline probing, restore and handoff edges, backoff and its reset, give-up, live drift, paused-stream release, interruptions and focus results, media-services reset, and re-entrant driver callbacks, output handoffs to and from a Cast receiver with the rules that hold while casting, fades and the sleep timer, and video: the background modes, Picture in Picture, ambient and muted players, quality caps, renditions switched behind the picture, the audio-only fallback and source refresh. The Swift, Kotlin and TypeScript engines must produce exactly the same driver commands, states and events. A recorder-level invariant also checks that `ended`/`error` are never delivered before the status that implies them. `conformance/metadata/icy.json` holds the ICY normalization cases (charsets, quoting, malformed blocks, splitting), and `conformance/catalog/` the voice catalog's text normalization and search ranking (accents, Turkish i, final sigma, ß, CJK, typos, filler words, structured requests). See [conformance/README.md](../conformance/README.md) for the format.
 
 ## On-device integration scenarios
 
@@ -71,9 +71,9 @@ Release builds, iOS 27 simulator and Android 16 emulator:
 | `getProgress()` p50 / p99 | 5–10 µs / 22–28 µs | 11–20 µs / 270–600 µs |
 | `refresh()` (status + metadata) p50 | 20–23 µs | 92–100 µs |
 
-Shrunk with R8, as a store build ships (`./gradlew assembleRelease -Pr8=true`: minify, resource shrinking, the optimizing rules), the bare example passes all 23 scenarios on the Android 16 emulator. That run checks RNAP's keep rules, the audio-only renderers and the autolinking setup that leaves out the iOS-only component's C++.
+Shrunk with R8, as a store build ships (`./gradlew assembleRelease -Pr8=true`: minify, resource shrinking, the optimizing rules), the bare example passed all 23 scenarios that existed then on the Android 16 emulator (`catalog-groups`, the 24th, came later). That run checks RNAP's keep rules, the audio-only renderers and the autolinking setup that leaves out the iOS-only component's C++.
 
-On the web, the Expo example's export (React Native Web, Chromium) passes all 23 scenarios of this release, `cleartext-blocked` skipped as native-only; `yarn test:web` runs them on every change.
+On the web, the Expo example's export (React Native Web, Chromium) passes the 23 scenarios that run there (the example has 24, and `cleartext-blocked` is skipped as native-only); `yarn test:web` runs them on every change.
 
 Debug builds of the bare example passed the 16 scenarios that existed before the iOS stream proxy (`cleartext-blocked` and `bench-sync-reads` were added with it).
 
@@ -88,7 +88,7 @@ Debug builds of the bare example passed the 16 scenarios that existed before the
 
 Firefox's MSE does not take raw MP3 or AAC, so RNAP repackages the frames as fragmented MP4 there; a test forces that path in all three browsers. HLS runs through native HLS where a browser has it and through hls.js elsewhere, against the test radio's `/hls/` playlists. CI needs `ffmpeg` for the test media, and an audio output: on a machine with no sound device (a CI runner), Firefox never starts playback, so CI runs a PulseAudio null sink.
 
-## System behaviour (manual, scripted with adb / simctl)
+## System behaviour (manual)
 
 Verified on the Android 16 emulator:
 
@@ -105,12 +105,14 @@ Verified on the iOS 27 simulator:
 - Now Playing publications (title/artist from ICY, live flag, rate, artwork attached asynchronously), read from the unified log;
 - five JS reloads while playing: no crash, old players released (a crash on reload was found and fixed here — events emitted into a torn-down TurboModule).
 
-**Not verified (no physical devices available):** real phone calls, Siri, Bluetooth/AirPods/CarPlay/Android Auto hardware (CarPlay's Swift is compiled by CI only), wired-headset unplug, AirPlay, Google Cast receivers, cellular handoff on a real radio, Now Playing on an Apple Watch and media controls on Wear OS. Hardware checklist for outputs and voice:
+**Not verified (no physical devices available):** real phone calls, Siri, Bluetooth/AirPods/CarPlay/Android Auto hardware (CarPlay's Swift is compiled by CI only), wired-headset unplug, AirPlay, Google Cast receivers, FairPlay, the VP9 and AV1 picture on a phone, cellular handoff on a real radio, Now Playing on an Apple Watch and media controls on Wear OS. Hardware checklist for outputs and voice:
 
 - AirPlay: pick a receiver from `<RoutePicker />` while a stream plays (`status.route.kind === 'airplay'`); lock the phone; pick the phone again.
 - Google Cast (Android, iOS, Chrome): cast a playing radio stream and a file mid-way; check position, titles (from the phone), lock-screen controls, volume, a receiver-side stop, Wi-Fi loss on the phone only, and stopping from the phone (returns paused).
 - Siri: "play ⟨station⟩ on ⟨app⟩" with the app in the foreground, backgrounded and force-quit; "play something on ⟨app⟩"; a name only the search handler knows. Check first that iOS delivers the extension's "handle in app" to `application(_:handle:completionHandler:)` on the iOS versions you support: Apple documents that path for media intents but lists the delegate method as iOS 11–14, and developers have reported it not being called on some versions.
 - Siri shortcuts (App Intents, iOS 16+), after a `setCatalog` and one launch: "Play ⟨item⟩ in ⟨app⟩" and "Play ⟨app⟩" with the app in the foreground, backgrounded and force-quit (`searchPlay` with `origin: 'siri'`); a new item's phrase after a second `setCatalog`; the shortcuts in Spotlight and in the Shortcuts app (the *Play* action's picker searches the catalog); one on the Action button (iPhone 15 Pro and later); and which path answers "play ⟨item⟩ on ⟨app⟩" when the extension is installed too. CI only compiles the template (`build-ios` builds it into the bare example, with the Intents extension as an embedded target); Siri's phrase recognition, Spotlight and the Action button need a device.
+- FairPlay on an iPhone or iPad: a FairPlay-protected HLS stream with a real license server, in the foreground and with AirPlay. **Not yet verified**: the license registry is tested on Linux and the iOS code compiles in CI, but it has not run on hardware.
+- VP9 and AV1 through the Android software decoders on a real phone: the picture, the aspect, a seek and fullscreen. **Not yet verified**: the emulator decodes them but renders the YV12 surfaces wrongly, so only the sound decoders have been heard.
 - Google Assistant and Gemini: the same requests, on a phone where each is the default assistant; and `adb shell am start -a android.media.action.MEDIA_PLAY_FROM_SEARCH -e query "⟨station⟩" ⟨package⟩`.
 
 The code paths are covered by the conformance scenarios (interruptions, focus, output-disconnect, handoff) and follow the platform APIs. They are exercised on hardware as devices become available; the [roadmap](roadmap.md#hardware-verification) tracks what is left.

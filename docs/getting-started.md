@@ -9,7 +9,7 @@
 | Android | 7.0 (API 24) | Android 16 (API 36) emulator |
 | Expo | SDK with RN ≥ 0.80, development build (or Expo web) | SDK 57 |
 | Web | a browser with Media Source Extensions for ICY metadata | Chromium, Firefox, WebKit ([Web](web.md)) |
-| React without React Native | React 18+ (react-dom: Vite, Next.js) | React 19.2, Vite 8 ([Web](web.md#react-react-dom-vite-next-js-create-react-app)) |
+| React without React Native | React 18+ (react-dom: Vite, Next.js) | React 19.2, Vite 8 ([Web](web.md#react-dom)) |
 | CLI (`modules`, `doctor`, `migrate`) | Node 20 | Node 24 |
 
 RNAP is a TurboModule. The legacy architecture (bridge) is not supported.
@@ -49,11 +49,11 @@ The plugin adds the iOS `audio` background mode and lets Google Assistant and Ge
 
 | Option | Default | |
 |---|---|---|
-| `backgroundAudio` | `true` | iOS `audio` background mode. `false` if you only play in the foreground |
+| `backgroundAudio` | `true` | iOS `audio` background mode. `false` if you only play in the foreground (video with Picture in Picture still adds it) |
 | `cast` | off | `true` (or `{ "receiverApplicationId": "…" }`) builds Google Cast in ([Casting & AirPlay](routes-and-casting.md#google-cast)) |
 | `sound` | off | `true` builds the [Sound API](sound.md#enabling-it) in (short effects with low latency) |
 | `siri` | off | `true` adds the Siri capability and the extension that hands "play X on MyApp" to the app ([Voice assistants](voice.md#siri)) |
-| `assistant` | `true` | the Android intent filter and `MainActivity` hook for Google Assistant and Gemini ([Voice assistants](voice.md#google-assistant-gemini)) |
+| `assistant` | `true` | the Android intent filter and `MainActivity` hook for Google Assistant and Gemini ([Voice assistants](voice.md#google-assistant-and-gemini)) |
 | `car` | off | `true` builds Android Auto and the CarPlay scene in ([Cars & watches](cars-and-watches.md)) |
 | `video` | off | `true` (or `{ "pictureInPicture": false }`) builds [video](video.md#enabling-it) in, with Picture in Picture |
 | `videoDecoders` | off | `true` adds Android's [software decoders](video.md#software-decoders) (Dolby, DTS and MPEG audio, VP9, AV1) |

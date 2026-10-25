@@ -1,7 +1,7 @@
 # Video: design
 
 > [!NOTE]
-> This is the design record for the video module, agreed on 2026-10-24. Nothing in it has shipped yet: the parts land one by one on the `feat/video` branch, and each part's user guide (Video, Subtitles) replaces the matching section here when it ships. Its [release plan](#release-plan) is the order.
+> This is the design record for the video module, agreed on 2026-10-24. Most of it is built on the `feat/video` branch, and the [Status](#status) table says what is done, what is written and untried, and what is not built. The user guides ([Video](video.md), [Subtitles](subtitles.md)) are the reference for what ships. Its [release plan](#release-plan) is the order.
 
 Video follows the rest of RNAP: **lightweight, bulletproof, best DX**. It is not a second library inside the package. A video is a `Player` with a picture, so it gets everything a stream already has: the native engine, recovery while JavaScript is frozen, the conformance suite, the lock screen, AirPlay and Cast. What video adds is the picture, the subtitles and the bandwidth: the parts below.
 
@@ -9,7 +9,7 @@ Video follows the rest of RNAP: **lightweight, bulletproof, best DX**. It is not
 
 | Part | State |
 |---|---|
-| Engine rules (background, PiP, ambient, muted focus, keep-awake, quality caps, renditions and switches, audio-only fallback, refresh, loop, tracks, delay, fullscreen, stats) | **Done** in the three engines, 178 shared scenarios (`conformance/video.json`) |
+| Engine rules (background, PiP, ambient, muted focus, keep-awake, quality caps, renditions and switches, audio-only fallback, refresh, loop, tracks, delay, fullscreen, stats) | **Done** in the three engines, 181 shared scenarios (`conformance/video.json`) |
 | Subtitles: SubRip, WebVTT, basic ASS, TTML parsing; encoding detection; cue timing; track choice | **Done** (parsing in TypeScript; encoding, timing and track choice also in Kotlin and Swift, held to `conformance/subtitles/` and `conformance/tracks/`) |
 | The API: `video` option, `status.video`, the commands and events, `attachTo`, `<VideoView>` (React DOM, React Native Web) | **Done** |
 | Web: `<video>`, hls.js variants and caps, renditions switched behind the picture, subtitle overlay, fullscreen, Picture in Picture, wake lock, hidden tabs | **Done**, Playwright on Chromium, Firefox and WebKit (`e2e/video.spec.ts`) |
@@ -21,8 +21,8 @@ Video follows the rest of RNAP: **lightweight, bulletproof, best DX**. It is not
 | DASH: ExoPlayer's module (in video apps, `rnapDash` either way), CMAF DASH rewritten to HLS on iOS (`DashToHls`, golden fixtures in `conformance/dash/`) and served through the asset's resource loader, Shaka Player injected on the web (`configureShaka`, 4.x and 5.x) with its tracks and variants | **Done** on Android (emulator) and the web (Playwright, three browsers); iOS **written**, the converter tested on Linux |
 | Remux of Matroska, WebM and MPEG-TS (also M2TS): the demuxers and fragmented MP4 writer twice, TypeScript and Swift, byte for byte against `conformance/remux/` (8 fixtures: H.264, HEVC, VP9, AV1; AAC, MP3, AC-3, E-AC-3, Opus, FLAC; SubRip, ASS; lacing; multiple audio tracks); the web through MSE (seeks by Cues or bitrate, live TS, audio switches, subtitles to the overlay); iOS as HLS from the loopback server (windows remuxed on request, a rendition per audio and subtitle track, live TS as a sliding playlist with reconnects); Android with ExoPlayer's extractors and their subtitles | **Done** on the web (Playwright, three browsers) and Android (emulator: tracks, subtitles, TS, live TS); iOS **written**: the serving tested on Linux against the test server, its HLS played by ffmpeg; AVPlayer to try in macOS CI |
 | DRM: FairPlay (AVContentKeySession), Widevine, PlayReady and Clear Key (ExoPlayer's DRM sessions; EME on the web, Shaka's for DASH), Clear Key keys answered on the device, the app's `getLicense` over the bridge, protected sources kept off Cast | **Done** on the web (Playwright: Clear Key in Chromium and Firefox, keys, license server, `getLicense`, refusals) and Android (emulator: the same, plus FairPlay-only and wrong-system refusals); iOS **written**: the license registry tested on Linux, FairPlay to try on hardware |
-| Software decoders on Android: Media3's FFmpeg (AC-3, E-AC-3, DTS, TrueHD, MPEG audio), libvpx and dav1d extensions, built from pinned sources (`scripts/decoders/build-android.sh`, the `Android decoders` workflow publishes them as a GitHub release) and downloaded by Gradle against pinned checksums (`rnapVideoDecoders`, `rnapDecodersDir`, `rnap add video-decoders`, Expo `videoDecoders`); renderers created by name after the platform's; an undecodable picture fails and an undecodable sound warns (Android and the web) | **Built**: the sound decoders tried on the emulator (AC-3, DTS, MPEG audio layer II heard; without them, the warning); VP9 and AV1 decode there but render wrongly (emulators mishandle the YV12 surfaces they write), so the picture is to try on a device; the first release is `android-decoders-1.11.1-1` |
-| Software decoders on iOS (`SampleBufferDriver`) and the web (an injected decoder) | In the release plan below |
+| Software decoders on Android: Media3's FFmpeg (AC-3, E-AC-3, DTS, TrueHD, MPEG audio), libvpx and dav1d extensions, built from pinned sources (`scripts/decoders/build-android.sh`, the `Android decoders` workflow publishes them as a GitHub release) and downloaded by Gradle against pinned checksums (`rnapVideoDecoders`, `rnapDecodersDir`, `rnap add video-decoders`, Expo `videoDecoders`); renderers created by name after the platform's; an undecodable picture fails and an undecodable sound warns (Android and the web) | **Built**: the sound decoders tried on the emulator (AC-3, DTS, MPEG audio layer II heard; without them, the warning); VP9 and AV1 decode there but render wrongly (emulators mishandle the YV12 surfaces they write), so the picture is to try on a device; published as the GitHub release `android-decoders-1.11.1-1`, its checksums pinned in `android/decoders.json` |
+| Software decoders on iOS (`SampleBufferDriver`) and the web (an injected decoder) | **Not built**: in the release plan below |
 
 ## Decisions
 
@@ -31,15 +31,15 @@ Video follows the rest of RNAP: **lightweight, bulletproof, best DX**. It is not
 | Engine | The same `PlaybackEngine` (Swift, Kotlin, TypeScript) and the same conformance suite, with video scenarios added (`conformance/video.json`). |
 | Players | The OS's: AVPlayer, ExoPlayer (Media3), the browser's `<video>`. Formats they cannot read are **remuxed** (repackaged, not decoded) on iOS and the web. Software decoders are separate opt-in modules. |
 | API shape | The player is separate from the view: `<VideoView player={player} />`; `player.attachTo(element)` on plain pages. One view at a time; moving to another view keeps playing. |
-| Controls | None by default (build them from `status` and the hooks). `nativeControls` opts into the OS's own: AVKit's on iOS, the browser's on the web, and on Android (which has none) RNAP's light ones: play/pause, the time, a seek bar and fullscreen, plain platform widgets with no extra library. Fullscreen always has them. |
+| Controls | None by default (build them from `status` and the hooks). `nativeControls` opts into the OS's own: AVKit's on iOS, the browser's on the web, and on Android (which has none) RNAP's light ones: play/pause, the time, a seek bar and fullscreen, plain platform widgets with no extra library. Fullscreen has them on iOS (AVKit's) and Android; on the web the browser's controls show in fullscreen only with `nativeControls` (iPhone's system player always has its own). |
 | Packaging | The same package, a `/video` entry, and a build switch on native (`rnapVideo`, `RNAP_VIDEO`, Expo `video: true`, `npx rnap add video`). The web needs no switch: the video code is a separate chunk loaded on the first video player. |
 | Use cases in v1 | Long-form on demand, live, ambient loops. Feeds (TikTok-style): design only, [below](#feeds). |
 | Platforms | Phase 1: iOS, Android (with Android TV and Fire TV), the web (Expo web, React Native Web, React DOM, plain pages, Electron and Tauri). Phase 2: tvOS, macOS. Phase 3: visionOS. Windows: roadmap. |
-| Delivery | Progressive files, HLS (with LL-HLS), DASH, MPEG-TS live and on demand (IPTV). RTSP and Smooth Streaming as Android switches. The SRT protocol, RTMP, WebRTC and FLV: roadmap. |
-| Audio without the picture | `whenBackgrounded: 'pause' \| 'audio' \| 'pip'` (default `'pause'`), audio track choice, listen-only, an opt-in automatic audio-only fallback on bad networks. |
+| Delivery | Progressive files, HLS (with LL-HLS), DASH, MPEG-TS live and on demand (IPTV). RTSP and Smooth Streaming as Android switches: planned, not built. The SRT protocol, RTMP, WebRTC and FLV: roadmap. |
+| Audio without the picture | `whenBackgrounded: 'pause' \| 'audio' \| 'pip'` (default `'pause'` on iOS and Android, `'audio'` on the web), audio track choice, listen-only, an opt-in automatic audio-only fallback on bad networks. |
 | Quality | Native ABR for HLS/DASH under RNAP's caps; separate files per quality (`renditions`) are managed by the engine, switched without a spinner. |
 | Cloud files | Headers, signed URLs, and a `refresh` hook on 401/403 or expiry. No provider SDKs. |
-| Subtitles | SubRip, WebVTT, TTML/IMSC, CEA-608/708, MP4 and MKV text tracks, basic ASS. One cue pipeline, one RNAP overlay that follows the OS caption settings, `useCues()` for custom rendering. Full ASS (libass): design only. |
+| Subtitles | SubRip, WebVTT, TTML/IMSC, CEA-608/708, MP4 and MKV text tracks, basic ASS. One cue pipeline, one RNAP overlay that follows the OS caption settings on iOS and Android, `useCues()` for custom rendering. Full ASS (libass): design only. |
 | DRM | `drm` by key system; each platform uses the first one it has. License servers by URL and headers, Clear Key keys in the source, or the app's `getLicense` for providers that wrap their requests. Temporary licenses only until downloads. |
 | System | Picture in Picture everywhere, AirPlay / Cast / Remote Playback video, the media session (skip ±10 s on demand), keep-awake, fullscreen, muted videos take no audio focus. |
 
@@ -51,7 +51,7 @@ import { VideoView, useCues } from 'react-native-anything-player/video';
 
 const player = new Player({
   video: {
-    whenBackgrounded: 'pip', // 'pause' (default) | 'audio' | 'pip'
+    whenBackgrounded: 'pip', // 'pause' (default on iOS and Android) | 'audio' (default on the web) | 'pip'
     fallbackToAudio: true, // off by default
     quality: { cellular: { maxResolution: 720 } },
   },
@@ -85,8 +85,8 @@ export function Screen() {
 | `video.fallbackToAudio` | On a network too slow for the lowest video quality, play the audio alone and bring the picture back when it recovers. Default `false`. |
 | `video.quality` | `maxResolution`, `maxBitrate`, `cellular: { maxResolution, maxBitrate }`, `startQuality: 'auto' \| 'lowest' \| 'highest' \| <height>`, `followDataSaver` (default `true`), `capToView` (default `true`: never more pixels than the view shows). |
 | `video.tracks` | `languages` (preferred, in order), `followSystem` (captions and audio descriptions from the OS accessibility settings, default `true`). |
-| `video.hdr` | `false` keeps HDR sources on SDR variants. Default `true`. |
-| `load({ renditions })` | Separate files of one video at different qualities: `[{ uri, height?, bitrate?, label?, audioOnly? }]`, with no `uri` needed beside them. RNAP picks, switches and falls back; a missing height or bitrate is read from the file. |
+| `video.hdr` | Planned, not built: `false` would keep HDR sources on SDR variants. `status.video.hdr` already says whether the picture is HDR. |
+| `load({ renditions })` | Separate files of one video at different qualities: `[{ uri, height?, bitrate?, label?, audioOnly? }]`, with no `uri` needed beside them. RNAP picks, switches and falls back by the `height` and `bitrate` given; the playing file's height is learned, and reading the rest from the file's headers is planned. |
 | `load({ subtitles })` | `[{ uri \| text, language, label?, format?, forced?, default?, encoding? }]`, before or after `load()` (`player.addSubtitles()`). |
 | `load({ refresh, expiresAt })` | Called on 401/403, and ahead of `expiresAt`; returns the new source. |
 | `load({ drm })` | `{ fairplay?, widevine?, playready?, clearkey?, getLicense? }` ([Video](video.md#drm)). |
@@ -94,7 +94,7 @@ export function Screen() {
 | `player.presentFullscreen({ lockOrientation })`, `dismissFullscreen()`, `startPictureInPicture()`, `stopPictureInPicture()` | The system UI. |
 | `player.getThumbnail(t)`, `player.getStats()`, `seekTo(t, { exact })` | Seek previews, quality-of-experience numbers, frame-accurate seeks. |
 | `status.video` | Size, HDR, first frame, the qualities and the current one, the tracks, audio-only and why, Picture in Picture. |
-| Events | `cues` (and `useCues()`), `stats`, `firstFrame`, `pictureInPictureChange`, `fullscreenChange`. |
+| Events | `cues` (and `useCues()`), `firstFrame`, `pictureInPictureChange`, `fullscreenChange`. Stats are read with `player.getStats()`; there is no event. |
 
 ## Architecture
 
@@ -129,38 +129,38 @@ New driver commands: `setVideoEnabled(on)`, `setQuality({ maxHeight, maxBitrate,
 |---|---|---|---|
 | Player | AVPlayer, `AVPlayerLayer` in a Fabric view | ExoPlayer on a `TextureView` whose `SurfaceTexture` outlives the view: moving to fullscreen, Picture in Picture or another view keeps the frame | `<video>`, one per player, moved between views |
 | Video off | Layer detached (QA1668) | `setTrackTypeDisabled(VIDEO)` | No decoding to disable: audio-only variants only |
-| Quality caps | `preferredMaximumResolution`, `preferredPeakBitRate` (and for expensive networks) | `TrackSelectionParameters` | hls.js / dash.js level caps |
+| Quality caps | `preferredMaximumResolution`, `preferredPeakBitRate` (and for expensive networks) | `TrackSelectionParameters` | hls.js / Shaka level caps |
 | Swap (renditions) | A second AVPlayer and layer | A second ExoPlayer on its own `TextureView` under the first, muted until it takes over | A second `<video>`, unlocked with the first on the same gesture |
-| Picture in Picture | `AVPictureInPictureController` (auto from inline) | The activity's PiP mode (auto-enter on Android 12+, the user-leave hint on 8–11 with androidx.activity 1.9+); the picture fills the window, the app hears `pictureInPictureChange`. The activity needs `android:supportsPictureInPicture` (the Expo plugin and `rnap add video --pip` add it) | Picture-in-Picture API |
+| Picture in Picture | `AVPictureInPictureController` (auto from inline) | The activity's PiP mode (auto-enter on Android 12+, the user-leave hint on 8–11 with androidx.activity 1.9+); the picture fills the window, the app hears `pictureInPictureChange`. The activity needs `android:supportsPictureInPicture` (the Expo plugin adds it; `npx rnap add video` prints the step for a bare project) | Picture-in-Picture API |
 | Fullscreen | `AVPlayerViewController`, modal | A fullscreen dialog, immersive, optional orientation lock | Fullscreen API; `webkitEnterFullscreen` on iPhone |
 | Keep-awake | `isIdleTimerDisabled` | `FLAG_KEEP_SCREEN_ON` on the view | Screen Wake Lock |
-| Captions settings | MediaAccessibility | `CaptioningManager` | — (browser defaults) |
+| Captions settings | MediaAccessibility | `CaptioningManager` | — (RNAP's own style) |
 
 ### Formats the OS cannot read
 
 | | Android | iOS | Web |
 |---|---|---|---|
 | MKV, WebM | ExoPlayer reads them | **Remuxed** by the stream proxy to fragmented MP4, served as an HLS playlist (H.264, HEVC, AV1 on A17 Pro/M3 and later; AAC, AC-3, E-AC-3, FLAC, Opus) | **Remuxed** to fragmented MP4 into MSE where the browser has no Matroska |
-| MPEG-TS (files, IPTV) | ExoPlayer | Cut into a live or VOD HLS playlist (no remux) | Remuxed to fragmented MP4 into MSE |
-| DASH | ExoPlayer | CMAF DASH rewritten to HLS by the proxy; other DASH: `UNSUPPORTED_FORMAT` | dash.js or Shaka, injected like hls.js |
+| MPEG-TS (files, IPTV) | ExoPlayer | **Remuxed** to fragmented MP4 and served as a live or VOD HLS playlist, like MKV | Remuxed to fragmented MP4 into MSE |
+| DASH | ExoPlayer | CMAF DASH rewritten to HLS by the proxy; other DASH: `UNSUPPORTED_FORMAT` | Shaka, injected like hls.js |
 | Codecs the OS lacks | Media3 decoder extensions (switch) | `SampleBufferDriver` (switch) | Injected wasm decoder |
 
 The Matroska/TS demuxer exists twice, in Swift and TypeScript, held to shared golden fixtures (`conformance/remux/`) and fuzzed like the ICY parser. Subtitle tracks found in an MKV go into the cue pipeline.
 
 ### Software decoders
 
-Three separate opt-in modules, built now, none blocking v1:
+Three separate opt-in modules, none blocking v1. Only the Android one is built:
 
 - **Android** (`rnap add video-decoders`, built): FFmpeg in an LGPL-only build with the AC-3, E-AC-3, DTS, TrueHD and MPEG audio decoders (Media3's FFmpeg extension is audio only), libvpx (VP9) and dav1d (AV1; Media3 moved to it from libgav1) through Media3's decoder extensions ([Video](video.md#software-decoders)).
-- **iOS**: a second `EngineDriver`, `SampleBufferDriver`, chosen per item when AVPlayer cannot decode even after a remux: FFmpeg (LGPL, a **dynamic** xcframework) and dav1d into `AVSampleBufferDisplayLayer`, `AVSampleBufferAudioRenderer` and `AVSampleBufferRenderSynchronizer`; Picture in Picture through `ContentSource` (iOS 15+). AirPlay carries its audio, not its picture.
-- **Web**: a canvas driver (WebCodecs where the browser has the codec, AudioWorklet output) with the decoder **injected** by the app (`configureSoftwareDecoder(...)` or `globalThis`), never bundled, like hls.js.
+- **iOS** (not built): a second `EngineDriver`, `SampleBufferDriver`, chosen per item when AVPlayer cannot decode even after a remux: FFmpeg (LGPL, a **dynamic** xcframework) and dav1d into `AVSampleBufferDisplayLayer`, `AVSampleBufferAudioRenderer` and `AVSampleBufferRenderSynchronizer`; Picture in Picture through `ContentSource` (iOS 15+). AirPlay carries its audio, not its picture.
+- **Web** (not built): a canvas driver (WebCodecs where the browser has the codec, AudioWorklet output) with the decoder **injected** by the app (`configureSoftwareDecoder(...)` or `globalThis`), never bundled, like hls.js.
 - **macOS** (phase 2): MediaExtension (macOS 15+).
 
-The binaries are built in CI from pinned sources, reproducibly, and published on **GitHub Releases**; Gradle and the podspec download them at build time and check the SHA-256 pinned in the npm package, failing the build on a mismatch. The docs carry the LGPL source offer. Maven Central: on request.
+The binaries are built in CI from pinned sources, reproducibly, and published on **GitHub Releases**; Gradle downloads the Android ones at build time and checks the SHA-256 pinned in the npm package, failing the build on a mismatch; the podspec will do the same for iOS. The LGPL source offer is still to be written into the docs. Maven Central: on request.
 
 ### Subtitles
 
-One pipeline on every platform: sideloaded files (URL, file or string) are fetched with retry and backoff, their encoding detected (Windows-1252, CP1251, Shift-JIS…, with the ICY charset repair), and parsed by the parser twins (SubRip, WebVTT, TTML/IMSC, basic ASS: text, bold/italic/underline, colours, alignment, `\pos`); embedded and manifest cues come from the platform (iOS legible output with player rendering suppressed, Media3 `onCues`, `TextTrack` `cuechange`). One native overlay draws them with the OS caption style; `useCues()` hands them to an app that draws its own. `setSubtitleDelay()` shifts them. Track choice (`conformance/tracks/`) follows the preferred languages, forced tracks, and the OS's captions / audio-description settings.
+One pipeline on every platform: sideloaded files (URL, file or string) are fetched with retry and backoff, their encoding detected (Windows-1252, CP1251, Shift-JIS…, with the ICY charset repair), and parsed by the parser twins (SubRip, WebVTT, TTML/IMSC, basic ASS: text, bold/italic/underline, colours, alignment, `\pos`); embedded and manifest cues come from the platform (iOS legible output with player rendering suppressed, Media3 `onCues`, `TextTrack` `cuechange`). One overlay draws them, in the OS caption style on iOS and Android; `useCues()` hands them to an app that draws its own. `setSubtitleDelay()` shifts them. Track choice (`conformance/tracks/`) follows the preferred languages, forced tracks, and the OS's captions / audio-description settings.
 
 To a Cast receiver: WebVTT or TTML tracks by URL; other formats converted to WebVTT and sent as a `data:` URL where the receiver takes it, otherwise listed as unavailable there.
 

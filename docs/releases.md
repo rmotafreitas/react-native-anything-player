@@ -18,7 +18,7 @@ New values in an open set are minor: a new error code, `route.kind`, `interrupti
 
 Covered by the promise:
 
-- Everything exported from `react-native-anything-player`, `react-native-anything-player/web` and `react-native-anything-player/react`, with its types (the [API reference](api/)).
+- Everything exported from `react-native-anything-player`, and its `/web`, `/react`, `/sound` and `/video` entries, with its types (the [API reference](api/)).
 - `PlayerStatus` fields, event names and payloads, error codes, and the behaviour the guides document. The engine's behaviour is pinned by the [conformance suite](../conformance/README.md): changing an expected outcome there is a behaviour change.
 - The Expo plugin's options, and the native setup names: Gradle properties (`rnapHls`, `rnapCast`, `rnapMedia3Version`), `RNAP_CAST` / `rnap.cast`, manifest meta-data and `Info.plist` keys (`com.anythingplayer.*`, `RNAPCastReceiverId`), `AnythingPlayer.handleIntent` and `RNAPVoice`.
 - The CLI's commands, flags, finding ids, exit codes and `--json` schema.

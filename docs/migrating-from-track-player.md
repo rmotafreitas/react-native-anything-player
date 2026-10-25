@@ -5,7 +5,7 @@ This guide moves an app from React Native Track Player (RNTP) to RNAP. It covers
 - **RNTP 4**: the `react-native-track-player` package, version 4.1.2 (Apache-2.0).
 - **RNTP 5**: the `@rntp/player` package, version 5.12.1 (commercial licence).
 
-Both were read from their published npm packages. RNAP has **no native queue yet** ([roadmap, P0](roadmap.md#p0-—-adoption-blockers)). If your app plays playlists, read [the queue section](#the-queue-is-the-big-difference) before you start. For a single stream or station at a time, which is what RNAP is built for, the move is mostly deletions.
+Both were read from their published npm packages. RNAP has **no native queue yet** ([roadmap, P0](roadmap.md#p0-adoption-blockers)). If your app plays playlists, read [the queue section](#the-queue-is-the-big-difference) before you start. For a single stream or station at a time, which is what RNAP is built for, the move is mostly deletions.
 
 ## Why switch
 
@@ -14,7 +14,7 @@ Both were read from their published npm packages. RNAP has **no native queue yet
 - **One engine on the web too.** `react-native-anything-player/web` runs the same `Player` API in Expo web, React Native Web and plain pages ([Web](web.md)).
 - **No playback service.** Play, pause, stop and seek from the lock screen, headset and car work natively, so the JS service file goes away.
 
-> **Licence.** RNTP 4 is Apache-2.0, which is free for any use. RNAP is PolyForm Noncommercial: free for personal, educational, non-profit and other noncommercial use, and it needs a commercial licence otherwise ([roadmap, P0 licence](roadmap.md#p0-—-adoption-blockers), [COMMERCIAL.md](../COMMERCIAL.md)). RNTP 5 is free only for personal and educational use, and its published price is €99 per month or €999 per year for one app ([Why RNAP](why.md#the-default-player-went-commercial)). Check which of these applies to you before you move.
+> **Licence.** RNTP 4 is Apache-2.0, which is free for any use. RNAP is PolyForm Noncommercial: free for personal, educational, non-profit and other noncommercial use, and it needs a commercial licence otherwise ([roadmap, P0 licence](roadmap.md#p0-adoption-blockers), [COMMERCIAL.md](../COMMERCIAL.md)). RNTP 5 is free only for personal and educational use, and its published price is €99 per month or €999 per year for one app ([Why RNAP](why.md#the-default-player-went-commercial)). Check which of these applies to you before you move.
 
 ## Install and setup
 
@@ -78,7 +78,7 @@ The Android manifest entries (foreground service, wake lock, network state) come
 | `updateMetadataForTrack(i, m)` | – | `player.updateNowPlaying(m)`: there is one source |
 | `clearNowPlayingMetadata()` | – | `player.updateNowPlaying({})` |
 | `minBuffer`, `maxBuffer`, `backBuffer`, `playBuffer` | – | none; the engine chooses (fast start for radio) |
-| `maxCacheSize` (Android) | `cache: { maxSizeBytes, preloading }` | none yet ([cache is roadmap P1](roadmap.md#p1-—-the-features-people-search-for)) |
+| `maxCacheSize` (Android) | `cache: { maxSizeBytes, preloading }` | none yet ([cache is roadmap P1](roadmap.md#p1-the-features-people-search-for)) |
 | `iosCategory*` options | – | none; RNAP configures the audio session itself |
 
 ### Queue
@@ -87,14 +87,14 @@ The Android manifest entries (foreground service, wake lock, network state) come
 |---|---|---|
 | `add`, `setQueue`, `remove`, `move`, `removeUpcomingTracks`, `getQueue`, `getTrack` | `setMediaItems`, `addMediaItem(s)`, `insertMediaItem(s)`, `removeMediaItem(s)`, `moveMediaItem`, `replaceMediaItem`, `getQueue` | **No equivalent.** [See below](#the-queue-is-the-big-difference) |
 | `skip(i)`, `skipToNext()`, `skipToPrevious()` | `skipToIndex`, `skipToNext`, `skipToPrevious` | `load()` the item you want |
-| `setRepeatMode(RepeatMode.Off \| Track \| Queue)` | `setRepeatMode('off' \| 'one' \| 'all')`, `setShuffleEnabled` | none. Repeat one: `player.on('ended', () => player.play())` |
+| `setRepeatMode(RepeatMode.Off \| Track \| Queue)` | `setRepeatMode('off' \| 'one' \| 'all')`, `setShuffleEnabled` | `player.setLoop(true)` repeats one item. No repeat-all without a queue |
 | – | `preload(item)`, `cancelPreload` | none |
 | – | `sleepAfterTime`, `sleepAfterMediaItemAtIndex`, `cancelSleepTimer` | `player.sleep({ after, fadeOut })`, `player.sleep(null)`; no "after this item" without a queue ([sleep timer](playback.md#sleep-timer)) |
 | – | `setBrowseTree` (Android Auto, CarPlay) | `setCatalog()` with a `group` on each item, opt-in with `car` ([Cars & watches](cars-and-watches.md)) |
 
 ## The queue is the big difference
 
-RNAP plays **one source at a time**. A native queue (next and previous, gapless hand-off, repeat, shuffle, auto-advance while JS is frozen) is the top item on the [roadmap](roadmap.md#p0-—-adoption-blockers) and does not exist yet.
+RNAP plays **one source at a time**. A native queue (next and previous, gapless hand-off, repeat, shuffle, auto-advance while JS is frozen) is the top item on the [roadmap](roadmap.md#p0-adoption-blockers) and does not exist yet.
 
 If your app is a radio with a station list, you do not need a queue: `load()` the next station and the playing player switches seamlessly. If it plays tracks in order, use this interim pattern. It loads the next item when the current one ends, and when the lock screen or headset asks for next or previous.
 
@@ -153,7 +153,7 @@ RNAP has one state machine and one snapshot, `player.status` ([events](events.md
 | `PlaybackState` | `PlaybackStateChanged` | `player.on('stateChange', (state, previous) => …)` or `'status'` |
 | – | `IsPlayingChanged` | `status.state === 'playing'` |
 | `PlaybackPlayWhenReadyChanged` | – | `status.playWhenReady` in the `'status'` event |
-| `PlaybackError`, `PlayerError` | `PlaybackError` | `player.on('error', (error, { fatal }) => …)`. `fatal: false` means recovery is running |
+| `PlaybackError`, `PlayerError` | `PlaybackError` | `player.on('error', (error, { fatal }) => …)`. `fatal: false` is a recovery in progress or a warning (a subtitle file that did not load, a sound that cannot be decoded, a Cast refusal); playback goes on or retries |
 | `PlaybackQueueEnded` | – | `player.on('ended', …)` |
 | `PlaybackActiveTrackChanged`, `PlaybackTrackChanged` | `MediaItemTransition`, `QueueChanged` | none (no queue). `status.loadId` changes on each `load()` |
 | `PlaybackMetadataReceived`, `MetadataCommonReceived`, `MetadataTimedReceived`, `MetadataChapterReceived` | `MetadataReceived`, `MediaMetadataChanged` | `player.on('metadata', (m) => …)`: `m.title`, `m.artist`, `m.station`, `m.genre`, `m.raw` |
@@ -201,7 +201,7 @@ RNAP shows the lock screen and notification for any player with `mediaSession.en
 | RNTP 5 `audioMixing: 'mix'` | `audio: { mixWithOthers: true }` (on iOS this removes lock-screen controls) |
 | RNTP 5 `cast` | `cast` option of the Expo plugin; [Casting & AirPlay](routes-and-casting.md) |
 
-What the lock screen shows is built from your `Source.metadata`, the stream's ICY metadata and `updateNowPlaying()`, in that order of precedence ([details](background-and-system.md#what-the-lock-screen-shows)). A radio has no queue to feed `updateMetadataForTrack`: let ICY drive it, or call `updateNowPlaying()` when you know more.
+What the lock screen shows is built from `updateNowPlaying()`, then the stream's ICY metadata, then your `Source.metadata`: the first one that has a field wins ([details](background-and-system.md#what-the-lock-screen-shows)). A radio has no queue to feed `updateMetadataForTrack`: let ICY drive it, or call `updateNowPlaying()` when you know more.
 
 ## The recovery code you can delete
 
@@ -273,7 +273,7 @@ player.on('error', (error, { fatal }) => {
 ## What differs or is missing
 
 - **No queue** (above), so no `skipToNext`, repeat modes, shuffle or `getQueue()`.
-- **No cache, preload or progress sync.** RNTP 5 has them; cache and preload are on the RNAP [roadmap (P1)](roadmap.md#p1-—-the-features-people-search-for). The sleep timer and the CarPlay / Android Auto browse tree exist, in a different shape (above).
+- **No cache, preload or progress sync.** RNTP 5 has them; cache and preload are on the RNAP [roadmap (P1)](roadmap.md#p1-the-features-people-search-for). The sleep timer and the CarPlay / Android Auto browse tree exist, in a different shape (above).
 - **No ratings, like, dislike or bookmark** buttons, and no custom notification icons.
 - **`stop()` is not `reset()`.** RNAP's `stop()` keeps the source so `play()` can restart it; use `reset()` to unload.
 - **Time units.** RNAP positions are seconds and its hook interval is milliseconds. RNTP 5's `useProgress` takes seconds.

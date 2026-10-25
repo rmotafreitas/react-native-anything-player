@@ -14,7 +14,13 @@ function Screen() {
 }
 ```
 
-It works on iOS, Android, Expo web, React Native Web, React DOM and plain pages, with the same code. On iOS and Android it is a build option ([below](#enabling-it)).
+It works on iOS, Android, Expo web, React Native Web, React DOM and plain pages. The player is the same everywhere; what you import differs. On iOS and Android it is a build option ([below](#enabling-it)).
+
+| App | `Player` | `VideoView`, `useCues` |
+|---|---|---|
+| React Native, Expo, React Native Web, Expo web | `react-native-anything-player` | `react-native-anything-player/video` |
+| React DOM (Vite, Next.js) | `react-native-anything-player/react` | `react-native-anything-player/react` |
+| Plain pages | `react-native-anything-player/web` | none: `player.attachTo(element)` |
 
 The player and the view are separate. Unmounting `<VideoView>` does not stop the player: the sound goes on (what the background does is [`whenBackgrounded`](#in-the-background)), and mounting a view for the same player elsewhere shows it there, without a gap. One view shows the picture at a time: the last one mounted.
 
@@ -24,9 +30,9 @@ The player and the view are separate. Unmounting `<VideoView>` does not stop the
 
 | Source | What it is |
 |---|---|
-| `'https://…/master.m3u8'` | HLS: the player picks the quality as the network allows (under [RNAP's caps](#quality)), with the manifest's audio languages and subtitles as [tracks](subtitles.md#the-sources-own-tracks) |
+| `'https://…/master.m3u8'` | HLS: the player picks the quality as the network allows (under [RNAP's caps](#quality)), with the manifest's audio languages and subtitles as [tracks](subtitles.md#tracks-in-the-file) |
 | `'https://…/manifest.mpd'` | DASH, the same way ([below](#dash)) |
-| `'https://…/movie.mkv'`, `.webm`, `.ts`, an IPTV channel | Matroska, WebM and MPEG-TS, on demand or live, with the file's audio languages and subtitles as [tracks](subtitles.md#the-sources-own-tracks) ([below](#matroska-webm-and-mpeg-ts)) |
+| `'https://…/movie.mkv'`, `.webm`, `.ts`, an IPTV channel | Matroska, WebM and MPEG-TS, on demand or live, with the file's audio languages and subtitles as [tracks](subtitles.md#tracks-in-the-file) ([below](#matroska-webm-and-mpeg-ts)) |
 | `'https://…/episode.mp4'`, `file://…`, `require('./intro.mp4')` | a file, streamed as it downloads |
 | `{ renditions: [...] }` | separate files of one video at different qualities: RNAP picks one and [switches between them](#renditions) behind the picture |
 | `{ uri, subtitles: [...] }` | [subtitle files](subtitles.md) (SubRip, WebVTT, TTML, ASS) next to the video |
@@ -232,11 +238,11 @@ await player.load({
 });
 ```
 
-A missing `height` or `bitrate` is read from the file. No `uri` is needed next to `renditions`.
+Give each file's `height` and `bitrate` where you know them: the engine picks and steps by them. The height of the file playing is learned from its picture; reading the rest from the files' headers is [planned](roadmap.md). No `uri` is needed next to `renditions`.
 
 ### Sound alone
 
-- `player.setListenOnly(true)` plays the sound alone: the audio-only variant or rendition when there is one, else the picture stops decoding.
+- `player.setListenOnly(true)` plays the sound alone: the audio-only variant or rendition when there is one, else the picture stops decoding on iOS and Android. A browser has no way to stop decoding, so on the web it needs an audio-only variant or rendition to save data.
 - `video: { fallbackToAudio: true }` drops to the sound alone on a network too slow for any picture (under 1.2× the lowest quality for 10 s, or 2 stalls in 30 s) and brings the picture back after 30 s of headroom. It needs an audio-only option.
 
 ## In the background
@@ -247,7 +253,7 @@ A missing `height` or `bitrate` is read from the file. No `uri` is needed next t
 |---|---|
 | `'pause'` (default on iOS and Android) | pause; the user resumes from the lock screen or the app |
 | `'audio'` (default on the web, where a hidden tab plays on) | keep the sound and the lock screen, stop the picture, switch to an audio-only variant where there is one |
-| `'pip'` | go into Picture in Picture; where that is not possible, pause |
+| `'pip'` | go into Picture in Picture; where that is not possible, pause. A browser starts Picture in Picture only from a user gesture, so on the web leaving the tab pauses after a moment unless the user already opened the window |
 
 `video: { ambient: true }` is for decorative loops: muted, looping, no audio focus, no lock screen, paused while off screen or in the background and resumed when shown again. A muted video takes no audio focus either (`focusWhenMuted: true` changes that).
 
@@ -259,7 +265,7 @@ The screen stays on while a video plays in a visible view (`keepAwake: false` tu
 
 ## Picture in Picture
 
-`player.startPictureInPicture()` moves the picture into a floating window; `stopPictureInPicture()` brings the app back. With `whenBackgrounded: 'pip'`, leaving the app does it on its own (iOS from an inline view, Android 12+ from the system's auto-enter, Android 8–11 on the user-leave hint).
+`player.startPictureInPicture()` moves the picture into a floating window; `stopPictureInPicture()` closes the window, and on Android brings the app back to the front. With `whenBackgrounded: 'pip'`, leaving the app does it on its own (iOS from an inline view, Android 12+ from the system's auto-enter, Android 8–11 on the user-leave hint).
 
 | Platform | Needs |
 |---|---|

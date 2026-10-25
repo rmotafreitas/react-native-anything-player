@@ -61,7 +61,7 @@ const SOFTWARE = {
   url: url('/'),
   codeRepository: REPO,
   programmingLanguage: ['TypeScript', 'Swift', 'Kotlin'],
-  runtimePlatform: ['React Native', 'iOS', 'Android'],
+  runtimePlatform: ['React Native', 'iOS', 'Android', 'Web'],
   license: 'https://polyformproject.org/licenses/noncommercial/1.0.0/',
   version: pkg.version,
   keywords: (pkg.keywords as string[]).join(', '),

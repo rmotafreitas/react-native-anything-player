@@ -76,7 +76,7 @@ adb shell svc wifi disable && adb shell svc data disable                   # off
 
 **Do players stop when a component unmounts?** No. Create them at module scope and `release()` them explicitly.
 
-**What happens on a JS reload (Fast Refresh, dev menu)?** Native releases the players created by the old JS instance (no zombie audio, no orphaned connections), and the new JS starts fresh.
+**What happens on a JS reload (Fast Refresh, dev menu)?** Native releases the anonymous players the old JS instance created (no zombie audio, no orphaned connections). A player with an explicit `id` survives: `new Player({ id })` in the new JS attaches to it, still playing.
 
 **Queues / playlists?** Not built in. Load the next item on `ended`; `load()` while playing switches seamlessly.
 

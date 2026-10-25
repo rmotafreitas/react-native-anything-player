@@ -18,7 +18,7 @@ export interface DocSection {
 
 export const HOME = {
   description:
-    'React Native audio player for files, streams and internet radio that keeps playing through dead sockets, network switches, phone calls and frozen JavaScript.',
+    'React Native and web audio player for files, streams and internet radio, with opt-in video, that keeps playing through dead sockets, network switches, phone calls and frozen JavaScript.',
 };
 
 export const SECTIONS: DocSection[] = [
@@ -111,7 +111,7 @@ export const SECTIONS: DocSection[] = [
         link: '/docs/subtitles',
         text: 'Subtitles',
         description:
-          "Subtitles in React Native and on the web: SubRip, WebVTT, TTML and ASS files, a stream's own tracks, the user's caption style, and drawing them yourself.",
+          "Subtitles in React Native and on the web: SubRip, WebVTT, TTML and ASS files, a stream's own tracks, the caption style (the OS's on iOS and Android), and drawing them yourself.",
       },
       {
         link: '/docs/sound',
@@ -200,6 +200,18 @@ export const SECTIONS: DocSection[] = [
         text: 'Testing',
         description:
           'How RNAP is tested: a shared Swift and Kotlin conformance suite, on-device scenarios on the iOS simulator and Android emulator, system behaviour and soaks.',
+      },
+      {
+        link: '/docs/quality-gates',
+        text: 'CI & quality policy',
+        description:
+          'The checks every RNAP change passes: lint, types, tests with coverage floors, dependency audit, secrets scan, GitHub Actions, Jenkins and SonarQube.',
+      },
+      {
+        link: '/docs/dependency-security',
+        text: 'Dependency security',
+        description:
+          'The dependency advisories RNAP patches locally while upstream has no fix, how the patches are tested, and the dependency upgrades deferred on purpose.',
       },
       {
         link: '/docs/debugging',

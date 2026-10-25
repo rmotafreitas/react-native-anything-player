@@ -79,7 +79,7 @@ What an app's users download: each library built into a React Native 0.86 app, i
 | expo-av (over the runtime) | 747 KB | 2,479 KB | 526 KB | 94 KB | 117 KB |
 | RNTP 4 | — | — | | | |
 
-Built 2026-10-22 (`benchmarks/results/apk.json`); the code, native and resource columns are with R8, as stored in the APK. RNTP 4.1.2 does not compile against React Native 0.86. The Expo rows come from a second app: the same bare app plus the Expo modules runtime. The runtime row is what that runtime adds to the bare app; the expo-audio and expo-av rows are what each adds on top of it. expo-av's prebuilt binary links against older Expo APIs, so its R8 build also needs three `-dontwarn` rules that its package does not ship.
+Built 2026-10-24 (`benchmarks/results/apk.json`); the code, native and resource columns are with R8, as stored in the APK. RNTP 4.1.2 does not compile against React Native 0.86. The Expo rows come from a second app: the same bare app plus the Expo modules runtime. The runtime row is what that runtime adds to the bare app; the expo-audio and expo-av rows are what each adds on top of it. expo-av's prebuilt binary links against older Expo APIs, so its R8 build also needs three `-dontwarn` rules that its package does not ship.
 
 How to read it:
 

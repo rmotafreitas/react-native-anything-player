@@ -13,7 +13,7 @@ try {
     e.message;        // 'The server returned HTTP 404.'
     e.recoverable;    // false
     e.httpStatus;     // 404
-    e.platform;       // 'ios' | 'android'
+    e.platform;       // 'ios' | 'android' | 'web'; absent for errors raised in JavaScript
     e.platformDomain; // e.g. 'AVFoundationErrorDomain', 'androidx.media3:ERROR_CODE_IO_BAD_HTTP_STATUS'
     e.platformCode;   // native code
     e.nativeCause;    // full native chain: 'NSURLErrorDomain(-1009): The Internet connection appears to be offline. ← …'
@@ -45,7 +45,7 @@ Native details are never dropped: `AVFoundationErrorDomain -11800` comes with th
 | `NATIVE_MODULE_MISSING` | no | thrown by `new Player()` when the binary lacks RNAP's native module: Expo Go, or an app not rebuilt ([Getting started](getting-started.md#expo-go)) |
 | `ROUTE_PICKER_UNAVAILABLE` | no | `showRoutePicker()` where there is no output picker (Firefox; a browser without AirPlay or Remote Playback for this source) ([Casting & AirPlay](routes-and-casting.md#the-output-picker)) |
 | `CAST_UNAVAILABLE` | no | `showCastPicker()` where Cast is not built in (no `cast` plugin option) or not supported (browsers other than Chrome), or before the web's Cast SDK is ready ([Casting & AirPlay](routes-and-casting.md#google-cast)) |
-| `CAST_UNSUPPORTED_SOURCE` | no | non-fatal `error` event: a Cast session started but the player's source cannot be reached by a receiver (a local file, `content://`, a bundled asset, `blob:`); the player stays on the device ([Casting & AirPlay](routes-and-casting.md#what-casting-does)) |
+| `CAST_UNSUPPORTED_SOURCE` | no | non-fatal `error` event: a Cast session started but the player's source cannot be reached or played by a receiver (a local file, `content://`, a bundled asset, `blob:`, or a DRM-protected source); the player stays on the device ([Casting & AirPlay](routes-and-casting.md#what-casting-does)) |
 | `SOUND_UNAVAILABLE` | no | `Sound.load()` or `Sound.configure()` on iOS or Android in an app built without the `sound` option ([Sound](sound.md#enabling-it)) |
 | `VIDEO_UNAVAILABLE` | no | `new Player({ video })` on iOS or Android in an app built without the video module ([Video](video.md#enabling-it)) |
 | `DRM_UNSUPPORTED` | no | a protected source the platform cannot decrypt: none of its `drm` key systems is here, or it is encrypted without `drm`, or not packaged for the key system picked ([Video](video.md#drm)) |

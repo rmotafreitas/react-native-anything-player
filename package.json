@@ -1,7 +1,7 @@
 {
   "name": "react-native-anything-player",
   "version": "1.2.1",
-  "description": "Native-first, reliable audio player for React Native: files, streams and internet radio (ICY), with background playback, media sessions and automatic recovery.",
+  "description": "Native-first, reliable audio player for React Native and the web: files, streams and internet radio (ICY), with background playback, media sessions, automatic recovery and opt-in video.",
   "main": "./lib/module/index.js",
   "types": "./lib/typescript/src/index.d.ts",
   "bin": {
@@ -96,12 +96,16 @@
   "keywords": [
     "react-native",
     "audio",
+    "video",
     "player",
     "radio",
     "icy",
     "shoutcast",
     "icecast",
     "streaming",
+    "hls",
+    "subtitles",
+    "web",
     "media-session",
     "background-audio",
     "ios",

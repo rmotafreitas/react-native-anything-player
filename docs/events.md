@@ -19,6 +19,7 @@
 | `volume`, `muted`, `rate` | | as set (a fade never changes `volume`, except `fadeTo`'s target) |
 | `sleepAt` | `number \| null` | when the sleep timer pauses playback, in epoch milliseconds; `null` without one ([sleep timer](playback.md#sleep-timer-and-fades)) |
 | `route` | `{ kind, name }` | where the audio goes: `speaker`, `headphones`, `bluetooth`, `airplay`, `cast`, `car`, `hdmi`, `usb`, `other` or `unknown`, with the device's name when known ([Casting & AirPlay](routes-and-casting.md#where-the-audio-goes)) |
+| `video` | `VideoStatus \| null` | a video player's picture, qualities, tracks, Picture in Picture and fullscreen; `null` for an audio player ([Video](video.md#the-view)) |
 
 `player.refresh()` reads the native snapshot synchronously and applies it if it is newer. Players refresh automatically when the app becomes active.
 
@@ -34,7 +35,7 @@ off(); // unsubscribe
 | `status` | `PlayerStatus` | any status field changed |
 | `stateChange` | `(state, previous)` | `status.state` changed |
 | `metadata` | `MediaMetadata` | new stream metadata became audible (or station info arrived) |
-| `error` | `(PlayerError, { fatal })` | a failure; `fatal: false` means recovery is running |
+| `error` | `(PlayerError, { fatal })` | a failure. `fatal: true` puts the player in `error`. `fatal: false` is a warning or a recovery in progress (a subtitle file that did not load, a sound the platform cannot decode, a Cast refusal, a reconnect) and playback goes on or retries |
 | `ended` | – | a file played to its end |
 | `remoteCommand` | `{ command, position? }` | an opted-in remote command (`mediaSession.commands`), or `play` / `togglePlayPause` while nothing is loaded |
 | `diagnostic` | `DiagnosticEntry` | engine trace, only while diagnostics are enabled |
@@ -44,6 +45,10 @@ off(); // unsubscribe
 | `searchPlay` | `{ request, item }` | a voice assistant or `playFromSearch()` started a catalog item on this player ([Voice assistants](voice.md)) |
 | `discontinuity` | `{ position, timestamp }` | a live stream's audio jumped: playback moved onto a fresh connection of the same source, with no state change. Reported when it becomes audible |
 | `sleep` | `{ reason: 'fired', timestamp }` | the sleep timer ran out: the player paused (if it was playing) and `status.sleepAt` is back to `null` ([Sleep timer](playback.md#sleep-timer)) |
+| `cues` | `SubtitleCue[]` | video: the subtitles on screen changed ([Subtitles](subtitles.md#drawing-them-yourself)) |
+| `firstFrame` | – | video: the first frame of the source was shown |
+| `pictureInPictureChange` | `active` | video: Picture in Picture started or ended |
+| `fullscreenChange` | `active` | video: fullscreen started or ended |
 
 Progress is a synchronous read ([playback](playback.md#progress)), so a foreground UI needs no events. `progress` events are opt-in (`new Player({ progressInterval: 1000 })`). They come from a native timer while playing, so they also run JS where the app's own timers are frozen: an Android app in the background keeps receiving them. Use them for work that must follow the audio there, such as switching the lock screen to the next song at the moment it is heard. Stalls shorter than 500 ms are not published.
 
