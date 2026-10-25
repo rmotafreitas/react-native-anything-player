@@ -225,13 +225,19 @@ class CastDriver: NSObject, RemoteOutputDriver {
     // The app's subtitle files, as WebVTT the receiver fetches from a data: URL.
     castTracks = [:]
     if !extra.subtitles.isEmpty {
-      builder.mediaTracks = extra.subtitles.enumerated().map { i, file in
+      var tracks: [GCKMediaTrack] = []
+      for (i, file) in extra.subtitles.enumerated() {
+        // The SDK's initializer is failable: a track it refuses is left out.
+        guard
+          let track = GCKMediaTrack(
+            identifier: i + 1, contentIdentifier: CastMedia.dataURL(file.vtt), contentType: "text/vtt", type: .text,
+            textSubtype: file.captions ? .captions : .subtitles, name: file.label ?? file.language,
+            languageCode: file.language, customData: nil)
+        else { continue }
         castTracks[file.id] = i + 1
-        return GCKMediaTrack(
-          identifier: i + 1, contentIdentifier: CastMedia.dataURL(file.vtt), contentType: "text/vtt", type: .text,
-          textSubtype: file.captions ? .captions : .subtitles, name: file.label ?? file.language,
-          languageCode: file.language, customData: nil)
+        tracks.append(track)
       }
+      builder.mediaTracks = tracks
     }
     return builder.build()
   }
