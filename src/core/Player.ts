@@ -627,7 +627,7 @@ export class Player {
     await this.video({ op: 'pictureInPicture', active: true });
   }
 
-  /** Closes Picture in Picture and brings the app back. */
+  /** Closes Picture in Picture (on Android, the app comes back to the front). */
   async stopPictureInPicture(): Promise<void> {
     await this.video({ op: 'pictureInPicture', active: false });
   }
@@ -640,7 +640,7 @@ export class Player {
   /** The seek-preview image for `time` (seconds) from `Source.thumbnails`, or `null`. */
   async getThumbnail(time: number): Promise<Thumbnail | null> {
     assertFinite('time', time);
-    return this.thumbnails?.at(time) ?? null;
+    return (await this.thumbnails?.at(time)) ?? null;
   }
 
   /** The subtitles on screen now (the `cues` event's latest). */

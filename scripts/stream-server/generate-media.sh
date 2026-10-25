@@ -187,4 +187,5 @@ ffmpeg -loglevel error -y -i media/video-360.mp4 -t 20 -c copy -f hls -hls_time 
   media/drm/hls/index.m3u8
 node encrypt-fmp4.mjs "${DRM_KID}" "${DRM_KEY}" media/drm/hls/init.mp4 media/drm/hls/seg-*.m4s
 
-ls -la media media/hls-video media/dash-video media/remux media/drm | head -44
+ls -la media
+du -sh media/hls-video media/dash-video media/remux media/drm
