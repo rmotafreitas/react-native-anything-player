@@ -124,6 +124,26 @@ final class RemuxTests: XCTestCase {
     XCTAssertEqual(Bytes.readUint(fragment, tfdt + 8, 8), target.time)
   }
 
+  func testMatroskaSeekToAGuessPlaysFromTheNextCluster() throws {
+    let bytes = try read("h264-aac.mkv")
+    let head = Remuxer(format: .matroska)
+    _ = head.push(bytes)
+    let demuxer = head.matroska!
+    // Bytes inside clusters that read as an element header with a size.
+    for guess in [8272, 20_000] {
+      let remuxer = Remuxer(format: .matroska)
+      var out = remuxer.push(Array(bytes[0..<demuxer.firstCluster!])).segments
+      remuxer.seek(guess)
+      out += remuxer.push(Array(bytes[guess...])).segments
+      out += remuxer.end().segments
+      let next = demuxer.cues.first { $0.offset >= guess }!
+      XCTAssertGreaterThan(out.count, 1, "\(guess): no fragment")
+      let fragment = out[1]
+      let tfdt = fragment.indices.first { fragment[$0..<($0 + 4)].elementsEqual("tfdt".utf8) }!
+      XCTAssertEqual(Bytes.readUint(fragment, tfdt + 8, 8), next.time)
+    }
+  }
+
   func testTsDiscontinuityGoesOn() throws {
     let once = try read("h264-aac.mpegts")
     // The same file twice: the second copy's timestamps start over.

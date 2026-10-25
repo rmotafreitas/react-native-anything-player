@@ -284,6 +284,8 @@ export class MatroskaDemuxer {
   private pos = 0;
   private stack: Array<{ id: number; end: number | null }> = [];
   private skip = 0;
+  /** After a seek: the bytes up to the next cluster are skipped. */
+  private hunting = false;
   private clusterTime = 0;
   private group: {
     block: Uint8Array | null;
@@ -326,8 +328,18 @@ export class MatroskaDemuxer {
     return true;
   }
 
-  /** The next bytes pushed start at `offset`, a cluster's (from the Cues). */
+  /**
+   * The next bytes pushed start at `offset`: a cluster's (from the Cues), or
+   * a guess inside one, which is read from the next cluster on.
+   */
   seek(offset: number): void {
+    this.restart(offset);
+    this.hunting = this.segmentStart != null;
+  }
+
+  /** The next bytes pushed start at `offset` and are read as they come (a live stream's new connection). */
+  restart(offset = 0): void {
+    this.hunting = false;
     this.buf = new Uint8Array(0);
     this.bufStart = offset;
     this.pos = offset;
@@ -352,6 +364,10 @@ export class MatroskaDemuxer {
       return true;
     }
     if (this.skip > 0) return this.skipBytes();
+    if (this.hunting) {
+      this.hunting = !this.nextCluster(this.pos - this.bufStart);
+      return !this.hunting;
+    }
     const at = this.pos - this.bufStart;
     const h = header(this.buf, at);
     if (h == null) return false;
@@ -406,7 +422,11 @@ export class MatroskaDemuxer {
 
   /** Moves to the next cluster in the buffer; `false` when there is none yet. */
   private resync(): boolean {
-    const from = this.pos - this.bufStart + 1;
+    return this.nextCluster(this.pos - this.bufStart + 1);
+  }
+
+  /** Moves to the first cluster at or after `from` in the buffer; `false` when there is none yet. */
+  private nextCluster(from: number): boolean {
     for (let i = from; i + 4 <= this.buf.length; i++) {
       if (readUint(this.buf, i, 4) === ID.Cluster) {
         this.pos = this.bufStart + i;

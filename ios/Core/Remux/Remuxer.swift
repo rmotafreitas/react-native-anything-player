@@ -179,7 +179,7 @@ final class Remuxer {
   /// jump in the stream's timestamps is carried over at its next keyframe).
   func reconnected() {
     switch demuxer {
-    case .matroska(let d): d.seek(0)
+    case .matroska(let d): d.restart()
     case .mpegts(let d): d.seek()
     }
   }

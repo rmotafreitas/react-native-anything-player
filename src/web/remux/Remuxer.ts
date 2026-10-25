@@ -191,7 +191,7 @@ export class Remuxer {
    * (a jump in the stream's timestamps is carried over at its next keyframe).
    */
   reconnected(): void {
-    if (this.demuxer instanceof MatroskaDemuxer) this.demuxer.seek(0);
+    if (this.demuxer instanceof MatroskaDemuxer) this.demuxer.restart();
     else this.demuxer.seek();
   }
 

@@ -207,6 +207,24 @@ describe('container remux behaviour', () => {
     expect(times[0]).toBe(target.time); // ms: the video timescale is 1000
   });
 
+  test('a Matroska seek to a guessed byte (no Cues) plays from the next cluster', () => {
+    const bytes = read('h264-aac.mkv');
+    const head = new Remuxer('matroska');
+    head.push(bytes);
+    const { cues, firstCluster } = head.demuxer as MatroskaDemuxer;
+    // Bytes inside clusters that read as an element header with a size.
+    for (const guess of [8272, 20_000]) {
+      const remuxer = new Remuxer('matroska');
+      const init = remuxer.push(bytes.subarray(0, firstCluster!));
+      remuxer.seek(guess);
+      const out = remuxer.push(bytes.subarray(guess));
+      const end = remuxer.end();
+      const data = joined([...init.segments, ...out.segments, ...end.segments]);
+      const next = cues.find((cue) => cue.offset >= guess)!;
+      expect(decodeTimes(data)[0]).toBe(next.time);
+    }
+  });
+
   test('a TS file read from the middle starts at the next keyframe, on the same timeline', () => {
     const bytes = read('h264-aac.mpegts');
     const whole = run('h264-aac.mpegts', bytes, 4096);

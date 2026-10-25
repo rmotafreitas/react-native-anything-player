@@ -130,6 +130,8 @@ final class MatroskaDemuxer {
   private var pos = 0
   private var stack: [(id: Int, end: Int?)] = []
   private var skip = 0
+  /// After a seek: the bytes up to the next cluster are skipped.
+  private var hunting = false
   private var clusterTime = 0
   private var group: (block: [UInt8]?, duration: Int?, reference: Bool)?
   private var segmentEnd: Int?
@@ -163,8 +165,17 @@ final class MatroskaDemuxer {
     return true
   }
 
-  /// The next bytes pushed start at `offset`, a cluster's (from the Cues).
+  /// The next bytes pushed start at `offset`: a cluster's (from the Cues), or
+  /// a guess inside one, which is read from the next cluster on.
   func seek(_ offset: Int) {
+    restart(offset)
+    hunting = segmentStart != nil
+  }
+
+  /// The next bytes pushed start at `offset` and are read as they come (a
+  /// live stream's new connection).
+  func restart(_ offset: Int = 0) {
+    hunting = false
     buf = []
     bufStart = offset
     pos = offset
@@ -256,6 +267,11 @@ final class MatroskaDemuxer {
         if skip > 0 { return }
         continue
       }
+      if hunting {
+        hunting = !nextCluster(pos - bufStart)
+        if hunting { return }
+        continue
+      }
       let at = pos - bufStart
       switch Self.header(buf, at) {
       case .short:
@@ -304,8 +320,10 @@ final class MatroskaDemuxer {
   }
 
   /// Moves to the next cluster in the buffer; `false` when there is none yet.
-  private func resync() -> Bool {
-    let from = pos - bufStart + 1
+  private func resync() -> Bool { nextCluster(pos - bufStart + 1) }
+
+  /// Moves to the first cluster at or after `from` in the buffer; `false` when there is none yet.
+  private func nextCluster(_ from: Int) -> Bool {
     if from + 4 <= buf.count {
       for i in from...(buf.count - 4) where Bytes.readUint(buf, i, 4) == ID.cluster {
         pos = bufStart + i
