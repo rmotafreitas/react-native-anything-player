@@ -24,7 +24,7 @@ private val MIN_ASPECT = Rational(100, 239)
 
 private const val MANIFEST_HINT =
   "Picture in Picture is off for this activity: add android:supportsPictureInPicture=\"true\" to it in " +
-    "AndroidManifest.xml (the Expo plugin's `video: { pictureInPicture: true }` and `npx rnap add video --pip` do it)."
+    "AndroidManifest.xml (the Expo plugin's `video` option does it; `npx rnap add video` prints the lines)."
 
 /**
  * Picture in Picture on Android: the activity's PiP mode, one per app. The

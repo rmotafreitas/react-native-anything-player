@@ -709,6 +709,12 @@ export class Player {
     } catch {
       source = null;
     }
+    // A refreshed source's own DRM hook answers from now on (unless a new
+    // source was loaded meanwhile).
+    const drm = source != null ? (next as Source).drm : undefined;
+    if (drm != null && this.refreshSource === refresh) {
+      this.licenseHook = drm.getLicense ?? null;
+    }
     const command =
       source != null
         ? { op: 'refreshed', loadId, source }

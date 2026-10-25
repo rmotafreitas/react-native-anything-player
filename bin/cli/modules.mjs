@@ -68,8 +68,7 @@ export const MODULES = [
       { key: 'NSBonjourServices', item: '_CC1AD845._googlecast._tcp' },
       {
         key: 'NSLocalNetworkUsageDescription',
-        value:
-          'Finds Cast devices on your network to play audio on them.',
+        value: 'Finds Cast devices on your network to play audio on them.',
       },
     ],
     docs: 'docs/routes-and-casting.md',
@@ -102,7 +101,8 @@ export const MODULES = [
   {
     id: 'background-audio',
     label: 'Background audio',
-    description: 'The iOS `audio` background mode: playback with the screen off.',
+    description:
+      'The iOS `audio` background mode: playback with the screen off.',
     defaultOn: true,
     platforms: ['ios'],
     expo: { key: 'backgroundAudio' },
@@ -132,7 +132,7 @@ export const MODULES = [
     pod: { key: 'rnap.car' },
     expo: { key: 'car' },
     manual: {
-      ios: 'CarPlay also needs Apple\'s CarPlay audio entitlement (`com.apple.developer.carplay-audio`) and the `RNAP CarPlay` scene in `UIApplicationSceneManifest`: follow docs/cars-and-watches.md#carplay, or use the Expo plugin with `car: true`.',
+      ios: "CarPlay also needs Apple's CarPlay audio entitlement (`com.apple.developer.carplay-audio`) and the `RNAP CarPlay` scene in `UIApplicationSceneManifest`: follow docs/cars-and-watches.md#carplay, or use the Expo plugin with `car: true`.",
     },
     manualUndo:
       'Remove the `RNAP CarPlay` scene from `UIApplicationSceneManifest` and the `com.apple.developer.carplay-audio` entitlement by hand (the CLI does not edit them).',
@@ -161,7 +161,7 @@ export const MODULES = [
       "Android: decodes what the device cannot (AC-3, E-AC-3, DTS, TrueHD and MPEG audio with FFmpeg; VP9; AV1). Downloaded once from RNAP's GitHub release, checksums pinned.",
     defaultOn: false,
     platforms: ['android'],
-    gradle: { key: 'rnapVideoDecoders', on: 'true', off: 'false' },
+    gradle: { key: 'rnapVideoDecoders', on: 'true', off: 'false', list: true },
     expo: { key: 'videoDecoders' },
     docs: 'docs/video.md#software-decoders',
   },
@@ -207,7 +207,10 @@ function expoState(module, ctx) {
   const explicit = Boolean(options && options[module.expo.key] !== undefined);
   if (!options) return place(module.defaultOn, false);
   const value = options[module.expo.key];
-  return place(value === undefined ? module.defaultOn : Boolean(value), explicit);
+  return place(
+    value === undefined ? module.defaultOn : Boolean(value),
+    explicit
+  );
 }
 
 function gradleState(module, ctx) {
@@ -217,10 +220,10 @@ function gradleState(module, ctx) {
     text === null ? undefined : parseProperties(text)[module.gradle.key];
   if (value === undefined)
     return place(module.gradle.defaultOn ?? false, false);
-  return place(
-    value.toLowerCase() === module.gradle.on.toLowerCase(),
-    true
-  );
+  const v = value.trim().toLowerCase();
+  // A list (`ffmpeg,av1`) turns part of the module on.
+  const listed = module.gradle.list && v !== '' && v !== module.gradle.off;
+  return place(v === module.gradle.on.toLowerCase() || listed, true);
 }
 
 function podState(module, ctx) {
@@ -248,7 +251,7 @@ function manualState(module, ctx) {
     if (!ctx.ios.present) return null;
     return Boolean(
       /RNAPIntents/.test(ctx.ios.pbxproj ?? '') ||
-        ctx.ios.infoPlist?.NSSiriUsageDescription
+      ctx.ios.infoPlist?.NSSiriUsageDescription
     );
   }
   if (module.id === 'assistant') {
@@ -484,7 +487,11 @@ export function planModuleChanges(ctx, module, on, { readFile } = {}) {
       `set \`${module.gradle.key}=${on ? module.gradle.on : module.gradle.off}\``,
       { create: ctx.android.gradlePropertiesText === null }
     );
-  } else if (native && module.platforms.includes('android') && module.manual?.android) {
+  } else if (
+    native &&
+    module.platforms.includes('android') &&
+    module.manual?.android
+  ) {
     if (manualState(module, ctx) === true) {
       if (!on) manual.push(undoText(module));
     } else if (on) {

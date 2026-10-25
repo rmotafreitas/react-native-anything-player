@@ -283,6 +283,20 @@ test('sound is a build switch on both platforms, like cast', (t) => {
   assert.match(again.stdout, /sound is already off in this project/);
 });
 
+test('a list of software decoders counts as on', (t) => {
+  const root = bareGood(t);
+  fs.appendFileSync(
+    path.join(root, 'android/gradle.properties'),
+    'rnapVideoDecoders=ffmpeg,av1\n'
+  );
+  const decoders = byId(
+    runCli(['modules', '--json'], { cwd: root }).json,
+    'video-decoders'
+  );
+  assert.equal(decoders.effective, true);
+  assert.equal(decoders.source, 'android/gradle.properties');
+});
+
 test('car switches Android Auto and CarPlay, and prints the CarPlay steps', (t) => {
   const root = bareGood(t);
   const added = runCli(['add', 'car', '--yes'], { cwd: root });

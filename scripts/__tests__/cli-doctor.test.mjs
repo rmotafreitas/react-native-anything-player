@@ -12,6 +12,7 @@ import {
   expoNoPlugin,
   expoPluginOptions,
   findingsOf,
+  LIBRARY,
   runCli,
 } from './cli-fixtures.mjs';
 
@@ -127,6 +128,24 @@ test('invalid Expo plugin options are errors, unknown ones warnings', (t) => {
   assert.ok(issues.some((item) => item.severity === 'error'));
   assert.ok(issues.some((item) => item.severity === 'warning'));
   assert.ok(findingsOf(result.json).includes('new-arch-ios'));
+});
+
+test("the video option's object takes pictureInPicture, a boolean", (t) => {
+  const root = expoGood(t);
+  const appJson = JSON.parse(
+    fs.readFileSync(path.join(root, 'app.json'), 'utf8')
+  );
+  const check = (video) => {
+    appJson.expo.plugins = [[LIBRARY, { video }]];
+    fs.writeFileSync(path.join(root, 'app.json'), JSON.stringify(appJson));
+    const result = runCli(['doctor', '--json', '--cwd', root], { cwd: root });
+    return byId(result.json, 'expo-plugin-options').map(
+      (item) => item.severity
+    );
+  };
+  assert.deepEqual(check({ pictureInPicture: false }), []);
+  assert.deepEqual(check({ pip: true }), ['warning']);
+  assert.deepEqual(check({ pictureInPicture: 'yes' }), ['error']);
 });
 
 test('deliberate plugin choices are info, not errors', (t) => {
