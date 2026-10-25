@@ -99,19 +99,19 @@ object TrackSelection {
     languages: List<String>,
   ): MediaTrack? {
     val full = text.filter { !it.forced }
-    if (p.followSystem && p.systemCaptions) {
-      val rank = { t: MediaTrack -> if (t.sdh || t.kind == TrackKind.CAPTIONS) 0 else 1 }
-      val captions = best(full, languages, rank) ?: full.sortedBy(rank).firstOrNull()
-      if (captions != null) return captions
-    }
+    if (p.followSystem && p.systemCaptions) captions(full, languages)?.let { return it }
     val top = languages.firstOrNull()
     if (top != null && audioLanguage != null && audioLanguage != top) {
-      val foreign = best(full, languages) { if (it.sdh) 1 else 0 }
-      if (foreign != null) return foreign
+      best(full, languages) { if (it.sdh) 1 else 0 }?.let { return it }
     }
-    val forced = text.firstOrNull { it.forced && primaryLanguage(it.language) == audioLanguage }
-    if (forced != null) return forced
-    return full.firstOrNull { it.isDefault }
+    return text.firstOrNull { it.forced && primaryLanguage(it.language) == audioLanguage }
+      ?: full.firstOrNull { it.isDefault }
+  }
+
+  /** The OS asks for captions: SDH or closed captions first, in a wanted language if there is one. */
+  private fun captions(full: List<MediaTrack>, languages: List<String>): MediaTrack? {
+    val rank = { t: MediaTrack -> if (t.sdh || t.kind == TrackKind.CAPTIONS) 0 else 1 }
+    return best(full, languages, rank) ?: full.sortedBy(rank).firstOrNull()
   }
 
   /** The tracks to start with (`null`: none of that kind, or no subtitles). */

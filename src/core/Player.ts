@@ -171,6 +171,13 @@ function sourceUri(source: Source | null | undefined): string {
   return typeof first?.uri === 'string' ? first.uri.trim() : '';
 }
 
+/** Frees a player the app cannot use; nothing waits for it. */
+function releaseQuietly(id: string): void {
+  native()
+    .releasePlayer(id)
+    .catch(() => undefined);
+}
+
 function wantsVideo(options: PlayerOptions): boolean {
   return options.video != null && options.video !== false;
 }
@@ -319,9 +326,7 @@ export class Player {
     this._status = native().getStatus(this.id) as NativeStatus;
     if (wantsVideo(options) && this._status.video == null) {
       players.delete(this.id);
-      native()
-        .releasePlayer(this.id)
-        .catch(() => undefined);
+      releaseQuietly(this.id);
       throw new PlayerError({
         code: 'VIDEO_UNAVAILABLE',
         message:
@@ -426,7 +431,7 @@ export class Player {
   ): void {
     this.refreshSource = source?.refresh ?? null;
     this.licenseHook = source?.drm?.getLicense ?? null;
-    this.sourceHeaders = { ...(source?.headers ?? {}) };
+    this.sourceHeaders = { ...source?.headers };
     this.thumbnails =
       source?.thumbnails != null
         ? new ThumbnailTrack(source.thumbnails, this.sourceHeaders)
@@ -566,12 +571,12 @@ export class Player {
   }
 
   /** Pins a quality from `status.video.qualities`, or `'auto'`. */
-  async selectQuality(id: string | 'auto'): Promise<void> {
+  async selectQuality(id: string): Promise<void> {
     await this.video({ op: 'selectQuality', id: id === 'auto' ? null : id });
   }
 
   /** Plays an audio track from `status.video.tracks`, or `'auto'`. */
-  async selectAudioTrack(id: string | 'auto'): Promise<void> {
+  async selectAudioTrack(id: string): Promise<void> {
     await this.video({ op: 'selectAudioTrack', id: id === 'auto' ? null : id });
   }
 

@@ -150,7 +150,7 @@ export class WebVideo implements SwapStage {
       (e as VideoElementLike).controls = controls && e === current;
     if (container === this.container) return this.report();
     this.disconnect();
-    this.stage.parentNode?.removeChild(this.stage);
+    this.stage.remove();
     this.container = container;
     if (container) {
       container.appendChild(this.stage);
@@ -186,7 +186,7 @@ export class WebVideo implements SwapStage {
 
   release(): void {
     this.disconnect();
-    this.stage.parentNode?.removeChild(this.stage);
+    this.stage.remove();
     this.releaseWakeLock();
     this.clearCueTimer();
   }
@@ -202,7 +202,7 @@ export class WebVideo implements SwapStage {
     if (g.IntersectionObserver) {
       const io = new g.IntersectionObserver(
         (entries) => {
-          const entry = entries[entries.length - 1];
+          const entry = entries.at(-1);
           if (!entry) return;
           this.visible = entry.isIntersecting && entry.intersectionRatio > 0;
           this.report();
@@ -214,7 +214,7 @@ export class WebVideo implements SwapStage {
     }
     if (g.ResizeObserver) {
       const ro = new g.ResizeObserver((entries) => {
-        const rect = entries[entries.length - 1]?.contentRect;
+        const rect = entries.at(-1)?.contentRect;
         if (!rect) return;
         this.width = rect.width;
         this.height = rect.height;
@@ -331,21 +331,17 @@ export class WebVideo implements SwapStage {
   /** Every status: the wake lock and the subtitles follow it. */
   statusChanged(status: EngineStatus): void {
     this.status = status;
-    this.updateWakeLock(this.host.engine.wantsScreenAwake);
+    if (this.host.engine.wantsScreenAwake) this.holdWakeLock();
+    else this.releaseWakeLock();
     this.refreshCues();
   }
 
-  private updateWakeLock(wanted: boolean): void {
-    if (wanted && this.wakeLock == null) {
-      const lock = browser().navigator?.wakeLock;
-      this.wakeLock = lock
-        ? lock.request('screen').catch(() => null)
-        : Promise.resolve(null);
-    } else if (!wanted) {
-      this.releaseWakeLock();
-    } else {
-      // Held already (a hidden page lost it: the next status asks again).
-    }
+  private holdWakeLock(): void {
+    if (this.wakeLock != null) return;
+    const lock = browser().navigator?.wakeLock;
+    this.wakeLock = lock
+      ? lock.request('screen').catch(() => null)
+      : Promise.resolve(null);
   }
 
   private releaseWakeLock(): void {

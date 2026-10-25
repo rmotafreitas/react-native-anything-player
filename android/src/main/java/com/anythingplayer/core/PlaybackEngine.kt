@@ -1675,20 +1675,21 @@ class PlaybackEngine(
       lastBufferedAdvanceAt = t
     }
     val stalled = stallStartedAt ?: return
-    if (network == NetworkState.OFFLINE) {
-      if (t - lastBufferedAdvanceAt >= RecoveryPolicy.STALL_DEAD_MS) {
-        if (!options.reconnect) return failStall("offline")
-        if (recoveringSince == null) recoveringSince = stalled
-        scheduleReconnect("offline")
-      }
-      return
-    }
+    if (network == NetworkState.OFFLINE) return heartbeatOffline(t, stalled)
     val deadLimit = if (suspect) RecoveryPolicy.SUSPECT_STALL_DEAD_MS else RecoveryPolicy.STALL_DEAD_MS
     when {
       t - lastBufferedAdvanceAt >= deadLimit -> recoverStall("stalled ${t - stalled}ms with no data")
       t - stalled >= RecoveryPolicy.STALL_MAX_MS -> recoverStall("stalled ${t - stalled}ms")
       isLive && driftMs + (t - stalled) >= options.liveMaxDriftMs -> recoverStall("live drift during stall")
     }
+  }
+
+  /** Offline, a stall with no data for long enough waits for the network (or fails). */
+  private fun heartbeatOffline(t: Long, stalled: Long) {
+    if (t - lastBufferedAdvanceAt < RecoveryPolicy.STALL_DEAD_MS) return
+    if (!options.reconnect) return failStall("offline")
+    if (recoveringSince == null) recoveringSince = stalled
+    scheduleReconnect("offline")
   }
 
   /**
@@ -2566,7 +2567,7 @@ class PlaybackEngine(
 
   /** No bandwidth reading yet: the lowest at least 480p (or the tallest under it). */
   private fun automaticStart(order: List<Int>): Int {
-    val table = renditions!!
+    val table: List<Rendition> = renditions!!
     val tall = order.firstOrNull { i -> table[i].height?.let { it >= RecoveryPolicy.START_MIN_HEIGHT } ?: false }
     if (tall != null) return tall
     val allKnown = order.all { table[it].height != null }

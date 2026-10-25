@@ -58,7 +58,7 @@ export function answerLicense(command: Record<string, unknown>): void {
   waiting.reject(
     engineError(
       'DRM_LICENSE_FAILED',
-      `The app's getLicense failed: ${String(command.error ?? 'no license')}.`,
+      `The app's getLicense failed: ${typeof command.error === 'string' ? command.error : 'no license'}.`,
       false
     )
   );

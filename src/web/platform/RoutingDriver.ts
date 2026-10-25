@@ -56,8 +56,7 @@ export class RoutingDriver implements EngineDriver {
   }
 
   seek(seconds: number, exact = false): void {
-    if (exact) this.target.seek(seconds, true);
-    else this.target.seek(seconds);
+    this.target.seek(seconds, exact);
   }
 
   setVideoEnabled(enabled: boolean): void {

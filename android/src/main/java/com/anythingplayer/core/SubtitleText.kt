@@ -50,6 +50,8 @@ object SubtitleCharset {
 
   private fun isTrail(b: Int): Boolean = b in 0x40..0x7e || b in 0x80..0xfc
 
+  private fun isLead(b: Int): Boolean = b in 0x81..0x9f || b in 0xe0..0xfc
+
   /** Whether the bytes are valid Shift-JIS with the lead bytes of Japanese text. */
   private fun looksShiftJis(bytes: ByteArray): Boolean {
     var pairs = 0
@@ -60,16 +62,15 @@ object SubtitleCharset {
       // ASCII and half-width katakana are one byte.
       if (b < 0x80 || b in 0xa1..0xdf) {
         i += 1
-      } else {
-        val lead = b in 0x81..0x9f || b in 0xe0..0xfc
-        val trail = if (i + 1 < bytes.size) bytes[i + 1].toInt() and 0xff else -1
-        if (!lead || trail < 0 || !isTrail(trail)) return false
-        // Hiragana, katakana and most kanji lead with 0x81–0x9F: Cyrillic in
-        // Windows-1251 almost never does.
-        if (b <= 0x9f) kana += 1
-        pairs += 1
-        i += 2
+        continue
       }
+      val trail = bytes.getOrNull(i + 1)?.toInt()?.and(0xff) ?: return false
+      if (!isLead(b) || !isTrail(trail)) return false
+      // Hiragana, katakana and most kanji lead with 0x81–0x9F: Cyrillic in
+      // Windows-1251 almost never does.
+      if (b <= 0x9f) kana += 1
+      pairs += 1
+      i += 2
     }
     return pairs > 0 && kana >= pairs * 0.5
   }

@@ -104,7 +104,8 @@ export interface MediaKeySessionLike extends EventTargetLike {
 export interface BoxLike {
   readonly style: Record<string, string>;
   className: string;
-  readonly parentNode: { removeChild(child: unknown): unknown } | null;
+  readonly parentNode: object | null;
+  remove(): void;
   setAttribute(name: string, value: string): void;
   requestFullscreen?(): Promise<void>;
   webkitRequestFullscreen?(): void;
@@ -114,7 +115,6 @@ export interface BoxLike {
 export interface ElementLike extends EventTargetLike, BoxLike {
   textContent: string | null;
   appendChild(child: unknown): unknown;
-  removeChild(child: unknown): unknown;
   replaceChildren?(...children: unknown[]): void;
 }
 
