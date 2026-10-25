@@ -24,7 +24,7 @@ import {
   type SubtitleSink,
 } from '../core/video';
 import type { SubtitleCue } from '../core/subtitles/types';
-import type { SubtitleSource } from '../types';
+import type { SourceInput, SubtitleSource } from '../types';
 
 const flush = () => new Promise<void>((r) => setImmediate(() => r()));
 
@@ -1076,6 +1076,53 @@ describe('Player video', () => {
           headers: { Authorization: 'Bearer new' },
         },
       });
+    });
+
+    it("hands license requests to a refreshed source's getLicense, unless another load came first", async () => {
+      const drm = (getLicense: () => Promise<Uint8Array>) => ({
+        widevine: { licenseUrl: 'https://lic.example/w' },
+        getLicense,
+      });
+      const license = (id: string) =>
+        fake.emit({
+          type: 'licenseRequest',
+          playerId: id,
+          requestId: 8,
+          keySystem: 'widevine',
+          challenge: 'AQID',
+          contentId: null,
+          licenseUrl: 'https://lic.example/w',
+          headers: {},
+        });
+      const first = jest.fn(async () => new Uint8Array([1]));
+      const refreshed = jest.fn(async () => new Uint8Array([2]));
+      const p = videoPlayer();
+      await p.load({
+        uri,
+        drm: drm(first),
+        refresh: async () => ({ uri, drm: drm(refreshed) }),
+      });
+      ask(p.id);
+      await flush();
+      license(p.id);
+      await flush();
+      expect(refreshed).toHaveBeenCalledTimes(1);
+      expect(first).not.toHaveBeenCalled();
+
+      // The same refresh for a second load: the first load's late answer is not it.
+      let answer!: (source: SourceInput) => void;
+      const late = () =>
+        new Promise<SourceInput>((resolve) => (answer = resolve));
+      const second = jest.fn(async () => new Uint8Array([3]));
+      await p.load({ uri, drm: drm(first), refresh: late });
+      ask(p.id);
+      await p.load({ uri, drm: drm(second), refresh: late });
+      answer({ uri, drm: drm(refreshed) });
+      await flush();
+      license(p.id);
+      await flush();
+      expect(second).toHaveBeenCalledTimes(1);
+      expect(refreshed).toHaveBeenCalledTimes(1);
     });
 
     it('tells the app when the source is about to expire', async () => {

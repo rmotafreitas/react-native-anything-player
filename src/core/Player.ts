@@ -274,6 +274,8 @@ export class Player {
   private released = false;
   /** The current source's `refresh`, its headers and its thumbnail track. */
   private refreshSource: Source['refresh'] | null = null;
+  /** Counts the loads, so an answer for an earlier one changes nothing. */
+  private loads = 0;
   /** The current source's `drm.getLicense`. */
   private licenseHook: NonNullable<Source['drm']>['getLicense'] | null = null;
   private sourceHeaders: Record<string, string> = {};
@@ -429,6 +431,7 @@ export class Player {
     source: Source | null,
     normalized: Record<string, unknown>
   ): void {
+    this.loads += 1;
     this.refreshSource = source?.refresh ?? null;
     this.licenseHook = source?.drm?.getLicense ?? null;
     this.sourceHeaders = { ...source?.headers };
@@ -701,6 +704,7 @@ export class Player {
     reason: 'unauthorized' | 'expiring'
   ): Promise<void> {
     const refresh = this.refreshSource;
+    const load = this.loads;
     const next = refresh ? await callRefresh(refresh, reason) : null;
     if (this.released) return;
     let source: Record<string, unknown> | null = null;
@@ -712,7 +716,7 @@ export class Player {
     // A refreshed source's own DRM hook answers from now on (unless a new
     // source was loaded meanwhile).
     const drm = source != null ? (next as Source).drm : undefined;
-    if (drm != null && this.refreshSource === refresh) {
+    if (drm != null && this.loads === load) {
       this.licenseHook = drm.getLicense ?? null;
     }
     const command =
