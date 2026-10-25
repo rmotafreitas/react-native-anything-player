@@ -144,7 +144,7 @@ jobs:
       # The Cast SDKs are opt-in (`rnapCast`): build with them linked too, so
       # neither configuration breaks. Skipped when turbo already proved the
       # sources unchanged.
-      - name: Build example for Android with Google Cast, Sound and Android Auto
+      - name: Build example for Android with Google Cast, Sound, Android Auto and video
         if: env.turbo_cache_hit != 1
         working-directory: example/android
         env:
