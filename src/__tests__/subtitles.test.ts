@@ -32,7 +32,7 @@ describe('subtitle parsing (conformance/subtitles/parse.json)', () => {
     load<ParseCase>('subtitles/parse.json').map((c) => [c.name, c] as const)
   )('%s', (_, c) => {
     const cues = parseSubtitles(c.text, c.format);
-    expect(cues.length).toBe(c.expect.length);
+    expect(cues).toHaveLength(c.expect.length);
     c.expect.forEach((want, i) => {
       const cue = cues[i] as unknown as Record<string, unknown>;
       for (const [key, value] of Object.entries(want)) {

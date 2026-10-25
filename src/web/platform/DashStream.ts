@@ -233,7 +233,7 @@ export class DashStream implements HlsTracks {
     this.player = player;
     player.addEventListener('error', (event: { detail?: ShakaError }) => {
       const error = event?.detail;
-      if (!error || error.severity !== CRITICAL) return;
+      if (error?.severity !== CRITICAL) return;
       this.fail(shakaFailure(error));
     });
     player.addEventListener('trackschanged', () => this.tracksChanged());

@@ -100,13 +100,13 @@ function encodeText(text: string): Uint8Array {
 }
 
 function base64Url(bytes: Uint8Array): string {
-  let text = toBase64(bytes).replace(/\+/g, '-').replace(/\//g, '_');
+  let text = toBase64(bytes).replaceAll('+', '-').replaceAll('/', '_');
   while (text.endsWith('=')) text = text.slice(0, -1);
   return text;
 }
 
 function fromBase64Url(text: string): Uint8Array {
-  const padded = text.replace(/-/g, '+').replace(/_/g, '/');
+  const padded = text.replaceAll('-', '+').replaceAll('_', '/');
   return fromBase64(padded + '='.repeat((4 - (padded.length % 4)) % 4));
 }
 
@@ -174,7 +174,7 @@ export function playReadyChallenge(message: Uint8Array): {
 export function fairPlayContentId(initData: Uint8Array): string | null {
   for (const label of ['utf-16le', 'utf-8']) {
     const text = decodeText(initData, label)
-      .split(String.fromCharCode(0))
+      .split(String.fromCodePoint(0))
       .join('');
     const uri = /skd:\/\/([^\s?/]+)/.exec(text);
     if (uri) return uri[1]!;

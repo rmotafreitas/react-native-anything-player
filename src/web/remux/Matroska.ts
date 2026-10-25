@@ -346,8 +346,8 @@ export class MatroskaDemuxer {
 
   /** One step: a master closed, bytes skipped, an element read; `false` while more bytes are needed. */
   private step(sink: DemuxSink): boolean {
-    const top = this.stack[this.stack.length - 1];
-    if (top && top.end != null && this.pos >= top.end) {
+    const top = this.stack.at(-1);
+    if (top?.end != null && this.pos >= top.end) {
       this.close(this.stack.pop()!, sink);
       return true;
     }
@@ -411,10 +411,7 @@ export class MatroskaDemuxer {
       if (readUint(this.buf, i, 4) === ID.Cluster) {
         this.pos = this.bufStart + i;
         this.group = null;
-        while (
-          this.stack.length > 0 &&
-          this.stack[this.stack.length - 1]!.id !== ID.Segment
-        )
+        while (this.stack.length > 0 && this.stack.at(-1)!.id !== ID.Segment)
           this.stack.pop();
         return true;
       }

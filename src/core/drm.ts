@@ -41,7 +41,7 @@ function clearKeys(value: unknown): Record<string, string> | null {
   const out: Record<string, string> = {};
   for (const [kid, key] of Object.entries(value as Record<string, unknown>)) {
     // Key ids are often written as UUIDs: the dashes go.
-    const id = kid.replace(/-/g, '');
+    const id = kid.replaceAll('-', '');
     if (!HEX_ID.test(id) || typeof key !== 'string' || !HEX_ID.test(key))
       throw invalid(
         'drm.clearkey.keys must map 16-byte key ids to 16-byte keys, in hex.'
@@ -105,14 +105,14 @@ const base64 = () => globalThis as unknown as Base64;
 export function toBase64(bytes: Uint8Array): string {
   let binary = '';
   for (let i = 0; i < bytes.length; i += 0x8000)
-    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    binary += String.fromCodePoint(...bytes.subarray(i, i + 0x8000));
   return base64().btoa(binary);
 }
 
 export function fromBase64(text: string): Uint8Array {
   const binary = base64().atob(text);
   const out = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i);
+  for (let i = 0; i < binary.length; i++) out[i] = binary.codePointAt(i)!;
   return out;
 }
 

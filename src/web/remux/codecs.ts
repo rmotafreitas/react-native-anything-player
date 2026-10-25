@@ -105,9 +105,9 @@ const AVC_SARS: Array<[number, number]> = [
   [2, 1],
 ];
 
-const HIGH_PROFILES = [
+const HIGH_PROFILES = new Set([
   100, 110, 122, 244, 44, 83, 86, 118, 128, 138, 139, 134, 135,
-];
+]);
 
 /** The high profiles' chroma format and bit depths (the scaling lists skipped). */
 function avcChroma(r: BitReader, profile: number) {
@@ -117,7 +117,7 @@ function avcChroma(r: BitReader, profile: number) {
     bitDepthChroma: 8,
     separatePlanes: false,
   };
-  if (!HIGH_PROFILES.includes(profile)) return out;
+  if (!HIGH_PROFILES.has(profile)) return out;
   out.chromaFormat = r.ue();
   if (out.chromaFormat === 3) out.separatePlanes = r.bit();
   out.bitDepthLuma = r.ue() + 8;
@@ -356,8 +356,7 @@ export function hevcCodec(hvcC: Uint8Array): string {
     .toUpperCase();
   const tier = (b >> 5) & 1 ? 'H' : 'L';
   const constraints = Array.from(hvcC.subarray(6, 12));
-  while (constraints.length > 0 && constraints[constraints.length - 1] === 0)
-    constraints.pop();
+  while (constraints.length > 0 && constraints.at(-1) === 0) constraints.pop();
   const tail = constraints.map((c) => `.${hex2(c)}`).join('');
   return `hvc1.${space}${b & 31}.${compat}.${tier}${hvcC[12] ?? 0}${tail}`;
 }
@@ -757,7 +756,7 @@ export function opusConfig(head: Uint8Array): {
   channels: number;
 } | null {
   if (head.length < 19) return null;
-  const magic = String.fromCharCode(...head.subarray(0, 8));
+  const magic = String.fromCodePoint(...head.subarray(0, 8));
   if (magic !== 'OpusHead') return null;
   const channels = head[9]!;
   const family = head[18]!;

@@ -26,7 +26,7 @@ export function packedLanguage(language: string | null): number {
   if (!language || !/^[a-z]{3}$/.test(language)) return LANGUAGE_UND;
   let packed = 0;
   for (let i = 0; i < 3; i++)
-    packed = (packed << 5) | (language.charCodeAt(i) - 0x60);
+    packed = (packed << 5) | (language.codePointAt(i)! - 0x60);
   return packed;
 }
 

@@ -89,7 +89,7 @@ export function assColor(value: string): string | null {
   const v = value.trim();
   const hex = /^&?H([0-9A-Fa-f]{1,8})&?$/.exec(v);
   let bgr: number;
-  if (hex) bgr = parseInt(hex[1]!, 16) & 0xffffff;
+  if (hex) bgr = Number.parseInt(hex[1]!, 16) & 0xffffff;
   else if (/^-?\d+$/.test(v)) bgr = Number(v) & 0xffffff;
   else return null;
   const r = bgr & 0xff;
@@ -128,7 +128,7 @@ export class SpanBuilder {
 
   push(text: string): void {
     if (text === '' || this.drawing) return;
-    const last = this.spans[this.spans.length - 1];
+    const last = this.spans.at(-1);
     const span = toSpan(text, this.style);
     if (last != null && sameStyle(last, span)) last.text += text;
     else this.spans.push(span);
@@ -139,7 +139,7 @@ export class SpanBuilder {
     const spans = this.spans.map((s) => ({ ...s }));
     const first = spans[0];
     if (first) first.text = first.text.trimStart();
-    const last = spans[spans.length - 1];
+    const last = spans.at(-1);
     if (last) last.text = last.text.trimEnd();
     return spans.filter((s) => s.text !== '');
   }
@@ -274,9 +274,9 @@ export function decodeEntities(text: string): string {
   return text.replace(
     /&(#x[0-9a-f]+|#\d+|[a-z]+);/gi,
     (whole, name: string) => {
-      if (name[0] === '#') {
+      if (name.startsWith('#')) {
         const hex = name[1] === 'x' || name[1] === 'X';
-        const code = parseInt(name.slice(hex ? 2 : 1), hex ? 16 : 10);
+        const code = Number.parseInt(name.slice(hex ? 2 : 1), hex ? 16 : 10);
         return Number.isFinite(code) ? String.fromCodePoint(code) : whole;
       }
       return ENTITIES[name.toLowerCase()] ?? whole;

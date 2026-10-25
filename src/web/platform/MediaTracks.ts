@@ -44,7 +44,7 @@ const textId = (i: number) => `track:t:${i}`;
 /** The index in a `track:a:<i>` / `track:t:<i>` id, if it is that kind. */
 function indexOf(id: string | null, kind: 'a' | 't'): number | null {
   const m = id == null ? null : /^track:([at]):(\d+)$/.exec(id);
-  return m && m[1] === kind ? Number(m[2]) : null;
+  return m?.[1] === kind ? Number(m[2]) : null;
 }
 
 const isText = (t: TextTrackLike) =>

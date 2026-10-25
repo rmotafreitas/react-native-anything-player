@@ -51,7 +51,7 @@ export function remuxFormatOf(
 ): RemuxFormat | null {
   const path = (uri.split(/[?#]/)[0] ?? '').toLowerCase();
   if (/\.(mkv|mk3d|mka)$/.test(path)) return 'matroska';
-  if (/\.webm$/.test(path))
+  if (path.endsWith('.webm'))
     return element.canPlayType('video/webm') === '' ? 'matroska' : null;
   if (/\.(ts|m2ts|mts|m2t|tsv|mpegts)$/.test(path))
     return element.canPlayType('video/mp2t') === '' ? 'mpegts' : null;

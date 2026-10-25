@@ -461,7 +461,7 @@ export class WebModule implements PlayerModule {
 /** Decodes in the given encoding (UTF-8 when the browser does not know it). */
 function decode(bytes: Uint8Array, charset: string): string {
   const Decoder = browser().TextDecoder;
-  if (!Decoder) return String.fromCharCode(...bytes);
+  if (!Decoder) return String.fromCodePoint(...bytes);
   try {
     return new Decoder(charset).decode(bytes);
   } catch {

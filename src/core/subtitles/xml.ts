@@ -77,7 +77,7 @@ export function parseXml(xml: string): XmlElement | null {
   let i = 0;
   while (i < xml.length) {
     const lt = xml.indexOf('<', i);
-    const top = stack[stack.length - 1]!;
+    const top = stack.at(-1)!;
     if (lt < 0) {
       top.children.push(decodeEntities(xml.slice(i)));
       break;
@@ -94,7 +94,7 @@ export function parseXml(xml: string): XmlElement | null {
 }
 
 function markup(tag: string, stack: XmlElement[]): void {
-  const top = stack[stack.length - 1]!;
+  const top = stack.at(-1)!;
   if (tag.startsWith('<![CDATA[')) {
     top.children.push(tag.slice(9, -3));
     return;

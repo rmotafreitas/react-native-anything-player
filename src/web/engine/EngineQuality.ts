@@ -410,7 +410,7 @@ export abstract class EngineQuality extends EngineFades {
     if (order.length === 0) return null;
     const start = this.options.video!.quality.startQuality;
     if (start === 'lowest') return order[0]!;
-    if (start === 'highest') return order[order.length - 1]!;
+    if (start === 'highest') return order.at(-1)!;
     if (typeof start === 'number') return this.tallestUpTo(order, start);
     if (this.bandwidth != null)
       return this.fitting(order, this.bandwidth) ?? order[0]!;
@@ -436,7 +436,7 @@ export abstract class EngineQuality extends EngineFades {
     });
     if (tall != null) return tall;
     const allKnown = order.every((i) => table[i]!.height != null);
-    return allKnown ? order[order.length - 1]! : order[0]!;
+    return allKnown ? order.at(-1)! : order[0]!;
   }
 
   /** Which rendition should play now. */
@@ -459,7 +459,7 @@ export abstract class EngineQuality extends EngineFades {
     const all = this.videoOrder();
     const position = all.indexOf(level);
     const below = order.filter((i) => all.indexOf(i) < position);
-    return below.length > 0 ? below[below.length - 1]! : order[0]!;
+    return below.length > 0 ? below.at(-1)! : order[0]!;
   }
 
   /** Moves to the target rendition if it changed. */

@@ -132,7 +132,7 @@ function clock(seconds: number): string {
 }
 
 const escapeText = (text: string) =>
-  text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 
 const WRITE_ALIGN: Record<SubtitleCue['align'], string> = {
   left: 'start',

@@ -107,7 +107,7 @@ function privateStream(descriptors: Uint8Array) {
     const length = descriptors[at + 1]!;
     const body = descriptors.subarray(at + 2, at + 2 + length);
     const registration =
-      tag === 0x05 ? String.fromCharCode(...body.subarray(0, 4)) : '';
+      tag === 0x05 ? String.fromCodePoint(...body.subarray(0, 4)) : '';
     if (tag === 0x6a || registration === 'AC-3')
       return { kind: 'ac3' as const, track: 'audio' as const, reason: null };
     if (tag === 0x7a || registration === 'EAC3')
@@ -127,7 +127,9 @@ function languageOf(descriptors: Uint8Array): string | null {
   while (at + 2 <= descriptors.length) {
     const length = descriptors[at + 1]!;
     if (descriptors[at] === 0x0a && length >= 3) {
-      const code = String.fromCharCode(...descriptors.subarray(at + 2, at + 5));
+      const code = String.fromCodePoint(
+        ...descriptors.subarray(at + 2, at + 5)
+      );
       return /^[a-z]{3}$/i.test(code) ? code.toLowerCase() : null;
     }
     at += 2 + length;
