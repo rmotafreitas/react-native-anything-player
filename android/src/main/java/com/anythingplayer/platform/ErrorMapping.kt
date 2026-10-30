@@ -55,8 +55,9 @@ private fun causeChain(error: Throwable?): String {
  * native code, its name and the whole cause chain are always kept.
  *
  * @param offline the device reported no connectivity when the error landed.
- * @param hadPlayed audio had flowed for this source (a malformed chunk in a
- *   live stream that was playing is a transient server glitch, not a bad file).
+ * @param hadPlayed the item was ready or played (its container and codecs were
+ *   taken: a malformed chunk or a decoding failure now is a transient glitch,
+ *   not a bad file).
  */
 @OptIn(UnstableApi::class)
 internal fun mapPlaybackException(error: PlaybackException, offline: Boolean, hadPlayed: Boolean): PlayerError {

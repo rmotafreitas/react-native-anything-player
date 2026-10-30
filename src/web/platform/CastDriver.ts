@@ -36,8 +36,11 @@ type CastObserver = Pick<
 
 /** The Cast media channel (`SET_PLAYBACK_RATE` goes there). */
 const MEDIA_NAMESPACE = 'urn:x-cast:com.google.cast.media';
-/** A sender's requests carry their own ids (0 is the receiver's broadcasts). */
-let rateRequests = 0;
+/**
+ * A sender's requests carry their own ids (0 is the receiver's broadcasts).
+ * These start far from the SDK's own, so a reply never settles one of its.
+ */
+let rateRequests = 0x40000000;
 
 const CONTENT_TYPES: Array<[RegExp, string]> = [
   [/\.m3u8$/, 'application/x-mpegURL'],
@@ -206,24 +209,36 @@ export class CastDriver implements EngineDriver {
     const media = this.loaded ? session?.getMediaSession() : null;
     if (!media || (this.rate === 1 && !this.rateSent)) return;
     const supported = !this.live && this.rate >= 0.5 && this.rate <= 2;
-    if (!supported || media.mediaSessionId == null || !session?.sendMessage) {
+    if (!supported)
       this.observer.onNote(this.generation, 'cast rate ignored', {
         rate: `${this.rate}`,
       });
+    // Unsupported after a rate was sent: the receiver goes back to 1x.
+    const target = supported ? this.rate : 1;
+    if (!supported && !this.rateSent) return;
+    if (media.mediaSessionId == null || !session?.sendMessage) {
+      if (supported)
+        this.observer.onNote(this.generation, 'cast rate ignored', {
+          rate: `${this.rate}`,
+        });
       return;
     }
-    this.rateSent = this.rate !== 1;
-    this.rateApplied = true;
+    this.rateSent = target !== 1;
+    this.rateApplied = supported;
     rateRequests += 1;
+    const request = rateRequests;
     session
       .sendMessage(MEDIA_NAMESPACE, {
         type: 'SET_PLAYBACK_RATE',
-        requestId: rateRequests,
+        requestId: request,
         mediaSessionId: media.mediaSessionId,
-        playbackRate: this.rate,
+        playbackRate: target,
       })
+      // A message that could not be sent (a receiver that answers with an
+      // error shows it in its status instead). A newer request replaced it?
+      // Then its outcome is the one that counts.
       .catch((error: unknown) => {
-        this.rateApplied = false;
+        if (request === rateRequests) this.rateApplied = false;
         this.observer.onNote(this.generation, 'cast rate refused', {
           error: String(error),
         });

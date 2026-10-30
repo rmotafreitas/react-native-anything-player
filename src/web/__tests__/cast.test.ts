@@ -478,7 +478,11 @@ describe('playing on a receiver', () => {
     // What receivers cannot play is said, and reported as 1x.
     await module.setRate(id, 3);
     expect(notes(id)).toContain('cast rate ignored');
-    expect(cast.messages).toHaveLength(1);
+    // The receiver goes back to 1x, as the docs say (it was at 1.5x).
+    expect(cast.messages).toMatchObject([
+      { playbackRate: 1.5 },
+      { type: 'SET_PLAYBACK_RATE', playbackRate: 1 },
+    ]);
 
     // Nothing to do when it is already as wanted.
     await module.play(id);
