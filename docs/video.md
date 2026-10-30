@@ -219,7 +219,7 @@ Adaptive sources (HLS) are switched by the platform's own player (AVPlayer, ExoP
 | Always | none | `maxResolution`, `maxBitrate` |
 | Where automatic starts | the network decides | `startQuality: 'lowest' \| 'highest' \| <height>` |
 
-A cap only steers what loads next: what is already buffered plays on, so a resize or a network change never stalls the picture. Picture in Picture keeps the cap the view had: no switch, and no rebuffer, on the way in or back.
+On iOS and the web a cap only steers what loads next: what is already buffered plays on, so a resize or a network change does not stall the picture. On Android, a cap that changes which variants ExoPlayer may pick can make it drop its buffer and rebuffer briefly. Picture in Picture keeps the cap the view had: no switch, and no rebuffer, on the way in or back.
 
 Safari plays HLS itself, and a page cannot cap or pin Safari's own HLS: there the browser picks the quality, and `status.video.qualities` stays empty. Everywhere else on the web, HLS goes through hls.js (once registered) and DASH through Shaka, and every cap applies.
 

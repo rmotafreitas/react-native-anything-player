@@ -81,12 +81,13 @@ In browsers, RNAP reads a stream itself (Media Source Extensions) when the stati
 | Station name and genre (`icy-name`, `icy-genre`) | ✓ | ✓ | ◐ ¹ | ◐ ¹ | ◐ ¹ | ◐ ¹ |
 | A dropped connection replaced without stopping (`discontinuity`) | ✓ | ✓ | ◐ ¹ | ◐ ¹ | ◐ ¹ | ◐ ¹ |
 | `liveOffset` (how far behind live) | ✓ | ✓ | ◐ ¹ ³ | ◐ ¹ ³ | ◐ ¹ | ◐ ¹ |
-| HLS / ID3 timed metadata | ✓ | ✓ | ◐ ³ | ◐ ³ | ✓ | ✓ |
+| HLS / ID3 timed metadata | ✓ | ✓ | ◐ ³ | ◐ ³ | – ⁴ | – ⁴ |
 | One connection per stream, closed on release | ✓ | ✓ | ◐ ¹ | ◐ ¹ | ◐ ¹ | ◐ ¹ |
 
 1. For streams RNAP reads (with CORS); the plain element has no titles, no `liveOffset`, and manages its own connections.
 2. Firefox takes MP3 and AAC only inside MP4: RNAP repackages the stream as it arrives ([how](web.md#mp3-and-aac-in-mp4-firefox)).
 3. Through hls.js.
+4. Safari plays HLS itself and hands its ID3 tags to no page.
 
 ## Recovery
 
@@ -136,7 +137,7 @@ A `Player` with a picture ([guide](video.md), [subtitles](subtitles.md)).
 | `<VideoView>` / `attachTo`, files and HLS | ✓ ² | ✓ ¹ | ✓ ³ | ✓ ³ | ✓ | ✓ † |
 | DASH | ◐ ² ⁶ | ✓ ¹ | ✓ ⁷ | ✓ ⁷ | ✓ ⁷ | ✓ ⁷ † |
 | Matroska, WebM and MPEG-TS (files and live channels), their audio languages and subtitles | ✓ ² ⁸ | ✓ ¹ | ✓ ⁸ | ✓ ⁸ | ✓ ⁸ | ✓ ⁸ † |
-| Quality caps (the view, metered networks, Data Saver) and `selectQuality` | ✓ ² | ✓ ¹ | ✓ ³ | ✓ ³ | ◐ ⁴ | ◐ ⁴ † |
+| Quality caps (the view, metered networks, Data Saver) and `selectQuality` | ✓ ² | ◐ ¹ ¹⁴ | ✓ ³ | ✓ ³ | ◐ ⁴ | ◐ ⁴ † |
 | Separate quality files switched behind the picture | ✓ ² | ✓ ¹ | ✓ | ✓ | ✓ | ✓ † |
 | The source's audio languages and subtitles | ✓ ² | ✓ ¹ | ✓ ³ | ✓ ³ | ✓ | ✓ † |
 | Subtitle files (SubRip, WebVTT, TTML, ASS) in one overlay, `useCues()` | ✓ ² | ✓ ¹ | ✓ | ✓ | ✓ | ✓ † |
@@ -162,6 +163,7 @@ A `Player` with a picture ([guide](video.md), [subtitles](subtitles.md)).
 11. Widevine, PlayReady or Clear Key, whichever the browser has, through Media Source Extensions (HLS with hls.js, DASH with Shaka); Clear Key in CI.
 12. A build option (`videoDecoders` in the Expo plugin, `npx rnap add video-decoders`), used only for what the device cannot decode. The sound decoders were tried on the emulator; the VP9 and AV1 pictures render wrongly on emulators and are not yet tried on a device †.
 13. The picture plays without the sound, but no error says why yet.
+14. A cap that changes which HLS or DASH variants ExoPlayer may pick can make it drop what it buffered and rebuffer briefly.
 
 ### Audio features on a video player
 
@@ -175,13 +177,13 @@ A video `Player` is the same player with a picture: the engine's rules hold for 
 | Lock screen, notification, media keys | ✓ ³ † | ✓ ³ | ✓ ³ | ✓ ³ | ✓ ³ | ✓ ³ † |
 | Audio focus, calls, ducking | ✓ ⁴ † | ✓ ⁴ | – | – | – | – |
 | Background playback | ◐ ⁵ † | ◐ ⁵ | ◐ ⁶ | ◐ ⁶ | ◐ ⁶ | ◐ ⁶ † |
-| HLS / ID3 timed metadata | ✓ † | ✓ | ✓ ⁷ | ✓ ⁷ | ✓ | ✓ † |
+| HLS / ID3 timed metadata | ✓ † | ✓ | ✓ ⁷ | ✓ ⁷ | – ¹¹ | – ¹¹ |
 | ICY titles of an internet radio stream | – ⁸ | ✓ | – ⁸ | – ⁸ | – ⁸ | – ⁸ |
 | Visualizer (`audioSample`) | ◐ ⁹ † | ✓ | – ¹⁰ | – ¹⁰ | – ¹⁰ | – ¹⁰ |
 
 1. The system fixes the volume: `setVolume` and fades have no effect; the sleep timer pauses without a fade.
 2. In a hidden tab the browser runs timers less often: fades move in larger steps and the sleep timer can fire late.
-3. On demand: play, pause and ±10 s skips; live: play and pause. A muted or `ambient` player shows none (`focusWhenMuted`).
+3. Play, pause and, on demand, seeking. Skips reach your app when you ask for them (`mediaSession.commands`). A muted or `ambient` player shows none (`focusWhenMuted`).
 4. A muted video takes no focus, so it never pauses other apps' audio (`focusWhenMuted`).
 5. `whenBackgrounded`: `pause` (the default), `audio` (the sound goes on, the picture stops) or `pip`.
 6. `whenBackgrounded` defaults to `audio` on the web: a hidden tab plays on while it lives.
@@ -189,6 +191,7 @@ A video `Player` is the same player with a picture: the engine's rules hold for 
 8. A video player reads no ICY titles: play radio with an audio `Player`, which has them everywhere.
 9. Files; not streams or HLS.
 10. A `<video>` is never routed through Web Audio.
+11. Safari plays HLS itself and hands its ID3 tags to no page.
 
 ## Sound effects
 
