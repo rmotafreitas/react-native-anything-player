@@ -7,6 +7,14 @@ and versions follow [Semantic Versioning](https://semver.org/): see
 change and how releases are made. Changes not released yet are listed in the
 open release pull request.
 
+## [1.3.1](https://github.com/rmotafreitas/react-native-anything-player/compare/v1.3.0...v1.3.1) (2026-10-30)
+
+
+### Fixed
+
+* a quality switch re-opened in place counts as a switch ([708fb09](https://github.com/rmotafreitas/react-native-anything-player/commit/708fb0911714360d38927129075301524c5f552e))
+* switches re-open in place on AirPlay; quiet steps up wait from the load and back off ([faa2998](https://github.com/rmotafreitas/react-native-anything-player/commit/faa29983b89e9cc8864b9e2776f60a78c28c95d0))
+
 ## [1.3.0](https://github.com/rmotafreitas/react-native-anything-player/compare/v1.2.1...v1.3.0) (2026-10-30)
 
 Video, on every platform, as an opt-in part of the same player. Audio apps get the fixes below; the only change to plan for is the JavaScript size (see **Upgrading**).
