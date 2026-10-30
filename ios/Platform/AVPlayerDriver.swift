@@ -354,11 +354,10 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
     if video { setUpVideo(newItem) }
     observe(newItem, generation: generation)
     item = newItem
-    // A start later in the item: seeked before the item goes to the player,
-    // AVFoundation loads from there rather than from zero (an HLS source's
-    // first segment is not fetched for nothing). No completion handler: one
-    // is only allowed once the item is ready, where the seek in
-    // `itemStatusChanged` lands it exactly.
+    // A start later in the item: seeked before the item goes to the player
+    // (Apple's advice), AVFoundation loads from there rather than from zero:
+    // an HLS source's first segment is not fetched for nothing. The seek at
+    // readiness (`itemStatusChanged`) still lands it exactly.
     if let start = pendingStart, !liveHint {
       newItem.seek(
         to: CMTime(seconds: start, preferredTimescale: 1000), toleranceBefore: .zero, toleranceAfter: .zero,
