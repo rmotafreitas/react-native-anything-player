@@ -161,7 +161,7 @@ test('a rendition switch happens behind the picture, without leaving playing', a
     .poll(async () => (await status(page)).state, { timeout: 15_000 })
     .toBe('playing');
   // The view is 1280×720: no 480p rendition, so automatic starts at 720p.
-  expect((await status(page)).video?.quality).toBe('r1');
+  expect((await status(page)).quality).toBe('r1');
   await page.waitForTimeout(1500);
   const before = await page.evaluate(
     () => window.videoTest.player.getProgress().position
@@ -171,7 +171,7 @@ test('a rendition switch happens behind the picture, without leaving playing', a
   });
   await page.evaluate(() => window.videoTest.player.selectQuality('r0'));
   await expect
-    .poll(async () => (await status(page)).video?.quality, { timeout: 15_000 })
+    .poll(async () => (await status(page)).quality, { timeout: 15_000 })
     .toBe('r0');
   await expect.poll(async () => (await status(page)).video?.height).toBe(360);
   // No loading, no rebuffer: the second element took over in the playing state.
@@ -210,7 +210,7 @@ test("an HLS source's own audio and subtitle groups are tracks: picked ones play
     .toEqual(['audio:en', 'audio:es', 'subtitles:en', 'subtitles:pt']);
   // Two pictures to choose from.
   expect(
-    (await status(page)).video?.qualities.filter((q) => !q.audioOnly)
+    (await status(page)).qualities.filter((q) => !q.audioOnly)
   ).toHaveLength(2);
   const tracks = (await status(page)).video!.tracks;
   const pt = tracks.find((t) => t.language === 'pt')!.id;
@@ -305,11 +305,9 @@ test('DASH plays through Shaka Player: its pictures are qualities, caps and pins
     .poll(async () => (await status(page)).state, { timeout: 20_000 })
     .toBe('playing');
   await expect
-    .poll(async () =>
-      (await status(page)).video?.qualities.map((q) => q.height)
-    )
+    .poll(async () => (await status(page)).qualities.map((q) => q.height))
     .toEqual([360, 720]);
-  const qualities = (await status(page)).video!.qualities;
+  const qualities = (await status(page)).qualities;
   expect((await status(page)).duration).toBeCloseTo(60, 0);
   // Pinning the 360p picture plays it.
   await page.evaluate(
@@ -317,7 +315,7 @@ test('DASH plays through Shaka Player: its pictures are qualities, caps and pins
     qualities[0]!.id
   );
   await expect
-    .poll(async () => (await status(page)).video?.quality, { timeout: 15_000 })
+    .poll(async () => (await status(page)).quality, { timeout: 15_000 })
     .toBe(qualities[0]!.id);
   await expect
     .poll(async () => (await status(page)).video?.height, { timeout: 15_000 })

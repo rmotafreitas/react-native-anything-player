@@ -52,7 +52,7 @@ export interface HlsListener {
   onTracks?(): void;
 }
 
-/** A variant's id in `status.video.qualities`. */
+/** A variant's id in `status.qualities`. */
 const variantId = (index: number) => `v${index}`;
 
 /** An audio-only level: an audio codec and no picture. */

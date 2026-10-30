@@ -30,6 +30,9 @@ export const baseStatus = (
   rate: 1,
   route: { kind: 'speaker', name: null },
   sleepAt: null,
+  qualities: [],
+  quality: null,
+  selectedQuality: null,
   ...overrides,
 });
 

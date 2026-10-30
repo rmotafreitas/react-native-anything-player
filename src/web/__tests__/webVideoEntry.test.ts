@@ -320,6 +320,9 @@ describe('statusToMap', () => {
     rate: 1,
     route: { kind: 'speaker', name: null },
     sleepAt: null,
+    qualities: [],
+    quality: null,
+    selectedQuality: null,
     video,
   });
 
@@ -327,7 +330,7 @@ describe('statusToMap', () => {
     expect(statusToMap(status(null), 3)).toMatchObject({ seq: 3, video: null });
   });
 
-  it('copies the qualities and tracks of a video player', () => {
+  it('copies the qualities, at the top, and the tracks of a video player', () => {
     const qualities = [
       { id: '720p', height: 720, bitrate: null, label: null, audioOnly: false },
     ];
@@ -339,21 +342,21 @@ describe('statusToMap', () => {
       firstFrame: true,
       audioOnly: null,
       pictureInPicture: false,
-      qualities,
-      quality: '720p',
-      selectedQuality: null,
       tracks,
       audioTrack: null,
       textTrack: 'en',
       subtitleDelay: 0.5,
       fullscreen: false,
     };
-    const map = statusToMap(status(video), 4) as {
-      video: typeof video;
-    };
+    const map = statusToMap(
+      { ...status(video), qualities, quality: '720p' },
+      4
+    ) as { video: typeof video; qualities: typeof qualities; quality: string };
     expect(map.video).toEqual(video);
-    expect(map.video.qualities).not.toBe(qualities);
-    expect(map.video.qualities[0]).not.toBe(qualities[0]);
+    expect(map.quality).toBe('720p');
+    expect(map.qualities).toEqual(qualities);
+    expect(map.qualities).not.toBe(qualities);
+    expect(map.qualities[0]).not.toBe(qualities[0]);
     expect(map.video.tracks[0]).not.toBe(tracks[0]);
   });
 });

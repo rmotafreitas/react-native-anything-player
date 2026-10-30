@@ -199,6 +199,7 @@ export abstract class EngineCore {
       rate: this.rate,
       route: this.route,
       sleepAt: this.sleepWallAt,
+      ...this.qualityStatus(),
       video: this.videoStatus(),
     };
   }
@@ -1037,6 +1038,11 @@ export abstract class EngineCore {
 
   /** `status.video`; `null` for an audio player. */
   protected abstract videoStatus(): EngineVideoStatus | null;
+  /** The qualities, the one playing and the app's pick. */
+  protected abstract qualityStatus(): Pick<
+    EngineStatus,
+    'qualities' | 'quality' | 'selectedQuality'
+  >;
   /** Audio focus is not this player's business (ambient, or muted without `focusWhenMuted`). */
   protected abstract get focusExempt(): boolean;
   /** A new source: the video facts reset and the start quality is picked. */

@@ -102,7 +102,8 @@ happened since the previous one.
 | `sleeps`, `fades` | sleep timers fired / `fadeTo` calls settled since the previous expect |
 | `orderedCommands` | ordered driver commands, each entry matched by string prefix at or after the previous match (subsequence): a fade-out that lands on a pause must send its last `volume(0.00)` before the `pause` |
 | `route`, `routeName` | `status.route.kind` / `status.route.name` |
-| `video` | `null`, or the listed fields of `status.video` (`width`, `height`, `hdr`, `firstFrame`, `audioOnly`, `pictureInPicture`, `quality`, `selectedQuality`, `audioTrack`, `textTrack`, `subtitleDelay`, `fullscreen`, and `qualities` and `tracks` as lists of ids) |
+| `video` | `null`, or the listed fields of `status.video` (`width`, `height`, `hdr`, `firstFrame`, `audioOnly`, `pictureInPicture`, `audioTrack`, `textTrack`, `subtitleDelay`, `fullscreen`, and `tracks` as a list of ids) |
+| `qualities`, `quality`, `selectedQuality` | `status.qualities` (as a list of ids), `status.quality`, `status.selectedQuality` |
 | `wantsMediaSession`, `wantsScreenAwake` | engine queries |
 | `refreshes` | refresh requests since the previous expect, `loadId:reason` |
 | `gen` | the current generation |

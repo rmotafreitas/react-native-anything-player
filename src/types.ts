@@ -207,7 +207,16 @@ export interface PlayerStatus {
    * set (see `Player.sleep`).
    */
   sleepAt: number | null;
-  /** The picture, its qualities and tracks; `null` for an audio player. */
+  /**
+   * The qualities to pick from with `selectQuality`: an HLS or DASH source's
+   * variants, or a video's `renditions`. Empty when there is no choice.
+   */
+  qualities: Quality[];
+  /** The quality playing, `null` when unknown. */
+  quality: string | null;
+  /** The quality the app picked, `null` for automatic. */
+  selectedQuality: string | null;
+  /** The picture and its tracks; `null` for an audio player. */
   video: VideoStatus | null;
 }
 
@@ -220,8 +229,8 @@ export type AudioOnlyReason =
   /** The network is too slow for any picture (`fallbackToAudio`). */
   | 'fallback';
 
-/** One quality of a video: an HLS/DASH variant, or one of `renditions`. */
-export interface VideoQuality {
+/** One quality (`status.qualities`): an HLS/DASH variant, or one of `renditions`. */
+export interface Quality {
   /** Pass it to `selectQuality`. */
   id: string;
   /** Pixels, `null` when unknown. */
@@ -250,12 +259,6 @@ export interface VideoStatus {
   pictureInPicture: boolean;
   /** The system's fullscreen player is up. */
   fullscreen: boolean;
-  /** The qualities to pick from (`selectQuality`); empty for a single file. */
-  qualities: VideoQuality[];
-  /** The quality playing, `null` when unknown. */
-  quality: string | null;
-  /** The quality the app picked, `null` for automatic. */
-  selectedQuality: string | null;
   /** The source's audio and text tracks, then the app's subtitle files. */
   tracks: MediaTrack[];
   /** The audio track playing, `null` when the source has none to pick from. */

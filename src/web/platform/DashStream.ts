@@ -116,7 +116,7 @@ const CAPTIONS = 'public.accessibility.transcribes-spoken-dialog';
 /** A pin keeps this much of what is buffered ahead (seconds): it switches without a gap. */
 const PIN_SAFE_MARGIN_S = 2;
 
-/** A picture's id in `status.video.qualities`. */
+/** A picture's id in `status.qualities`. */
 const pictureId = (videoId: number) => `v${videoId}`;
 
 /** Shaka's error categories (`shaka.util.Error.Category`). */

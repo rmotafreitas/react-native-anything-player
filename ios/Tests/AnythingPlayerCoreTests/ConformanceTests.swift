@@ -334,6 +334,9 @@ final class ConformanceTests: XCTestCase {
       case "orderedCommands":
         orderedCommands(at, expected: value as? [String] ?? [], actual: h.driver.commands)
       case "video": videoExpect(at, s.video, value as? [String: Any])
+      case "qualities": XCTAssertEqual(s.qualities.map(\.id), value as? [String], "\(at): qualities")
+      case "quality": XCTAssertEqual(s.quality, value as? String, "\(at): quality")
+      case "selectedQuality": XCTAssertEqual(s.selectedQuality, value as? String, "\(at): selectedQuality")
       case "wantsMediaSession":
         XCTAssertEqual(h.engine.wantsMediaSession, value as? Bool, "\(at): wantsMediaSession")
       case "wantsScreenAwake":
@@ -353,7 +356,7 @@ final class ConformanceTests: XCTestCase {
     h.recorder.fades = 0
   }
 
-  /// Compares the listed `status.video` fields (`qualities` as their ids).
+  /// Compares the listed `status.video` fields (`tracks` as their ids).
   private func videoExpect(_ at: String, _ video: VideoStatus?, _ expected: [String: Any]?) {
     guard let expected else { return XCTAssertNil(video, "\(at): video") }
     guard let video else { return XCTFail("\(at): no status.video") }
@@ -366,9 +369,6 @@ final class ConformanceTests: XCTestCase {
       case "firstFrame": XCTAssertEqual(video.firstFrame, want as? Bool, label)
       case "audioOnly": XCTAssertEqual(video.audioOnly?.rawValue, want as? String, label)
       case "pictureInPicture": XCTAssertEqual(video.pictureInPicture, want as? Bool, label)
-      case "quality": XCTAssertEqual(video.quality, want as? String, label)
-      case "selectedQuality": XCTAssertEqual(video.selectedQuality, want as? String, label)
-      case "qualities": XCTAssertEqual(video.qualities.map(\.id), want as? [String], label)
       case "tracks": XCTAssertEqual(video.tracks.map(\.id), want as? [String], label)
       case "audioTrack": XCTAssertEqual(video.audioTrack, want as? String, label)
       case "textTrack": XCTAssertEqual(video.textTrack, want as? String, label)

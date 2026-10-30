@@ -33,7 +33,7 @@ export type {
   Thumbnail,
   TrackKind,
   VideoOptions,
-  VideoQuality,
+  Quality,
   VideoQualityOptions,
   VideoStatus,
 } from '../types';

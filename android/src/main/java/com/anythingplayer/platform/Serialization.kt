@@ -353,6 +353,24 @@ internal fun statusToMap(status: Status, seq: Long): WritableMap =
     )
     val sleepAt = status.sleepAt
     if (sleepAt == null) putNull("sleepAt") else putDouble("sleepAt", sleepAt.toDouble())
+    putArray(
+      "qualities",
+      Arguments.createArray().apply {
+        status.qualities.forEach { q ->
+          pushMap(
+            Arguments.createMap().apply {
+              putString("id", q.id)
+              putNullableInt("height", q.height)
+              putNullableInt("bitrate", q.bitrate)
+              putBoolean("audioOnly", q.audioOnly)
+              putNullableString("label", q.label)
+            }
+          )
+        }
+      },
+    )
+    putNullableString("quality", status.quality)
+    putNullableString("selectedQuality", status.selectedQuality)
     val video = status.video
     if (video == null) putNull("video") else putMap("video", videoToMap(video))
   }
@@ -369,24 +387,6 @@ private fun videoToMap(video: VideoStatus): WritableMap =
     putBoolean("firstFrame", video.firstFrame)
     putNullableString("audioOnly", video.audioOnly?.wire)
     putBoolean("pictureInPicture", video.pictureInPicture)
-    putArray(
-      "qualities",
-      Arguments.createArray().apply {
-        video.qualities.forEach { q ->
-          pushMap(
-            Arguments.createMap().apply {
-              putString("id", q.id)
-              putNullableInt("height", q.height)
-              putNullableInt("bitrate", q.bitrate)
-              putBoolean("audioOnly", q.audioOnly)
-              putNullableString("label", q.label)
-            }
-          )
-        }
-      },
-    )
-    putNullableString("quality", video.quality)
-    putNullableString("selectedQuality", video.selectedQuality)
     putArray(
       "tracks",
       Arguments.createArray().apply {

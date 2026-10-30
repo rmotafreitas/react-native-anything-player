@@ -217,8 +217,7 @@ public final class AnythingPlayerBridge: NSObject {
     var initial = Status()
     if let options = lock.sync({ pending[id] }), options.engine.video != nil {
       initial.video = VideoStatus(
-        width: nil, height: nil, hdr: false, firstFrame: false, audioOnly: nil, pictureInPicture: false,
-        qualities: [], quality: nil, selectedQuality: nil)
+        width: nil, height: nil, hdr: false, firstFrame: false, audioOnly: nil, pictureInPicture: false)
     }
     return Serialization.status(initial, seq: 0) as NSDictionary
   }

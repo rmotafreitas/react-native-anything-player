@@ -18,8 +18,9 @@
 | `network` | `'online' \| 'offline' \| 'unknown'` | connectivity as the engine sees it |
 | `volume`, `muted`, `rate` | | as set (a fade never changes `volume`, except `fadeTo`'s target) |
 | `sleepAt` | `number \| null` | when the sleep timer pauses playback, in epoch milliseconds; `null` without one ([sleep timer](playback.md#sleep-timer-and-fades)) |
+| `qualities`, `quality`, `selectedQuality` | | the qualities to pick from with `selectQuality` (an HLS or DASH source's variants, a video's `renditions`; empty when there is none), the one playing, and the app's pick (`null`: automatic) ([Video](video.md#quality)) |
 | `route` | `{ kind, name }` | where the audio goes: `speaker`, `headphones`, `bluetooth`, `airplay`, `cast`, `car`, `hdmi`, `usb`, `other` or `unknown`, with the device's name when known ([Casting & AirPlay](routes-and-casting.md#where-the-audio-goes)) |
-| `video` | `VideoStatus \| null` | a video player's picture, qualities, tracks, Picture in Picture and fullscreen; `null` for an audio player ([Video](video.md#the-view)) |
+| `video` | `VideoStatus \| null` | a video player's picture, tracks, Picture in Picture and fullscreen; `null` for an audio player ([Video](video.md#the-view)) |
 
 `player.refresh()` reads the native snapshot synchronously and applies it if it is newer. Players refresh automatically when the app becomes active.
 

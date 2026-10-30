@@ -718,12 +718,34 @@ describe('Player video', () => {
 
     it('selectQuality sends the id, and null for auto', async () => {
       const p = videoPlayer();
+      fake.emitStatus(p.id, {
+        seq: 1,
+        qualities: [
+          {
+            id: '720p',
+            height: 720,
+            bitrate: null,
+            label: null,
+            audioOnly: false,
+          },
+        ],
+      });
       await p.selectQuality('720p');
       await p.selectQuality('auto');
       expect(videoCommands()).toEqual([
         { op: 'selectQuality', id: '720p' },
         { op: 'selectQuality', id: null },
       ]);
+    });
+
+    it('selectQuality with nothing to pick from: automatic is a no-op, an id is INVALID_ARGUMENT', async () => {
+      const p = new Player();
+      players.push(p);
+      await p.selectQuality('auto');
+      await expect(p.selectQuality('r1')).rejects.toMatchObject({
+        code: 'INVALID_ARGUMENT',
+      });
+      expect(videoCommands()).toEqual([]);
     });
 
     it('selectAudioTrack sends the id, and null for auto', async () => {

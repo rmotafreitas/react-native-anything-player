@@ -750,6 +750,13 @@ enum Serialization {
       "rate": s.rate,
       "route": ["kind": s.route.kind.rawValue, "name": optional(s.route.name)],
       "sleepAt": optional(s.sleepAt),
+      "qualities": s.qualities.map { q in
+        [
+          "id": q.id, "height": optional(q.height), "bitrate": optional(q.bitrate), "audioOnly": q.audioOnly,
+          "label": optional(q.label),
+        ] as [String: Any]
+      },
+      "quality": optional(s.quality), "selectedQuality": optional(s.selectedQuality),
       "video": s.video.map(video) ?? NSNull(),
     ]
     if let i = s.interruption {
@@ -770,13 +777,6 @@ enum Serialization {
     [
       "width": optional(v.width), "height": optional(v.height), "hdr": v.hdr, "firstFrame": v.firstFrame,
       "audioOnly": optional(v.audioOnly?.rawValue), "pictureInPicture": v.pictureInPicture,
-      "qualities": v.qualities.map { q in
-        [
-          "id": q.id, "height": optional(q.height), "bitrate": optional(q.bitrate), "audioOnly": q.audioOnly,
-          "label": optional(q.label),
-        ] as [String: Any]
-      },
-      "quality": optional(v.quality), "selectedQuality": optional(v.selectedQuality),
       "tracks": v.tracks.map { t in
         [
           "id": t.id, "kind": t.kind.rawValue, "language": optional(t.language), "label": optional(t.label),
