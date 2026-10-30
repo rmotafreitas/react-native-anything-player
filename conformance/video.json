@@ -380,7 +380,7 @@
       { "native": "ready", "gen": 2, "duration": 600, "seekable": true },
       { "expect": { "gen": 1, "duration": 18 } },
       { "native": "playing", "gen": 2 },
-      { "expect": { "state": "playing", "gen": 2, "duration": 600, "seekable": true, "video": { "quality": "r1" } } },
+      { "expect": { "state": "playing", "gen": 2, "duration": 600, "seekable": true, "quality": "r1" } },
       { "call": "seek", "value": 300 },
       { "expect": { "commands": ["seek(300.0)"] } }
     ]
