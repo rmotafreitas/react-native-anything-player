@@ -207,10 +207,14 @@ jobs:
           fi
 
       - name: Set up Ruby
+        id: ruby
         uses: ruby/setup-ruby@b1da4809b005e0178fe08a1d57317bffc00b7b4c # v1
         with:
           ruby-version: '3.3'
 
+      # The bundle's native extensions are built against one Ruby: its exact
+      # install (3.3.12, 3.3.13…) is in the key, so a patch release starts a
+      # new bundle instead of loading one that cannot link.
       - name: Cache CocoaPods and Ruby downloads
         if: env.turbo_cache_hit != 1
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -219,7 +223,7 @@ jobs:
             ~/Library/Caches/CocoaPods
             ~/.cocoapods
             ~/.cache/animu-bundle
-          key: ${{ runner.os }}-${{ runner.arch }}-${{ env.ImageVersion }}-pods-ruby3.3-cast-${{ matrix.cast }}-${{ hashFiles('example/ios/Podfile.lock', 'example/Gemfile', 'example/Gemfile.lock', '*.podspec', 'yarn.lock') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ env.ImageVersion }}-pods-${{ steps.ruby.outputs.ruby-prefix }}-cast-${{ matrix.cast }}-${{ hashFiles('example/ios/Podfile.lock', 'example/Gemfile', 'example/Gemfile.lock', '*.podspec', 'yarn.lock') }}
 
       - name: Install cocoapods
         if: env.turbo_cache_hit != 1
