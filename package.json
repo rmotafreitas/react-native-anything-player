@@ -242,9 +242,10 @@
   },
   "resolutions": {
     "eslint-plugin-ft-flow": "3.0.11",
-    "vitepress/vite": "6.4.4",
+    "vitepress/vite": "6.4.5",
     "source-map-js": "1.2.2",
     "braces": "patch:braces@npm%3A3.0.3#./.yarn/patches/braces-security.patch",
-    "sprintf-js": "patch:sprintf-js@npm%3A1.0.3#./.yarn/patches/sprintf-js-security.patch"
+    "sprintf-js": "patch:sprintf-js@npm%3A1.0.3#./.yarn/patches/sprintf-js-security.patch",
+    "deepmerge": "patch:deepmerge@npm%3A4.3.1#./.yarn/patches/deepmerge-security.patch"
   }
 }
