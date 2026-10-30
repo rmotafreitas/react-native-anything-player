@@ -738,14 +738,14 @@ describe('Player video', () => {
       ]);
     });
 
-    it('selectQuality with nothing to pick from: automatic is a no-op, an id is INVALID_ARGUMENT', async () => {
+    it('selectQuality with nothing to pick from: an id is INVALID_ARGUMENT, automatic still lets go of the kept pick (sol S1)', async () => {
       const p = new Player();
       players.push(p);
-      await p.selectQuality('auto');
       await expect(p.selectQuality('r1')).rejects.toMatchObject({
         code: 'INVALID_ARGUMENT',
       });
-      expect(videoCommands()).toEqual([]);
+      await p.selectQuality('auto');
+      expect(videoCommands()).toEqual([{ op: 'selectQuality', id: null }]);
     });
 
     it('selectAudioTrack sends the id, and null for auto', async () => {

@@ -406,6 +406,16 @@
     ]
   },
   {
+    "name": "renditions: automatic picked while a single file plays lets go of the kept pick",
+    "steps": [
+      { "call": "load", "uri": "https://cdn.example/ep1", "autoplay": true, "quality": "320k", "renditions": [{ "id": "64k", "uri": "https://cdn.example/ep1-64.m4a", "bitrate": 64000 }, { "id": "320k", "uri": "https://cdn.example/ep1-320.m4a", "bitrate": 320000 }] },
+      { "call": "load", "uri": "https://cdn.example/single.m4a", "autoplay": true },
+      { "call": "selectQuality", "id": null },
+      { "call": "load", "uri": "https://cdn.example/ep2", "autoplay": true, "renditions": [{ "id": "64k", "uri": "https://cdn.example/ep2-64.m4a", "bitrate": 64000 }, { "id": "320k", "uri": "https://cdn.example/ep2-320.m4a", "bitrate": 320000 }] },
+      { "expect": { "quality": "64k", "selectedQuality": null, "commands": ["open(gen=1,start=-,play=true,r=1)", "open(gen=2,start=-,play=true)", "open(gen=3,start=-,play=true,r=0)"] } }
+    ]
+  },
+  {
     "name": "renditions: an id the source lacks is refused before anything changes; selectQuality switches an audio player behind the sound",
     "steps": [
       { "call": "load", "uri": "https://cdn.example/ep1", "autoplay": true, "renditions": [{ "id": "64k", "uri": "https://cdn.example/ep1-64.m4a", "bitrate": 64000 }, { "id": "192k", "uri": "https://cdn.example/ep1-192.m4a", "bitrate": 192000 }, { "id": "320k", "uri": "https://cdn.example/ep1-320.m4a", "bitrate": 320000, "audioOnly": true }] },

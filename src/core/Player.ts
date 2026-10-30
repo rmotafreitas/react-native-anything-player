@@ -606,9 +606,9 @@ export class Player {
   /** Pins a quality from `status.qualities`, or `'auto'`. */
   async selectQuality(id: string): Promise<void> {
     this.ensureAlive();
-    // Nothing to pick from (one file, an audio player): automatic already.
-    if (this._status.qualities.length === 0) {
-      if (id === 'auto') return;
+    // Nothing to pick from (one file): an id cannot be had. `'auto'` still
+    // goes through: it lets go of a pick kept for the next loads.
+    if (this._status.qualities.length === 0 && id !== 'auto') {
       throw new PlayerError({
         code: 'INVALID_ARGUMENT',
         message: `No quality "${id}".`,
