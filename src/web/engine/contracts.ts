@@ -42,6 +42,11 @@ export interface EngineDriver {
   /** Drop the item an `open({ swap: true })` was preparing. */
   cancelSwap?(generation: number): void;
   /**
+   * The output plays one item at a time (Safari's AirPlay plays the element
+   * it was started on): a quality switch re-opens in place, as on Cast.
+   */
+  readonly swapsInPlace?: boolean;
+  /**
    * Play these of the source's own tracks (`null` text: none of them, which
    * is also how an app's subtitle file is shown: by the overlay).
    */
@@ -65,6 +70,8 @@ export interface EngineDelegate {
   engineStatusChanged(status: EngineStatus): void;
   engineLoadSettled(loadId: number, outcome: LoadOutcome): void;
   engineError(error: PlayerError, fatal: boolean): void;
+  /** Something the app should hear that stops nothing and starts no recovery (a quality switch that failed). */
+  engineWarning(error: PlayerError): void;
   engineDidEnd(): void;
   /** The sleep timer paused the player (`sleep` event). */
   engineSleepFired(): void;

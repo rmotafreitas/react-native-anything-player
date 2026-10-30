@@ -44,10 +44,22 @@ export function normalizeRenditions(
 ): Record<string, unknown>[] {
   if (!Array.isArray(list) || list.length === 0)
     throw invalid('`renditions` must be a non-empty array.');
+  const ids = new Set<string>();
   return list.map((r, i) => {
     if (!r || typeof r.uri !== 'string' || r.uri.trim() === '')
       throw invalid(`renditions[${i}] needs a non-empty \`uri\`.`);
+    if (r.id != null && (typeof r.id !== 'string' || r.id === ''))
+      throw invalid(`renditions[${i}].id must be a non-empty string.`);
+    // `'auto'` is what selectQuality and load({ quality }) read as automatic.
+    if (r.id === 'auto')
+      throw invalid(
+        `renditions[${i}].id cannot be "auto": it means automatic.`
+      );
+    const id = r.id ?? `r${i}`;
+    if (ids.has(id)) throw invalid(`Two renditions have the id "${id}".`);
+    ids.add(id);
     const out: Record<string, unknown> = { uri: r.uri.trim() };
+    if (r.id != null) out.id = r.id;
     if (r.headers) out.headers = { ...r.headers };
     const height = positive(`renditions[${i}].height`, r.height);
     const bitrate = positive(`renditions[${i}].bitrate`, r.bitrate);

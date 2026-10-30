@@ -20,6 +20,7 @@ class FakeDriver(private val clock: FakeClock) : EngineDriver {
   val commands = mutableListOf<String>()
   /** Like ExoPlayer: report readiness/playing synchronously from inside commands. */
   var reentrant = false
+  override var swapsInPlace = false
   var engine: PlaybackEngine? = null
   private var openGeneration = 0
   private var motion = Motion.FROZEN
@@ -162,6 +163,9 @@ class Recorder : EngineDelegate {
     if (fatal && statuses.lastOrNull()?.state != PlaybackState.ERROR) violations.add("fatal error before error status")
     if (!fatal && statuses.lastOrNull()?.state != PlaybackState.RECONNECTING) violations.add("recoverable error before reconnecting status")
     errors.add("${error.code.wire}:${if (fatal) "fatal" else "recoverable"}")
+  }
+  override fun engineWarning(error: PlayerError) {
+    errors.add("${error.code.wire}:warning")
   }
   override fun engineDidEnd() {
     if (statuses.lastOrNull()?.state != PlaybackState.ENDED) violations.add("ended before ended status")

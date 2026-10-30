@@ -94,7 +94,7 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
   /// Live streams: AVPlayer never runs a tap on them, so the proxied bytes are
   /// decoded in parallel and released against the item's clock.
   let streamVisualizer = StreamVisualizer()
-  private var samplingEnabled = false
+  private(set) var samplingEnabled = false
   /// Generation whose proxied bytes feed the visualizer (-1: none). Read on the proxy queue.
   private let feedLock = NSLock()
   private var feedGeneration = -1
@@ -471,6 +471,14 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
     return reading
   }
 
+  /// A quality switch's driver samples as `other` does (on or off is set apart).
+  func copySampling(from other: AVPlayerDriver) {
+    tap.points = other.tap.points
+    tap.onWindow = other.tap.onWindow
+    streamVisualizer.points = other.streamVisualizer.points
+    streamVisualizer.onWindow = other.streamVisualizer.onWindow
+  }
+
   /// Turns the decoded-PCM tap on/off (the controller owns `tap.onWindow`).
   func setSampling(_ enabled: Bool) {
     guard enabled != samplingEnabled else { return }
@@ -623,6 +631,18 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
         }
       },
     ]
+    // A sound's bandwidth too (a video's comes with its own access-log
+    // observer): the engine steps renditions by it.
+    if !video {
+      itemNotifications.append(
+        center.addObserver(forName: .AVPlayerItemNewAccessLogEntry, object: item, queue: .main) {
+          [weak self] _ in
+          guard let self, self.isCurrent(item, gen), let event = item.accessLog()?.events.last else { return }
+          let observed = event.observedBitrate
+          guard observed.isFinite && observed > 0 else { return }
+          self.observer?.driverAccessLog(generation: gen, bitsPerSecond: observed, droppedFrames: nil)
+        })
+    }
   }
 
   /// Reports the splices whose audio is playing (called on each progress tick).

@@ -13,9 +13,14 @@ import com.anythingplayer.core.StreamMetadata
 import com.anythingplayer.core.VideoInfo
 import com.anythingplayer.core.VideoVariant
 
-/** Shows one driver's picture and hides the other's. */
-internal interface VideoStage {
+/** Where the players show: a video's picture, nothing for a sound. */
+internal interface SwapStage {
   fun show(current: ExoPlayerDriver, hidden: ExoPlayerDriver?)
+}
+
+/** A sound's stage: nothing to show. */
+internal object NoStage : SwapStage {
+  override fun show(current: ExoPlayerDriver, hidden: ExoPlayerDriver?) = Unit
 }
 
 /** How far ahead of the picture the new file opens, seconds. */
@@ -25,16 +30,17 @@ private const val LOOKAHEAD_S = 1.5
 private const val RENDEZVOUS_TICK_MS = 40L
 
 /**
- * A video player's local output: the ExoPlayer on screen, and a second one
- * that prepares a quality switch behind it (`open(swap = true)`, separate
- * files of one video). The second one opens a little ahead of the picture,
- * muted, waits until the picture reaches that point, plays, and takes over:
- * no spinner, no jump. Twin of `src/web/platform/SwapDriver.ts`.
+ * A player's local output: the ExoPlayer heard (and on screen), and a second
+ * one that prepares a quality switch behind it (`open(swap = true)`, separate
+ * files of one video or one sound). The second one opens a little ahead,
+ * muted, waits until the first reaches that point, plays, and takes over: no
+ * spinner, no gap, no jump. The second ExoPlayer is only made at the first
+ * switch. Twin of `src/web/platform/SwapDriver.ts`.
  */
-internal class VideoSwapDriver(
+internal class SwapDriver(
   private val observer: DriverObserver,
   private val make: (DriverObserver) -> ExoPlayerDriver,
-  private val stage: VideoStage,
+  private val stage: SwapStage,
 ) : Output {
   private class Pending(val generation: Int, var target: Double?, var ready: Boolean = false)
 

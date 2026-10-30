@@ -71,6 +71,11 @@ export class RoutingDriver implements EngineDriver {
     this.engineTarget.setLoop?.(loop);
   }
 
+  /** The local output on Safari's AirPlay plays one item: switches re-open in place. */
+  get swapsInPlace(): boolean {
+    return this.target === this.local && this.local.swapsInPlace === true;
+  }
+
   cancelSwap(generation: number): void {
     this.engineTarget.cancelSwap?.(generation);
   }

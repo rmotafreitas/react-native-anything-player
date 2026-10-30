@@ -343,11 +343,12 @@ export abstract class EngineVideo extends EngineQuality {
     this.sourceRevision = 0;
     this.openedRevision = 0;
     this.armExpiry();
+    // The qualities are any player's (an audio player's renditions too).
+    this.resetQuality();
     const v = this.options.video;
     if (v == null) return;
     this.firstFrame = false;
     this.resetTracks();
-    this.resetQuality();
     if (!this.view.attached) this.detachedSince ??= this.now;
     this.lastAudioOnly = this.audioOnlyReason;
     if (v.ambient && !this.shown && this._playWhenReady) {
@@ -422,7 +423,7 @@ export abstract class EngineVideo extends EngineQuality {
   protected stallPublished(t: number): void {
     this.counters.rebufferCount += 1;
     this.rebufferSince ??= t;
-    if (this.options.video == null || this.remote) return;
+    if (this.remote) return;
     if (this.audioOnlyReason == null) {
       this.stallTimes.push(t);
       this.stallTimes = this.stallTimes.filter(
@@ -430,7 +431,8 @@ export abstract class EngineVideo extends EngineQuality {
       );
     }
     this.evaluateAbr(t, true);
-    this.evaluateFallback(t, true);
+    // The audio-only fallback is the picture's.
+    if (this.options.video != null) this.evaluateFallback(t, true);
   }
 
   protected stateChanged(next: PlaybackState): void {
@@ -500,13 +502,13 @@ export abstract class EngineVideo extends EngineQuality {
 
   /** The watchdog's tick, while playback is wanted. */
   protected videoHeartbeat(t: number): void {
-    if (this.options.video == null || this.remote) return;
-    if (this._state !== 'playing') return;
+    if (this.remote || this._state !== 'playing') return;
+    if (this.options.video == null && this.renditions == null) return;
     // A switch a seek or a pause cancelled is tried again.
     if (this.renditions != null && this.pendingSwap == null)
       this.retarget('resume switch');
     this.evaluateAbr(t, false);
-    this.evaluateFallback(t, false);
+    if (this.options.video != null) this.evaluateFallback(t, false);
   }
 
   // ── Internals ──

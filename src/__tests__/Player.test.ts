@@ -575,6 +575,60 @@ describe('source normalization', () => {
     );
   });
 
+  it('passes a load quality through, and refuses one the renditions lack before any native call (#56)', async () => {
+    const p = new Player();
+    const source = {
+      renditions: [
+        { id: '64k', uri: 'https://a.example/64.m4a' },
+        { id: '320k', uri: 'https://a.example/320.m4a' },
+      ],
+    };
+    await p.load(source, { quality: '320k' });
+    await p.load(source, { quality: 'auto' });
+    await expect(p.load(source, { quality: '999k' })).rejects.toMatchObject({
+      code: 'INVALID_ARGUMENT',
+    });
+    // An adaptive source's variants are only known once it loads.
+    await p.load('https://a.example/master.m3u8', { quality: 'v2' });
+    expect(fake.calls.filter((c) => c[0] === 'load').map((c) => c[3])).toEqual([
+      { quality: '320k' },
+      { quality: 'auto' },
+      { quality: 'v2' },
+    ]);
+    await p.release();
+  });
+
+  it('keeps rendition ids, and refuses an empty or repeated one (#56)', () => {
+    expect(
+      normalizeSource({
+        renditions: [
+          { id: '64k', uri: 'https://a.example/64.m4a' },
+          { uri: 'https://a.example/192.m4a' },
+        ],
+      }).renditions
+    ).toEqual([
+      { id: '64k', uri: 'https://a.example/64.m4a' },
+      { uri: 'https://a.example/192.m4a' },
+    ]);
+    for (const renditions of [
+      [{ id: '', uri: 'https://a.example/a.m4a' }],
+      [
+        { id: 'hi', uri: 'https://a.example/a.m4a' },
+        { id: 'hi', uri: 'https://a.example/b.m4a' },
+      ],
+      // The second one's default id is r1.
+      [
+        { id: 'r1', uri: 'https://a.example/a.m4a' },
+        { uri: 'https://a.example/b.m4a' },
+      ],
+      // `'auto'` means automatic (council C3).
+      [{ id: 'auto', uri: 'https://a.example/a.m4a' }],
+    ])
+      expect(() => normalizeSource({ renditions })).toThrow(
+        expect.objectContaining({ code: 'INVALID_ARGUMENT' })
+      );
+  });
+
   it('passes the live badge choice through, dropping non-booleans', () => {
     expect(normalizeNowPlaying({ title: 'Jingle', live: false })).toEqual({
       title: 'Jingle',

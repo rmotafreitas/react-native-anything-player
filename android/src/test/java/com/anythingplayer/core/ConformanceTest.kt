@@ -116,7 +116,10 @@ class ConformanceTest {
     value?.let { array ->
       (0 until array.length()).map {
         val r = array.getJSONObject(it)
-        Rendition(r.getString("uri"), null, intOrNull(r, "height"), longOrNull(r, "bitrate"), null, r.optBoolean("audioOnly", false))
+        Rendition(
+          r.getString("uri"), null, intOrNull(r, "height"), longOrNull(r, "bitrate"), null, r.optBoolean("audioOnly", false),
+          id = if (r.has("id")) r.getString("id") else null,
+        )
       }
     }
 
@@ -224,6 +227,7 @@ class ConformanceTest {
           "trickle" -> h.driver.setMotion(FakeDriver.Motion.TRICKLE)
           "loaded" -> h.driver.setMotion(FakeDriver.Motion.LOADED, step.optDouble("value", 0.0))
           "reentrant" -> h.driver.reentrant = true
+          "inPlace" -> h.driver.swapsInPlace = step.optBoolean("value", true)
           "position" -> h.driver.setPosition(step.optDouble("value", 0.0))
           else -> fail("$at: unknown driver step $d")
         }
@@ -282,6 +286,9 @@ class ConformanceTest {
           source(step, h, step.optBoolean("refreshable", false)),
           if (step.has("autoplay")) step.getBoolean("autoplay") else null,
           if (step.has("start")) step.getDouble("start") else null,
+          // `"quality"`: an id, `null` for automatic; absent: keep the pick.
+          qualityGiven = step.has("quality"),
+          quality = text(step, "quality"),
         )
       "background" -> h.engine.appBackgrounded()
       "selectQuality" -> h.engine.selectQuality(text(step, "id"))

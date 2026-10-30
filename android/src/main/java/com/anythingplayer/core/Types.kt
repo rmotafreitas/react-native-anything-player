@@ -69,6 +69,7 @@ enum class ErrorCode(val wire: String) {
   DRM_UNSUPPORTED("DRM_UNSUPPORTED"),
   DRM_LICENSE_FAILED("DRM_LICENSE_FAILED"),
   SUBTITLE_LOAD_FAILED("SUBTITLE_LOAD_FAILED"),
+  QUALITY_SWITCH_FAILED("QUALITY_SWITCH_FAILED"),
   INTERNAL_ERROR("INTERNAL_ERROR");
 
   companion object {
@@ -171,7 +172,12 @@ data class Rendition(
   val label: String? = null,
   /** Sound only: the last step of the audio-only fallback. */
   val audioOnly: Boolean = false,
-)
+  /** The app's id for it (`null`: `r<index>`). */
+  val id: String? = null,
+) {
+  /** Its id in `status.qualities`. */
+  fun idAt(index: Int): String = id ?: "r$index"
+}
 
 /** A quality of an adaptive source as the driver reports it, or a rendition (`status.qualities`). */
 data class VideoVariant(

@@ -45,6 +45,7 @@ Each file holds an array of scenarios:
 | `"gen": 1` or `"gen": "prev"` on native steps | generation the event belongs to (default: current) |
 | `{"driver": "flowing" \| "frozen" \| "trickle"}` | fake playhead: advances 1 s/s / stops / only the buffer grows (0.5 s/s) |
 | `{"driver": "loaded", "value": 60}` | the whole file is buffered (to `value` s): the playhead advances 1 s/s, the buffer stays |
+| `{"driver": "inPlace", "value": true}` | the output plays one item at a time (Safari's AirPlay plays the element it started on): a quality switch re-opens in place, as on Cast |
 | `{"driver": "reentrant"}` | the fake driver reports ready/playing synchronously from inside `open`/`play` (as ExoPlayer can) |
 | `{"driver": "position", "value": 42}` | set the fake playhead |
 | `{"interruption": "began", "reason": "interruption", "resumable": true}` | system pause |
@@ -94,7 +95,7 @@ happened since the previous one.
 | `reconnectAttempt` | attempt number or `null` |
 | `commands` | driver calls, e.g. `["open(gen=2,start=-,play=true)", "pause"]` |
 | `loads` | load settlements, e.g. `["1:ready", "2:superseded", "3:failed:TIMEOUT"]` |
-| `errors` | emitted errors, e.g. `["NETWORK_ERROR:recoverable", "TIMEOUT:fatal"]` |
+| `errors` | emitted errors, e.g. `["NETWORK_ERROR:recoverable", "TIMEOUT:fatal"]`; a report that stops nothing and starts no recovery is `CODE:warning` (`QUALITY_SWITCH_FAILED:warning`) |
 | `ended` | number of `ended` events since the previous expect |
 | `wantsKeepalive`, `needsAudioFocus` | engine queries |
 | `volume` | `status.volume` (the app's volume, never the faded one) |

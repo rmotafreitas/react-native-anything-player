@@ -88,6 +88,7 @@ function videoOptions(value: unknown): VideoEngineOptions {
 function renditions(value: unknown): Rendition[] | null {
   if (!Array.isArray(value)) return null;
   return value.map((r: Record<string, unknown>) => ({
+    id: (r.id as string | undefined) ?? null,
     uri: r.uri as string,
     headers: null,
     height: (r.height as number | undefined) ?? null,
@@ -137,7 +138,9 @@ function perform(call: string, step: Step, h: EngineHarness): void {
               : null,
         },
         (step.autoplay as boolean | undefined) ?? null,
-        (step.start as number | undefined) ?? null
+        (step.start as number | undefined) ?? null,
+        // `"quality"`: an id, `null` for automatic; absent: keep the pick.
+        'quality' in step ? (step.quality as string | null) : undefined
       );
       break;
     case 'background':
@@ -296,6 +299,9 @@ function driver(step: Step, h: EngineHarness): void {
       return h.driver.setMotion(step.driver);
     case 'loaded':
       return h.driver.setMotion('loaded', step.value as number);
+    case 'inPlace':
+      h.driver.swapsInPlace = step.value !== false;
+      return;
     case 'reentrant':
       h.driver.reentrant = true;
       return;

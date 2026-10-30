@@ -161,6 +161,32 @@ export function normalizeSource(input: SourceInput): Record<string, unknown> {
   return { ...out, ...normalizeVideoSource(source, artworkUri) };
 }
 
+/**
+ * `LoadOptions.quality`, checked before anything changes: an id the source's
+ * renditions lack is refused (an adaptive source's variants are only known
+ * once it loads).
+ */
+function checkQuality(quality: unknown, renditions: unknown): void {
+  if (typeof quality !== 'string' || quality === '') {
+    throw new PlayerError({
+      code: 'INVALID_ARGUMENT',
+      message: "`quality` must be a quality id or `'auto'`.",
+      recoverable: false,
+    });
+  }
+  if (quality === 'auto' || !Array.isArray(renditions)) return;
+  const ids = (renditions as Array<{ id?: string }>).map(
+    (r, i) => r.id ?? `r${i}`
+  );
+  if (!ids.includes(quality)) {
+    throw new PlayerError({
+      code: 'INVALID_ARGUMENT',
+      message: `No quality "${quality}" among the source's renditions.`,
+      recoverable: false,
+    });
+  }
+}
+
 /** The source's `uri`; with renditions and no `uri`, the first picture's file. */
 function sourceUri(source: Source | null | undefined): string {
   if (source == null || typeof source !== 'object') return '';
@@ -413,6 +439,10 @@ export class Player {
     if (options.autoplay != null) nativeOptions.autoplay = options.autoplay;
     if (options.startPosition != null)
       nativeOptions.startPosition = options.startPosition;
+    if (options.quality != null) {
+      checkQuality(options.quality, normalized.renditions);
+      nativeOptions.quality = options.quality;
+    }
     this._metadata = null;
     const full =
       typeof source === 'object' && !isBlob(source) ? (source as Source) : null;
@@ -576,9 +606,9 @@ export class Player {
   /** Pins a quality from `status.qualities`, or `'auto'`. */
   async selectQuality(id: string): Promise<void> {
     this.ensureAlive();
-    // Nothing to pick from (one file, an audio player): automatic already.
-    if (this._status.qualities.length === 0) {
-      if (id === 'auto') return;
+    // Nothing to pick from (one file): an id cannot be had. `'auto'` still
+    // goes through: it lets go of a pick kept for the next loads.
+    if (this._status.qualities.length === 0 && id !== 'auto') {
       throw new PlayerError({
         code: 'INVALID_ARGUMENT',
         message: `No quality "${id}".`,

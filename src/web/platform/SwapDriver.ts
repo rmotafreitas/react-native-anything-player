@@ -26,6 +26,8 @@ export interface LocalDriver extends EngineDriver {
   readonly isStreamed: boolean;
   lastPlayAttempt: Promise<PlayAttempt> | null;
   tapped: boolean;
+  /** Safari's AirPlay plays the element it was started on (`SwapDriver`). */
+  readonly swapsInPlace?: boolean;
   progress(): ProgressReading;
   destroy(): void;
 }
@@ -88,6 +90,11 @@ export class SwapDriver implements LocalDriver {
 
   get tapped(): boolean {
     return this.current.tapped;
+  }
+
+  /** Safari's AirPlay plays the element it was started on: no second, local one. */
+  get swapsInPlace(): boolean {
+    return this.current.element.webkitCurrentPlaybackTargetIsWireless === true;
   }
 
   set tapped(value: boolean) {
@@ -238,7 +245,11 @@ export class SwapDriver implements LocalDriver {
       onStreamMetadata: (g, metadata) => f.onStreamMetadata(g, metadata),
       onDiscontinuity: (g, position) => f.onDiscontinuity(g, position),
       onNote: (g, event, details) => f.onNote(g, event, details),
-      onElementReplaced: (element) => f.onElementReplaced(element),
+      // The hidden one's element is not the controller's (AirPlay, the
+      // tap): it takes over through the stage.
+      onElementReplaced: (element) => {
+        if (element !== this.spare?.element) f.onElementReplaced(element);
+      },
       onVideoInfo: (g, info) => f.onVideoInfo?.(g, info),
       onFirstFrame: (g) => f.onFirstFrame?.(g),
       onVariants: (g, variants) => f.onVariants?.(g, variants),
@@ -291,13 +302,14 @@ export class SwapDriver implements LocalDriver {
     this.pending = null;
     spare.element.muted = false;
     spare.setVolume(this.volume);
+    this.current = spare;
     this.stage.show(spare.element, old.element);
     old.releaseConnection();
     old.element.muted = false;
-    this.current = spare;
-    // The old one waits, emptied, for the next switch.
+    // The old one waits, emptied, for the next switch. It stays tapped if it
+    // was: Web Audio keeps an element for good, and a tapped element must
+    // not play a cross-origin file (MediaElementDriver swaps it out first).
     this.spare = old;
-    this.spare.tapped = false;
   }
 
   private drop(): void {

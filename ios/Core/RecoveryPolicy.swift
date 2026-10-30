@@ -95,6 +95,10 @@ enum RecoveryPolicy {
   static let abrUpMs: Int64 = 30_000
   /// Two stalls in this window step down whatever the bandwidth.
   static let abrStallWindowMs: Int64 = 30_000
+  /// An audio player that measures nothing it can trust (no bandwidth
+  /// reading, or a live stream, which arrives at its own rate) steps up one
+  /// rendition after this long without a stall.
+  static let abrQuietUpMs: Int64 = 120_000
   /// Data Saver, Low Data Mode, `saveData`: the highest picture.
   static let dataSaverMaxHeight = 480
   /// Automatic start with no bandwidth reading: the lowest rendition at least this high.

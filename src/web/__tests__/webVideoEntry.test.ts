@@ -173,6 +173,7 @@ describe('parseSource', () => {
     });
     expect(descriptor.renditions).toEqual([
       {
+        id: null,
         uri: 'https://x.example/hd.mp4',
         headers: { A: 'b' },
         height: 1080,
@@ -181,6 +182,7 @@ describe('parseSource', () => {
         audioOnly: true,
       },
       {
+        id: null,
         uri: 'https://x.example/sd.mp4',
         headers: null,
         height: null,
@@ -189,6 +191,7 @@ describe('parseSource', () => {
         audioOnly: false,
       },
       {
+        id: null,
         uri: '',
         headers: null,
         height: null,
@@ -590,11 +593,18 @@ describe('WebModule video', () => {
     it('rejects the video-only commands of an audio player', async () => {
       const id = module.createPlayer({});
       await expect(
-        module.videoCommand(id, { op: 'selectQuality', id: '720p' })
+        module.videoCommand(id, { op: 'setListenOnly', value: true })
       ).rejects.toMatchObject({
         code: 'INVALID_ARGUMENT',
         message: 'This is not a video player (create it with `video`).',
         recoverable: false,
+      });
+      // A quality is any player's: an id it does not have is refused as such.
+      await expect(
+        module.videoCommand(id, { op: 'selectQuality', id: '720p' })
+      ).rejects.toMatchObject({
+        code: 'INVALID_ARGUMENT',
+        message: 'No quality "720p".',
       });
     });
 

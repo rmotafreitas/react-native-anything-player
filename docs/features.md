@@ -59,6 +59,7 @@ Supported: the current and previous version of each browser. Radio titles on iPh
 | Progress events, `getProgress()` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Sleep timer (`sleep`, `status.sleepAt`) | ✓ | ✓ | ◐ ⁷ | ◐ ⁷ | ◐ ⁷ | ◐ ⁷ |
 | Fades on play, pause and stop, `fadeTo` | ✓ | ✓ | ◐ ⁷ | ◐ ⁷ | ◐ ⁷ | – ⁶ |
+| Separate quality files (`renditions`) switched with no gap, a pick that holds across loads | ✓ † | ✓ † | ✓ | ✓ | ✓ | ✓ † |
 | Queue (next / previous, gapless) | – | – | – | – | – | – |
 
 1. Leave it out with `rnapHls=false`.

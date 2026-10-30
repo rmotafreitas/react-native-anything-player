@@ -20,6 +20,7 @@ final class FakeDriver: EngineDriver {
   var commands: [String] = []
   /// Like ExoPlayer: report readiness/playing synchronously from inside commands.
   var reentrant = false
+  var swapsInPlace = false
   weak var engine: PlaybackEngine?
   private var openGeneration = 0
   private var motion = Motion.frozen
@@ -167,6 +168,9 @@ final class Recorder: EngineDelegate {
     if fatal && statuses.last?.state != .error { violations.append("fatal error before error status") }
     if !fatal && statuses.last?.state != .reconnecting { violations.append("recoverable error before reconnecting status") }
     errors.append("\(error.code.rawValue):\(fatal ? "fatal" : "recoverable")")
+  }
+  func engine(warning: PlayerError) {
+    errors.append("\(warning.code.rawValue):warning")
   }
   func engineDidEnd() {
     if statuses.last?.state != .ended { violations.append("ended before ended status") }

@@ -14,6 +14,7 @@ import {
   parseNowPlaying,
   parseOptions,
   parseSource,
+  parseLoadQuality,
   parseVideoParts,
 } from './serialization';
 import type { ContentFit } from './WebVideo';
@@ -95,7 +96,11 @@ export class WebModule implements PlayerModule {
       const [descriptor, fields] = parseSource(
         objectUrl == null ? source : { ...source, uri: objectUrl }
       );
-      const o = options as { autoplay?: unknown; startPosition?: unknown };
+      const o = options as {
+        autoplay?: unknown;
+        startPosition?: unknown;
+        quality?: unknown;
+      };
       controller.userGesture();
       const loaded = controller.load(
         descriptor,
@@ -103,7 +108,8 @@ export class WebModule implements PlayerModule {
         typeof o.autoplay === 'boolean' ? o.autoplay : null,
         typeof o.startPosition === 'number' ? o.startPosition : null,
         objectUrl,
-        parseVideoParts(source)
+        parseVideoParts(source),
+        parseLoadQuality(o.quality)
       );
       // An autoplay refusal leaves the load ready-but-paused (see status.interruption).
       controller.takePlayAttempt();

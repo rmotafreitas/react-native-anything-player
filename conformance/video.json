@@ -386,6 +386,163 @@
     ]
   },
   {
+    "name": "renditions: an audio player plays the pick from the first byte, keeps it in the background and across loads; a source without it plays automatic, from the highest",
+    "steps": [
+      { "call": "load", "uri": "https://cdn.example/ep1", "autoplay": true, "quality": "320k", "renditions": [{ "id": "64k", "uri": "https://cdn.example/ep1-64.m4a", "bitrate": 64000 }, { "id": "192k", "uri": "https://cdn.example/ep1-192.m4a", "bitrate": 192000 }, { "id": "320k", "uri": "https://cdn.example/ep1-320.m4a", "bitrate": 320000, "audioOnly": true }] },
+      { "expect": { "qualities": ["64k", "192k", "320k"], "quality": "320k", "selectedQuality": "320k", "video": null, "commands": ["open(gen=1,start=-,play=true,r=2)"] } },
+      { "native": "ready", "duration": 600, "seekable": true },
+      { "native": "playing" },
+      { "call": "background" },
+      { "advance": 5000 },
+      { "expect": { "state": "playing", "quality": "320k", "commands": [] } },
+      { "call": "load", "uri": "https://cdn.example/ep2", "autoplay": true, "renditions": [{ "id": "64k", "uri": "https://cdn.example/ep2-64.m4a", "bitrate": 64000 }, { "id": "192k", "uri": "https://cdn.example/ep2-192.m4a", "bitrate": 192000 }, { "id": "320k", "uri": "https://cdn.example/ep2-320.m4a", "bitrate": 320000, "audioOnly": true }] },
+      { "expect": { "quality": "320k", "selectedQuality": "320k", "commands": ["open(gen=2,start=-,play=true,r=2)"] } },
+      { "call": "load", "uri": "https://cdn.example/single.m4a", "autoplay": true },
+      { "expect": { "qualities": [], "quality": null, "selectedQuality": null, "commands": ["open(gen=3,start=-,play=true)"] } },
+      { "call": "load", "uri": "https://cdn.example/ep3", "autoplay": true, "renditions": [{ "id": "64k", "uri": "https://cdn.example/ep3-64.m4a", "bitrate": 64000 }, { "id": "192k", "uri": "https://cdn.example/ep3-192.m4a", "bitrate": 192000 }, { "id": "320k", "uri": "https://cdn.example/ep3-320.m4a", "bitrate": 320000, "audioOnly": true }] },
+      { "expect": { "quality": "320k", "selectedQuality": "320k", "commands": ["open(gen=4,start=-,play=true,r=2)"] } },
+      { "call": "load", "uri": "https://cdn.example/ep4", "autoplay": true, "quality": null, "renditions": [{ "id": "64k", "uri": "https://cdn.example/ep4-64.m4a", "bitrate": 64000 }, { "id": "192k", "uri": "https://cdn.example/ep4-192.m4a", "bitrate": 192000 }, { "id": "320k", "uri": "https://cdn.example/ep4-320.m4a", "bitrate": 320000, "audioOnly": true }] },
+      { "expect": { "quality": "320k", "selectedQuality": null, "commands": ["open(gen=5,start=-,play=true,r=2)"] } }
+    ]
+  },
+  {
+    "name": "renditions: automatic picked while a single file plays lets go of the kept pick",
+    "steps": [
+      { "call": "load", "uri": "https://cdn.example/ep1", "autoplay": true, "quality": "320k", "renditions": [{ "id": "64k", "uri": "https://cdn.example/ep1-64.m4a", "bitrate": 64000 }, { "id": "320k", "uri": "https://cdn.example/ep1-320.m4a", "bitrate": 320000 }] },
+      { "call": "load", "uri": "https://cdn.example/single.m4a", "autoplay": true },
+      { "call": "selectQuality", "id": null },
+      { "call": "load", "uri": "https://cdn.example/ep2", "autoplay": true, "renditions": [{ "id": "64k", "uri": "https://cdn.example/ep2-64.m4a", "bitrate": 64000 }, { "id": "320k", "uri": "https://cdn.example/ep2-320.m4a", "bitrate": 320000 }] },
+      { "expect": { "quality": "320k", "selectedQuality": null, "commands": ["open(gen=1,start=-,play=true,r=1)", "open(gen=2,start=-,play=true)", "open(gen=3,start=-,play=true,r=1)"] } }
+    ]
+  },
+  {
+    "name": "renditions: an audio player starts where the last bandwidth fits, and two stalls in 30 s step it down one",
+    "steps": [
+      { "call": "load", "uri": "https://cdn.example/ep1", "autoplay": true, "renditions": [{ "id": "64k", "uri": "https://cdn.example/ep1-64.m4a", "bitrate": 64000 }, { "id": "192k", "uri": "https://cdn.example/ep1-192.m4a", "bitrate": 192000 }, { "id": "320k", "uri": "https://cdn.example/ep1-320.m4a", "bitrate": 320000 }] },
+      { "native": "ready", "duration": 600, "seekable": true },
+      { "native": "playing" },
+      { "native": "bandwidth", "bps": 2000000 },
+      { "call": "load", "uri": "https://cdn.example/ep2", "autoplay": true, "renditions": [{ "id": "64k", "uri": "https://cdn.example/ep2-64.m4a", "bitrate": 64000 }, { "id": "192k", "uri": "https://cdn.example/ep2-192.m4a", "bitrate": 192000 }, { "id": "320k", "uri": "https://cdn.example/ep2-320.m4a", "bitrate": 320000 }] },
+      { "expect": { "quality": "320k", "commands": ["open(gen=1,start=-,play=true,r=2)", "open(gen=2,start=-,play=true,r=2)"] } },
+      { "native": "ready", "duration": 600, "seekable": true },
+      { "native": "playing" },
+      { "driver": "position", "value": 20 },
+      { "native": "buffering" },
+      { "advance": 500 },
+      { "native": "playing" },
+      { "advance": 5000 },
+      { "native": "buffering" },
+      { "advance": 500 },
+      { "expect": { "state": "buffering", "quality": "320k", "stats": { "rebufferCount": 2 }, "commands": ["open(gen=3,start=25.0,play=true,r=1,swap)"] } }
+    ]
+  },
+  {
+    "name": "renditions: a live audio player starts at the highest, steps down on stalls whatever it reads, back up after two quiet minutes, and waits twice as long once stalls undid that",
+    "steps": [
+      { "call": "load", "uri": "https://stream.example/", "live": true, "autoplay": true, "renditions": [{ "id": "64", "uri": "https://stream.example/64", "bitrate": 64000 }, { "id": "192", "uri": "https://stream.example/192", "bitrate": 192000 }, { "id": "320", "uri": "https://stream.example/320", "bitrate": 320000 }] },
+      { "expect": { "quality": "320", "commands": ["open(gen=1,start=-,play=true,r=2)"] } },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "native": "bandwidth", "bps": 2000000 },
+      { "native": "buffering" },
+      { "advance": 500 },
+      { "native": "playing" },
+      { "advance": 5000 },
+      { "native": "buffering" },
+      { "advance": 500 },
+      { "expect": { "state": "buffering", "commands": ["open(gen=2,start=-,play=true,r=1,swap)"] } },
+      { "native": "ready", "gen": 2, "live": true },
+      { "native": "playing", "gen": 2 },
+      { "expect": { "state": "playing", "quality": "192", "commands": [] } },
+      { "advance": 119000 },
+      { "expect": { "quality": "192", "commands": [] } },
+      { "advance": 1000 },
+      { "expect": { "commands": ["open(gen=3,start=-,play=true,r=2,swap)"] } },
+      { "native": "ready", "gen": 3, "live": true },
+      { "native": "playing", "gen": 3 },
+      { "native": "buffering" },
+      { "advance": 500 },
+      { "native": "playing" },
+      { "advance": 5000 },
+      { "native": "buffering" },
+      { "advance": 500 },
+      { "expect": { "commands": ["open(gen=4,start=-,play=true,r=1,swap)"] } },
+      { "native": "ready", "gen": 4, "live": true },
+      { "native": "playing", "gen": 4 },
+      { "advance": 120000 },
+      { "expect": { "quality": "192", "commands": [] } },
+      { "advance": 120000 },
+      { "expect": { "commands": ["open(gen=5,start=-,play=true,r=2,swap)"] } }
+    ]
+  },
+  {
+    "name": "renditions: on an output that plays one item (Safari's AirPlay), a switch re-opens in place",
+    "steps": [
+      { "call": "load", "uri": "https://cdn.example/ep1", "autoplay": true, "renditions": [{ "id": "64k", "uri": "https://cdn.example/ep1-64.m4a", "bitrate": 64000 }, { "id": "192k", "uri": "https://cdn.example/ep1-192.m4a", "bitrate": 192000 }, { "id": "320k", "uri": "https://cdn.example/ep1-320.m4a", "bitrate": 320000 }] },
+      { "native": "ready", "duration": 600, "seekable": true },
+      { "native": "playing" },
+      { "driver": "position", "value": 30 },
+      { "driver": "inPlace", "value": true },
+      { "call": "selectQuality", "id": "64k" },
+      { "expect": { "state": "loading", "quality": "64k", "commands": ["open(gen=1,start=-,play=true,r=2)", "open(gen=2,start=30.0,play=true,r=0)"] } }
+    ]
+  },
+  {
+    "name": "renditions: an audio file that starts low waits two quiet minutes from its load before it steps up",
+    "steps": [
+      { "call": "load", "uri": "https://cdn.example/ep1", "autoplay": true, "renditions": [{ "id": "64k", "uri": "https://cdn.example/ep1-64.m4a", "bitrate": 64000 }, { "id": "192k", "uri": "https://cdn.example/ep1-192.m4a", "bitrate": 192000 }, { "id": "320k", "uri": "https://cdn.example/ep1-320.m4a", "bitrate": 320000 }] },
+      { "native": "ready", "duration": 600, "seekable": true },
+      { "native": "playing" },
+      { "native": "bandwidth", "bps": 200000 },
+      { "call": "load", "uri": "https://cdn.example/ep2", "autoplay": true, "renditions": [{ "id": "64k", "uri": "https://cdn.example/ep2-64.m4a", "bitrate": 64000 }, { "id": "192k", "uri": "https://cdn.example/ep2-192.m4a", "bitrate": 192000 }, { "id": "320k", "uri": "https://cdn.example/ep2-320.m4a", "bitrate": 320000 }] },
+      { "native": "ready", "duration": 600, "seekable": true },
+      { "native": "playing" },
+      { "expect": { "quality": "64k", "commands": ["open(gen=1,start=-,play=true,r=2)", "open(gen=2,start=-,play=true,r=0)"] } },
+      { "advance": 119000 },
+      { "expect": { "quality": "64k", "commands": [] } },
+      { "advance": 1000 },
+      { "expect": { "commands": ["open(gen=3,start=120.0,play=true,r=1,swap)"] } }
+    ]
+  },
+  {
+    "name": "renditions: a step up re-opened in place counts as a switch: the next one waits another quiet window",
+    "steps": [
+      { "call": "load", "uri": "https://cdn.example/ep1", "autoplay": true, "renditions": [{ "id": "64k", "uri": "https://cdn.example/ep1-64.m4a", "bitrate": 64000 }, { "id": "192k", "uri": "https://cdn.example/ep1-192.m4a", "bitrate": 192000 }, { "id": "320k", "uri": "https://cdn.example/ep1-320.m4a", "bitrate": 320000 }] },
+      { "native": "ready", "duration": 600, "seekable": true },
+      { "native": "playing" },
+      { "native": "bandwidth", "bps": 200000 },
+      { "driver": "inPlace", "value": true },
+      { "call": "load", "uri": "https://cdn.example/ep2", "autoplay": true, "renditions": [{ "id": "64k", "uri": "https://cdn.example/ep2-64.m4a", "bitrate": 64000 }, { "id": "192k", "uri": "https://cdn.example/ep2-192.m4a", "bitrate": 192000 }, { "id": "320k", "uri": "https://cdn.example/ep2-320.m4a", "bitrate": 320000 }] },
+      { "native": "ready", "duration": 600, "seekable": true },
+      { "native": "playing" },
+      { "advance": 120000 },
+      { "expect": { "quality": "192k", "commands": ["open(gen=1,start=-,play=true,r=2)", "open(gen=2,start=-,play=true,r=0)", "open(gen=3,start=120.0,play=true,r=1)"] } },
+      { "native": "ready", "duration": 600, "seekable": true },
+      { "native": "playing" },
+      { "advance": 119000 },
+      { "expect": { "quality": "192k", "commands": [] } },
+      { "advance": 1000 },
+      { "expect": { "quality": "320k" } }
+    ]
+  },
+  {
+    "name": "renditions: an id the source lacks is refused before anything changes; selectQuality switches an audio player behind the sound",
+    "steps": [
+      { "call": "load", "uri": "https://cdn.example/ep1", "autoplay": true, "renditions": [{ "id": "64k", "uri": "https://cdn.example/ep1-64.m4a", "bitrate": 64000 }, { "id": "192k", "uri": "https://cdn.example/ep1-192.m4a", "bitrate": 192000 }, { "id": "320k", "uri": "https://cdn.example/ep1-320.m4a", "bitrate": 320000, "audioOnly": true }] },
+      { "native": "ready", "duration": 600, "seekable": true },
+      { "native": "playing" },
+      { "driver": "position", "value": 30 },
+      { "call": "load", "uri": "https://cdn.example/ep2", "quality": "999k", "renditions": [{ "id": "64k", "uri": "https://cdn.example/ep2-64.m4a", "bitrate": 64000 }, { "id": "192k", "uri": "https://cdn.example/ep2-192.m4a", "bitrate": 192000 }, { "id": "320k", "uri": "https://cdn.example/ep2-320.m4a", "bitrate": 320000, "audioOnly": true }], "throws": "INVALID_ARGUMENT" },
+      { "call": "selectQuality", "id": "999k", "throws": "INVALID_ARGUMENT" },
+      { "expect": { "state": "playing", "gen": 1, "quality": "320k", "loads": ["1:ready"], "commands": ["open(gen=1,start=-,play=true,r=2)"] } },
+      { "call": "selectQuality", "id": "192k" },
+      { "expect": { "state": "playing", "gen": 1, "quality": "320k", "selectedQuality": "192k", "commands": ["open(gen=2,start=30.0,play=true,r=1,swap)"] } },
+      { "native": "ready", "gen": 2, "duration": 600, "seekable": true },
+      { "native": "playing", "gen": 2 },
+      { "expect": { "state": "playing", "gen": 2, "quality": "192k", "stats": { "qualitySwitches": 1 }, "commands": [] } }
+    ]
+  },
+  {
     "name": "video: a rendition that fails to switch to is dropped, sits out a minute, then is tried again",
     "options": { "video": true },
     "steps": [
@@ -395,7 +552,7 @@
       { "native": "playing" },
       { "call": "selectQuality", "id": "r3" },
       { "native": "failed", "gen": 2, "code": "HTTP_ERROR", "httpStatus": 404 },
-      { "expect": { "state": "playing", "gen": 1, "quality": "r1", "selectedQuality": "r3", "errors": [], "commands": ["open(gen=1,start=-,play=true,r=1)", "open(gen=2,start=0.0,play=true,r=3,swap)", "cancelSwap(gen=2)"] } },
+      { "expect": { "state": "playing", "gen": 1, "quality": "r1", "selectedQuality": "r3", "errors": ["QUALITY_SWITCH_FAILED:warning"], "commands": ["open(gen=1,start=-,play=true,r=1)", "open(gen=2,start=0.0,play=true,r=3,swap)", "cancelSwap(gen=2)"] } },
       { "advance": 59000 },
       { "expect": { "state": "playing", "commands": [] } },
       { "advance": 2000 },
@@ -414,7 +571,7 @@
       { "advance": 11999 },
       { "expect": { "commands": ["open(gen=1,start=-,play=true,r=1)", "open(gen=2,start=0.0,play=true,r=2,swap)"] } },
       { "advance": 1 },
-      { "expect": { "state": "playing", "gen": 1, "quality": "r1", "commands": ["cancelSwap(gen=2)"] } }
+      { "expect": { "state": "playing", "gen": 1, "quality": "r1", "errors": ["QUALITY_SWITCH_FAILED:warning"], "commands": ["cancelSwap(gen=2)"] } }
     ]
   },
   {

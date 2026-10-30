@@ -110,16 +110,16 @@ private final class FullscreenController: AVPlayerViewController {
 }
 
 /// A video player's picture side on iOS: its two AVPlayers
-/// ([VideoSwapDriver]), an AVPlayerLayer each in a stage that moves to the
+/// ([SwapDriver]), an AVPlayerLayer each in a stage that moves to the
 /// newest `<VideoView>`, AVKit's controls inline (`nativeControls`) and in
 /// fullscreen, Picture in Picture, and the subtitle overlay (the app's files
 /// on the cue schedule, the source's from the legible output). Tells the
 /// engine about the view and emits `cues`. Main thread.
-final class VideoOutput: NSObject, VideoPicture, VideoStage, AVPictureInPictureControllerDelegate,
+final class VideoOutput: NSObject, VideoPicture, SwapStage, AVPictureInPictureControllerDelegate,
   AVPlayerViewControllerDelegate
 {
   private weak var controller: PlayerController?
-  private let swap: VideoSwapDriver
+  private let swap: SwapDriver
   private var layers: [ObjectIdentifier: AVPlayerLayer] = [:]
   private var readiness: [ObjectIdentifier: NSKeyValueObservation] = [:]
   private let stage = PictureStage()
@@ -154,7 +154,7 @@ final class VideoOutput: NSObject, VideoPicture, VideoStage, AVPictureInPictureC
   private var posterTask: URLSessionDataTask?
 
   init(titleFormat: StreamTitleFormat) {
-    swap = VideoSwapDriver { AVPlayerDriver(titleFormat: titleFormat, video: true) }
+    swap = SwapDriver { AVPlayerDriver(titleFormat: titleFormat, video: true) }
     super.init()
     swap.stage = self
     show(current: swap.current, hidden: nil)
@@ -251,7 +251,7 @@ final class VideoOutput: NSObject, VideoPicture, VideoStage, AVPictureInPictureC
     swap.destroy()
   }
 
-  // MARK: - VideoStage
+  // MARK: - SwapStage
 
   func show(current: AVPlayerDriver, hidden: AVPlayerDriver?) {
     let currentLayer = layer(for: current)

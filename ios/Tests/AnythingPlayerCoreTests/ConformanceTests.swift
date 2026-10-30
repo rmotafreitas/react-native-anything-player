@@ -92,7 +92,8 @@ final class ConformanceTests: XCTestCase {
     return list.map { r in
       Rendition(
         uri: r["uri"] as? String ?? "", height: (r["height"] as? NSNumber)?.intValue,
-        bitrate: (r["bitrate"] as? NSNumber)?.int64Value, audioOnly: r["audioOnly"] as? Bool ?? false)
+        bitrate: (r["bitrate"] as? NSNumber)?.int64Value, audioOnly: r["audioOnly"] as? Bool ?? false,
+        id: r["id"] as? String)
     }
   }
 
@@ -198,6 +199,7 @@ final class ConformanceTests: XCTestCase {
       case "trickle": h.driver.setMotion(.trickle)
       case "loaded": h.driver.setMotion(.loaded, buffered: (step["value"] as? NSNumber)?.doubleValue ?? 0)
       case "reentrant": h.driver.reentrant = true
+      case "inPlace": h.driver.swapsInPlace = step["value"] as? Bool ?? true
       case "position": h.driver.setPosition((step["value"] as? NSNumber)?.doubleValue ?? 0)
       default: XCTFail("\(at): unknown driver step \(driver)")
       }
@@ -249,9 +251,11 @@ final class ConformanceTests: XCTestCase {
     switch call {
     case "load":
       let source = Self.source(step, h, refreshable: step["refreshable"] as? Bool ?? false)
+      // `"quality"`: an id, `null` for automatic; absent: keep the pick.
       try h.engine.load(
         source, autoplay: step["autoplay"] as? Bool,
-        startPosition: (step["start"] as? NSNumber)?.doubleValue)
+        startPosition: (step["start"] as? NSNumber)?.doubleValue, qualityGiven: step.keys.contains("quality"),
+        quality: step["quality"] as? String)
     case "background": h.engine.appBackgrounded()
     case "selectQuality": try h.engine.selectQuality(step["id"] as? String)
     case "listenOnly": try h.engine.setListenOnly(step["value"] as? Bool ?? false)

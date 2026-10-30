@@ -249,20 +249,37 @@ describe('a quality switch', () => {
     ]);
   });
 
-  it('leaves the old element untapped for the next switch', () => {
+  it('remembers that the old element is tapped: Web Audio keeps it for good (council C1)', () => {
     const old = playing();
     driver.tapped = true;
     driver.open(swap(2, HD, null));
     const next = world.videos[1]!;
     next.becomeReady(120);
     next.startPlaying();
+    // The new element was never routed through Web Audio.
     expect(driver.tapped).toBe(false);
 
+    // The old element is still tapped: a cross-origin file on it would play
+    // silence, so the switch plays on a fresh element instead.
     driver.open(swap(3, SD, null));
-    old.becomeReady(120);
-    old.startPlaying();
-    expect(driver.element).toBe(old);
+    const fresh = world.videos[2]!;
+    expect(fresh).not.toBe(old);
+    expect(fresh.src).toBe(SD);
+    fresh.becomeReady(120);
+    fresh.startPlaying();
+    expect(driver.element).toBe(fresh);
     expect(driver.tapped).toBe(false);
+    // The hidden one's new element was never the controller's (council C2).
+    expect(rec.of('onElementReplaced')).toEqual([]);
+  });
+
+  it('says it plays one item while its element is on AirPlay: the engine re-opens in place (council C8)', () => {
+    const video = playing();
+    expect(driver.swapsInPlace).toBe(false);
+    (
+      video as unknown as { webkitCurrentPlaybackTargetIsWireless: boolean }
+    ).webkitCurrentPlaybackTargetIsWireless = true;
+    expect(driver.swapsInPlace).toBe(true);
   });
 
   it('hears nothing from the element it left', () => {

@@ -43,6 +43,8 @@ protocol EngineDriver: AnyObject {
   func setLoop(_ loop: Bool)
   /// Drop the item an `open(swap: true)` was preparing.
   func cancelSwap(generation: Int)
+  /// The output plays one item at a time: a quality switch re-opens in place, as on Cast.
+  var swapsInPlace: Bool { get }
   /// Play these of the source's own tracks (`nil` text: none of them, which
   /// is also how an app's subtitle file is shown: by the overlay).
   func selectTracks(audio: String?, text: String?)
@@ -56,6 +58,7 @@ extension EngineDriver {
   func setQuality(_ constraints: QualityConstraints) {}
   func setLoop(_ loop: Bool) {}
   func cancelSwap(generation: Int) {}
+  var swapsInPlace: Bool { false }
   func selectTracks(audio: String?, text: String?) {}
 }
 
@@ -78,6 +81,8 @@ protocol EngineDelegate: AnyObject {
   func engine(statusChanged status: Status)
   func engine(loadSettled loadId: Int, outcome: LoadOutcome)
   func engine(error: PlayerError, fatal: Bool)
+  /// Something the app should hear that stops nothing and starts no recovery (a quality switch that failed).
+  func engine(warning: PlayerError)
   func engineDidEnd()
   /// The sleep timer paused the player (`sleep` event).
   func engineSleepFired()
@@ -252,6 +257,12 @@ final class PlaybackEngine {
   // ── Video: renditions ──
   private var renditions: [Rendition]?
   private var selectedQuality: String?
+  /// The app's pick, kept across loads (`nil`: automatic).
+  private var wantedQuality: String?
+  /// Quiet step ups: counted from the load; the last one; how many stalls undid.
+  private var quietSince: Int64 = 0
+  private var quietUpAt: Int64?
+  private var quietUndone = 0
   /// The engine's own pick among the renditions (automatic quality).
   private var abrLevel: Int?
   private var currentRendition: Int?
@@ -361,9 +372,8 @@ final class PlaybackEngine {
     s.rate = rate
     s.route = route
     s.sleepAt = sleepWallAt
-    // An audio player picks no quality.
-    if options.video != nil {
-      s.qualities = qualityList()
+    s.qualities = statusQualities()
+    if !s.qualities.isEmpty {
       s.quality = currentQualityId()
       s.selectedQuality = selectedQuality
     }
@@ -392,8 +402,14 @@ final class PlaybackEngine {
 
   // MARK: - Commands
 
-  func load(_ newSource: SourceDescriptor, autoplay: Bool?, startPosition: Double?) throws {
+  /// `quality`: the quality to play, for this load and the next (`nil`:
+  /// automatic); only used when `qualityGiven`, else the current pick stays.
+  func load(
+    _ newSource: SourceDescriptor, autoplay: Bool?, startPosition: Double?, qualityGiven: Bool = false,
+    quality: String? = nil
+  ) throws {
     try ensureAlive()
+    if qualityGiven { try chooseQuality(newSource, quality) }
     // A fade-out ends with the item it was fading.
     cancelFadeOut()
     let flowing = playWhenReady && state == .playing
@@ -1793,11 +1809,13 @@ extension PlaybackEngine {
   /// Pins a quality (`status.qualities[].id`), or `nil` for automatic.
   func selectQuality(_ id: String?) throws {
     try ensureAlive()
-    let qualities = options.video == nil ? [] : qualityList()
+    let qualities = statusQualities()
     if let id, !qualities.contains(where: { $0.id == id }) {
       throw PlayerError.code(.invalidArgument, "No quality \"\(id)\".", recoverable: false)
     }
-    // Nothing to pick from (one file, an audio player): automatic already.
+    // Kept for the next loads too (`load(…, quality)` overrides it).
+    wantedQuality = id
+    // Nothing to pick from (one file): automatic already.
     if qualities.isEmpty { return }
     selectedQuality = id
     log("quality selected", ["id": id ?? "auto"])
@@ -1989,6 +2007,11 @@ extension PlaybackEngine {
     if let selected = selectedQuality, renditions == nil, !variants.contains(where: { $0.id == selected }) {
       selectedQuality = nil
     }
+    if selectedQuality == nil, let wanted = wantedQuality, renditions == nil,
+      variants.contains(where: { $0.id == wanted })
+    {
+      selectedQuality = wanted
+    }
     applyQuality("variants")
     commit()
   }
@@ -2044,10 +2067,11 @@ extension PlaybackEngine {
     sourceRevision = 0
     openedRevision = 0
     armExpiry()
+    // The qualities are any player's (an audio player's renditions too).
+    resetQuality()
     guard let v = options.video else { return }
     firstFrame = false
     resetTracks()
-    resetQuality()
     if !view.attached && detachedSince == nil { detachedSince = now }
     lastAudioOnly = audioOnlyReason
     if v.ambient && !shown && playWhenReady {
@@ -2094,7 +2118,7 @@ extension PlaybackEngine {
 
   fileprivate func swapFailed(_ error: PlayerError) {
     guard let swap = pendingSwap else { return }
-    dropSwap(swap, reason: "failed: \(error.code.rawValue)")
+    dropSwap(swap, reason: "failed: \(error.code.rawValue)", cause: error)
   }
 
   /// The item's duration, live state and seekability, as the platform reports them.
@@ -2145,13 +2169,14 @@ extension PlaybackEngine {
   fileprivate func stallPublished(_ t: Int64) {
     counters.rebufferCount += 1
     if rebufferSince == nil { rebufferSince = t }
-    guard options.video != nil, !remote else { return }
+    guard !remote else { return }
     if audioOnlyReason == nil {
       stallTimes.append(t)
       stallTimes.removeAll { t - $0 >= RecoveryPolicy.fallbackProbeMs }
     }
     evaluateAbr(t, stalled: true)
-    evaluateFallback(t, stalled: true)
+    // The audio-only fallback is the picture's.
+    if options.video != nil { evaluateFallback(t, stalled: true) }
   }
 
   fileprivate func stateChanged(_ next: PlaybackState) {
@@ -2206,11 +2231,11 @@ extension PlaybackEngine {
 
   /// The watchdog's tick, while playback is wanted.
   fileprivate func videoHeartbeat(_ t: Int64) {
-    guard options.video != nil, !remote, state == .playing else { return }
+    guard !remote, state == .playing, options.video != nil || renditions != nil else { return }
     // A switch a seek or a pause cancelled is tried again.
     if renditions != nil && pendingSwap == nil { retarget("resume switch") }
     evaluateAbr(t, stalled: false)
-    evaluateFallback(t, stalled: false)
+    if options.video != nil { evaluateFallback(t, stalled: false) }
   }
 
   // MARK: Surroundings
@@ -2438,7 +2463,9 @@ extension PlaybackEngine {
   private func resetQuality() {
     videoInfo = nil
     variants = []
-    selectedQuality = nil
+    quietSince = now
+    quietUpAt = nil
+    quietUndone = 0
     fallbackActive = false
     fallbackSince = nil
     stallTimes = []
@@ -2450,23 +2477,38 @@ extension PlaybackEngine {
     returnSince = nil
     lastSwitchAt = nil
     appliedQuality = nil
-    if let table = source?.renditions, !table.isEmpty { renditions = table } else { renditions = nil }
+    // An audio player's renditions are all rungs of one ladder: none is the
+    // picture's audio-only fallback.
+    let audio = options.video == nil
+    if let table = source?.renditions, !table.isEmpty {
+      renditions = table.map { r in
+        var rung = r
+        rung.audioOnly = r.audioOnly && !audio
+        return rung
+      }
+    } else {
+      renditions = nil
+    }
+    // The app's pick holds from the first byte where this source has it; an
+    // adaptive source's variants take it when they are known (onVariants).
+    selectedQuality = wantedQuality.flatMap { renditionIndex($0) != nil ? $0 : nil }
     abrLevel = renditions != nil ? startLevel() : nil
     currentRendition = targetRendition()
   }
 
   /// The quality the status reports as playing.
   private func currentQualityId() -> String? {
-    guard renditions != nil else { return videoInfo?.variantId }
-    return currentRendition.map { "r\($0)" }
+    guard let table = renditions else { return videoInfo?.variantId }
+    return currentRendition.map { table[$0].id(at: $0) }
   }
 
   private func applyQuality(_ cause: String) {
-    guard options.video != nil, source != nil else { return }
+    guard source != nil else { return }
     if renditions != nil {
       retarget(cause)
       return
     }
+    guard options.video != nil else { return }
     let c = constraints()
     let key = "\(String(describing: c.maxHeight))|\(String(describing: c.maxBitrate))|\(c.pinned ?? "-")|\(c.audioOnly)"
     guard key != appliedQuality else { return }
@@ -2476,7 +2518,10 @@ extension PlaybackEngine {
 
   /// The caps for an adaptive source's ABR (and the allowed renditions).
   private func constraints() -> QualityConstraints {
-    let q = options.video?.quality ?? QualityPolicy()
+    // An audio player has no caps: they are the picture's.
+    guard let q = options.video?.quality else {
+      return QualityConstraints(maxHeight: nil, maxBitrate: nil, pinned: nil, audioOnly: false)
+    }
     var maxHeight = q.maxHeight
     var maxBitrate = q.maxBitrate
     if metered {
@@ -2511,10 +2556,36 @@ extension PlaybackEngine {
     return Double(info.height) * scale
   }
 
+  /// The qualities the status lists. An audio player picks among renditions
+  /// only: an adaptive source's variants are the platform's to switch.
+  private func statusQualities() -> [VideoVariant] {
+    options.video == nil && renditions == nil ? [] : qualityList()
+  }
+
+  /// `load(…, quality)`: the pick for this load and the next (`nil`:
+  /// automatic). Checked before anything changes: an id the source's
+  /// renditions lack is refused.
+  private func chooseQuality(_ source: SourceDescriptor, _ quality: String?) throws {
+    if let quality, let table = source.renditions, !table.isEmpty,
+      !table.enumerated().contains(where: { $0.element.id(at: $0.offset) == quality })
+    {
+      throw PlayerError.code(.invalidArgument, "No quality \"\(quality)\".", recoverable: false)
+    }
+    wantedQuality = quality
+  }
+
+  /// A rendition's index by its id, `nil` when there is none.
+  private func renditionIndex(_ id: String) -> Int? {
+    renditions?.enumerated().first(where: { $0.element.id(at: $0.offset) == id })?.offset
+  }
+
   private func qualityList() -> [VideoVariant] {
     guard let table = renditions else { return variants }
     return table.enumerated().map { i, r in
-      VideoVariant(id: "r\(i)", height: r.height, bitrate: r.bitrate, audioOnly: r.audioOnly, label: r.label)
+      // Every quality of an audio player is sound alone.
+      VideoVariant(
+        id: r.id(at: i), height: r.height, bitrate: r.bitrate, audioOnly: r.audioOnly || options.video == nil,
+        label: r.label)
     }
   }
 
@@ -2587,7 +2658,13 @@ extension PlaybackEngine {
   private func startLevel() -> Int? {
     let order = allowedOrder()
     guard let first = order.first, let last = order.last else { return nil }
-    switch options.video?.quality.startQuality ?? .auto {
+    // An audio player starts at the highest (a sound's bitrates are small)
+    // unless a file's bandwidth says otherwise; a live one cannot say.
+    guard let video = options.video else {
+      if let bandwidth, !isLive { return fitting(order, bandwidth) ?? first }
+      return last
+    }
+    switch video.quality.startQuality {
     case .lowest: return first
     case .highest: return last
     case .height(let value): return tallestUpTo(order, value)
@@ -2618,7 +2695,7 @@ extension PlaybackEngine {
   private func targetRendition() -> Int? {
     guard renditions != nil else { return nil }
     if audioOnlyReason != nil, let audio = audioRendition() { return audio }
-    if let selected = selectedQuality, let index = Int(selected.dropFirst()) {
+    if let selected = selectedQuality, let index = renditionIndex(selected) {
       let failed = (failedUntil[index] ?? 0) > now
       return failed ? currentRendition : index
     }
@@ -2643,8 +2720,10 @@ extension PlaybackEngine {
   private func moveTo(_ target: Int, cause: String) {
     let open = readyForGeneration && !connectionReleased
     let flowing = state == .playing || state == .buffering
-    // A Cast receiver plays one item: it re-opens in place.
-    if flowing && open && playWhenReady && !remote { return startSwap(target, cause: cause) }
+    // A Cast receiver (or an output like Safari's AirPlay) plays one item: it re-opens in place.
+    if flowing && open && playWhenReady && !remote && !driver.swapsInPlace { return startSwap(target, cause: cause) }
+    // A switch in place counts as one (the next quiet step up waits again).
+    if target != currentRendition { lastSwitchAt = now }
     currentRendition = target
     // Stopped, ended, failed or reconnecting: the next open uses it.
     let reopens = state == .loading || (open && (flowing || state == .paused))
@@ -2665,16 +2744,28 @@ extension PlaybackEngine {
         playWhenReady: true, allowReconnect: options.reconnect, swap: true, rendition: target))
   }
 
-  /// A switch that failed or timed out: its file sits out a while.
-  private func dropSwap(_ swap: PendingSwap, reason: String) {
+  /// A switch that failed or timed out: its file sits out a while, and the
+  /// app hears it (non-fatal: the current file plays on). `cause`: the new
+  /// file's own failure, if it had one.
+  private func dropSwap(_ swap: PendingSwap, reason: String, cause: PlayerError? = nil) {
     failedUntil[swap.rendition] = now + RecoveryPolicy.failedRenditionMs
     if abrLevel == swap.rendition { abrLevel = currentRendition }
     cancelSwap(reason)
+    let target = renditions![swap.rendition].id(at: swap.rendition)
+    var error = PlayerError.code(
+      .qualitySwitchFailed,
+      "The switch to quality \"\(target)\" \(cause != nil ? "failed" : "timed out"); the current one plays on.",
+      recoverable: true)
+    // The new file's own failure: its code, then its message.
+    error.cause = cause.map { "\($0.code.rawValue): \($0.message)" } ?? reason
+    error.platformDomain = cause?.platformDomain
+    error.platformCode = cause?.platformCode
+    pendingEvents.append { [weak self] in self?.delegate?.engine(warning: error) }
   }
 
   private func trackBandwidth(_ t: Int64, _ bps: Double) {
     trackFallbackBandwidth(t, bps)
-    guard options.video != nil, renditions != nil else { return }
+    guard renditions != nil else { return }
     let level = abrLevel ?? currentRendition
     if let level, let bitrate = videoBitrateOf(level), bps < Double(bitrate) {
       if abrLowSince == nil { abrLowSince = t }
@@ -2731,7 +2822,11 @@ extension PlaybackEngine {
   }
 
   /// The bandwidth reading of this load, if it had one.
-  private var currentBandwidth: Double? { bandwidthAt != nil ? bandwidth : nil }
+  private var currentBandwidth: Double? {
+    // A live sound arrives at its own bitrate: its reading is no headroom.
+    if options.video == nil && isLive { return nil }
+    return bandwidthAt != nil ? bandwidth : nil
+  }
 
   /// The engine picks among the renditions itself (none pinned, the picture on).
   private var automaticRenditions: Bool {
@@ -2745,9 +2840,20 @@ extension PlaybackEngine {
     // The engine's pick, whether or not its switch has landed yet.
     guard !order.isEmpty, let level = abrLevel ?? currentRendition else { return }
     let position = order.firstIndex(of: level) ?? 0
-    let next =
-      stalled ? stallStep(order, position, t) : bandwidthStep(order, position, t)
+    let next: Int
+    if stalled {
+      next = stallStep(order, position, t)
+    } else if options.video == nil && currentBandwidth == nil {
+      next = quietStep(order, position, t)
+    } else {
+      next = bandwidthStep(order, position, t)
+    }
     if next == position && order[position] == abrLevel { return }
+    // Stalls undid a quiet step up: the next one waits longer.
+    if stalled && next < position, let quietUp = quietUpAt {
+      if t - quietUp < RecoveryPolicy.abrQuietUpMs { quietUndone += 1 }
+      quietUpAt = nil
+    }
     abrLevel = order[next]
     abrLowSince = nil
     abrUpSince = nil
@@ -2767,6 +2873,18 @@ extension PlaybackEngine {
     guard let bw else { return position - 1 }
     guard let fit = fitting(Array(order[0..<position]), bw) else { return 0 }
     return order.firstIndex(of: fit) ?? 0
+  }
+
+  /// An audio player that measures nothing it can trust steps up one after
+  /// a quiet while (no stall since the load and the last switch); each step
+  /// up that stalls undid waits twice as long (at most 8 times).
+  private func quietStep(_ order: [Int], _ position: Int, _ t: Int64) -> Int {
+    let quiet = RecoveryPolicy.abrQuietUpMs << Int64(min(quietUndone, 3))
+    guard position < order.count - 1 else { return position }
+    let since = max(lastSwitchAt ?? Int64.min, quietSince)
+    if t - since < quiet || stallsWithin(t, quiet) > 0 { return position }
+    quietUpAt = t
+    return position + 1
   }
 
   /// Sustained low bandwidth steps down; sustained headroom steps up.

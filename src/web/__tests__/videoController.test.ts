@@ -13,7 +13,6 @@ import {
   type VideoLoadParts,
 } from '../platform/serialization';
 import { SwapDriver } from '../platform/SwapDriver';
-import { MediaElementDriver } from '../platform/MediaElementDriver';
 import { vttCue } from '../../core/subtitles/vtt';
 import { engineError } from '../engine/types';
 import type { SourceDescriptor } from '../engine/types';
@@ -185,17 +184,20 @@ describe('a video player', () => {
     expect(ofType('status').length).toBeGreaterThan(0);
   });
 
-  it('is an audio player without `video`: one <audio>, no stage', () => {
+  it('is an audio player without `video`: <audio> elements, no stage', () => {
     setup({});
     expect(controller.video).toBeNull();
-    expect(controller.driver).toBeInstanceOf(MediaElementDriver);
     expect(world.videos).toEqual([]);
     expect(() => controller.attachVideo(new FakeBox())).toThrow(
       expect.objectContaining({ code: 'INVALID_ARGUMENT' })
     );
-    expect(() => controller.videoCommand({ op: 'selectQuality' })).toThrow(
+    expect(() => controller.videoCommand({ op: 'setListenOnly' })).toThrow(
       'This is not a video player'
     );
+    // Qualities are any player's: nothing to pick from is automatic already.
+    expect(() =>
+      controller.videoCommand({ op: 'selectQuality', id: null })
+    ).not.toThrow();
   });
 
   it('puts the picture in the page element it is attached to', () => {
