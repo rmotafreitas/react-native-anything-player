@@ -1,6 +1,6 @@
 {
   "name": "react-native-anything-player",
-  "version": "1.2.1",
+  "version": "1.3.0",
   "description": "Native-first, reliable audio player for React Native and the web: files, streams and internet radio (ICY), with background playback, media sessions, automatic recovery and opt-in video.",
   "main": "./lib/module/index.js",
   "types": "./lib/typescript/src/index.d.ts",

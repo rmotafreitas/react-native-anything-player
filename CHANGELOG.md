@@ -7,6 +7,38 @@ and versions follow [Semantic Versioning](https://semver.org/): see
 change and how releases are made. Changes not released yet are listed in the
 open release pull request.
 
+## [1.3.0](https://github.com/rmotafreitas/react-native-anything-player/compare/v1.2.1...v1.3.0) (2026-10-30)
+
+Video, on every platform, as an opt-in part of the same player. Audio apps get the fixes below; the only change to plan for is the JavaScript size (see **Upgrading**).
+
+### Added
+
+- **Video.** `new Player({ video: true })` plays a picture with the same engine, recovery, events and lock-screen integration as audio. `<VideoView player={player} />` shows it in React Native, React Native Web, Expo web and React DOM, and `player.attachTo(element)` on any web page; a player outlives its views, and moving it between views has no gap. Files, HLS and DASH (Shaka on the web, rewritten as HLS for AVPlayer on iOS); renditions (one file per quality) switched behind the picture without a gap; quality caps for the view's size, metered networks and Data Saver; fullscreen, Picture in Picture and `whenBackgrounded` (`pause`, `audio`, `pip`); `nativeControls`; posters, thumbnails, `seekTo(t, { exact })`, loop and playback stats. The qualities to pick from are on the status itself (`status.qualities`, `status.quality`, `status.selectedQuality`), for `selectQuality()`. Opt-in on iOS and Android with the Expo plugin's `video` option (`npx rnap add video`, `rnapVideo=true` / `RNAP_VIDEO=1` without Expo); always available on the web. See [Video](docs/video.md).
+- **Matroska, WebM and MPEG-TS everywhere**, files and live IPTV channels, with their audio languages and subtitles. Nothing is transcoded: ExoPlayer reads them, and RNAP remuxes them for AVPlayer and for browsers (on the web the server must allow CORS).
+- **Subtitles and tracks.** SubRip, WebVTT, TTML and basic ASS files, encoding detection, a source's own audio languages and subtitles, one overlay that follows the OS caption style, `useCues()`, `subtitleDelay`, and an automatic choice from the OS languages and accessibility settings. See [Subtitles](docs/subtitles.md).
+- **DRM.** FairPlay, Widevine, PlayReady and Clear Key: license servers with headers, Clear Key keys in the source, or the app's own `getLicense` exchange. FairPlay is not yet tried on hardware.
+- **Video over Google Cast and AirPlay**, with the app's subtitle files on Cast receivers.
+- **Android software decoders** (`npx rnap add video-decoders`, `rnapVideoDecoders=true`): FFmpeg for Dolby, DTS and MPEG audio, libvpx and dav1d for VP9 and AV1, used only for what the device cannot decode. They are built in CI from pinned sources and downloaded from this repository's releases, checked against pinned checksums.
+- A feature matrix of what audio features do on a video player, per OS and browser engine ([Features](docs/features.md)).
+
+### Fixed
+
+- **A playback rate holds across loads.** On the web, a new source (or hls.js and Shaka attaching later) reset it to 1x while `status.rate` kept the old one; on iOS, a load could start at the default rate; on Android, the rate did not follow the audio to a Cast receiver and back. A Cast receiver now plays the rate set, between 0.5x and 2x, on every platform ([#49](https://github.com/rmotafreitas/react-native-anything-player/issues/49)).
+- **The duration and seek range follow what the platform learns.** A fragmented MP4 that reports 18 s at first, then 600 s, no longer keeps seeks clamped to 18 s, and a start position past an early duration waits for the longer one; a Cast receiver's later duration reaches the player too, and an unknown one taken for live becomes a file once known ([#50](https://github.com/rmotafreitas/react-native-anything-player/issues/50)).
+- **A stall in the last frame of a file ends it.** WebKitGTK could stop a few milliseconds before the end without `ended`; the engine re-opened the item at its end every few seconds, forever, so a queue or a sleep-at-end never moved on. All three engines now end (or loop) the item ([#59](https://github.com/rmotafreitas/react-native-anything-player/issues/59)).
+- **A transient media-pipeline failure is retried.** On the web, a `MediaError` 4 from an element that hls.js, the remuxer or MSE feeds, after its metadata loaded, was reported as a fatal `UNSUPPORTED_FORMAT`; on iOS and Android, a decode or parse failure after the item was ready was fatal too. It is now a recoverable `DECODER_ERROR`, and the engine re-opens the item ([#58](https://github.com/rmotafreitas/react-native-anything-player/issues/58)).
+- A player that plays without saying so (WebKitGTK at `readyState` 2) is treated as playing once its playhead runs, instead of being re-opened as a dead stall.
+- Android reports no duration for a live stream (the live window's length changed on every refresh), as iOS and the web do.
+
+### Changed
+
+- **A start position costs no wasted request.** hls.js starts loading at the segment that holds it, and iOS seeks the item before it reaches the player, instead of fetching the first segment first ([#57](https://github.com/rmotafreitas/react-native-anything-player/issues/57)).
+
+### Upgrading
+
+- **More JavaScript.** The React Native entry is about 16 KB gzipped (6 KB before), and a web page loads about 56–57 KB (31 KB before), because the video API, the engine's video rules and the subtitle parsers' entry points are part of the main entries, even for an app that plays only audio. Native code for video is only built when you turn it on. See [Comparison](docs/comparison.md).
+- Nothing else changes for audio apps: no API was removed or renamed.
+
 ## [1.2.1](https://github.com/rmotafreitas/react-native-anything-player/compare/v1.2.0...v1.2.1) (2026-10-24)
 
 Reliability fixes across the three engines and the iOS, Android and web hosts. Late callbacks, timeouts, stalls and `reconnect: false` now behave the same everywhere (22 new conformance scenarios, 127 in all). Three behaviours are stricter (see **Upgrading**).
