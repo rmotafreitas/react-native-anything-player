@@ -15,6 +15,7 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Metadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.Timeline
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
 import androidx.media3.common.VideoSize
@@ -168,6 +169,8 @@ internal class ExoPlayerDriver(
   val sampler = AudioSampler(context)
   private var generation = 0
   private var readyGeneration = -1
+  /** What the engine was last told about the item: a later change is told again. */
+  private var reportedInfo: ReadyInfo? = null
   private var playedGeneration = -1
   private var volume = 1f
   private var rate = 1f
@@ -205,6 +208,18 @@ internal class ExoPlayerDriver(
           Player.STATE_ENDED -> report { observer.onEnded(gen) }
           else -> Unit
         }
+      }
+
+      // The item's duration or seek range became known, or changed (a file's
+      // total read later, a playlist that ended): the engine follows.
+      override fun onTimelineChanged(timeline: Timeline, reason: Int) {
+        val p = player ?: return
+        val gen = currentGeneration(p) ?: return
+        if (readyGeneration != gen) return
+        val info = readyInfo(p)
+        if (info == reportedInfo) return
+        reportedInfo = info
+        report { observer.onReady(gen, info) }
       }
 
       override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -536,10 +551,16 @@ internal class ExoPlayerDriver(
   private fun reportReady(p: ExoPlayer, gen: Int) {
     if (readyGeneration == gen) return
     readyGeneration = gen
+    val info = readyInfo(p)
+    reportedInfo = info
+    report { observer.onReady(gen, info) }
+  }
+
+  private fun readyInfo(p: ExoPlayer): ReadyInfo {
     val duration = p.duration.takeIf { it != C.TIME_UNSET && it > 0 }?.let { it / 1000.0 }
     val seekable = p.isCurrentMediaItemSeekable
     val live = p.isCurrentMediaItemLive || (duration == null && !seekable)
-    report { observer.onReady(gen, ReadyInfo(duration, live, seekable)) }
+    return ReadyInfo(duration, live, seekable)
   }
 
   // ── EngineDriver ──
@@ -554,6 +575,7 @@ internal class ExoPlayerDriver(
     pendingDiscontinuity = null
     continuationTimes.clear()
     readyGeneration = -1
+    reportedInfo = null
     lastStream = null
     stationName = null
     stationGenre = null

@@ -127,6 +127,98 @@ describe('placing the stage', () => {
     expect(lastView()).toMatchObject({ attached: false, visible: false });
   });
 
+  test('taken out, it waits in the page, unseen, at its size: the browser does not pause the sound (#51)', () => {
+    const box = container();
+    stage.attach(box as never);
+    observers(FakeResizeObserver)[0]!.fire({
+      contentRect: { width: 640, height: 360 },
+    });
+
+    stage.attach(null);
+
+    const parking = asStage(stage).parentNode!;
+    expect(parking.parentNode).toBe(page.document.body);
+    expect(parking.style).toMatchObject({
+      position: 'fixed',
+      width: '640px',
+      height: '360px',
+      opacity: '0',
+      pointerEvents: 'none',
+    });
+    expect(lastView()).toEqual({
+      attached: false,
+      visible: false,
+      width: 1280,
+      height: 720,
+    });
+  });
+
+  test('a stage that was never shown is not parked', () => {
+    stage.attach(null);
+
+    expect(asStage(stage).parentNode).toBeNull();
+    expect(page.document.body.children).toEqual([]);
+  });
+
+  test('shown again, it leaves the parking', () => {
+    stage.attach(container() as never);
+    stage.attach(null);
+    const box = container();
+
+    stage.attach(box as never);
+
+    expect(asStage(stage).parentNode).toBe(box);
+    expect(page.document.body.children).toEqual([]);
+  });
+
+  test('an older view going leaves the picture in the newer one (#54)', () => {
+    const older = container();
+    const newer = container();
+    stage.attach(older as never);
+    stage.attach(newer as never, 'cover', true);
+
+    stage.detach(older as never);
+
+    expect(asStage(stage).parentNode).toBe(newer);
+    expect(lastView()).toMatchObject({ attached: true });
+  });
+
+  test('the newer view going gives the picture back to the older one, with its fit', () => {
+    const older = container();
+    const newer = container();
+    stage.attach(older as never, 'contain');
+    stage.show(asElement(video), null);
+    stage.attach(newer as never, 'cover');
+
+    stage.detach(newer as never);
+
+    expect(asStage(stage).parentNode).toBe(older);
+    expect(video.style.objectFit).toBe('contain');
+  });
+
+  test('the last view going parks it', () => {
+    const box = container();
+    stage.attach(box as never);
+
+    stage.detach(box as never);
+
+    expect(asStage(stage).parentNode!.parentNode).toBe(page.document.body);
+    expect(lastView()).toMatchObject({ attached: false, visible: false });
+  });
+
+  test('attachTo(null) forgets every view', () => {
+    const older = container();
+    stage.attach(older as never);
+    stage.attach(container() as never);
+    stage.attach(null);
+    const box = container();
+    stage.attach(box as never);
+
+    stage.detach(box as never);
+
+    expect(older.children).toEqual([]);
+  });
+
   test('without observers the view counts as visible once attached', () => {
     release();
     setup({ observers: false });
@@ -578,6 +670,29 @@ describe('release', () => {
     expect(box.children).toEqual([]);
     expect(observers(FakeIntersectionObserver)[0]!.disconnected).toBe(true);
     expect(observers(FakeResizeObserver)[0]!.disconnected).toBe(true);
+  });
+
+  test('takes the parking out of the page', () => {
+    stage.attach(container() as never);
+    stage.attach(null);
+
+    stage.release();
+
+    expect(page.document.body.children).toEqual([]);
+    expect(asStage(stage).parentNode).toBeNull();
+  });
+
+  test('removes its document and element listeners (#55)', () => {
+    stage.show(asElement(video), null);
+    expect(page.document.listenerCount('fullscreenchange')).toBe(1);
+
+    stage.release();
+
+    expect(page.document.listenerCount('fullscreenchange')).toBe(0);
+    expect(page.document.listenerCount('webkitfullscreenchange')).toBe(0);
+    expect(video.listenerCount('timeupdate')).toBe(0);
+    page.document.dispatch('fullscreenchange');
+    expect(engine.fullscreenChanged).not.toHaveBeenCalled();
   });
 
   test('stops the cue timer', () => {

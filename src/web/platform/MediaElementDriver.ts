@@ -31,15 +31,17 @@ import {
 } from '../engine/types';
 import {
   browser,
-  monotonicNow,
   type AbortControllerLike,
   type AudioElementLike,
   type VideoElementLike,
 } from './dom';
-import { HLS_MISSING, isHlsType, isHlsUri } from './hlsFormats';
+import { HLS_MISSING, isHlsType, isHlsUri, needsHlsJs } from './hlsFormats';
 import { elementError } from './elementErrors';
 import type { HlsStream } from './HlsStream';
 import { MediaTracks } from './MediaTracks';
+import { TimedQueue } from './TimedQueue';
+import { OwnSeeks } from './OwnSeeks';
+import { ItemFacts, elementReadyInfo } from './ItemFacts';
 import { isDashUri, shakaNamespace, type ShakaLike } from '../../core/shaka';
 import type { DashStream } from './DashStream';
 import { MseStream, mediaSourceConstructor } from './MseStream';
@@ -101,10 +103,6 @@ onHlsConfigured(() => {
   loadHlsParts().catch(() => undefined);
 });
 
-/** An element seek this soon after RNAP's, near its target, is RNAP's. */
-const OWN_SEEK_MS = 3000;
-const OWN_SEEK_SLACK_S = 2;
-
 // MediaError codes.
 const ENCRYPTED = engineError(
   'DRM_UNSUPPORTED',
@@ -115,8 +113,6 @@ const ENCRYPTED = engineError(
 const MEDIA_ERR_ABORTED = 1;
 const MEDIA_ERR_SRC_NOT_SUPPORTED = 4;
 
-type Timed = { time: number; fire: () => void };
-
 /** A source whose bytes the page itself holds (a picked file). */
 const LOCAL_URI = /^(blob|data):/i;
 
@@ -125,9 +121,6 @@ function mayStream(source: SourceDescriptor): boolean {
   if (!isNetworkSource(source) || source.liveHint === false) return false;
   return !isHlsUri(source.uri);
 }
-
-/** What `canPlayType` answers for HLS in browsers that play it natively (Safari, Android). */
-const HLS_MIME = 'application/vnd.apple.mpegurl';
 
 export class MediaElementDriver implements EngineDriver {
   private _element: AudioElementLike;
@@ -160,11 +153,18 @@ export class MediaElementDriver implements EngineDriver {
   /** The engine allows reconnecting (`OpenRequest.allowReconnect`): a dropped stream may be spliced. */
   private allowReconnect = true;
   private flowed = false;
+  /** The current item's metadata loaded (the browser took its container and codecs). */
+  private metadataLoaded = false;
   private playRequested = false;
   private expectingPause = false;
   private pendingStart: number | null = null;
-  private timed: Timed[] = [];
-  private timedTimer: number | null = null;
+  /** What the engine was told about the item, and a start that waits for a longer duration. */
+  private readonly facts = new ItemFacts();
+  private readonly timed = new TimedQueue(() => ({
+    position: this.position(),
+    paused: this._element.paused,
+    rate: this._element.playbackRate,
+  }));
   /** The element is routed through Web Audio (visualizer): only same-origin audio may play on it. */
   tapped = false;
   /** Set by every play(); the module awaits it to report autoplay refusals. */
@@ -183,24 +183,8 @@ export class MediaElementDriver implements EngineDriver {
     null;
   /** The source's tracks so far: a quality switch's new file reports them again. */
   sourceTracks: MediaTrack[] = [];
-  /**
-   * The last seek RNAP made: a `seeking` near its target, soon after, is not
-   * the user's. (A flag cleared on `seeked` is not enough: WebKit reports the
-   * previous seek's `seeked` before the next one's `seeking`, and the two
-   * would chase each other.)
-   */
-  private ownSeek: { position: number; at: number } | null = null;
-
-  private markOwnSeek(position: number): void {
-    this.ownSeek = { position, at: monotonicNow() };
-  }
-
-  /** Whether the element's seek is one RNAP asked for (near its target, within seconds; a keyframe seek lands nearby). */
-  private isOwnSeek(): boolean {
-    const own = this.ownSeek;
-    if (!own || monotonicNow() - own.at > OWN_SEEK_MS) return false;
-    return Math.abs(this.position() - own.position) < OWN_SEEK_SLACK_S;
-  }
+  /** RNAP's own seeks: the user's controls are told from them. */
+  private readonly ownSeeks = new OwnSeeks();
 
   /** The browser's own controls are on the picture: what the element does unasked is the user. */
   private get userControlled(): boolean {
@@ -230,13 +214,18 @@ export class MediaElementDriver implements EngineDriver {
    * Audio, and out of a Remote Playback receiver's reach.
    */
   get isStreamed(): boolean {
-    const fed =
+    const loading = this.hlsPending || this.dashPending || this.remuxPending;
+    return this.fed || loading || LOCAL_URI.test(this.source?.uri ?? '');
+  }
+
+  /** hls.js, Shaka, the remuxer or an MSE stream feeds the element. */
+  private get fed(): boolean {
+    return (
       this.stream != null ||
       this.hls != null ||
       this.dash != null ||
-      this.remux != null;
-    const loading = this.hlsPending || this.dashPending || this.remuxPending;
-    return fed || loading || LOCAL_URI.test(this.source?.uri ?? '');
+      this.remux != null
+    );
   }
 
   /** Whether the current item is live (read through MSE, or an HLS playlist without an end). */
@@ -361,6 +350,7 @@ export class MediaElementDriver implements EngineDriver {
   }
 
   seek(seconds: number, exact = false): void {
+    this.facts.dropStart();
     if (this._element.readyState === 0) {
       this.pendingStart = seconds;
       return;
@@ -368,14 +358,14 @@ export class MediaElementDriver implements EngineDriver {
     const video = this.videoElement;
     // Already there (the user's own seek, reported back): nothing to do.
     if (Math.abs(this._element.currentTime - seconds) < 0.01) {
-      this.pumpTimed();
+      this.timed.pump();
       return;
     }
     // A scrub lands on the nearest keyframe (fast); `exact` on the frame.
-    this.markOwnSeek(seconds);
+    this.ownSeeks.mark(seconds);
     if (!exact && video?.fastSeek) video.fastSeek(seconds);
     else this._element.currentTime = seconds;
-    this.pumpTimed();
+    this.timed.pump();
   }
 
   setLoop(loop: boolean): void {
@@ -419,7 +409,19 @@ export class MediaElementDriver implements EngineDriver {
 
   setRate(rate: number): void {
     this.rate = rate;
-    this._element.playbackRate = rate;
+    this.applyRate();
+  }
+
+  /**
+   * The rate, as the default too: every load (a new `src`, a MediaSource
+   * attached by hls.js, Shaka or the remuxer) resets `playbackRate` to
+   * `defaultPlaybackRate`.
+   */
+  private applyRate(): void {
+    const element = this._element;
+    if (element.defaultPlaybackRate !== this.rate)
+      element.defaultPlaybackRate = this.rate;
+    if (element.playbackRate !== this.rate) element.playbackRate = this.rate;
   }
 
   switchOutput(): void {
@@ -468,12 +470,19 @@ export class MediaElementDriver implements EngineDriver {
       this._element.addEventListener(type, handler, {
         signal: listeners.signal,
       });
+    this.applyRate();
     on('loadedmetadata', () => this.onLoadedMetadata(generation));
+    // The element learns more as it reads (a fragmented MP4's total, a
+    // playlist that ended): the engine's duration and seek range follow.
+    on('durationchange', () => this.onDurationChange(generation));
     on('playing', () => {
+      // Something reset the default since (a library's own load): the
+      // rate asked for is the one that plays.
+      if (this._element.defaultPlaybackRate !== this.rate) this.applyRate();
       this.flowed = true;
       this.sourcePlayed = true;
       this.observer.onPlaying(generation);
-      this.pumpTimed();
+      this.timed.pump();
     });
     on('waiting', () => this.observer.onBuffering(generation));
     if (this.kind === 'video') this.attachVideo(generation, on);
@@ -487,7 +496,7 @@ export class MediaElementDriver implements EngineDriver {
     on('pause', () => {
       const expected = this.expectingPause;
       this.expectingPause = false;
-      this.clearTimedTimer();
+      this.timed.stop();
       // Only after audio flowed: loading a new src pauses the element too.
       if (
         !expected &&
@@ -508,11 +517,11 @@ export class MediaElementDriver implements EngineDriver {
         this.observer.onUserCommand?.(generation, 'play', this.position());
     });
     on('seeking', () => {
-      if (this.userControlled && !this.isOwnSeek())
+      if (this.userControlled && !this.ownSeeks.isOwn(this.position()))
         this.observer.onUserCommand?.(generation, 'seek', this.position());
     });
-    on('timeupdate', () => this.pumpTimed());
-    on('seeked', () => this.pumpTimed());
+    on('timeupdate', () => this.timed.pump());
+    on('seeked', () => this.timed.pump());
   }
 
   /** The picture's size, the first frame, and a coarse bandwidth for files. */
@@ -579,17 +588,14 @@ export class MediaElementDriver implements EngineDriver {
   /** Whether hls.js has to play this: an HLS source on an element that cannot. */
   private needsHls(source: SourceDescriptor, contentType: string | null) {
     const hls = isHlsUri(source.uri) || isHlsType(contentType);
-    if (!hls) return false;
-    if (this.nativeHlsFailed || this._element.canPlayType(HLS_MIME) === '')
-      return true;
-    // A video: a native HLS without track lists (Chromium's) has no
-    // qualities, caps, audio groups or subtitles to pick from; hls.js has
-    // them, where there is one. Safari's own HLS lists its tracks: it stays.
-    const video = this.videoElement;
     return (
-      video != null &&
-      video.audioTracks === undefined &&
-      hlsConstructor()?.isSupported() === true
+      hls &&
+      needsHlsJs(
+        this._element,
+        this.kind === 'video',
+        this.nativeHlsFailed,
+        hlsConstructor()?.isSupported() === true
+      )
     );
   }
 
@@ -629,7 +635,7 @@ export class MediaElementDriver implements EngineDriver {
       this._element.pause();
       this._element = this.createElement();
       this._element.volume = this.volume;
-      this._element.playbackRate = this.rate;
+      this.applyRate();
       this.tapped = false;
       this.observer.onElementReplaced(this._element);
     }
@@ -688,6 +694,8 @@ export class MediaElementDriver implements EngineDriver {
     const source = this.source;
     if (this.remux || this.remuxPending || this.remuxFallback != null)
       return false;
+    // hls.js or Shaka took the source: it is no container to sniff.
+    if (this.hls || this.dash) return false;
     if (this.sourcePlayed || !source || !mediaSourceConstructor()) return false;
     if (!maySniff(source.uri)) return false;
     if (!isNetworkSource(source) && !LOCAL_URI.test(source.uri)) return false;
@@ -954,41 +962,52 @@ export class MediaElementDriver implements EngineDriver {
     parts: HlsParts
   ): void {
     const live = () => generation === this.generation && this.hls === hls;
-    const hls: HlsStream = new parts.HlsStream(this._element, source, ctor, {
-      onMetadata: (metadata, time) => {
-        if (live())
-          this.schedule(time, () =>
-            this.observer.onStreamMetadata(generation, metadata)
-          );
+    // hls.js starts where it was asked (its first request is that segment):
+    // the element's metadata needs no seek.
+    const start = this.pendingStart;
+    this.pendingStart = null;
+    if (start != null && start > 0) this.ownSeeks.mark(start);
+    const hls: HlsStream = new parts.HlsStream(
+      this._element,
+      source,
+      ctor,
+      {
+        onMetadata: (metadata, time) => {
+          if (live())
+            this.timed.schedule(time, () =>
+              this.observer.onStreamMetadata(generation, metadata)
+            );
+        },
+        onFailure: (error) => {
+          if (live()) this.observer.onFailed(generation, error);
+        },
+        onNote: (event, details) => {
+          if (live()) this.observer.onNote(generation, event, details);
+        },
+        onVariants: (variants) => {
+          if (live()) this.observer.onVariants?.(generation, variants);
+        },
+        onVariantSwitched: (id) => {
+          if (!live()) return;
+          this.variantId = id;
+          const video = this.videoElement;
+          if (video && video.videoWidth > 0)
+            this.observer.onVideoInfo?.(generation, {
+              width: video.videoWidth,
+              height: video.videoHeight,
+              hdr: false,
+              variantId: id,
+            });
+        },
+        onBandwidth: (bps) => {
+          if (live()) this.observer.onBandwidth?.(generation, bps);
+        },
+        onTracks: () => {
+          if (live()) this.tracks?.useHls(hls);
+        },
       },
-      onFailure: (error) => {
-        if (live()) this.observer.onFailed(generation, error);
-      },
-      onNote: (event, details) => {
-        if (live()) this.observer.onNote(generation, event, details);
-      },
-      onVariants: (variants) => {
-        if (live()) this.observer.onVariants?.(generation, variants);
-      },
-      onVariantSwitched: (id) => {
-        if (!live()) return;
-        this.variantId = id;
-        const video = this.videoElement;
-        if (video && video.videoWidth > 0)
-          this.observer.onVideoInfo?.(generation, {
-            width: video.videoWidth,
-            height: video.videoHeight,
-            hdr: false,
-            variantId: id,
-          });
-      },
-      onBandwidth: (bps) => {
-        if (live()) this.observer.onBandwidth?.(generation, bps);
-      },
-      onTracks: () => {
-        if (live()) this.tracks?.useHls(hls);
-      },
-    });
+      start
+    );
     this.hls = hls;
     this.observer.onNote(generation, 'hls.js', { reason: 'no native HLS' });
     hls.start();
@@ -1027,7 +1046,7 @@ export class MediaElementDriver implements EngineDriver {
         },
         onTimedMetadata: (metadata, time) => {
           if (live())
-            this.schedule(time, () =>
+            this.timed.schedule(time, () =>
               this.observer.onStreamMetadata(generation, metadata)
             );
         },
@@ -1036,7 +1055,7 @@ export class MediaElementDriver implements EngineDriver {
           this.observer.onNote(generation, 'connection spliced', {
             at: time.toFixed(2),
           });
-          this.schedule(time, () =>
+          this.timed.schedule(time, () =>
             this.observer.onDiscontinuity(generation, time)
           );
         },
@@ -1067,34 +1086,41 @@ export class MediaElementDriver implements EngineDriver {
   }
 
   private onLoadedMetadata(generation: number): void {
-    const element = this._element;
-    // An HLS playlist says whether it is live (the element's duration alone
-    // cannot, before the first segments); everything else is the element's.
+    this.applyRate();
+    this.metadataLoaded = true;
+    const manifest = this.manifestReadyInfo();
     const info =
-      this.hls?.readyInfo() ??
-      this.dash?.readyInfo() ??
-      this.remux?.readyInfo() ??
-      this.elementReadyInfo();
-    if (
-      info.duration != null &&
-      this.pendingStart != null &&
-      this.pendingStart > 0
-    ) {
-      const start = Math.min(this.pendingStart, info.duration);
-      this.markOwnSeek(start);
-      element.currentTime = start;
-    }
+      manifest ?? elementReadyInfo(this._element, this.stream != null);
+    const start = this.facts.ready(info, this.pendingStart, manifest == null);
     this.pendingStart = null;
+    if (start != null) this.seekElement(start);
     this.observer.onReady(generation, info);
   }
 
-  private elementReadyInfo(): ReadyInfo {
-    const element = this._element;
-    const duration = element.duration;
-    const finite = !this.stream && Number.isFinite(duration) && duration > 0;
-    return finite
-      ? { duration, isLive: false, seekable: element.seekable.length > 0 }
-      : { duration: null, isLive: true, seekable: false };
+  /** The element knows more about the item: the engine is told what changed. */
+  private onDurationChange(generation: number): void {
+    if (!this.metadataLoaded) return;
+    const info =
+      this.manifestReadyInfo() ??
+      elementReadyInfo(this._element, this.stream != null);
+    const { news, seek } = this.facts.changed(info);
+    if (seek != null) this.seekElement(seek);
+    if (news) this.observer.onReady(generation, info);
+  }
+
+  private seekElement(position: number): void {
+    this.ownSeeks.mark(position);
+    this._element.currentTime = position;
+  }
+
+  /** An HLS playlist or a DASH manifest says whether it is live (the element's duration alone cannot, before the first segments). */
+  private manifestReadyInfo(): ReadyInfo | null {
+    return (
+      this.hls?.readyInfo() ??
+      this.dash?.readyInfo() ??
+      this.remux?.readyInfo() ??
+      null
+    );
   }
 
   private onError(generation: number): void {
@@ -1120,6 +1146,7 @@ export class MediaElementDriver implements EngineDriver {
       sourcePlayed: this.sourcePlayed,
       nativeHls: this.nativeHls,
       remuxFallback: this.remuxFallback,
+      mseOpened: this.metadataLoaded && this.fed,
     });
   }
 
@@ -1144,8 +1171,9 @@ export class MediaElementDriver implements EngineDriver {
     this.drmPending = false;
     this.itemSerial += 1;
     this.nativeHls = false;
-    this.timed = [];
-    this.clearTimedTimer();
+    this.metadataLoaded = false;
+    this.facts.reset();
+    this.timed.clear();
     this.playRequested = false;
     this.expectingPause = false;
   }
@@ -1168,34 +1196,5 @@ export class MediaElementDriver implements EngineDriver {
         return ranges.end(i);
     }
     return position;
-  }
-
-  // ── Timed delivery (metadata and splices, when heard) ──
-
-  private schedule(time: number, fire: () => void): void {
-    this.timed.push({ time, fire });
-    this.timed.sort((a, b) => a.time - b.time);
-    this.pumpTimed();
-  }
-
-  private pumpTimed(): void {
-    this.clearTimedTimer();
-    const now = this.position();
-    while (this.timed.length > 0 && this.timed[0]!.time <= now)
-      this.timed.shift()!.fire();
-    const next = this.timed[0];
-    if (!next || this._element.paused) return;
-    const rate = this._element.playbackRate || 1;
-    // Strictly when heard (never early). timeupdate fires every ~250 ms; a
-    // timer lands it on time, re-armed if the audio clock is still short.
-    this.timedTimer = browser().setTimeout(
-      () => this.pumpTimed(),
-      Math.max(10, ((next.time - now) / rate) * 1000)
-    );
-  }
-
-  private clearTimedTimer(): void {
-    if (this.timedTimer !== null) browser().clearTimeout(this.timedTimer);
-    this.timedTimer = null;
   }
 }

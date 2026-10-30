@@ -164,6 +164,34 @@
     ]
   },
   {
+    "name": "the platform's later facts about the same item replace the first ones, without settling or restarting anything",
+    "steps": [
+      { "call": "load", "uri": "https://cdn.example/fragmented.mp4", "live": false },
+      { "native": "ready", "duration": 18, "live": false, "seekable": true },
+      { "call": "seek", "value": 300 },
+      { "expect": { "state": "paused", "duration": 18, "loads": ["1:ready"], "commands": ["open(gen=1,start=-,play=false)", "seek(18.0)"] } },
+      { "native": "ready", "duration": 600, "live": false, "seekable": true },
+      { "call": "seek", "value": 300 },
+      { "expect": { "state": "paused", "playWhenReady": false, "duration": 600, "loads": [], "commands": ["seek(300.0)"] } },
+      { "native": "ready", "duration": 590, "live": false, "seekable": true },
+      { "expect": { "duration": 590, "commands": [] } },
+      { "native": "ready", "duration": 1200, "live": false, "seekable": true, "gen": "prev" },
+      { "expect": { "duration": 590 } }
+    ]
+  },
+  {
+    "name": "an item of unknown length that turns out to be a seekable file becomes one",
+    "steps": [
+      { "call": "load", "uri": "https://cdn.example/growing.mp4", "live": false, "autoplay": true },
+      { "native": "ready", "live": false, "seekable": false },
+      { "native": "playing" },
+      { "call": "seek", "value": 10, "throws": "NOT_SEEKABLE" },
+      { "native": "ready", "duration": 600, "live": false, "seekable": true },
+      { "call": "seek", "value": 120 },
+      { "expect": { "state": "playing", "isLive": false, "seekable": true, "duration": 600, "commands": ["open(gen=1,start=-,play=true)", "seek(120.0)"] } }
+    ]
+  },
+  {
     "name": "volume, mute and ducking compose into one effective volume",
     "steps": [
       { "call": "load", "uri": "https://cdn.example/song.mp3" },

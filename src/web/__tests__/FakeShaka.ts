@@ -62,7 +62,11 @@ export class FakeShakaPlayer implements ShakaPlayerLike {
   live = false;
   bandwidth: number | undefined = undefined;
   textVisibility: boolean[] = [];
-  selectedVariants: Array<{ track: ShakaTrack; clearBuffer?: boolean }> = [];
+  selectedVariants: Array<{
+    track: ShakaTrack;
+    clearBuffer?: boolean;
+    safeMargin?: number;
+  }> = [];
   selectedAudio: ShakaAudioTrack[] = [];
   selectedLanguages: Array<{ language: string; role?: string }> = [];
   selectedText: Array<ShakaTrack | null> = [];
@@ -121,8 +125,12 @@ export class FakeShakaPlayer implements ShakaPlayerLike {
     return this.texts;
   }
 
-  selectVariantTrack(t: ShakaTrack, clearBuffer?: boolean): void {
-    this.selectedVariants.push({ track: t, clearBuffer });
+  selectVariantTrack(
+    t: ShakaTrack,
+    clearBuffer?: boolean,
+    safeMargin?: number
+  ): void {
+    this.selectedVariants.push({ track: t, clearBuffer, safeMargin });
   }
 
   selectTextTrack(t: ShakaTrack | null): void {

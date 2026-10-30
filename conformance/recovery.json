@@ -146,6 +146,37 @@
     ]
   },
   {
+    "name": "a stall at a file's very end, with the rest buffered, ends the item instead of re-opening it",
+    "steps": [
+      { "network": "online" },
+      { "call": "load", "uri": "https://cdn.example/episode.m3u8", "live": false, "autoplay": true },
+      { "native": "ready", "duration": 75, "live": false, "seekable": true },
+      { "native": "playing" },
+      { "driver": "position", "value": 74.95 },
+      { "native": "buffering" },
+      { "advance": 2000 },
+      { "expect": { "state": "buffering", "ended": 0, "commands": ["open(gen=1,start=-,play=true)"] } },
+      { "advance": 2000 },
+      { "expect": { "state": "ended", "playWhenReady": false, "ended": 1, "commands": [] } },
+      { "advance": 10000 },
+      { "expect": { "state": "ended", "ended": 0, "commands": [] } }
+    ]
+  },
+  {
+    "name": "a stall at a looping file's very end starts it over",
+    "steps": [
+      { "network": "online" },
+      { "call": "load", "uri": "https://cdn.example/clip.mp4", "live": false, "autoplay": true },
+      { "call": "loop", "value": true },
+      { "native": "ready", "duration": 30, "live": false, "seekable": true },
+      { "native": "playing" },
+      { "driver": "position", "value": 29.98 },
+      { "native": "buffering" },
+      { "advance": 4000 },
+      { "expect": { "ended": 0, "playWhenReady": true, "commands": ["open(gen=1,start=-,play=true)", "loop(true)", "seek(0.0)", "play"] } }
+    ]
+  },
+  {
     "name": "a stall long after the file finished loading counts its time without data from its start",
     "steps": [
       { "network": "online" },

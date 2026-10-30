@@ -43,8 +43,12 @@ export interface HlsLike {
   readonly latency?: number;
   /** The variants (video): height, bitrate, codecs. */
   readonly levels?: ReadonlyArray<HlsLevel>;
-  /** The variant playing, or `-1` for automatic; setting it switches now. */
+  /** The variant playing, or `-1` for automatic; setting it switches now (flushing the buffer). */
   currentLevel?: number;
+  /** Setting it switches at the next fragment, without interrupting playback (`-1`: automatic). */
+  nextLevel?: number;
+  /** Setting it picks the variant for the next loads, keeping the buffer (`-1`: automatic). */
+  loadLevel?: number;
   /** The highest variant automatic switching may pick (`-1`: no cap). */
   autoLevelCapping?: number;
   /** Bits per second, hls.js's estimate. */

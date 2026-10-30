@@ -2,6 +2,30 @@
 // (`HlsStream`, which pulls in the ID3 reader) loads on first use; the element
 // driver and the MSE fallback only need to recognise an HLS source.
 
+import type { AudioElementLike, VideoElementLike } from './dom';
+
+/** What `canPlayType` answers for HLS in browsers that play it natively (Safari, Android). */
+const HLS_MIME = 'application/vnd.apple.mpegurl';
+
+/**
+ * Whether hls.js has to play an HLS source on `element`: the element has no
+ * HLS of its own, or its own failed on this source. A video's native HLS
+ * without track lists (Chromium's) has no qualities, caps, audio groups or
+ * subtitles to pick from: hls.js plays it too, where it runs (`hlsJs`).
+ * Safari's own HLS lists its tracks: it stays.
+ */
+export function needsHlsJs(
+  element: AudioElementLike,
+  video: boolean,
+  nativeFailed: boolean,
+  hlsJs: boolean
+): boolean {
+  if (nativeFailed || element.canPlayType(HLS_MIME) === '') return true;
+  return (
+    video && (element as VideoElementLike).audioTracks === undefined && hlsJs
+  );
+}
+
 /** Whether a Content-Type or MIME type names an HLS playlist. */
 export function isHlsType(contentType: string | null | undefined): boolean {
   const base = (contentType ?? '').split(';')[0]!.trim().toLowerCase();

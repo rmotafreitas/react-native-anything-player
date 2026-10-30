@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ComponentRef } from 'react';
+import { useLayoutEffect, useRef, type ComponentRef } from 'react';
 import { StyleSheet, View } from 'react-native';
 import type { VideoViewProps } from './VideoViewProps';
 
@@ -20,14 +20,14 @@ export function VideoView({
   nativeControls = false,
 }: Readonly<VideoViewProps>) {
   const view = useRef<ComponentRef<typeof View>>(null);
-  useEffect(() => {
+  // A layout effect: its cleanup moves the picture out before the box leaves
+  // the page, so the browser never pauses the sound.
+  useLayoutEffect(() => {
     // React Native Web: the view's ref is its element.
     const element = view.current as unknown;
     if (element == null || player.isReleased) return undefined;
     player.attachTo(element, { contentFit, nativeControls });
-    return () => {
-      if (!player.isReleased) player.attachTo(null);
-    };
+    return () => player.detachFrom(element);
   }, [player, contentFit, nativeControls]);
   return <View ref={view} style={[styles.box, style]} />;
 }

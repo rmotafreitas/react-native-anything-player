@@ -20,6 +20,11 @@ export interface ElementErrorContext {
   nativeHls: boolean;
   /** Why remuxing it fell back to the element, if it did. */
   remuxFallback: string | null;
+  /**
+   * hls.js, Shaka, the remuxer or an MSE stream feeds the element, and its
+   * metadata loaded: the browser took the container and the codecs.
+   */
+  mseOpened: boolean;
 }
 
 export function elementError(
@@ -63,6 +68,15 @@ export function elementError(
     return engineError(
       'NETWORK_ERROR',
       'The server stopped serving the source.',
+      true,
+      details
+    );
+  // A code 4 now is the media pipeline failing (WebKitGTK's "Failed to push
+  // buffer" on a flush during the first appends): a re-open fixes it.
+  if (context.mseOpened)
+    return engineError(
+      'DECODER_ERROR',
+      'The media pipeline failed while buffering.',
       true,
       details
     );

@@ -82,6 +82,8 @@ export interface PlayerHost {
     fit?: string,
     controls?: boolean
   ): void;
+  /** The web: a view goes; the picture leaves `element` only if it is still there. */
+  detachVideo?(playerId: string, element: unknown): void;
 }
 
 let installed: PlayerHost | null = null;

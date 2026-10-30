@@ -36,6 +36,9 @@ enum RecoveryPolicy {
   static let suspectStallDeadMs: Int64 = 1_500
   /// A stall that trickles data but never recovers is re-opened after this.
   static let stallMaxMs: Int64 = 20_000
+  /// A stall this close to a file's end (seconds), with the rest buffered, is
+  /// its end: nothing more will come.
+  static let endSlackS = 0.1
   /// A playhead that advances this far (seconds), at about the playback rate,
   /// while the platform still says buffering: it is playing.
   static let playheadProofS: Double = 1.5

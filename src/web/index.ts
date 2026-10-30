@@ -44,6 +44,8 @@ installHost({
       fit as ContentFit | undefined,
       controls
     ),
+  detachVideo: (playerId, element) =>
+    webModule().detachVideo(playerId, element),
 });
 
 export { Player } from '../core/Player';

@@ -131,7 +131,12 @@ internal class CastOutput(
 
   override fun setRate(rate: Double) {
     this.rate = rate
-    if (!owns) return
+    if (owns) applyRate()
+  }
+
+  /** The receiver plays at the rate asked for, where it can (a live stream plays at 1x). */
+  private fun applyRate() {
+    if (mapper.ready?.isLive == true) return
     val supported = RemoteCastPlayer.MIN_SPEED_SUPPORTED.toDouble()..RemoteCastPlayer.MAX_SPEED_SUPPORTED.toDouble()
     if (rate in supported) hub.player?.setPlaybackSpeed(rate.toFloat()) else Log.d(TAG, "Cast receivers play at 0.5x–2x; rate $rate ignored")
   }
@@ -163,6 +168,7 @@ internal class CastOutput(
 
   override fun receiverReady() {
     hub.player?.volume = volume.toFloat()
+    if (rate != 1.0) applyRate()
   }
 
   /** From the SDK's callbacks: evaluated once, after every listener of this update ran. */

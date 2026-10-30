@@ -1710,7 +1710,24 @@ class PlaybackEngine(
 
   /** A stall the watchdog gave up waiting on: re-open, or fail with reconnecting off. */
   private fun recoverStall(reason: String) {
-    if (options.reconnect) attemptReconnect(reason) else failStall(reason)
+    when {
+      stalledAtEnd() -> {
+        // A re-open would land at the end and stall again, in a loop.
+        log("stall at the end", mapOf("reason" to reason))
+        onEnded(generation)
+      }
+      options.reconnect -> attemptReconnect(reason)
+      else -> failStall(reason)
+    }
+  }
+
+  /** The playhead and the buffer are at a file's end: no data is coming because there is none left. */
+  private fun stalledAtEnd(): Boolean {
+    val d = duration ?: return false
+    if (isLive || remote) return false
+    val end = d - RecoveryPolicy.END_SLACK_S
+    val sample = driver.sample()
+    return sample.position >= end && sample.bufferedPosition >= end
   }
 
   private fun failStall(reason: String) {

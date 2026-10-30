@@ -11,6 +11,7 @@ import type { PlaybackEngine } from '../engine/PlaybackEngine';
 import type { EngineStatus } from '../engine/types';
 import {
   browser,
+  type AbortControllerLike,
   type AudioElementLike,
   type ElementLike,
   type ObserverLike,
@@ -84,10 +85,27 @@ function pointStyle(cue: SubtitleCue): Record<string, string> {
   };
 }
 
+/** A view that showed the picture: when the newest goes, the one before gets it back. */
+interface Owner {
+  readonly element: ElementLike;
+  readonly fit: ContentFit;
+  readonly controls: boolean;
+}
+
 export class WebVideo implements SwapStage {
   readonly stage: ElementLike;
   private readonly overlay: ElementLike;
   private container: ElementLike | null = null;
+  /** The views that asked for the picture, newest last. */
+  private owners: Owner[] = [];
+  /**
+   * Where the stage waits without a view: in the page, out of sight. A
+   * media element taken out of the page is paused by the browser, and the
+   * sound must go on.
+   */
+  private parking: ElementLike | null = null;
+  /** The document listeners, removed on release. */
+  private readonly listeners: AbortControllerLike;
   private visible = false;
   private width = 0;
   private height = 0;
@@ -126,21 +144,44 @@ export class WebVideo implements SwapStage {
       zIndex: '2',
     });
     this.stage.appendChild(this.overlay);
-    document.addEventListener('fullscreenchange', () =>
-      this.fullscreenChanged()
-    );
-    document.addEventListener('webkitfullscreenchange', () =>
-      this.fullscreenChanged()
-    );
+    this.listeners = new (browser().AbortController)();
+    const signal = this.listeners.signal;
+    const changed = () => this.fullscreenChanged();
+    document.addEventListener('fullscreenchange', changed, { signal });
+    document.addEventListener('webkitfullscreenchange', changed, { signal });
   }
 
   // ── The page ──
 
-  /** Puts the stage in `container` (`null` takes it out). */
+  /** Puts the stage in `container` (`null` takes it out of every view). */
   attach(
     container: ElementLike | null,
     fit: ContentFit = this.fit,
     controls = this.controls
+  ): void {
+    this.owners = this.owners.filter((o) => o.element !== container);
+    if (container) this.owners.push({ element: container, fit, controls });
+    else this.owners = [];
+    this.place(container, fit, controls);
+  }
+
+  /**
+   * A view goes (`<VideoView>`'s cleanup): the picture leaves `container`
+   * only if it is still there, for the newest view left, if any. A newer
+   * view keeps it.
+   */
+  detach(container: ElementLike): void {
+    this.owners = this.owners.filter((o) => o.element !== container);
+    if (container !== this.container) return;
+    const next = this.owners.at(-1);
+    if (next) this.place(next.element, next.fit, next.controls);
+    else this.place(null, this.fit, this.controls);
+  }
+
+  private place(
+    container: ElementLike | null,
+    fit: ContentFit,
+    controls: boolean
   ): void {
     this.fit = fit;
     this.applyFit();
@@ -150,14 +191,41 @@ export class WebVideo implements SwapStage {
       (e as VideoElementLike).controls = controls && e === current;
     if (container === this.container) return this.report();
     this.disconnect();
-    this.stage.remove();
+    const shown = this.container != null;
     this.container = container;
     if (container) {
       container.appendChild(this.stage);
+      this.parking?.remove();
       this.observe();
+    } else if (shown) {
+      this.park();
+    } else {
+      // Never in the page: nothing for the browser to pause.
     }
     this.visible = container != null;
     this.report();
+  }
+
+  /** Keeps the stage in the page, unseen, at the size it had (the quality cap stays). */
+  private park(): void {
+    const document = browser().document!;
+    const parent = document.body;
+    if (!parent) return this.stage.remove();
+    const parking = (this.parking ??= document.createElement('div'));
+    parking.setAttribute('aria-hidden', 'true');
+    Object.assign(parking.style, {
+      position: 'fixed',
+      left: '0',
+      top: '0',
+      width: `${Math.max(1, this.width)}px`,
+      height: `${Math.max(1, this.height)}px`,
+      overflow: 'hidden',
+      opacity: '0',
+      pointerEvents: 'none',
+      zIndex: '-1',
+    });
+    parking.appendChild(this.stage);
+    parent.appendChild(parking);
   }
 
   /** Shows `element` (the one on screen now) and hides the other. */
@@ -186,7 +254,12 @@ export class WebVideo implements SwapStage {
 
   release(): void {
     this.disconnect();
+    this.listeners.abort();
     this.stage.remove();
+    this.parking?.remove();
+    this.parking = null;
+    this.owners = [];
+    this.container = null;
     this.releaseWakeLock();
     this.clearCueTimer();
   }
@@ -246,23 +319,22 @@ export class WebVideo implements SwapStage {
   private listen(video: VideoElementLike): void {
     if (this.listening.has(video)) return;
     this.listening.add(video);
+    const signal = this.listeners.signal;
+    const on = (type: string, handler: () => void) =>
+      video.addEventListener(type, handler, { signal });
     const pip = () => this.pictureInPictureChanged();
-    video.addEventListener('enterpictureinpicture', pip);
-    video.addEventListener('leavepictureinpicture', pip);
-    video.addEventListener('webkitpresentationmodechanged', () => {
+    on('enterpictureinpicture', pip);
+    on('leavepictureinpicture', pip);
+    on('webkitpresentationmodechanged', () => {
       pip();
       this.fullscreenChanged();
     });
-    video.addEventListener('webkitbeginfullscreen', () =>
-      this.host.engine.fullscreenChanged(true)
-    );
-    video.addEventListener('webkitendfullscreen', () =>
-      this.host.engine.fullscreenChanged(false)
-    );
+    on('webkitbeginfullscreen', () => this.host.engine.fullscreenChanged(true));
+    on('webkitendfullscreen', () => this.host.engine.fullscreenChanged(false));
     const cues = () => this.refreshCues();
-    video.addEventListener('timeupdate', cues);
-    video.addEventListener('seeked', cues);
-    video.addEventListener('playing', cues);
+    on('timeupdate', cues);
+    on('seeked', cues);
+    on('playing', cues);
   }
 
   // ── Fullscreen & Picture in Picture ──

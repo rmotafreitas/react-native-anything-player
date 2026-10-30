@@ -687,7 +687,7 @@ describe('quality', () => {
     stream.setQuality({ ...noCaps, pinned: 'v2' });
     expect(player().config('abr').enabled).toBe(false);
     expect(player().selectedVariants).toEqual([
-      { track: variants[1], clearBuffer: true },
+      { track: variants[1], clearBuffer: true, safeMargin: 2 },
     ]);
   });
 

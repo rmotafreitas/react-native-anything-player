@@ -28,12 +28,51 @@ export class RichHls extends FakeHls {
   levels: HlsLevel[] = [];
   audioTracks: HlsMediaTrack[] = [];
   subtitleTracks: HlsMediaTrack[] = [];
-  currentLevel?: number;
-  autoLevelCapping?: number;
+  /** hls.js's manual level (`-1`: automatic), as its level setters leave it. */
+  manualLevel = -1;
+  /** Immediate switches (`currentLevel`): each one flushes the buffer. */
+  flushes = 0;
+  /** Writes of `autoLevelCapping`. */
+  capWrites = 0;
+  private cap?: number;
   bandwidthEstimate?: number;
   audioTrack?: number;
   subtitleTrack?: number;
   subtitleDisplay?: boolean;
+
+  get currentLevel(): number {
+    return this.manualLevel;
+  }
+
+  set currentLevel(level: number) {
+    this.manualLevel = level;
+    this.flushes += 1;
+  }
+
+  get nextLevel(): number {
+    return this.manualLevel;
+  }
+
+  set nextLevel(level: number) {
+    this.manualLevel = level;
+  }
+
+  get loadLevel(): number {
+    return this.manualLevel;
+  }
+
+  set loadLevel(level: number) {
+    this.manualLevel = level;
+  }
+
+  get autoLevelCapping(): number | undefined {
+    return this.cap;
+  }
+
+  set autoLevelCapping(cap: number | undefined) {
+    this.cap = cap;
+    this.capWrites += 1;
+  }
 
   static override last(): RichHls {
     return FakeHls.last() as RichHls;

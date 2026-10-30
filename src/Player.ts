@@ -62,6 +62,14 @@ installHost({
           web.attachVideo!(id, element, fit, controls)
       : undefined;
   },
+  get detachVideo() {
+    const web = NativeAnythingPlayer as unknown as {
+      detachVideo?: (id: string, element: unknown) => void;
+    } | null;
+    return Platform.OS === 'web' && web?.detachVideo
+      ? (id: string, element: unknown) => web.detachVideo!(id, element)
+      : undefined;
+  },
 });
 
 export {

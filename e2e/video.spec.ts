@@ -55,6 +55,64 @@ test('a video file plays in the element it is attached to, with its size and fir
   ).toBe(false);
 });
 
+test('taken out of its view, the player plays on: its element waits in the page (#51)', async ({
+  page,
+}) => {
+  await open(page);
+  await page.evaluate(() =>
+    window.videoTest.player.load(`${window.videoTest.MEDIA}/video-360.mp4`, {
+      autoplay: true,
+    })
+  );
+  await expect
+    .poll(async () => (await status(page)).state, { timeout: 15_000 })
+    .toBe('playing');
+  const video = await page.locator('#stage video').elementHandle();
+  await page.evaluate(() => window.videoTest.player.attachTo(null));
+  // Several turns of the event loop: a media element left out of the page
+  // would be paused by now.
+  await page.waitForTimeout(1500);
+  const before = await page.evaluate(
+    () => window.videoTest.player.getProgress().position
+  );
+  await page.waitForTimeout(1000);
+  expect(await video!.evaluate((v) => v.isConnected)).toBe(true);
+  expect(await video!.evaluate((v) => (v as HTMLVideoElement).paused)).toBe(
+    false
+  );
+  expect((await status(page)).playWhenReady).toBe(true);
+  expect(
+    await page.evaluate(() => window.videoTest.player.getProgress().position)
+  ).toBeGreaterThan(before);
+  await expect(page.locator('#stage video')).toHaveCount(0);
+  // And it comes back to the view.
+  await page.evaluate(() =>
+    window.videoTest.player.attachTo(document.getElementById('stage'))
+  );
+  await expect(page.locator('#stage video')).toHaveCount(1);
+});
+
+test('a rate holds across loads: the element plays at it (#49)', async ({
+  page,
+}) => {
+  await open(page);
+  await page.evaluate(async () => {
+    const { player, MEDIA } = window.videoTest;
+    await player.load(`${MEDIA}/video-360.mp4`, { autoplay: true });
+    await player.setRate(1.5);
+    await player.load(`${MEDIA}/video-720.mp4`, { autoplay: true });
+  });
+  await expect
+    .poll(async () => (await status(page)).state, { timeout: 15_000 })
+    .toBe('playing');
+  const rate = await page
+    .locator('#stage video')
+    .first()
+    .evaluate((v) => (v as HTMLVideoElement).playbackRate);
+  expect(rate).toBe(1.5);
+  expect((await status(page)).rate).toBe(1.5);
+});
+
 test('SubRip subtitles are drawn over the picture, follow seeks and the delay', async ({
   page,
 }) => {

@@ -339,6 +339,10 @@ export class WebModule implements PlayerModule {
     controller.attachVideo(element, fit, controls);
   }
 
+  detachVideo(playerId: string, element: unknown): void {
+    this.runtime.players.get(playerId)?.detachVideo(element);
+  }
+
   async fetchText(
     uri: string,
     headers: object,

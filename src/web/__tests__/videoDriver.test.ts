@@ -150,6 +150,66 @@ describe('a file', () => {
     expect(driver.isStreamed).toBe(false);
   });
 
+  it('tells the engine a longer duration found later, and seeks to a start that waited for it (#50)', () => {
+    driver.open(open(MP4, { startPosition: 300 }));
+    const video = world.video();
+    video.becomeReady(18);
+    expect(video.currentTime).toBe(18);
+    expect(rec.of('onReady')).toEqual([
+      [1, { duration: 18, isLive: false, seekable: true }],
+    ]);
+
+    video.duration = 120;
+    video.dispatch('durationchange');
+    // Not yet: the start is past it.
+    expect(video.currentTime).toBe(18);
+    video.duration = 600;
+    video.seekable = ranges([[0, 600]]);
+    video.dispatch('durationchange');
+    expect(video.currentTime).toBe(300);
+    expect(rec.of('onReady').slice(1)).toEqual([
+      [1, { duration: 120, isLive: false, seekable: true }],
+      [1, { duration: 600, isLive: false, seekable: true }],
+    ]);
+    // The same facts again are not news.
+    video.dispatch('durationchange');
+    expect(rec.of('onReady')).toHaveLength(3);
+  });
+
+  it('drops a start that waited once something else seeks', () => {
+    driver.open(open(MP4, { startPosition: 300 }));
+    const video = world.video();
+    video.becomeReady(18);
+    driver.seek(5);
+    video.duration = 600;
+    video.dispatch('durationchange');
+    expect(video.currentTime).toBe(5);
+  });
+
+  it('keeps the rate on the next source: a load resets it to the default, which is the rate too (#49)', () => {
+    driver.setRate(1.5);
+    driver.open(open(MP4));
+    const video = world.video();
+    expect(video.playbackRate).toBe(1.5);
+    expect(video.defaultPlaybackRate).toBe(1.5);
+    driver.open(open('https://cdn.example/other.mp4', {}, 2));
+    video.becomeReady(60);
+    expect(video.playbackRate).toBe(1.5);
+    expect(driver.progress().rate).toBe(1.5);
+  });
+
+  it('puts the rate back when something reset the default before it played (#49)', () => {
+    driver.setRate(2);
+    driver.open(open(MP4, { playWhenReady: true }));
+    const video = world.video();
+    video.becomeReady(60);
+    video.defaultPlaybackRate = 1;
+    video.playbackRate = 1;
+    video.dispatch('playing');
+    expect(video.playbackRate).toBe(2);
+    expect(video.defaultPlaybackRate).toBe(2);
+  });
+
   it.each(['blob:https://app.example/1', 'data:video/mp4;base64,AAAA'])(
     'held by the page (%s) counts as streamed',
     (uri) => {
@@ -611,6 +671,16 @@ describe('a source the element cannot open', () => {
     expect(failures()).toMatchObject([{ code: 'UNSUPPORTED_FORMAT' }]);
   });
 
+  it('is a failure after its metadata too, on the element alone (#58)', async () => {
+    driver.open(open(MP4, { playWhenReady: true }));
+    world.video().becomeReady(120);
+    world.video().fail(4, 'MEDIA_ELEMENT_ERROR: Format error');
+    await flush();
+    expect(failures()).toMatchObject([
+      { code: 'UNSUPPORTED_FORMAT', recoverable: false },
+    ]);
+  });
+
   it('is a failure when something already played', async () => {
     driver.open(open(CHANNEL, { playWhenReady: true }));
     const video = world.video();
@@ -659,6 +729,26 @@ describe('HLS', () => {
     driver.open(open(HLS, extra));
     return { video: world.video(), hls: RichHls.last() };
   }
+
+  it('reports a code 4 after the metadata as a pipeline failure to re-open (#58)', async () => {
+    const { video, hls } = await openHls({ playWhenReady: true });
+    hls.level(false, 90);
+    video.becomeReady(90);
+    video.fail(4, 'Failed to push buffer');
+    await flush();
+    expect(failures()).toMatchObject([
+      { code: 'DECODER_ERROR', recoverable: true },
+    ]);
+  });
+
+  it('reports a code 4 before the metadata as a format it cannot play (#58)', async () => {
+    const { video } = await openHls({ playWhenReady: true });
+    video.fail(4, 'MEDIA_ELEMENT_ERROR: Format error');
+    await flush();
+    expect(failures()).toMatchObject([
+      { code: 'UNSUPPORTED_FORMAT', recoverable: false },
+    ]);
+  });
 
   it('plays with hls.js where the element has no HLS', async () => {
     const { video, hls } = await openHls();

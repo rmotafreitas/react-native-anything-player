@@ -33,12 +33,17 @@ const { VideoView: NativeVideoView } = jest.requireActual<
 
 let player: Player;
 let attachTo: jest.SpyInstance;
+let detachFrom: jest.SpyInstance;
 
 beforeEach(() => {
   fake.calls = [];
   player = new Player({ video: true });
   attachTo = jest.spyOn(player, 'attachTo').mockImplementation(() => {});
+  detachFrom = jest.spyOn(player, 'detachFrom').mockImplementation(() => {});
 });
+
+/** The element the view gave the picture to. */
+const shownIn = () => attachTo.mock.calls[0]![0];
 
 afterEach(async () => {
   await player.release();
@@ -64,10 +69,11 @@ describe('VideoView on the web', () => {
     });
   });
 
-  it('takes the picture out when it unmounts', async () => {
+  it('takes the picture out of its own element when it unmounts (a newer view keeps it, #54)', async () => {
     const view = await render(<WebVideoView player={player} />);
     await view.unmount();
-    expect(attachTo).toHaveBeenLastCalledWith(null);
+    expect(detachFrom).toHaveBeenCalledWith(shownIn());
+    expect(attachTo).not.toHaveBeenCalledWith(null);
   });
 
   it('attaches again when the fit or the controls change', async () => {
@@ -77,9 +83,9 @@ describe('VideoView on the web', () => {
     );
     expect(attachTo.mock.calls.map((c) => c.slice(1))).toEqual([
       [{ contentFit: 'contain', nativeControls: false }],
-      [],
       [{ contentFit: 'cover', nativeControls: true }],
     ]);
+    expect(detachFrom).toHaveBeenCalledTimes(1);
   });
 
   it('moves the picture to a new player', async () => {
@@ -87,12 +93,15 @@ describe('VideoView on the web', () => {
     const otherAttach = jest
       .spyOn(other, 'attachTo')
       .mockImplementation(() => {});
+    const otherDetach = jest
+      .spyOn(other, 'detachFrom')
+      .mockImplementation(() => {});
     const view = await render(<WebVideoView player={player} />);
     await view.rerender(<WebVideoView player={other} />);
-    expect(attachTo).toHaveBeenLastCalledWith(null);
+    expect(detachFrom).toHaveBeenCalledWith(shownIn());
     expect(otherAttach).toHaveBeenCalledTimes(1);
     await view.unmount();
-    expect(otherAttach).toHaveBeenLastCalledWith(null);
+    expect(otherDetach).toHaveBeenCalledWith(shownIn());
     await other.release();
   });
 
@@ -172,10 +181,11 @@ describe('VideoView in React DOM', () => {
     expect(screen.root!.props.style).toEqual({ position: 'fixed' });
   });
 
-  it('takes the picture out when it unmounts', async () => {
+  it('takes the picture out of its own div when it unmounts (a newer view keeps it, #54)', async () => {
     const view = await render(<DomVideoView player={player} />);
     await view.unmount();
-    expect(attachTo).toHaveBeenLastCalledWith(null);
+    expect(detachFrom).toHaveBeenCalledWith(shownIn());
+    expect(attachTo).not.toHaveBeenCalledWith(null);
   });
 
   it('attaches again when the fit or the controls change', async () => {
@@ -185,9 +195,9 @@ describe('VideoView in React DOM', () => {
     );
     expect(attachTo.mock.calls.map((c) => c.slice(1))).toEqual([
       [{ contentFit: 'contain', nativeControls: false }],
-      [],
       [{ contentFit: 'fill', nativeControls: true }],
     ]);
+    expect(detachFrom).toHaveBeenCalledTimes(1);
   });
 
   it('does not touch a player that was released', async () => {

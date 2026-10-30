@@ -169,6 +169,7 @@ export const observers = (kind: typeof FakeObserver) =>
 export interface FakePage {
   document: FakeNode & {
     visibilityState: string;
+    body: FakeNode;
     fullscreenElement?: unknown;
     webkitFullscreenElement?: unknown;
     pictureInPictureElement?: unknown;
@@ -205,6 +206,7 @@ export function installPage(
 
   const document = Object.assign(new FakeNode(), {
     visibilityState: 'visible',
+    body: new FakeNode(),
     createElement: (_tag: string) => new FakeNode(),
   }) as unknown as FakePage['document'];
 

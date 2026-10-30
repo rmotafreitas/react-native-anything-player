@@ -116,6 +116,8 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
   private var generation = 0
   private var item: AVPlayerItem?
   private var itemObservers: [NSKeyValueObservation] = []
+  /// What the engine was last told about the item: a later change is told again.
+  private var reportedInfo: ReadyInfo?
   private var itemNotifications: [NSObjectProtocol] = []
   private var playerObservers: [NSKeyValueObservation] = []
   private var metadataOutput: AVPlayerItemMetadataOutput?
@@ -185,6 +187,7 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
   private func configurePlayer() {
     player.automaticallyWaitsToMinimizeStalling = true
     player.volume = volume
+    applyDefaultRate()
     if video {
       // The engine picks the tracks and keeps the screen awake itself.
       player.appliesMediaSelectionCriteriaAutomatically = false
@@ -213,6 +216,7 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
     generation = request.generation
     pendingSeek = nil
     readyGeneration = -1
+    reportedInfo = nil
     ended = false
     lastHTTPStatus = nil
     lastMetadata = nil
@@ -420,7 +424,13 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
 
   func setRate(_ rate: Double) {
     self.rate = Float(rate)
+    applyDefaultRate()
     if player.timeControlStatus != .paused { player.rate = self.rate }
+  }
+
+  /// `play()` starts at `defaultRate`, not at the last `rate`: the rate asked for is the default too.
+  private func applyDefaultRate() {
+    if #available(iOS 16.0, tvOS 16.0, macOS 13.0, *) { player.defaultRate = rate }
   }
 
   func sample() -> PlaybackSample {
@@ -555,6 +565,14 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
           self.player.playImmediately(atRate: self.rate)
         }
       },
+      // The duration or the seek range became known, or changed (a file's
+      // total read later, a playlist that ended): the engine follows.
+      item.observe(\.duration, options: [.new]) { [weak self] item, _ in
+        DispatchQueue.main.async { self?.itemInfoChanged(item, gen) }
+      },
+      item.observe(\.seekableTimeRanges, options: [.new]) { [weak self] item, _ in
+        DispatchQueue.main.async { self?.itemInfoChanged(item, gen) }
+      },
     ]
     let center = NotificationCenter.default
     itemNotifications = [
@@ -653,6 +671,26 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
     item = nil
   }
 
+  private func readyInfo(_ item: AVPlayerItem) -> ReadyInfo {
+    let duration = item.duration
+    let indefinite = duration.isIndefinite || !duration.isNumeric
+    let seconds = indefinite ? nil : duration.seconds
+    // `live: false` wins, as in the engine (`liveHint ?? info.isLive`).
+    let isLive = !finiteHint && (indefinite || liveHint || unbounded)
+    let seekable = !isLive && !item.seekableTimeRanges.isEmpty
+    return ReadyInfo(
+      duration: seconds.flatMap { $0.isFinite && $0 > 0 ? $0 : nil }, isLive: isLive, seekable: seekable)
+  }
+
+  /// After readiness: a changed duration or seek range is told again (readiness itself is not repeated).
+  private func itemInfoChanged(_ item: AVPlayerItem, _ gen: Int) {
+    guard isCurrent(item, gen), readyGeneration == gen else { return }
+    let info = readyInfo(item)
+    guard info != reportedInfo else { return }
+    reportedInfo = info
+    observer?.driverReady(generation: gen, info: info)
+  }
+
   private func isCurrent(_ candidate: AVPlayerItem, _ gen: Int) -> Bool {
     gen == generation && candidate === item && candidate === player.currentItem
   }
@@ -663,16 +701,11 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
     case .readyToPlay:
       guard readyGeneration != gen else { return }
       readyGeneration = gen
-      let duration = changed.duration
-      let indefinite = duration.isIndefinite || !duration.isNumeric
-      let seconds = indefinite ? nil : duration.seconds
-      // `live: false` wins, as in the engine (`liveHint ?? info.isLive`).
-      let isLive = !finiteHint && (indefinite || liveHint || unbounded)
+      let info = readyInfo(changed)
+      let isLive = info.isLive
       if isLive { player.automaticallyWaitsToMinimizeStalling = false }
-      let seekable = !isLive && !changed.seekableTimeRanges.isEmpty
-      observer?.driverReady(
-        generation: gen,
-        info: ReadyInfo(duration: seconds.flatMap { $0.isFinite && $0 > 0 ? $0 : nil }, isLive: isLive, seekable: seekable))
+      reportedInfo = info
+      observer?.driverReady(generation: gen, info: info)
       // Static tags only for finite sources. On a live progressive URL the
       // asset-metadata load opens its own HTTP connection that never
       // completes (the stream never ends) and outlives the item — a phantom
@@ -693,7 +726,9 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
       } else if playWanted && player.timeControlStatus != .playing {
         player.playImmediately(atRate: rate)
       } else if playWanted && player.timeControlStatus == .playing {
-        // It was already "playing" (rate set before readiness): now it is real.
+        // It was already "playing" (rate set before readiness): now it is real,
+        // at the rate asked for (an earlier `play()` started at the default).
+        if player.rate != rate { player.rate = rate }
         playedGeneration = gen
         observer?.driverPlaying(generation: gen)
       }

@@ -234,7 +234,22 @@ describe('quality caps', () => {
     expect(hls.autoLevelCapping).toBeUndefined();
     hls.parse(LEVELS);
     expect(hls.autoLevelCapping).toBe(2);
-    expect(hls.currentLevel).toBe(-1);
+    expect(hls.manualLevel).toBe(-1);
+    expect(hls.flushes).toBe(0);
+  });
+
+  it('steer only the next loads: a cap never flushes the buffer, the same cap is not written again (#52)', () => {
+    const { stream, hls } = start();
+    hls.parse(LEVELS);
+    stream.setQuality(caps({ maxHeight: 720 }));
+    const writes = hls.capWrites;
+    // A resize to another height that maps to the same level.
+    stream.setQuality(caps({ maxHeight: 900 }));
+    expect(hls.capWrites).toBe(writes);
+    stream.setQuality(caps({ maxHeight: 360 }));
+    expect(hls.autoLevelCapping).toBe(1);
+    expect(hls.manualLevel).toBe(-1);
+    expect(hls.flushes).toBe(0);
   });
 
   it('apply at once on levels hls.js already has', () => {
@@ -250,25 +265,28 @@ describe('quality caps', () => {
     const { stream, hls } = start();
     hls.parse(LEVELS);
     stream.setQuality(caps({ pinned: 'v2' }));
-    expect(hls.currentLevel).toBe(2);
+    expect(hls.manualLevel).toBe(2);
     stream.setQuality(caps({ pinned: 'v9' }));
-    expect(hls.currentLevel).toBe(-1);
+    expect(hls.manualLevel).toBe(-1);
+    stream.setQuality(caps({ pinned: 'v2' }));
     stream.setQuality(caps({ pinned: null }));
-    expect(hls.currentLevel).toBe(-1);
+    expect(hls.manualLevel).toBe(-1);
+    // Switched at the next fragment, never flushed.
+    expect(hls.flushes).toBe(0);
   });
 
   it('hold the audio-only level to listen alone, else the pick', () => {
     const { stream, hls } = start();
     hls.parse(LEVELS);
     stream.setQuality(caps({ audioOnly: true, pinned: 'v3' }));
-    expect(hls.currentLevel).toBe(0);
+    expect(hls.manualLevel).toBe(0);
 
     const video = start();
     video.hls.parse(LEVELS.slice(1));
     video.stream.setQuality(caps({ audioOnly: true, pinned: 'v1' }));
-    expect(video.hls.currentLevel).toBe(1);
+    expect(video.hls.manualLevel).toBe(1);
     video.stream.setQuality(caps({ audioOnly: true }));
-    expect(video.hls.currentLevel).toBe(-1);
+    expect(video.hls.manualLevel).toBe(-1);
   });
 
   it('wait for a playlist that has no levels yet', () => {

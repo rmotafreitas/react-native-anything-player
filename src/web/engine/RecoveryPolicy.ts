@@ -28,6 +28,12 @@ export const RecoveryPolicy = {
   /** A stall that trickles data but never recovers is re-opened after this. */
   STALL_MAX_MS: 20_000,
   /**
+   * A stall this close to a file's end (seconds), with the rest buffered, is
+   * its end: nothing more will come (WebKitGTK can stop in the last frame
+   * without `ended`).
+   */
+  END_SLACK_S: 0.1,
+  /**
    * A playhead that advances this far (seconds), at about the playback rate,
    * while the platform still says buffering: it is playing (WebKitGTK plays
    * at readyState 2 without a `playing` event).

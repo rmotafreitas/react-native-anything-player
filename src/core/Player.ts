@@ -678,6 +678,16 @@ export class Player {
     );
   }
 
+  /**
+   * `<VideoView>`'s cleanup: the picture leaves `element` only if it is still
+   * there (a newer view keeps it), and goes back to the newest view left.
+   * @internal
+   */
+  detachFrom(element: unknown): void {
+    if (this.isReleased) return;
+    host().detachVideo?.(this.id, element);
+  }
+
   private async video(command: Record<string, unknown>): Promise<void> {
     await this.run(() => native().videoCommand(this.id, command));
   }

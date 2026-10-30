@@ -68,8 +68,12 @@ export interface ShakaPlayerLike {
   getVariantTracks(): ShakaTrack[];
   /** The text tracks. */
   getTextTracks(): ShakaTrack[];
-  /** Plays this variant (`clearBuffer`: at once). */
-  selectVariantTrack(track: ShakaTrack, clearBuffer?: boolean): void;
+  /** Plays this variant (`clearBuffer`: soon, keeping `safeMargin` seconds of what is buffered). */
+  selectVariantTrack(
+    track: ShakaTrack,
+    clearBuffer?: boolean,
+    safeMargin?: number
+  ): void;
   /** Shaka 5: the sounds to choose from. */
   getAudioTracks?(): ShakaAudioTrack[];
   /** Shaka 5: plays this sound. */

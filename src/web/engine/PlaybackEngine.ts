@@ -393,8 +393,21 @@ export class PlaybackEngine extends EngineVideo {
 
   /** A stall the watchdog gave up waiting on: re-open, or fail with reconnecting off. */
   protected recoverStall(reason: string): void {
-    if (this.options.reconnect) this.attemptReconnect(reason);
+    if (this.stalledAtEnd()) {
+      // A re-open would land at the end and stall again, in a loop.
+      this.log('stall at the end', { reason });
+      this.onEnded(this.generation);
+    } else if (this.options.reconnect) this.attemptReconnect(reason);
     else this.failStall(reason);
+  }
+
+  /** The playhead and the buffer are at a file's end: no data is coming because there is none left. */
+  protected stalledAtEnd(): boolean {
+    const duration = this.duration;
+    if (this.isLive || duration == null || this.remote) return false;
+    const end = duration - RecoveryPolicy.END_SLACK_S;
+    const sample = this.driver.sample();
+    return sample.position >= end && sample.bufferedPosition >= end;
   }
 
   protected failStall(reason: string): void {

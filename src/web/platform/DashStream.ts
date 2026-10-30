@@ -113,6 +113,9 @@ export function shakaDrm(
 const DESCRIBES_VIDEO = 'public.accessibility.describes-video';
 const CAPTIONS = 'public.accessibility.transcribes-spoken-dialog';
 
+/** A pin keeps this much of what is buffered ahead (seconds): it switches without a gap. */
+const PIN_SAFE_MARGIN_S = 2;
+
 /** A picture's id in `status.video.qualities`. */
 const pictureId = (videoId: number) => `v${videoId}`;
 
@@ -241,6 +244,8 @@ export function picturesOf(tracks: readonly ShakaTrack[]): VideoVariant[] {
 export class DashStream implements HlsTracks {
   private player: ShakaPlayerLike | null = null;
   private constraints: QualityConstraints | null = null;
+  /** The variant last selected for a pin, until it plays: not selected again. */
+  private selectedVariant: number | null = null;
   private loaded = false;
   private closed = false;
   /** A critical error was reported: later element errors are the same failure. */
@@ -531,7 +536,10 @@ export class DashStream implements HlsTracks {
         },
       },
     });
-    if (c.pinned == null) return;
+    if (c.pinned == null) {
+      this.selectedVariant = null;
+      return;
+    }
     const active = player.getVariantTracks().find((t) => t.active);
     const pinned = player
       .getVariantTracks()
@@ -541,7 +549,12 @@ export class DashStream implements HlsTracks {
           pictureId(t.videoId) === c.pinned &&
           t.language === active?.language
       );
-    if (pinned && !pinned.active) player.selectVariantTrack(pinned, true);
+    // Soon, without a gap: what plays now and the next seconds stay buffered.
+    // A switch already asked for is not asked again (each clears the buffer).
+    if (pinned && !pinned.active && pinned.id !== this.selectedVariant) {
+      this.selectedVariant = pinned.id;
+      player.selectVariantTrack(pinned, true, PIN_SAFE_MARGIN_S);
+    }
   }
 
   /** Whether the manifest is live; `null` until it is loaded. */

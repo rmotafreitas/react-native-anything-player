@@ -360,6 +360,11 @@ export class WebPlayerController
     this.video.attach(element as never, fit, controls);
   }
 
+  /** `<VideoView>`'s cleanup: the picture leaves `element` if a newer view has not taken it. */
+  detachVideo(element: unknown): void {
+    this.video?.detach(element as never);
+  }
+
   /** `getStats()`: the engine's counters, the dropped frames and the bandwidth. */
   statsMap(): Record<string, unknown> {
     const quality = (

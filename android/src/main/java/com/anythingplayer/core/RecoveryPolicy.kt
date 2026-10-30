@@ -34,6 +34,12 @@ object RecoveryPolicy {
   const val STALL_MAX_MS = 20_000L
 
   /**
+   * A stall this close to a file's end (seconds), with the rest buffered, is
+   * its end: nothing more will come.
+   */
+  const val END_SLACK_S = 0.1
+
+  /**
    * A playhead that advances this far (seconds), at about the playback rate,
    * while the platform still says buffering: it is playing.
    */

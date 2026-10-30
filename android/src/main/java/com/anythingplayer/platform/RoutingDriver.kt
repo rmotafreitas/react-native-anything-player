@@ -29,6 +29,8 @@ internal class RoutingDriver(
 ) : Output {
   private var remote: RemoteOutput? = null
   private var target: Output = local
+  /** The rate the engine asked for: every output plays at it. */
+  private var rate = 1.0
 
   /** Whether the audio currently plays on the remote output. */
   val isRemote: Boolean
@@ -38,6 +40,7 @@ internal class RoutingDriver(
     val next: Output = if (outputId.startsWith(CAST_PREFIX)) remoteOutput() ?: local else local
     target = next
     next.switchOutput(outputId)
+    next.setRate(rate)
   }
 
   private fun remoteOutput(): RemoteOutput? = remote ?: remoteFactory()?.also { remote = it }
@@ -52,7 +55,10 @@ internal class RoutingDriver(
   override fun releaseConnection() = target.releaseConnection()
   override fun unload() = target.unload()
   override fun setVolume(effective: Double) = target.setVolume(effective)
-  override fun setRate(rate: Double) = target.setRate(rate)
+  override fun setRate(rate: Double) {
+    this.rate = rate
+    target.setRate(rate)
+  }
   override fun sample(): PlaybackSample = target.sample()
   override fun progress(): ProgressReading = target.progress()
   override fun setVideoEnabled(enabled: Boolean) = target.setVideoEnabled(enabled)

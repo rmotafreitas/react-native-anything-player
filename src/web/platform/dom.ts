@@ -57,6 +57,8 @@ export interface AudioElementLike extends EventTargetLike {
   volume: number;
   muted: boolean;
   playbackRate: number;
+  /** The rate a load resets `playbackRate` to (the media load algorithm). */
+  defaultPlaybackRate: number;
   preload: string;
   crossOrigin: string | null;
   disableRemotePlayback?: boolean;
@@ -461,6 +463,8 @@ export interface BrowserGlobals {
   document?: EventTargetLike & {
     readonly visibilityState: string;
     readonly head?: { appendChild(node: ScriptElementLike): void };
+    /** Where a video's stage waits, unseen, without a view. */
+    readonly body?: { appendChild(node: ElementLike): void } | null;
     createElement(tag: 'audio'): AudioElementLike;
     createElement(tag: 'video'): VideoElementLike;
     createElement(tag: 'div' | 'span'): ElementLike;

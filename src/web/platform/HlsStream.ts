@@ -153,12 +153,16 @@ export class HlsStream implements HlsTracks {
   failed = false;
   private closed = false;
   private constraints: QualityConstraints | null = null;
+  /** What was last given to hls.js: the same cap or pin again changes nothing. */
+  private applied: { cap: number; pin: number } | null = null;
 
   constructor(
     private readonly element: AudioElementLike,
     private readonly source: SourceDescriptor,
     private readonly ctor: HlsConstructor,
-    private readonly listener: HlsListener
+    private readonly listener: HlsListener,
+    /** Where to start (seconds): hls.js loads that segment first, not the first one. */
+    private readonly startPosition: number | null = null
   ) {}
 
   start(): void {
@@ -239,14 +243,25 @@ export class HlsStream implements HlsTracks {
     this.applyQuality();
   }
 
+  /**
+   * Caps only steer automatic switching, for the next loads: the buffer plays
+   * on. A pin switches at the next fragment, without stopping playback.
+   * (`currentLevel` would flush the buffer: a resize would stall.)
+   */
   private applyQuality(): void {
     const hls = this.hls;
     const c = this.constraints;
     const levels = hls?.levels;
     if (hls == null || c == null || levels == null || levels.length === 0)
       return;
-    hls.autoLevelCapping = levelCap(levels, c);
-    hls.currentLevel = this.pinnedLevel(levels, c);
+    const cap = levelCap(levels, c);
+    const pin = this.pinnedLevel(levels, c);
+    const last = this.applied;
+    this.applied = { cap, pin };
+    if (cap !== last?.cap) hls.autoLevelCapping = cap;
+    if (pin === (last?.pin ?? -1)) return;
+    if (pin >= 0) hls.nextLevel = pin;
+    else hls.loadLevel = -1;
   }
 
   /** The level to hold (`-1`: automatic): the app's pick, or audio only. */
@@ -306,9 +321,11 @@ export class HlsStream implements HlsTracks {
     }
   }
 
-  /** hls.js's configuration: the source's headers, and a live duration of Infinity as natively. */
+  /** hls.js's configuration: the start, the source's headers, and a live duration of Infinity as natively. */
   private config(): Record<string, unknown> {
     const config: Record<string, unknown> = { liveDurationInfinity: true };
+    if (this.startPosition != null && this.startPosition > 0)
+      config.startPosition = this.startPosition;
     const headers = Object.entries(this.source.headers);
     if (headers.length === 0) return config;
     config.xhrSetup = (xhr: {

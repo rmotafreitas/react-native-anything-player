@@ -1,4 +1,4 @@
-import { useEffect, useRef, type CSSProperties } from 'react';
+import { useLayoutEffect, useRef, type CSSProperties } from 'react';
 import type { Player } from '../core/Player';
 
 /** Props of the React DOM {@link VideoView}. */
@@ -29,13 +29,13 @@ export function VideoView({
   nativeControls = false,
 }: Readonly<VideoViewProps>) {
   const box = useRef<HTMLDivElement>(null);
-  useEffect(() => {
+  // A layout effect: its cleanup moves the picture out before the box leaves
+  // the page, so the browser never pauses the sound.
+  useLayoutEffect(() => {
     const element = box.current;
     if (element == null || player.isReleased) return undefined;
     player.attachTo(element, { contentFit, nativeControls });
-    return () => {
-      if (!player.isReleased) player.attachTo(null);
-    };
+    return () => player.detachFrom(element);
   }, [player, contentFit, nativeControls]);
   return <div ref={box} className={className} style={{ ...BOX, ...style }} />;
 }

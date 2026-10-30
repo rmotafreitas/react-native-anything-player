@@ -1404,7 +1404,23 @@ final class PlaybackEngine {
 
   /// A stall the watchdog gave up waiting on: re-open, or fail with reconnecting off.
   private func recoverStall(reason: String) {
-    if options.reconnect { attemptReconnect(reason: reason) } else { failStall(reason) }
+    if stalledAtEnd() {
+      // A re-open would land at the end and stall again, in a loop.
+      log("stall at the end", ["reason": reason])
+      onEnded(generation: generation)
+    } else if options.reconnect {
+      attemptReconnect(reason: reason)
+    } else {
+      failStall(reason)
+    }
+  }
+
+  /// The playhead and the buffer are at a file's end: no data is coming because there is none left.
+  private func stalledAtEnd() -> Bool {
+    guard let duration, !isLive, !remote else { return false }
+    let end = duration - RecoveryPolicy.endSlackS
+    let sample = driver.sample()
+    return sample.position >= end && sample.bufferedPosition >= end
   }
 
   private func failStall(_ reason: String) {
