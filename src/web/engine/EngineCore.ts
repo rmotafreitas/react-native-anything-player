@@ -480,11 +480,9 @@ export abstract class EngineCore {
   // ── Driver observations (generation-guarded) ──
 
   onReady(generation: number, info: ReadyInfo): void {
-    if (this.isSwapGeneration(generation)) return this.swapNote('ready');
+    if (this.isSwapGeneration(generation)) return this.swapReady(info);
     if (!this.accepts(generation)) return this.logStale('ready', generation);
-    this.duration = info.duration;
-    this.isLive = this._source?.liveHint ?? info.isLive;
-    this.seekable = info.seekable && !this.isLive;
+    this.applyFacts(info);
     this.readyForGeneration = true;
     if (this._state === 'loading') {
       if (this._playWhenReady) {
@@ -1056,6 +1054,15 @@ export abstract class EngineCore {
   protected abstract swapFailed(error: PlayerError): void;
   /** Anything else a quality switch's new item reports is only logged. */
   protected abstract swapNote(event: string): void;
+  /** A quality switch's file is ready: its facts wait for it to take over. */
+  protected abstract swapReady(info: ReadyInfo): void;
+
+  /** The item's duration, live state and seekability, as the platform reports them. */
+  protected applyFacts(info: ReadyInfo): void {
+    this.duration = info.duration;
+    this.isLive = this._source?.liveHint ?? info.isLive;
+    this.seekable = info.seekable && !this.isLive;
+  }
   /** Drops a quality switch in flight (`reason` for the log). */
   protected abstract cancelSwap(reason: string): void;
   /** `true` when the failure waits for the app's new source instead. */

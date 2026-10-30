@@ -54,6 +54,38 @@ class ReceiverMapperTest {
   }
 
   @Test
+  fun `a duration the receiver learns later reaches the engine, whatever the state (#50)`() {
+    open()
+    mapper.evaluate(status(ReceiverState.PLAYING, duration = 18.0, seekable = true))
+    mapper.evaluate(status(ReceiverState.PLAYING, duration = 18.0, seekable = true))
+    mapper.evaluate(status(ReceiverState.PLAYING, duration = 600.0, seekable = true))
+    assertEquals(
+      listOf("ready(2,18.0,live=false,seek=true)", "playing(2)", "ready(2,600.0,live=false,seek=true)"),
+      log,
+    )
+    assertEquals(1, readies)
+  }
+
+  @Test
+  fun `an unknown duration taken for live becomes a file once the receiver knows it`() {
+    open()
+    mapper.evaluate(status(ReceiverState.PLAYING))
+    mapper.evaluate(status(ReceiverState.PLAYING, duration = 600.0, seekable = true))
+    assertEquals(
+      listOf("ready(2,null,live=true,seek=false)", "playing(2)", "ready(2,600.0,live=false,seek=true)"),
+      log,
+    )
+  }
+
+  @Test
+  fun `a source the app called live stays live`() {
+    open(liveHint = true)
+    mapper.evaluate(status(ReceiverState.PLAYING, live = true))
+    mapper.evaluate(status(ReceiverState.PLAYING, duration = 600.0, live = true, seekable = true))
+    assertEquals(listOf("ready(2,null,live=true,seek=false)", "playing(2)"), log)
+  }
+
+  @Test
   fun `another sender's media replacing ours pauses the player once`() {
     open(liveHint = true)
     // Before ours starts, other content is the previous item still reported.
