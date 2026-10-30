@@ -45,6 +45,8 @@ export class FakeDriver implements EngineDriver {
   commands: string[] = [];
   /** Like ExoPlayer: report readiness/playing synchronously from inside commands. */
   reentrant = false;
+  /** The output plays one item (Safari's AirPlay): switches re-open in place. */
+  swapsInPlace = false;
   engine: PlaybackEngine | null = null;
   private openGeneration = 0;
   private motion: Motion = 'frozen';

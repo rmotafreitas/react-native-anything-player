@@ -20,6 +20,7 @@ final class FakeDriver: EngineDriver {
   var commands: [String] = []
   /// Like ExoPlayer: report readiness/playing synchronously from inside commands.
   var reentrant = false
+  var swapsInPlace = false
   weak var engine: PlaybackEngine?
   private var openGeneration = 0
   private var motion = Motion.frozen

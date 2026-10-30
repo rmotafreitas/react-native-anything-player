@@ -43,6 +43,8 @@ protocol EngineDriver: AnyObject {
   func setLoop(_ loop: Bool)
   /// Drop the item an `open(swap: true)` was preparing.
   func cancelSwap(generation: Int)
+  /// The output plays one item at a time: a quality switch re-opens in place, as on Cast.
+  var swapsInPlace: Bool { get }
   /// Play these of the source's own tracks (`nil` text: none of them, which
   /// is also how an app's subtitle file is shown: by the overlay).
   func selectTracks(audio: String?, text: String?)
@@ -56,6 +58,7 @@ extension EngineDriver {
   func setQuality(_ constraints: QualityConstraints) {}
   func setLoop(_ loop: Bool) {}
   func cancelSwap(generation: Int) {}
+  var swapsInPlace: Bool { false }
   func selectTracks(audio: String?, text: String?) {}
 }
 
@@ -256,6 +259,10 @@ final class PlaybackEngine {
   private var selectedQuality: String?
   /// The app's pick, kept across loads (`nil`: automatic).
   private var wantedQuality: String?
+  /// Quiet step ups: counted from the load; the last one; how many stalls undid.
+  private var quietSince: Int64 = 0
+  private var quietUpAt: Int64?
+  private var quietUndone = 0
   /// The engine's own pick among the renditions (automatic quality).
   private var abrLevel: Int?
   private var currentRendition: Int?
@@ -2456,6 +2463,9 @@ extension PlaybackEngine {
   private func resetQuality() {
     videoInfo = nil
     variants = []
+    quietSince = now
+    quietUpAt = nil
+    quietUndone = 0
     fallbackActive = false
     fallbackSince = nil
     stallTimes = []
@@ -2710,8 +2720,8 @@ extension PlaybackEngine {
   private func moveTo(_ target: Int, cause: String) {
     let open = readyForGeneration && !connectionReleased
     let flowing = state == .playing || state == .buffering
-    // A Cast receiver plays one item: it re-opens in place.
-    if flowing && open && playWhenReady && !remote { return startSwap(target, cause: cause) }
+    // A Cast receiver (or an output like Safari's AirPlay) plays one item: it re-opens in place.
+    if flowing && open && playWhenReady && !remote && !driver.swapsInPlace { return startSwap(target, cause: cause) }
     currentRendition = target
     // Stopped, ended, failed or reconnecting: the next open uses it.
     let reopens = state == .loading || (open && (flowing || state == .paused))
@@ -2837,6 +2847,11 @@ extension PlaybackEngine {
       next = bandwidthStep(order, position, t)
     }
     if next == position && order[position] == abrLevel { return }
+    // Stalls undid a quiet step up: the next one waits longer.
+    if stalled && next < position, let quietUp = quietUpAt {
+      if t - quietUp < RecoveryPolicy.abrQuietUpMs { quietUndone += 1 }
+      quietUpAt = nil
+    }
     abrLevel = order[next]
     abrLowSince = nil
     abrUpSince = nil
@@ -2858,16 +2873,19 @@ extension PlaybackEngine {
     return order.firstIndex(of: fit) ?? 0
   }
 
-  /// Sustained low bandwidth steps down; sustained headroom steps up.
   /// An audio player that measures nothing it can trust steps up one after
-  /// a quiet while (no stall since the last switch).
+  /// a quiet while (no stall since the load and the last switch); each step
+  /// up that stalls undid waits twice as long (at most 8 times).
   private func quietStep(_ order: [Int], _ position: Int, _ t: Int64) -> Int {
-    let quiet = RecoveryPolicy.abrQuietUpMs
+    let quiet = RecoveryPolicy.abrQuietUpMs << Int64(min(quietUndone, 3))
     guard position < order.count - 1 else { return position }
-    if let last = lastSwitchAt, t - last < quiet { return position }
-    return stallsWithin(t, quiet) == 0 ? position + 1 : position
+    let since = max(lastSwitchAt ?? Int64.min, quietSince)
+    if t - since < quiet || stallsWithin(t, quiet) > 0 { return position }
+    quietUpAt = t
+    return position + 1
   }
 
+  /// Sustained low bandwidth steps down; sustained headroom steps up.
   private func bandwidthStep(_ order: [Int], _ position: Int, _ t: Int64) -> Int {
     if position > 0, let low = abrLowSince, t - low >= RecoveryPolicy.abrLowMs { return position - 1 }
     if position < order.count - 1 && canStepUp(t) { return position + 1 }

@@ -82,6 +82,9 @@ interface EngineDriver {
   fun cancelSwap(generation: Int) {
     // Drivers without quality switches never prepare one.
   }
+  /** The output plays one item at a time: a quality switch re-opens in place, as on Cast. */
+  val swapsInPlace: Boolean
+    get() = false
   /**
    * Play these of the source's own tracks (`null` text: none of them, which
    * is also how an app's subtitle file is shown: by the overlay).
@@ -272,6 +275,10 @@ class PlaybackEngine(
   private var selectedQuality: String? = null
   /** The app's pick, kept across loads (`null`: automatic). */
   private var wantedQuality: String? = null
+  /** Quiet step ups: counted from the load; the last one; how many stalls undid. */
+  private var quietSince = 0L
+  private var quietUpAt: Long? = null
+  private var quietUndone = 0
   /** The engine's own pick among the renditions (automatic quality). */
   private var abrLevel: Int? = null
   private var currentRendition: Int? = null
@@ -2462,6 +2469,9 @@ class PlaybackEngine(
   private fun resetQuality() {
     videoInfo = null
     variants = emptyList()
+    quietSince = now
+    quietUpAt = null
+    quietUndone = 0
     fallbackActive = false
     fallbackSince = null
     stallTimes = mutableListOf()
@@ -2697,8 +2707,8 @@ class PlaybackEngine(
   private fun moveTo(target: Int, cause: String) {
     val open = readyForGeneration && !connectionReleased
     val flowing = state == PlaybackState.PLAYING || state == PlaybackState.BUFFERING
-    // A Cast receiver plays one item: it re-opens in place.
-    if (flowing && open && playWhenReady && !remote) return startSwap(target, cause)
+    // A Cast receiver (or an output like Safari's AirPlay) plays one item: it re-opens in place.
+    if (flowing && open && playWhenReady && !remote && !driver.swapsInPlace) return startSwap(target, cause)
     currentRendition = target
     // Stopped, ended, failed or reconnecting: the next open uses it.
     val reopens = state == PlaybackState.LOADING || (open && (flowing || state == PlaybackState.PAUSED))
@@ -2815,6 +2825,12 @@ class PlaybackEngine(
         else -> bandwidthStep(order, position, t)
       }
     if (next == position && order[position] == abrLevel) return
+    // Stalls undid a quiet step up: the next one waits longer.
+    val quietUp = quietUpAt
+    if (stalled && next < position && quietUp != null) {
+      if (t - quietUp < RecoveryPolicy.ABR_QUIET_UP_MS) quietUndone += 1
+      quietUpAt = null
+    }
     abrLevel = order[next]
     abrLowSince = null
     abrUpSince = null
@@ -2834,19 +2850,21 @@ class PlaybackEngine(
     return if (fit != null) order.indexOf(fit) else 0
   }
 
-  /** Sustained low bandwidth steps down; sustained headroom steps up. */
   /**
    * An audio player that measures nothing it can trust steps up one after
-   * a quiet while (no stall since the last switch).
+   * a quiet while (no stall since the load and the last switch); each step
+   * up that stalls undid waits twice as long (at most 8 times).
    */
   private fun quietStep(order: List<Int>, position: Int, t: Long): Int {
-    val quiet = RecoveryPolicy.ABR_QUIET_UP_MS
+    val quiet = RecoveryPolicy.ABR_QUIET_UP_MS shl min(quietUndone, 3)
     if (position >= order.size - 1) return position
-    val last = lastSwitchAt
-    if (last != null && t - last < quiet) return position
-    return if (stallsWithin(t, quiet) == 0) position + 1 else position
+    val since = max(lastSwitchAt ?: Long.MIN_VALUE, quietSince)
+    if (t - since < quiet || stallsWithin(t, quiet) > 0) return position
+    quietUpAt = t
+    return position + 1
   }
 
+  /** Sustained low bandwidth steps down; sustained headroom steps up. */
   private fun bandwidthStep(order: List<Int>, position: Int, t: Long): Int {
     val low = abrLowSince
     if (position > 0 && low != null && t - low >= RecoveryPolicy.ABR_LOW_MS) return position - 1

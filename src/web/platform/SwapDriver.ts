@@ -26,6 +26,8 @@ export interface LocalDriver extends EngineDriver {
   readonly isStreamed: boolean;
   lastPlayAttempt: Promise<PlayAttempt> | null;
   tapped: boolean;
+  /** Safari's AirPlay plays the element it was started on (`SwapDriver`). */
+  readonly swapsInPlace?: boolean;
   progress(): ProgressReading;
   destroy(): void;
 }
@@ -88,6 +90,11 @@ export class SwapDriver implements LocalDriver {
 
   get tapped(): boolean {
     return this.current.tapped;
+  }
+
+  /** Safari's AirPlay plays the element it was started on: no second, local one. */
+  get swapsInPlace(): boolean {
+    return this.current.element.webkitCurrentPlaybackTargetIsWireless === true;
   }
 
   set tapped(value: boolean) {
@@ -185,12 +192,6 @@ export class SwapDriver implements LocalDriver {
 
   private prepare(request: OpenRequest): void {
     this.drop();
-    // Safari's AirPlay plays one element: a second, local one would take the
-    // sound off the receiver. The switch opens in place there.
-    if (this.current.element.webkitCurrentPlaybackTargetIsWireless === true) {
-      this.current.open({ ...request, swap: false, playWhenReady: true });
-      return;
-    }
     const spare = (this.spare ??= this.make(this.proxy));
     const position = this.current.sample().position;
     const target =

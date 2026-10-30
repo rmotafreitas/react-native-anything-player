@@ -42,6 +42,11 @@ export interface EngineDriver {
   /** Drop the item an `open({ swap: true })` was preparing. */
   cancelSwap?(generation: number): void;
   /**
+   * The output plays one item at a time (Safari's AirPlay plays the element
+   * it was started on): a quality switch re-opens in place, as on Cast.
+   */
+  readonly swapsInPlace?: boolean;
+  /**
    * Play these of the source's own tracks (`null` text: none of them, which
    * is also how an app's subtitle file is shown: by the overlay).
    */

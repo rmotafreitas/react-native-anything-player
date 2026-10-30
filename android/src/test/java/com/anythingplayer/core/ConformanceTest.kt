@@ -227,6 +227,7 @@ class ConformanceTest {
           "trickle" -> h.driver.setMotion(FakeDriver.Motion.TRICKLE)
           "loaded" -> h.driver.setMotion(FakeDriver.Motion.LOADED, step.optDouble("value", 0.0))
           "reentrant" -> h.driver.reentrant = true
+          "inPlace" -> h.driver.swapsInPlace = step.optBoolean("value", true)
           "position" -> h.driver.setPosition(step.optDouble("value", 0.0))
           else -> fail("$at: unknown driver step $d")
         }

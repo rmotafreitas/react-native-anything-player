@@ -299,6 +299,9 @@ function driver(step: Step, h: EngineHarness): void {
       return h.driver.setMotion(step.driver);
     case 'loaded':
       return h.driver.setMotion('loaded', step.value as number);
+    case 'inPlace':
+      h.driver.swapsInPlace = step.value !== false;
+      return;
     case 'reentrant':
       h.driver.reentrant = true;
       return;

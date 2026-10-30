@@ -199,6 +199,7 @@ final class ConformanceTests: XCTestCase {
       case "trickle": h.driver.setMotion(.trickle)
       case "loaded": h.driver.setMotion(.loaded, buffered: (step["value"] as? NSNumber)?.doubleValue ?? 0)
       case "reentrant": h.driver.reentrant = true
+      case "inPlace": h.driver.swapsInPlace = step["value"] as? Bool ?? true
       case "position": h.driver.setPosition((step["value"] as? NSNumber)?.doubleValue ?? 0)
       default: XCTFail("\(at): unknown driver step \(driver)")
       }

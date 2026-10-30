@@ -20,6 +20,7 @@ class FakeDriver(private val clock: FakeClock) : EngineDriver {
   val commands = mutableListOf<String>()
   /** Like ExoPlayer: report readiness/playing synchronously from inside commands. */
   var reentrant = false
+  override var swapsInPlace = false
   var engine: PlaybackEngine? = null
   private var openGeneration = 0
   private var motion = Motion.FROZEN

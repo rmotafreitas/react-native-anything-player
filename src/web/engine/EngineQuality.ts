@@ -79,6 +79,10 @@ export abstract class EngineQuality extends EngineFades {
   protected selectedQuality: string | null = null;
   /** The app's pick, kept across loads (`null`: automatic). */
   protected wantedQuality: string | null = null;
+  /** Quiet step ups: counted from the load; the last one; how many stalls undid. */
+  protected quietSince = 0;
+  protected quietUpAt: number | null = null;
+  protected quietUndone = 0;
   /** The engine's own pick among the renditions (automatic quality). */
   protected abrLevel: number | null = null;
   protected currentRendition: number | null = null;
@@ -278,6 +282,9 @@ export abstract class EngineQuality extends EngineFades {
   protected resetQuality(): void {
     this.videoInfo = null;
     this.variants = [];
+    this.quietSince = this.now;
+    this.quietUpAt = null;
+    this.quietUndone = 0;
     this.fallbackActive = false;
     this.fallbackSince = null;
     this.stallTimes = [];
@@ -570,8 +577,9 @@ export abstract class EngineQuality extends EngineFades {
   protected moveTo(target: number, cause: string): void {
     const open = this.readyForGeneration && !this.connectionReleased;
     const flowing = this._state === 'playing' || this._state === 'buffering';
-    // A Cast receiver plays one item: it re-opens in place.
-    if (flowing && open && this._playWhenReady && !this.remote)
+    // A Cast receiver (or Safari's AirPlay) plays one item: it re-opens in place.
+    const inPlace = this.remote || this.driver.swapsInPlace === true;
+    if (flowing && open && this._playWhenReady && !inPlace)
       return this.startSwap(target, cause);
     this.currentRendition = target;
     // Stopped, ended, failed or reconnecting: the next open uses it.
@@ -731,6 +739,12 @@ export abstract class EngineQuality extends EngineFades {
       next = this.quietStep(order, position, t);
     else next = this.bandwidthStep(order, position, t);
     if (next === position && order[position] === this.abrLevel) return;
+    // Stalls undid a quiet step up: the next one waits longer.
+    const quietUp = this.quietUpAt;
+    if (stalled && next < position && quietUp != null) {
+      if (t - quietUp < RecoveryPolicy.ABR_QUIET_UP_MS) this.quietUndone += 1;
+      this.quietUpAt = null;
+    }
     this.abrLevel = order[next]!;
     this.abrLowSince = null;
     this.abrUpSince = null;
@@ -772,10 +786,15 @@ export abstract class EngineQuality extends EngineFades {
    * a quiet while (no stall since the last switch).
    */
   protected quietStep(order: number[], position: number, t: number): number {
-    const quiet = RecoveryPolicy.ABR_QUIET_UP_MS;
-    if (position >= order.length - 1 || t - this.lastSwitchAt < quiet)
-      return position;
-    return this.stallsWithin(t, quiet) === 0 ? position + 1 : position;
+    // Each step up that stalls undid waits twice as long (at most 8 times).
+    const quiet =
+      RecoveryPolicy.ABR_QUIET_UP_MS * 2 ** Math.min(this.quietUndone, 3);
+    // Quiet since the load, and since the last switch.
+    const since = Math.max(this.lastSwitchAt, this.quietSince);
+    if (position >= order.length - 1 || t - since < quiet) return position;
+    if (this.stallsWithin(t, quiet) > 0) return position;
+    this.quietUpAt = t;
+    return position + 1;
   }
 
   protected canStepUp(t: number): boolean {

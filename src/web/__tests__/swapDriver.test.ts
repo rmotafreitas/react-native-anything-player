@@ -273,15 +273,13 @@ describe('a quality switch', () => {
     expect(rec.of('onElementReplaced')).toEqual([]);
   });
 
-  it('switches in place while the element plays on AirPlay: a local one would take the sound off it (council C3)', () => {
+  it('says it plays one item while its element is on AirPlay: the engine re-opens in place (council C8)', () => {
     const video = playing();
+    expect(driver.swapsInPlace).toBe(false);
     (
       video as unknown as { webkitCurrentPlaybackTargetIsWireless: boolean }
     ).webkitCurrentPlaybackTargetIsWireless = true;
-    driver.open(swap(2, HD, 10));
-    expect(world.videos).toHaveLength(1);
-    expect(video.src).toBe(HD);
-    expect(driver.element).toBe(video);
+    expect(driver.swapsInPlace).toBe(true);
   });
 
   it('hears nothing from the element it left', () => {

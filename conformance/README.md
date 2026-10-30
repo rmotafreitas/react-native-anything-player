@@ -45,6 +45,7 @@ Each file holds an array of scenarios:
 | `"gen": 1` or `"gen": "prev"` on native steps | generation the event belongs to (default: current) |
 | `{"driver": "flowing" \| "frozen" \| "trickle"}` | fake playhead: advances 1 s/s / stops / only the buffer grows (0.5 s/s) |
 | `{"driver": "loaded", "value": 60}` | the whole file is buffered (to `value` s): the playhead advances 1 s/s, the buffer stays |
+| `{"driver": "inPlace", "value": true}` | the output plays one item at a time (Safari's AirPlay plays the element it started on): a quality switch re-opens in place, as on Cast |
 | `{"driver": "reentrant"}` | the fake driver reports ready/playing synchronously from inside `open`/`play` (as ExoPlayer can) |
 | `{"driver": "position", "value": 42}` | set the fake playhead |
 | `{"interruption": "began", "reason": "interruption", "resumable": true}` | system pause |
