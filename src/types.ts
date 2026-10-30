@@ -411,8 +411,9 @@ export interface SourceOptions {
  */
 export interface Rendition {
   /**
-   * Its id in `status.qualities` (default: `r<index>`). Give the same ids to
-   * every episode's renditions, and a pick holds across loads.
+   * Its id in `status.qualities` (default: `r<index>`; not `'auto'`, which
+   * means automatic). Give the same ids to every episode's renditions, and a
+   * pick holds across loads.
    */
   id?: string;
   /** The file. */

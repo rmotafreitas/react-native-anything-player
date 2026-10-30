@@ -2160,14 +2160,13 @@ class PlaybackEngine(
     counters = counters.copy(rebufferCount = counters.rebufferCount + 1)
     if (rebufferSince == null) rebufferSince = t
     if (remote) return
-    // An audio player steps among its renditions too; the rest is the picture's.
-    if (options.video == null) return evaluateAbr(t, true)
     if (audioOnlyReason == null) {
       stallTimes.add(t)
       stallTimes.removeAll { t - it >= RecoveryPolicy.FALLBACK_PROBE_MS }
     }
     evaluateAbr(t, true)
-    evaluateFallback(t, true)
+    // The audio-only fallback is the picture's.
+    if (options.video != null) evaluateFallback(t, true)
   }
 
   private fun stateChanged(next: PlaybackState) {

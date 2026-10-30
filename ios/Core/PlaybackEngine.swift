@@ -2163,14 +2163,13 @@ extension PlaybackEngine {
     counters.rebufferCount += 1
     if rebufferSince == nil { rebufferSince = t }
     guard !remote else { return }
-    // An audio player steps among its renditions too; the rest is the picture's.
-    guard options.video != nil else { return evaluateAbr(t, stalled: true) }
     if audioOnlyReason == nil {
       stallTimes.append(t)
       stallTimes.removeAll { t - $0 >= RecoveryPolicy.fallbackProbeMs }
     }
     evaluateAbr(t, stalled: true)
-    evaluateFallback(t, stalled: true)
+    // The audio-only fallback is the picture's.
+    if options.video != nil { evaluateFallback(t, stalled: true) }
   }
 
   fileprivate func stateChanged(_ next: PlaybackState) {

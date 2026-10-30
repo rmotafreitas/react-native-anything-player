@@ -50,6 +50,11 @@ export function normalizeRenditions(
       throw invalid(`renditions[${i}] needs a non-empty \`uri\`.`);
     if (r.id != null && (typeof r.id !== 'string' || r.id === ''))
       throw invalid(`renditions[${i}].id must be a non-empty string.`);
+    // `'auto'` is what selectQuality and load({ quality }) read as automatic.
+    if (r.id === 'auto')
+      throw invalid(
+        `renditions[${i}].id cannot be "auto": it means automatic.`
+      );
     const id = r.id ?? `r${i}`;
     if (ids.has(id)) throw invalid(`Two renditions have the id "${id}".`);
     ids.add(id);

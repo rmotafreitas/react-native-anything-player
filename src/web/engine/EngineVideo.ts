@@ -424,8 +424,6 @@ export abstract class EngineVideo extends EngineQuality {
     this.counters.rebufferCount += 1;
     this.rebufferSince ??= t;
     if (this.remote) return;
-    // An audio player steps among its renditions too; the rest is the picture's.
-    if (this.options.video == null) return this.evaluateAbr(t, true);
     if (this.audioOnlyReason == null) {
       this.stallTimes.push(t);
       this.stallTimes = this.stallTimes.filter(
@@ -433,7 +431,8 @@ export abstract class EngineVideo extends EngineQuality {
       );
     }
     this.evaluateAbr(t, true);
-    this.evaluateFallback(t, true);
+    // The audio-only fallback is the picture's.
+    if (this.options.video != null) this.evaluateFallback(t, true);
   }
 
   protected stateChanged(next: PlaybackState): void {

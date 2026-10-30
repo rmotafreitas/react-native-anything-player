@@ -621,6 +621,8 @@ describe('source normalization', () => {
         { id: 'r1', uri: 'https://a.example/a.m4a' },
         { uri: 'https://a.example/b.m4a' },
       ],
+      // `'auto'` means automatic (council C3).
+      [{ id: 'auto', uri: 'https://a.example/a.m4a' }],
     ])
       expect(() => normalizeSource({ renditions })).toThrow(
         expect.objectContaining({ code: 'INVALID_ARGUMENT' })

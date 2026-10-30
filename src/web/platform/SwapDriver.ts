@@ -295,9 +295,10 @@ export class SwapDriver implements LocalDriver {
     old.releaseConnection();
     old.element.muted = false;
     this.current = spare;
-    // The old one waits, emptied, for the next switch.
+    // The old one waits, emptied, for the next switch. It stays tapped if it
+    // was: Web Audio keeps an element for good, and a tapped element must
+    // not play a cross-origin file (MediaElementDriver swaps it out first).
     this.spare = old;
-    this.spare.tapped = false;
   }
 
   private drop(): void {
