@@ -171,7 +171,7 @@ A video `Player` is the same player with a picture: the engine's rules hold for 
 
 | | iOS | Android | Chromium | Firefox | Safari | iPhone, iPad |
 |---|---|---|---|---|---|---|
-| Rate (0.25–4), volume, mute, loop | ✓ † | ✓ | ✓ | ✓ | ✓ | ◐ ¹ † |
+| Rate, volume, mute, loop | ✓ † | ✓ | ✓ | ✓ | ✓ | ◐ ¹ † |
 | Sleep timer, fades | ✓ † | ✓ | ◐ ² | ◐ ² | ◐ ² | ◐ ¹ ² † |
 | Recovery (stalls, reconnects, give-up), refresh of expiring URLs | ✓ † | ✓ | ✓ | ✓ | ✓ | ✓ † |
 | Lock screen, notification, media keys | ✓ ³ † | ✓ ³ | ✓ ³ | ✓ ³ | ✓ ³ | ✓ ³ † |

@@ -29,9 +29,12 @@ export class ItemFacts {
   ready(info: ReadyInfo, start: number | null, guess: boolean): number | null {
     this.reported = info;
     if (start == null || start <= 0) return null;
-    // An unknown or early duration: the start waits for a longer one.
-    if (guess && (info.duration == null || start > info.duration))
+    // An unknown or early duration: the start waits for a longer one, from
+    // where it is (at the early end, a playing element would end there).
+    if (guess && (info.duration == null || start > info.duration)) {
       this.held = start;
+      return null;
+    }
     return info.duration == null ? null : Math.min(start, info.duration);
   }
 

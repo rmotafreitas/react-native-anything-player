@@ -154,7 +154,8 @@ describe('a file', () => {
     driver.open(open(MP4, { startPosition: 300 }));
     const video = world.video();
     video.becomeReady(18);
-    expect(video.currentTime).toBe(18);
+    // Not at the early end, where it would end.
+    expect(video.currentTime).toBe(0);
     expect(rec.of('onReady')).toEqual([
       [1, { duration: 18, isLive: false, seekable: true }],
     ]);
@@ -162,7 +163,7 @@ describe('a file', () => {
     video.duration = 120;
     video.dispatch('durationchange');
     // Not yet: the start is past it.
-    expect(video.currentTime).toBe(18);
+    expect(video.currentTime).toBe(0);
     video.duration = 600;
     video.seekable = ranges([[0, 600]]);
     video.dispatch('durationchange');
@@ -372,11 +373,18 @@ describe('seeking', () => {
     expect(video.currentTime).toBe(30);
   });
 
-  it('starts at the position the engine asked for, within the length', () => {
+  it('starts at the position the engine asked for', () => {
+    driver.open(open(MP4, { startPosition: 50 }));
+    const video = world.video();
+    video.becomeReady(120);
+    expect(video.currentTime).toBe(50);
+  });
+
+  it('does not start a file at its end when the start is past the length it says: it waits for a longer one', () => {
     driver.open(open(MP4, { startPosition: 500 }));
     const video = world.video();
     video.becomeReady(120);
-    expect(video.currentTime).toBe(120);
+    expect(video.currentTime).toBe(0);
   });
 });
 

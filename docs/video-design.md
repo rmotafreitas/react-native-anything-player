@@ -9,7 +9,7 @@ Video follows the rest of RNAP: **lightweight, bulletproof, best DX**. It is not
 
 | Part | State |
 |---|---|
-| Engine rules (background, PiP, ambient, muted focus, keep-awake, quality caps, renditions and switches, audio-only fallback, refresh, loop, tracks, delay, fullscreen, stats) | **Done** in the three engines, 181 shared scenarios (`conformance/video.json`) |
+| Engine rules (background, PiP, ambient, muted focus, keep-awake, quality caps, renditions and switches, audio-only fallback, refresh, loop, tracks, delay, fullscreen, stats) | **Done** in the three engines, 185 shared scenarios (`conformance/video.json`) |
 | Subtitles: SubRip, WebVTT, basic ASS, TTML parsing; encoding detection; cue timing; track choice | **Done** (parsing in TypeScript; encoding, timing and track choice also in Kotlin and Swift, held to `conformance/subtitles/` and `conformance/tracks/`) |
 | The API: `video` option, `status.video`, the commands and events, `attachTo`, `<VideoView>` (React DOM, React Native Web) | **Done** |
 | Web: `<video>`, hls.js variants and caps, renditions switched behind the picture, subtitle overlay, fullscreen, Picture in Picture, wake lock, hidden tabs | **Done**, Playwright on Chromium, Firefox and WebKit (`e2e/video.spec.ts`) |

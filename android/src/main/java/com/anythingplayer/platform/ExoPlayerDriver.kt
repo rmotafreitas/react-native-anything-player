@@ -560,7 +560,8 @@ internal class ExoPlayerDriver(
     val duration = p.duration.takeIf { it != C.TIME_UNSET && it > 0 }?.let { it / 1000.0 }
     val seekable = p.isCurrentMediaItemSeekable
     val live = p.isCurrentMediaItemLive || (duration == null && !seekable)
-    return ReadyInfo(duration, live, seekable)
+    // A live window's length is no duration (and changes on every refresh), as on iOS.
+    return ReadyInfo(if (live) null else duration, live, seekable)
   }
 
   // ── EngineDriver ──
