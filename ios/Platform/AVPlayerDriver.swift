@@ -94,7 +94,7 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
   /// Live streams: AVPlayer never runs a tap on them, so the proxied bytes are
   /// decoded in parallel and released against the item's clock.
   let streamVisualizer = StreamVisualizer()
-  private var samplingEnabled = false
+  private(set) var samplingEnabled = false
   /// Generation whose proxied bytes feed the visualizer (-1: none). Read on the proxy queue.
   private let feedLock = NSLock()
   private var feedGeneration = -1
@@ -469,6 +469,14 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
     reading.isPlaying = player.timeControlStatus == .playing
     reading.rate = Double(rate)
     return reading
+  }
+
+  /// A quality switch's driver samples as `other` does (on or off is set apart).
+  func copySampling(from other: AVPlayerDriver) {
+    tap.points = other.tap.points
+    tap.onWindow = other.tap.onWindow
+    streamVisualizer.points = other.streamVisualizer.points
+    streamVisualizer.onWindow = other.streamVisualizer.onWindow
   }
 
   /// Turns the decoded-PCM tap on/off (the controller owns `tap.onWindow`).

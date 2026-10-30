@@ -218,6 +218,7 @@ private fun parseRenditions(map: ReadableMap): List<Rendition>? {
       bitrate = it.optDouble("bitrate")?.toLong(),
       label = it.optString("label"),
       audioOnly = it.optBoolean("audioOnly") ?: false,
+      id = it.optString("id"),
     )
   }
 }

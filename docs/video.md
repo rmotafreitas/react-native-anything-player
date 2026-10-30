@@ -243,6 +243,8 @@ await player.load({
 
 Give each file's `height` and `bitrate` where you know them: the engine picks and steps by them. The height of the file playing is learned from its picture; reading the rest from the files' headers is [planned](roadmap.md). No `uri` is needed next to `renditions`.
 
+A pick is kept: `selectQuality(id)`, or `load(source, { quality: id })` to play it from the first byte, holds for the next loads too, wherever the new source has that id (a source without it plays automatic, and the pick comes back with the next one that has it); `'auto'` lets it go. Ids are `r0`, `r1`… by position, so give `id`s (`{ id: '720p', uri }`) when episodes list their files differently. A switch that fails or does not play within 12 s is reported as a non-fatal `QUALITY_SWITCH_FAILED` error, with the new file's own failure; the current file plays on, and the failed one sits out a minute.
+
 ### Sound alone
 
 - `player.setListenOnly(true)` plays the sound alone: the audio-only variant or rendition when there is one, else the picture stops decoding on iOS and Android. A browser has no way to stop decoding, so on the web it needs an audio-only variant or rendition to save data.

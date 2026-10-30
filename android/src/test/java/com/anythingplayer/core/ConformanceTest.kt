@@ -116,7 +116,10 @@ class ConformanceTest {
     value?.let { array ->
       (0 until array.length()).map {
         val r = array.getJSONObject(it)
-        Rendition(r.getString("uri"), null, intOrNull(r, "height"), longOrNull(r, "bitrate"), null, r.optBoolean("audioOnly", false))
+        Rendition(
+          r.getString("uri"), null, intOrNull(r, "height"), longOrNull(r, "bitrate"), null, r.optBoolean("audioOnly", false),
+          id = if (r.has("id")) r.getString("id") else null,
+        )
       }
     }
 
@@ -282,6 +285,9 @@ class ConformanceTest {
           source(step, h, step.optBoolean("refreshable", false)),
           if (step.has("autoplay")) step.getBoolean("autoplay") else null,
           if (step.has("start")) step.getDouble("start") else null,
+          // `"quality"`: an id, `null` for automatic; absent: keep the pick.
+          qualityGiven = step.has("quality"),
+          quality = text(step, "quality"),
         )
       "background" -> h.engine.appBackgrounded()
       "selectQuality" -> h.engine.selectQuality(text(step, "id"))

@@ -88,12 +88,18 @@ internal class PlayerController(
         if (sampling) configureSampler(it)
       }
     }
-  private val audioDriver: ExoPlayerDriver? =
-    if (picture == null) ExoPlayerDriver(context, options.speech, options.titleFormat, this) else null
+  /** An audio player's ExoPlayers: the one heard, and one that prepares a quality switch (renditions). */
+  private val audioOutput: SwapDriver? =
+    if (picture != null) null
+    else SwapDriver(this, { observer ->
+      ExoPlayerDriver(context, options.speech, options.titleFormat, observer).also {
+        if (sampling) configureSampler(it)
+      }
+    }, NoStage)
   /** The ExoPlayer the audio (and the picture) plays from now. */
   private val localDriver: ExoPlayerDriver
-    get() = picture?.primary ?: audioDriver!!
-  private val driver = RoutingDriver(picture?.output ?: audioDriver!!) { runtime.newRemoteOutput(this) }
+    get() = picture?.primary ?: audioOutput!!.current
+  private val driver = RoutingDriver(picture?.output ?: audioOutput!!) { runtime.newRemoteOutput(this) }
   val engine = PlaybackEngine(driver, AndroidClock, options.engine)
 
   private var eventSeq = 0L
@@ -158,6 +164,8 @@ internal class PlayerController(
     autoplay: Boolean?,
     start: Double?,
     parts: VideoLoadParts? = null,
+    qualityGiven: Boolean = false,
+    quality: String? = null,
     completion: LoadCompletion? = null,
   ) {
     runtime.beforeLoad(this, source.isNetwork)
@@ -167,7 +175,7 @@ internal class PlayerController(
     streamMetadata = null
     lastBandwidth = null
     picture?.load(parts ?: VideoLoadParts())
-    engine.load(source, autoplay, start)
+    engine.load(source, autoplay, start, qualityGiven, quality)
     // The app's subtitle files are tracks from the start (their cues follow).
     if (picture != null && parts != null && parts.subtitles.isNotEmpty()) engine.setAppTracks(parts.subtitles)
     // `load` settles synchronously only when it supersedes; this load is pending.
@@ -204,7 +212,7 @@ internal class PlayerController(
     handler.removeCallbacks(progressTick)
     engine.release()
     driver.destroyRemote()
-    picture?.destroy() ?: audioDriver?.destroy()
+    picture?.destroy() ?: audioOutput?.destroy()
     pendingLoads.clear()
   }
 
@@ -284,7 +292,7 @@ internal class PlayerController(
 
   /** Every ExoPlayer: the audio player's one, or a video player's two. */
   private val drivers: List<ExoPlayerDriver>
-    get() = picture?.drivers ?: listOfNotNull(audioDriver)
+    get() = picture?.drivers ?: audioOutput!!.drivers
 
   private fun configureSampler(source: ExoPlayerDriver) {
     val sampler = source.sampler
@@ -422,6 +430,8 @@ internal class PlayerController(
     // Settle after the current status event was emitted (same thread, in order).
     handler.post { completion.settled(outcome) }
   }
+
+  override fun engineWarning(error: PlayerError) = engineError(error, false)
 
   override fun engineError(error: PlayerError, fatal: Boolean) {
     emit(

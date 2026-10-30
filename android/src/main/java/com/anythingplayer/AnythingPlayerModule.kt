@@ -84,11 +84,12 @@ class AnythingPlayerModule(reactContext: ReactApplicationContext) : NativeAnythi
         "seek" -> engine.seek(command.optDouble("position") ?: 0.0, command.optBoolean("exact") == true)
         "refreshed" -> if (refreshed != null) engine.sourceRefreshed(command.optDouble("loadId")?.toInt() ?: -1, refreshed)
         "refreshFailed" -> engine.sourceRefreshFailed(command.optDouble("loadId")?.toInt() ?: -1)
+        // Any player's: an audio player has qualities too (its renditions).
+        "selectQuality" -> engine.selectQuality(command.optString("id"))
         else -> {
           val picture = controller.picture ?: throw notVideo()
           val id = command.optString("id")
           when (op) {
-            "selectQuality" -> engine.selectQuality(id)
             "selectAudioTrack" -> engine.selectAudioTrack(id)
             "selectTextTrack" -> engine.selectTextTrack(id)
             "subtitleDelay" -> engine.setSubtitleDelay(command.optDouble("seconds") ?: 0.0)
@@ -210,6 +211,9 @@ class AnythingPlayerModule(reactContext: ReactApplicationContext) : NativeAnythi
     val parts = parseVideoParts(source)
     val autoplay = options.optBoolean("autoplay")
     val start = options.optDouble("startPosition")
+    // `quality`: an id, `'auto'` for automatic; absent: keep the pick.
+    val qualityGiven = options.hasKey("quality")
+    val quality = options.optString("quality")?.takeIf { it != "auto" }
     main.post {
       val controller = AnythingPlayerRuntime.players[playerId]
       if (controller == null) {
@@ -217,7 +221,7 @@ class AnythingPlayerModule(reactContext: ReactApplicationContext) : NativeAnythi
         return@post
       }
       try {
-        controller.load(descriptor, fields, autoplay, start, parts) { outcome ->
+        controller.load(descriptor, fields, autoplay, start, parts, qualityGiven, quality) { outcome ->
           when (outcome) {
             is LoadOutcome.Failed -> reject(promise, outcome.error)
             else -> promise.resolve(controller.statusMap())

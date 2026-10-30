@@ -1,8 +1,8 @@
-#if RNAP_VIDEO
 import Foundation
 
-/// Shows the pictures: the driver on screen above the one a switch prepares.
-protocol VideoStage: AnyObject {
+/// Where the drivers show: a video's pictures (the one on screen above the
+/// one a switch prepares); a sound has none.
+protocol SwapStage: AnyObject {
   func show(current: AVPlayerDriver, hidden: AVPlayerDriver?)
   /// Decode and show the picture, or not (the sound plays on; QA1668).
   func videoEnabled(_ enabled: Bool)
@@ -14,13 +14,13 @@ private let lookaheadSeconds = 1.5
 /// How often the rendezvous checks the picture's position.
 private let rendezvousTick: DispatchTimeInterval = .milliseconds(40)
 
-/// A video player's local output: the AVPlayer on screen, and a second one
-/// that prepares a quality switch behind it (`open(swap: true)`, separate
-/// files of one video). The second one opens a little ahead of the picture,
-/// muted, waits until the picture reaches that point, plays, and takes over:
-/// no spinner, no jump. Twin of the Android `VideoSwapDriver` and the web's
-/// `SwapDriver`. Main thread.
-final class VideoSwapDriver: LocalOutput {
+/// A player's local output: the AVPlayer heard (and on screen), and a second
+/// one that prepares a quality switch behind it (`open(swap: true)`,
+/// separate files of one video or one sound). The second one opens a little
+/// ahead, muted, waits until the first reaches that point, plays, and takes
+/// over: no spinner, no gap, no jump. The second AVPlayer is only made at the
+/// first switch. Twin of the Android and web `SwapDriver`. Main thread.
+final class SwapDriver: LocalOutput {
   private final class Pending {
     let generation: Int
     var target: Double?
@@ -33,7 +33,8 @@ final class VideoSwapDriver: LocalOutput {
   }
 
   private let make: () -> AVPlayerDriver
-  weak var stage: VideoStage?
+  /// `nil`: a sound, nothing to show.
+  weak var stage: SwapStage?
   /// Where both drivers' events go (the player controller).
   weak var observer: DriverObserver?
   private let proxy = Proxy()
@@ -146,6 +147,10 @@ final class VideoSwapDriver: LocalOutput {
       next.observer = proxy
       spare = next
     }
+    // It samples as the one heard does, from when it is heard: until then
+    // its muted windows would mix with the real ones.
+    next.copySampling(from: current)
+    next.setSampling(false)
     let position = current.sample().position
     let target = request.startPosition != nil ? position + lookaheadSeconds : nil
     pending = Pending(generation: request.generation, target: target)
@@ -200,6 +205,8 @@ final class VideoSwapDriver: LocalOutput {
     tick = nil
     pending = nil
     next.setVolume(volume)
+    next.setSampling(old.samplingEnabled)
+    old.setSampling(false)
     current = next
     spare = old
     stage?.show(current: next, hidden: old)
@@ -218,7 +225,7 @@ final class VideoSwapDriver: LocalOutput {
 
   /// Forwards both drivers' events; the switch's ready starts the rendezvous, its playing takes over first.
   private final class Proxy: DriverObserver {
-    weak var owner: VideoSwapDriver?
+    weak var owner: SwapDriver?
     private var target: DriverObserver? { owner?.observer }
 
     func driverReady(generation: Int, info: ReadyInfo) {
@@ -271,4 +278,3 @@ final class VideoSwapDriver: LocalOutput {
     }
   }
 }
-#endif

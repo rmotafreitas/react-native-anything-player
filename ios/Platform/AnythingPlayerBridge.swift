@@ -85,12 +85,18 @@ public final class AnythingPlayerBridge: NSObject {
     let parts = VideoLoadParts(source)
     let autoplay = options["autoplay"] as? Bool
     let start = (options["startPosition"] as? NSNumber)?.doubleValue
+    // `quality`: an id, `'auto'` for automatic; absent: keep the pick.
+    let qualityGiven = options["quality"] != nil
+    let quality = (options["quality"] as? String).flatMap { $0 == "auto" ? nil : $0 }
     DispatchQueue.main.async { [weak self] in
       guard let controller = self?.runtime.player(id) else {
         return Self.reject(reject, PlayerError.code(.playerReleased, "The player was released.", recoverable: false))
       }
       do {
-        try controller.load(descriptor, fields: fields, autoplay: autoplay, start: start, parts: parts) { result in
+        try controller.load(
+          descriptor, fields: fields, autoplay: autoplay, start: start, parts: parts, qualityGiven: qualityGiven,
+          quality: quality
+        ) { result in
           switch result {
           case .success(let status): resolve(status)
           case .failure(let error): Self.reject(reject, error)
@@ -401,6 +407,8 @@ public final class AnythingPlayerBridge: NSObject {
             to: (command["position"] as? NSNumber)?.doubleValue ?? 0, exact: command["exact"] as? Bool ?? false)
         case "refreshed": if let refreshed { engine.sourceRefreshed(loadId: loadId, source: refreshed) }
         case "refreshFailed": engine.sourceRefreshFailed(loadId: loadId)
+        // Any player's: an audio player has qualities too (its renditions).
+        case "selectQuality": try engine.selectQuality(command["id"] as? String)
         default:
           guard let picture = controller.picture else {
             throw PlayerError.code(
@@ -408,7 +416,6 @@ public final class AnythingPlayerBridge: NSObject {
           }
           let id = command["id"] as? String
           switch op {
-          case "selectQuality": try engine.selectQuality(id)
           case "selectAudioTrack": try engine.selectAudioTrack(id)
           case "selectTextTrack": try engine.selectTextTrack(id)
           case "subtitleDelay": try engine.setSubtitleDelay((command["seconds"] as? NSNumber)?.doubleValue ?? 0)

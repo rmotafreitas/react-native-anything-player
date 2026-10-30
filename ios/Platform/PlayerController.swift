@@ -136,7 +136,7 @@ extension SourceDescriptor {
         return Rendition(
           uri: r["uri"] as? String ?? "", headers: rh, height: (r["height"] as? NSNumber)?.intValue,
           bitrate: (r["bitrate"] as? NSNumber)?.int64Value, label: r["label"] as? String,
-          audioOnly: r["audioOnly"] as? Bool ?? false)
+          audioOnly: r["audioOnly"] as? Bool ?? false, id: r["id"] as? String)
       }
     }
     let descriptor = SourceDescriptor(
@@ -220,10 +220,11 @@ final class PlayerController: EngineDelegate, DriverObserver {
   /// A video player's picture side (`nil`: an audio player).
   private(set) var picture: VideoPicture?
   /// An audio player's AVPlayer driver.
-  private let audioDriver: AVPlayerDriver?
+  /// An audio player's AVPlayers: the one heard, and one that prepares a quality switch (renditions).
+  private let audioOutput: SwapDriver?
   /// The AVPlayer the sound (and the picture) plays from now (visualizer
   /// taps, media-services rebuilds).
-  var driver: AVPlayerDriver { picture?.primary ?? audioDriver! }
+  var driver: AVPlayerDriver { picture?.primary ?? audioOutput!.current }
   let routing: RoutingDriver
   let engine: PlaybackEngine
   private unowned let runtime: AnythingPlayerRuntime
@@ -266,11 +267,12 @@ final class PlayerController: EngineDelegate, DriverObserver {
     // The picture side first (the routing driver plays through it), told
     // about this controller once it exists.
     let video = options.engine.video != nil ? VideoSupport.create(titleFormat: options.titleFormat) : nil
-    audioDriver = video == nil ? AVPlayerDriver(titleFormat: options.titleFormat) : nil
-    routing = RoutingDriver(local: video?.output ?? audioDriver!)
+    let titleFormat = options.titleFormat
+    audioOutput = video == nil ? SwapDriver { AVPlayerDriver(titleFormat: titleFormat) } : nil
+    routing = RoutingDriver(local: video?.output ?? audioOutput!)
     engine = PlaybackEngine(driver: routing, clock: SystemClock.shared, options: options.engine)
     picture = video
-    audioDriver?.observer = self
+    audioOutput?.observer = self
     routing.observer = self
     routing.describe = { [weak self] in self?.nowPlaying() ?? NowPlayingInfo() }
     routing.media = { [weak self] in self?.castMedia() ?? CastMedia() }
@@ -288,7 +290,8 @@ final class PlayerController: EngineDelegate, DriverObserver {
 
   /// `completion` runs once the load settles (ready, superseded or failed).
   func load(_ source: SourceDescriptor, fields: NowPlayingFields, autoplay: Bool?, start: Double?,
-            parts: VideoLoadParts = VideoLoadParts(), completion: @escaping LoadCompletion) throws {
+            parts: VideoLoadParts = VideoLoadParts(), qualityGiven: Bool = false, quality: String? = nil,
+            completion: @escaping LoadCompletion) throws {
     sourceFields = fields
     overrides = NowPlayingFields(nil)
     trackClock = nil
@@ -298,7 +301,7 @@ final class PlayerController: EngineDelegate, DriverObserver {
       droppedFrames = nil
     }
     picture?.load(parts)
-    try engine.load(source, autoplay: autoplay, startPosition: start)
+    try engine.load(source, autoplay: autoplay, startPosition: start, qualityGiven: qualityGiven, quality: quality)
     // The app's subtitle files are tracks from the start (their cues follow).
     if picture != nil && !parts.subtitles.isEmpty { engine.setAppTracks(parts.subtitles) }
     pendingLoads[engine.loadId] = completion
@@ -341,7 +344,7 @@ final class PlayerController: EngineDelegate, DriverObserver {
   }
 
   /// Every AVPlayer driver: the audio player's one, or a video player's two.
-  private var drivers: [AVPlayerDriver] { picture?.drivers ?? [audioDriver].compactMap { $0 } }
+  private var drivers: [AVPlayerDriver] { picture?.drivers ?? audioOutput!.drivers }
 
   func release() {
     guard !released else { return }
@@ -590,6 +593,10 @@ final class PlayerController: EngineDelegate, DriverObserver {
 
   func engine(error: PlayerError, fatal: Bool) {
     emit("error", ["error": Serialization.error(error), "fatal": fatal])
+  }
+
+  func engine(warning: PlayerError) {
+    engine(error: warning, fatal: false)
   }
 
   func engineDidEnd() {

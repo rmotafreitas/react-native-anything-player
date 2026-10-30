@@ -148,6 +148,26 @@ The volume the platform player gets is the app's volume × the system's ducking 
 
 On a Cast receiver, fades and `fadeTo` are instant and the sleep timer pauses without a fade-out: the receiver sets its own volume. In a browser tab that is hidden, timers run less often, so fades move in larger steps and the timer can fire late. On iPhone and iPad browsers the system fixes the volume: fades have no effect there, and the sleep timer pauses without one.
 
+## Qualities
+
+Separate files of one sound, one per bitrate, are switched by RNAP behind what is heard, with no gap: give them as `renditions` (an audio player's are all sound; `height` and `audioOnly` mean nothing there).
+
+```ts
+await player.load(
+  {
+    renditions: [
+      { id: '64k', uri: 'https://cdn.example/ep1-64.m4a', bitrate: 64_000 },
+      { id: '192k', uri: 'https://cdn.example/ep1-192.m4a', bitrate: 192_000 },
+      { id: '320k', uri: 'https://cdn.example/ep1-320.m4a', bitrate: 320_000 },
+    ],
+  },
+  { quality: '320k' } // from the first byte; 'auto' (the default) follows the bandwidth
+);
+await player.selectQuality('192k'); // switches without a gap, and holds for the next loads
+```
+
+`status.qualities` lists them, `status.quality` is the one playing and `status.selectedQuality` the pick (`null`: automatic). Automatic starts at the lowest and steps up after 30 s of headroom, down on stalls; the background never changes it. A pick holds across loads by `id` (give each episode's files the same ids), and a switch that fails is a non-fatal `QUALITY_SWITCH_FAILED` error while the current file plays on. An HLS or DASH source's own variants are left to the platform on an audio player.
+
 ## Several players
 
 Players are independent native engines. The lock screen shows the most recently started player with `mediaSession.enabled` (the default). Audio focus is per app on Android: all players share it, and a focus loss pauses every player that does not use `audio.mixWithOthers`.

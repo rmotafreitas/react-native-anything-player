@@ -109,6 +109,8 @@ interface EngineDelegate {
   fun engineStatusChanged(status: Status)
   fun engineLoadSettled(loadId: Int, outcome: LoadOutcome)
   fun engineError(error: PlayerError, fatal: Boolean)
+  /** Something the app should hear that stops nothing and starts no recovery (a quality switch that failed). */
+  fun engineWarning(error: PlayerError)
   fun engineDidEnd()
   /** The sleep timer paused the player (`sleep` event). */
   fun engineSleepFired()
@@ -268,6 +270,8 @@ class PlaybackEngine(
   // ── Video: renditions ──
   private var renditions: MutableList<Rendition>? = null
   private var selectedQuality: String? = null
+  /** The app's pick, kept across loads (`null`: automatic). */
+  private var wantedQuality: String? = null
   /** The engine's own pick among the renditions (automatic quality). */
   private var abrLevel: Int? = null
   private var currentRendition: Int? = null
@@ -371,9 +375,9 @@ class PlaybackEngine(
         route = route,
         sleepAt = sleepWallAt,
         // An audio player picks no quality.
-        qualities = if (options.video == null) emptyList() else qualityList(),
-        quality = if (options.video == null) null else currentQualityId(),
-        selectedQuality = if (options.video == null) null else selectedQuality,
+        qualities = statusQualities(),
+        quality = if (statusQualities().isEmpty()) null else currentQualityId(),
+        selectedQuality = if (statusQualities().isEmpty()) null else selectedQuality,
         video = videoStatus(),
       )
     }
@@ -396,8 +400,19 @@ class PlaybackEngine(
 
   // ── Commands ──
 
-  fun load(newSource: SourceDescriptor, autoplay: Boolean?, startPosition: Double?) {
+  /**
+   * `quality`: the quality to play, for this load and the next (`null`:
+   * automatic); only used when `qualityGiven`, else the current pick stays.
+   */
+  fun load(
+    newSource: SourceDescriptor,
+    autoplay: Boolean?,
+    startPosition: Double?,
+    qualityGiven: Boolean = false,
+    quality: String? = null,
+  ) {
     ensureAlive()
+    if (qualityGiven) chooseQuality(newSource, quality)
     // A fade-out ends with the item it was fading.
     cancelFadeOut()
     val flowing = playWhenReady && state == PlaybackState.PLAYING
@@ -1011,11 +1026,13 @@ class PlaybackEngine(
   /** Pins a quality (`status.qualities[].id`), or `null` for automatic. */
   fun selectQuality(id: String?) {
     ensureAlive()
-    val qualities = if (options.video == null) emptyList() else qualityList()
+    val qualities = statusQualities()
     if (id != null && qualities.none { it.id == id }) {
       throw PlayerError(ErrorCode.INVALID_ARGUMENT, "No quality \"$id\".", false)
     }
-    // Nothing to pick from (one file, an audio player): automatic already.
+    // Kept for the next loads too (`load(…, quality)` overrides it).
+    wantedQuality = id
+    // Nothing to pick from (one file): automatic already.
     if (qualities.isEmpty()) return
     selectedQuality = id
     log("quality selected", mapOf("id" to (id ?: "auto")))
@@ -1206,6 +1223,10 @@ class PlaybackEngine(
     // A pick among renditions stands: each file's variants are not the list.
     val selected = selectedQuality
     if (selected != null && renditions == null && this.variants.none { it.id == selected }) selectedQuality = null
+    val wanted = wantedQuality
+    if (selectedQuality == null && wanted != null && renditions == null && this.variants.any { it.id == wanted }) {
+      selectedQuality = wanted
+    }
     applyQuality("variants")
     commit()
   }
@@ -2037,10 +2058,11 @@ class PlaybackEngine(
     sourceRevision = 0
     openedRevision = 0
     armExpiry()
+    // The qualities are any player's (an audio player's renditions too).
+    resetQuality()
     val v = options.video ?: return
     firstFrame = false
     resetTracks()
-    resetQuality()
     if (!view.attached && detachedSince == null) detachedSince = now
     lastAudioOnly = audioOnlyReason
     if (v.ambient && !shown && playWhenReady) {
@@ -2085,7 +2107,7 @@ class PlaybackEngine(
 
   private fun swapFailed(error: PlayerError) {
     val swap = pendingSwap ?: return
-    dropSwap(swap, "failed: ${error.code.wire}")
+    dropSwap(swap, "failed: ${error.code.wire}", error)
   }
 
   /** The item's duration, live state and seekability, as the platform reports them. */
@@ -2137,7 +2159,9 @@ class PlaybackEngine(
   private fun stallPublished(t: Long) {
     counters = counters.copy(rebufferCount = counters.rebufferCount + 1)
     if (rebufferSince == null) rebufferSince = t
-    if (options.video == null || remote) return
+    if (remote) return
+    // An audio player steps among its renditions too; the rest is the picture's.
+    if (options.video == null) return evaluateAbr(t, true)
     if (audioOnlyReason == null) {
       stallTimes.add(t)
       stallTimes.removeAll { t - it >= RecoveryPolicy.FALLBACK_PROBE_MS }
@@ -2196,12 +2220,12 @@ class PlaybackEngine(
 
   /** The watchdog's tick, while playback is wanted. */
   private fun videoHeartbeat(t: Long) {
-    if (options.video == null || remote) return
-    if (state != PlaybackState.PLAYING) return
+    if (remote || state != PlaybackState.PLAYING) return
+    if (options.video == null && renditions == null) return
     // A switch a seek or a pause cancelled is tried again.
     if (renditions != null && pendingSwap == null) retarget("resume switch")
     evaluateAbr(t, false)
-    evaluateFallback(t, false)
+    if (options.video != null) evaluateFallback(t, false)
   }
 
   // ── Video: surroundings ──
@@ -2439,7 +2463,6 @@ class PlaybackEngine(
   private fun resetQuality() {
     videoInfo = null
     variants = emptyList()
-    selectedQuality = null
     fallbackActive = false
     fallbackSince = null
     stallTimes = mutableListOf()
@@ -2451,23 +2474,31 @@ class PlaybackEngine(
     returnSince = null
     lastSwitchAt = null
     appliedQuality = null
-    renditions = source?.renditions?.takeIf { it.isNotEmpty() }?.toMutableList()
+    // An audio player's renditions are all rungs of one ladder: none is the
+    // picture's audio-only fallback.
+    val audio = options.video == null
+    renditions =
+      source?.renditions?.takeIf { it.isNotEmpty() }?.map { it.copy(audioOnly = it.audioOnly && !audio) }?.toMutableList()
+    // The app's pick holds from the first byte where this source has it; an
+    // adaptive source's variants take it when they are known (onVariants).
+    selectedQuality = wantedQuality?.takeIf { renditionIndex(it) != null }
     abrLevel = if (renditions != null) startLevel() else null
     currentRendition = targetRendition()
   }
 
   /** The quality the status reports as playing. */
   private fun currentQualityId(): String? {
-    if (renditions == null) return videoInfo?.variantId
-    return currentRendition?.let { "r$it" }
+    val table = renditions ?: return videoInfo?.variantId
+    return currentRendition?.let { table[it].idAt(it) }
   }
 
   private fun applyQuality(cause: String) {
-    if (options.video == null || source == null) return
+    if (source == null) return
     if (renditions != null) {
       retarget(cause)
       return
     }
+    if (options.video == null) return
     val c = constraints()
     val key = "${c.maxHeight}|${c.maxBitrate}|${c.pinned}|${c.audioOnly}"
     if (key == appliedQuality) return
@@ -2477,7 +2508,8 @@ class PlaybackEngine(
 
   /** The caps for an adaptive source's ABR (and the allowed renditions). */
   private fun constraints(): QualityConstraints {
-    val q = options.video!!.quality
+    // An audio player has no caps: they are the picture's.
+    val q = options.video?.quality ?: return QualityConstraints(null, null, null, false)
     var maxHeight = q.maxHeight
     var maxBitrate = q.maxBitrate
     if (metered) {
@@ -2515,9 +2547,34 @@ class PlaybackEngine(
     return info.height * scale
   }
 
+  /**
+   * The qualities the status lists. An audio player picks among renditions
+   * only: an adaptive source's variants are the platform's to switch.
+   */
+  private fun statusQualities(): List<VideoVariant> =
+    if (options.video == null && renditions == null) emptyList() else qualityList()
+
+  /**
+   * `load(…, quality)`: the pick for this load and the next (`null`:
+   * automatic). Checked before anything changes: an id the source's
+   * renditions lack is refused.
+   */
+  private fun chooseQuality(source: SourceDescriptor, quality: String?) {
+    val table = source.renditions
+    if (quality != null && !table.isNullOrEmpty() && table.withIndex().none { (i, r) -> r.idAt(i) == quality }) {
+      throw PlayerError(ErrorCode.INVALID_ARGUMENT, "No quality \"$quality\".", false)
+    }
+    wantedQuality = quality
+  }
+
+  /** A rendition's index by its id, `null` when there is none. */
+  private fun renditionIndex(id: String): Int? =
+    renditions?.withIndex()?.firstOrNull { (i, r) -> r.idAt(i) == id }?.index
+
   private fun qualityList(): List<VideoVariant> {
     val table = renditions ?: return variants
-    return table.mapIndexed { i, r -> VideoVariant("r$i", r.height, r.bitrate, r.audioOnly, r.label) }
+    // Every quality of an audio player is sound alone.
+    return table.mapIndexed { i, r -> VideoVariant(r.idAt(i), r.height, r.bitrate, r.audioOnly || options.video == null, r.label) }
   }
 
   private fun renditionSource(index: Int): SourceDescriptor {
@@ -2584,7 +2641,7 @@ class PlaybackEngine(
   private fun startLevel(): Int? {
     val order = allowedOrder()
     if (order.isEmpty()) return null
-    return when (val start = options.video!!.quality.startQuality) {
+    return when (val start = options.video?.quality?.startQuality ?: StartQuality.Auto) {
       StartQuality.Lowest -> order.first()
       StartQuality.Highest -> order.last()
       is StartQuality.Height -> tallestUpTo(order, start.value)
@@ -2612,7 +2669,7 @@ class PlaybackEngine(
     if (audioOnlyReason != null && audio != null) return audio
     val selected = selectedQuality
     if (selected != null) {
-      val index = selected.substring(1).toInt()
+      val index = renditionIndex(selected)!!
       val failed = (failedUntil[index] ?: 0L) > now
       return if (failed) currentRendition else index
     }
@@ -2668,15 +2725,33 @@ class PlaybackEngine(
   }
 
   /** A switch that failed or timed out: its file sits out a while. */
-  private fun dropSwap(swap: PendingSwap, reason: String) {
+  /**
+   * A switch that failed or timed out: its file sits out a while, and the
+   * app hears it (non-fatal: the current file plays on). `cause`: the new
+   * file's own failure, if it had one.
+   */
+  private fun dropSwap(swap: PendingSwap, reason: String, cause: PlayerError? = null) {
     failedUntil[swap.rendition] = now + RecoveryPolicy.FAILED_RENDITION_MS
     if (abrLevel == swap.rendition) abrLevel = currentRendition
     cancelSwap(reason)
+    val target = renditions!![swap.rendition].idAt(swap.rendition)
+    val outcome = if (cause != null) "failed" else "timed out"
+    val error =
+      PlayerError(
+        ErrorCode.QUALITY_SWITCH_FAILED,
+        "The switch to quality \"$target\" $outcome; the current one plays on.",
+        true,
+        // The new file's own failure: its code, then its message.
+        causeDescription = if (cause != null) "${cause.code.wire}: ${cause.message}" else reason,
+        platformDomain = cause?.platformDomain,
+        platformCode = cause?.platformCode,
+      )
+    pendingEvents.add { delegate?.engineWarning(error) }
   }
 
   private fun trackBandwidth(t: Long, bps: Double) {
     trackFallbackBandwidth(t, bps)
-    if (options.video == null || renditions == null) return
+    if (renditions == null) return
     val level = abrLevel ?: currentRendition
     val bitrate = level?.let { videoBitrateOf(it) }
     abrLowSince = if (bitrate != null && bps < bitrate) abrLowSince ?: t else null

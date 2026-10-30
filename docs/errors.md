@@ -50,6 +50,7 @@ Native details are never dropped: `AVFoundationErrorDomain -11800` comes with th
 | `VIDEO_UNAVAILABLE` | no | `new Player({ video })` on iOS or Android in an app built without the video module ([Video](video.md#enabling-it)) |
 | `DRM_UNSUPPORTED` | no | a protected source the platform cannot decrypt: none of its `drm` key systems is here, or it is encrypted without `drm`, or not packaged for the key system picked ([Video](video.md#drm)) |
 | `DRM_LICENSE_FAILED` | 5xx, 429 | the license server refused (`httpStatus`), `getLicense` threw or did not answer in 30 s, or the FairPlay certificate could not be fetched ([Video](video.md#drm)) |
+| `QUALITY_SWITCH_FAILED` | yes | non-fatal `error` event: a switch to another of `renditions` failed or did not play within 12 s (the new file's own failure is in `cause`); the current file plays on and the failed one sits out a minute ([Playback](playback.md#qualities)) |
 | `SUBTITLE_LOAD_FAILED` | no | non-fatal `error` event: a subtitle file could not be fetched or read; the video plays on ([Subtitles](subtitles.md#files)) |
 | `INTERNAL_ERROR` | no | a bug — please report with `player.getDiagnostics()` |
 

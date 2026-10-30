@@ -168,6 +168,9 @@ final class Recorder: EngineDelegate {
     if !fatal && statuses.last?.state != .reconnecting { violations.append("recoverable error before reconnecting status") }
     errors.append("\(error.code.rawValue):\(fatal ? "fatal" : "recoverable")")
   }
+  func engine(warning: PlayerError) {
+    errors.append("\(warning.code.rawValue):warning")
+  }
   func engineDidEnd() {
     if statuses.last?.state != .ended { violations.append("ended before ended status") }
     ended += 1

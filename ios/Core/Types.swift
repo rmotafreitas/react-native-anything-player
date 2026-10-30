@@ -110,6 +110,7 @@ enum ErrorCode: String {
   case drmUnsupported = "DRM_UNSUPPORTED"
   case drmLicenseFailed = "DRM_LICENSE_FAILED"
   case subtitleLoadFailed = "SUBTITLE_LOAD_FAILED"
+  case qualitySwitchFailed = "QUALITY_SWITCH_FAILED"
 }
 
 struct PlayerError: Error, Equatable {
@@ -193,6 +194,11 @@ struct Rendition: Equatable {
   var label: String? = nil
   /// Sound only: the last step of the audio-only fallback.
   var audioOnly = false
+  /// The app's id for it (`nil`: `r<index>`).
+  var id: String? = nil
+
+  /// Its id in `status.qualities`.
+  func id(at index: Int) -> String { id ?? "r\(index)" }
 }
 
 /// A quality of an adaptive source as the driver reports it, or a rendition (`status.qualities`).

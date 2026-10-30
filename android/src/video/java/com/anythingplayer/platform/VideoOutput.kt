@@ -42,7 +42,7 @@ import kotlin.math.max
 private const val CUE_RECHECK_MS = 1_000L
 
 /**
- * A video player's picture side on Android: its two ExoPlayers ([VideoSwapDriver]),
+ * A video player's picture side on Android: its two ExoPlayers ([SwapDriver]),
  * a [PictureSurface] each, and where they show: the newest attached
  * `<VideoView>`, the fullscreen window over it, or the Picture in Picture
  * window over both. Tells the engine about the view (attached, on screen,
@@ -55,9 +55,9 @@ internal class VideoOutput(
   private val context: Context,
   private val controller: PlayerController,
   make: (DriverObserver) -> ExoPlayerDriver,
-) : VideoPicture, VideoStage, VideoControls.Actions {
+) : VideoPicture, SwapStage, VideoControls.Actions {
   private val main = Handler(Looper.getMainLooper())
-  private val swap = VideoSwapDriver(controller, make, this)
+  private val swap = SwapDriver(controller, make, this)
   private val surfaces = HashMap<ExoPlayerDriver, PictureSurface>()
   /** Attached inline views, the newest last (it shows the picture). */
   private val inline = mutableListOf<VideoSurfaceView>()
@@ -170,7 +170,7 @@ internal class VideoOutput(
     surfaces.clear()
   }
 
-  // ── VideoStage ──
+  // ── SwapStage ──
 
   override fun show(current: ExoPlayerDriver, hidden: ExoPlayerDriver?) {
     surfaceOf(current)

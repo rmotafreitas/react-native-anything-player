@@ -163,6 +163,9 @@ class Recorder : EngineDelegate {
     if (!fatal && statuses.lastOrNull()?.state != PlaybackState.RECONNECTING) violations.add("recoverable error before reconnecting status")
     errors.add("${error.code.wire}:${if (fatal) "fatal" else "recoverable"}")
   }
+  override fun engineWarning(error: PlayerError) {
+    errors.add("${error.code.wire}:warning")
+  }
   override fun engineDidEnd() {
     if (statuses.lastOrNull()?.state != PlaybackState.ENDED) violations.add("ended before ended status")
     ended += 1
