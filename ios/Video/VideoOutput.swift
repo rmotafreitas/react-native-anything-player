@@ -391,10 +391,12 @@ final class VideoOutput: NSObject, VideoPicture, VideoStage, AVPictureInPictureC
   private func removeEmbedded() {
     guard let avkit = embedded else { return }
     embedded = nil
+    // Its player taken first: AVKit may pause a player whose view goes away,
+    // and a view going away must not stop the sound.
+    avkit.player = nil
     avkit.willMove(toParent: nil)
     avkit.view.removeFromSuperview()
     avkit.removeFromParent()
-    avkit.player = nil
   }
 
   private static func viewController(of view: UIView) -> UIViewController? {

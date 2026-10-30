@@ -750,7 +750,9 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
     // then the proxy's synthetic 502, not the station's.
     let mapped = ErrorMapping.map(
       upstreamError ?? error, httpStatus: upstreamError == nil ? lastHTTPStatus : nil,
-      offline: observer?.isOffline ?? false, hadPlayed: playedGeneration == gen)
+      // Past readiness AVPlayer took the container and the codecs: a parse
+      // failure now is the pipeline's, worth a re-open.
+      offline: observer?.isOffline ?? false, hadPlayed: playedGeneration == gen || readyGeneration == gen)
     if retryRemuxed(gen, mapped) { return }
     observer?.driverFailed(generation: gen, error: mapped)
   }

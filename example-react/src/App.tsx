@@ -10,6 +10,7 @@ import {
   usePlayerStatus,
   useProgress,
   useStreamMetadata,
+  VideoView,
 } from 'react-native-anything-player/react';
 
 const params = new URLSearchParams(location.search);
@@ -31,7 +32,7 @@ const STATIONS = [
 
 declare global {
   interface Window {
-    rnap?: { player: Player };
+    rnap?: { player: Player; video?: Player };
   }
 }
 
@@ -96,6 +97,61 @@ function Controls({ player }: { player: Player }) {
   );
 }
 
+/**
+ * `?video`: a video player that outlives its views. Two views can be shown
+ * and hidden: hiding one leaves the sound playing, and the other keeps (or
+ * gets back) the picture.
+ */
+function VideoSection() {
+  const [video, setVideo] = useState<Player | null>(null);
+  const [shown, setShown] = useState({ a: true, b: false });
+  useEffect(() => {
+    const created = new Player({ video: true });
+    window.rnap = { ...window.rnap!, video: created };
+    setVideo(created);
+    return () => {
+      created.release().catch(() => undefined);
+    };
+  }, []);
+  if (!video) return null;
+  const box = { width: 320, aspectRatio: '16 / 9', background: 'black' };
+  return (
+    <section>
+      <div className="row">
+        <button
+          type="button"
+          onClick={() => {
+            video
+              .load(`${STREAM}/video-360.mp4`, { autoplay: true })
+              .catch(() => undefined);
+          }}
+        >
+          Play video
+        </button>
+        {(['a', 'b'] as const).map((key) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setShown((s) => ({ ...s, [key]: !s[key] }))}
+          >
+            {shown[key] ? `Hide view ${key}` : `Show view ${key}`}
+          </button>
+        ))}
+      </div>
+      {shown.a ? (
+        <div data-testid="view-a">
+          <VideoView player={video} style={box} />
+        </div>
+      ) : null}
+      {shown.b ? (
+        <div data-testid="view-b">
+          <VideoView player={video} style={box} />
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 export function App() {
   const player = usePlayer();
   return (
@@ -105,6 +161,7 @@ export function App() {
         <code>react-native-anything-player/react</code>: no React Native.
       </p>
       {player ? <Controls player={player} /> : null}
+      {params.has('video') && player ? <VideoSection /> : null}
     </main>
   );
 }

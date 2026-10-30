@@ -241,7 +241,10 @@ internal class ExoPlayerDriver(
       override fun onPlayerError(error: PlaybackException) {
         val p = player ?: return
         val gen = currentGeneration(p) ?: return
-        report { observer.onFailed(gen, mapPlaybackException(error, observer.isOffline(), playedGeneration == gen)) }
+        // Past readiness ExoPlayer took the container and the codecs: a
+        // decoding or parsing failure now is the pipeline's, worth a re-open.
+        val pastReady = playedGeneration == gen || readyGeneration == gen
+        report { observer.onFailed(gen, mapPlaybackException(error, observer.isOffline(), pastReady)) }
       }
 
       override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {

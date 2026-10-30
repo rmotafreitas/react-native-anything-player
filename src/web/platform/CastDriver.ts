@@ -214,10 +214,11 @@ export class CastDriver implements EngineDriver {
     }
     this.rateSent = this.rate !== 1;
     this.rateApplied = true;
+    rateRequests += 1;
     session
       .sendMessage(MEDIA_NAMESPACE, {
         type: 'SET_PLAYBACK_RATE',
-        requestId: ++rateRequests,
+        requestId: rateRequests,
         mediaSessionId: media.mediaSessionId,
         playbackRate: this.rate,
       })
