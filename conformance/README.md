@@ -94,7 +94,7 @@ happened since the previous one.
 | `reconnectAttempt` | attempt number or `null` |
 | `commands` | driver calls, e.g. `["open(gen=2,start=-,play=true)", "pause"]` |
 | `loads` | load settlements, e.g. `["1:ready", "2:superseded", "3:failed:TIMEOUT"]` |
-| `errors` | emitted errors, e.g. `["NETWORK_ERROR:recoverable", "TIMEOUT:fatal"]` |
+| `errors` | emitted errors, e.g. `["NETWORK_ERROR:recoverable", "TIMEOUT:fatal"]`; a report that stops nothing and starts no recovery is `CODE:warning` (`QUALITY_SWITCH_FAILED:warning`) |
 | `ended` | number of `ended` events since the previous expect |
 | `wantsKeepalive`, `needsAudioFocus` | engine queries |
 | `volume` | `status.volume` (the app's volume, never the faded one) |

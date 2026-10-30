@@ -413,6 +413,7 @@ export class Player {
     if (options.autoplay != null) nativeOptions.autoplay = options.autoplay;
     if (options.startPosition != null)
       nativeOptions.startPosition = options.startPosition;
+    if (options.quality != null) nativeOptions.quality = options.quality;
     this._metadata = null;
     const full =
       typeof source === 'object' && !isBlob(source) ? (source as Source) : null;

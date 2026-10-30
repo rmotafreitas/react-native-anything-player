@@ -95,6 +95,8 @@ export interface DrmDescriptor {
 
 /** One file of a video at one quality (`SourceDescriptor.renditions`). */
 export interface Rendition {
+  /** The app's id for it (`null`: `r<index>`). */
+  id: string | null;
   uri: string;
   /** `null`: the source's headers. */
   headers: Record<string, string> | null;

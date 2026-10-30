@@ -194,6 +194,7 @@ function parseRenditions(value: unknown): Rendition[] | null {
   return value.map((r) => {
     const map = dict(r) ?? {};
     return {
+      id: str(map.id),
       uri: str(map.uri) ?? '',
       headers: map.headers != null ? strings(map.headers) : null,
       height: num(map.height),
@@ -274,6 +275,12 @@ export function parseNowPlaying(value: unknown): NowPlayingFields {
 
 export function errorToMap(error: PlayerError): Dict {
   return { ...error.toJSON(), platform: error.platform ?? 'web' };
+}
+
+/** `LoadOptions.quality`: an id, `null` for automatic (`'auto'`), `undefined` to keep the pick. */
+export function parseLoadQuality(value: unknown): string | null | undefined {
+  if (value === 'auto') return null;
+  return typeof value === 'string' ? value : undefined;
 }
 
 export function statusToMap(status: EngineStatus, seq: number): Dict {

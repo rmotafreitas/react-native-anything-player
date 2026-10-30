@@ -234,9 +234,12 @@ export abstract class EngineCore {
   load(
     newSource: SourceDescriptor,
     autoplay: boolean | null,
-    startPosition: number | null
+    startPosition: number | null,
+    /** The quality to play (`null`: automatic; omitted: the current pick). */
+    quality?: string | null
   ): void {
     this.ensureAlive();
+    this.chooseQuality(newSource, quality);
     // A fade-out ends with the item it was fading.
     this.cancelFadeOut();
     const flowing = this._playWhenReady && this._state === 'playing';
@@ -1069,6 +1072,10 @@ export abstract class EngineCore {
     this.isLive = this._source?.liveHint ?? info.isLive;
     this.seekable = info.seekable && !this.isLive;
   }
+  protected abstract chooseQuality(
+    source: SourceDescriptor,
+    quality: string | null | undefined
+  ): void;
   /** Drops a quality switch in flight (`reason` for the log). */
   protected abstract cancelSwap(reason: string): void;
   /** `true` when the failure waits for the app's new source instead. */

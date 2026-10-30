@@ -134,6 +134,7 @@ export type PlayerErrorCode =
   | 'DRM_UNSUPPORTED'
   | 'DRM_LICENSE_FAILED'
   | 'SUBTITLE_LOAD_FAILED'
+  | 'QUALITY_SWITCH_FAILED'
   | 'INTERNAL_ERROR';
 
 /**
@@ -409,6 +410,11 @@ export interface SourceOptions {
  * you do not know: RNAP reads the height and bitrate from the file.
  */
 export interface Rendition {
+  /**
+   * Its id in `status.qualities` (default: `r<index>`). Give the same ids to
+   * every episode's renditions, and a pick holds across loads.
+   */
+  id?: string;
   /** The file. */
   uri: string;
   /** Default: the source's headers. */
@@ -419,7 +425,11 @@ export interface Rendition {
   bitrate?: number;
   /** Shown in quality menus, e.g. `'1080p'`. */
   label?: string;
-  /** The sound alone: the last step of `fallbackToAudio` and of `whenBackgrounded: 'audio'`. */
+  /**
+   * A video's sound alone: the last step of `fallbackToAudio` and of
+   * `whenBackgrounded: 'audio'`. Ignored by an audio player, whose renditions
+   * are all sound.
+   */
   audioOnly?: boolean;
 }
 
@@ -545,6 +555,13 @@ export interface LoadOptions {
   autoplay?: boolean;
   /** Seconds to start at (ignored for live streams). */
   startPosition?: number;
+  /**
+   * The quality to play from the first byte: an id from the source's
+   * `renditions` (or, once known, an HLS or DASH variant), or `'auto'`. It is
+   * kept for the next loads, like `selectQuality`; omit it to keep the current
+   * pick.
+   */
+  quality?: string;
 }
 
 /** A lock-screen / notification / headset / car command. */

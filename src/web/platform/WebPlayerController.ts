@@ -144,14 +144,14 @@ export class WebPlayerController
   ) {
     const video = options.engine.video != null ? new WebVideo(this) : null;
     this.video = video;
-    this.driver = video
-      ? new SwapDriver(
-          this,
-          (observer) =>
-            new MediaElementDriver(observer, options.titleFormat, 'video'),
-          video
-        )
-      : new MediaElementDriver(this, options.titleFormat);
+    // Two elements, one behind the other, switch qualities (renditions)
+    // without a gap; a sound has no stage, only an element to follow.
+    const kind = video ? 'video' : 'audio';
+    this.driver = new SwapDriver(
+      this,
+      (observer) => new MediaElementDriver(observer, options.titleFormat, kind),
+      video ?? { show: (element) => this.audioSwitched(element) }
+    );
     video?.show(this.driver.element, null);
     this.routing = new RoutingDriver(this.driver, () => {
       const parts = runtime.cast.parts;
@@ -191,7 +191,8 @@ export class WebPlayerController
     autoplay: boolean | null,
     start: number | null,
     objectUrl: string | null = null,
-    parts: VideoLoadParts | null = null
+    parts: VideoLoadParts | null = null,
+    quality?: string | null
   ): Promise<object> {
     this.sourceFields = fields;
     this.overrides = NO_FIELDS;
@@ -202,7 +203,7 @@ export class WebPlayerController
     this.runtime.beforeLoad(this, source, autoplay);
     this.video?.beginSession(parts?.session ?? null);
     this.video?.setPoster(parts?.poster ?? null);
-    this.engine.load(source, autoplay, start);
+    this.engine.load(source, autoplay, start, quality);
     if (this.video && parts && parts.subtitles.length > 0)
       this.engine.setAppTracks(parts.subtitles);
     // The replaced item is gone from the element: nothing can ask for it again.
@@ -287,6 +288,9 @@ export class WebPlayerController
     if (op === 'refreshFailed')
       return this.engine.sourceRefreshFailed(command.loadId as number);
     if (op === 'license') return answerLicense(command);
+    // Any player's: an audio player has qualities too (its renditions).
+    if (op === 'selectQuality')
+      return this.engine.selectQuality((command.id as string | null) ?? null);
     return this.videoOnly(op, command);
   }
 
@@ -305,8 +309,6 @@ export class WebPlayerController
     }
     const id = (c.id as string | null | undefined) ?? null;
     switch (op) {
-      case 'selectQuality':
-        return this.engine.selectQuality(id);
       case 'selectAudioTrack':
         return this.engine.selectAudioTrack(id);
       case 'selectTextTrack':
@@ -576,6 +578,10 @@ export class WebPlayerController
     this.emit('error', { error: errorToMap(error), fatal });
   }
 
+  engineWarning(error: PlayerError): void {
+    this.engineError(error, false);
+  }
+
   engineDidEnd(): void {
     this.emit('ended', {});
   }
@@ -682,6 +688,12 @@ export class WebPlayerController
       event,
       details,
     });
+  }
+
+  /** A quality switch made another `<audio>` the one playing: AirPlay and the visualizer follow it. */
+  private audioSwitched(element: AudioElementLike): void {
+    this.elementRoute.attach(element);
+    this.updateSampler();
   }
 
   onElementReplaced(element: AudioElementLike): void {

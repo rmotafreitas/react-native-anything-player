@@ -248,6 +248,10 @@ export class Recorder implements EngineDelegate {
     this.errors.push(`${error.code}:${fatal ? 'fatal' : 'recoverable'}`);
   }
 
+  engineWarning(error: PlayerError): void {
+    this.errors.push(`${error.code}:warning`);
+  }
+
   engineDidEnd(): void {
     if (this.statuses[this.statuses.length - 1]?.state !== 'ended')
       this.violations.push('ended before ended status');

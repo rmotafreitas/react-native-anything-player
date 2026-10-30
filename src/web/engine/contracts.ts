@@ -65,6 +65,8 @@ export interface EngineDelegate {
   engineStatusChanged(status: EngineStatus): void;
   engineLoadSettled(loadId: number, outcome: LoadOutcome): void;
   engineError(error: PlayerError, fatal: boolean): void;
+  /** Something the app should hear that stops nothing and starts no recovery (a quality switch that failed). */
+  engineWarning(error: PlayerError): void;
   engineDidEnd(): void;
   /** The sleep timer paused the player (`sleep` event). */
   engineSleepFired(): void;

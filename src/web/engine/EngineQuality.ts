@@ -36,6 +36,11 @@ interface PendingSwap {
   info: ReadyInfo | null;
 }
 
+/** A rendition's id: the app's, or `r<index>`. */
+export function renditionId(r: Rendition, index: number): string {
+  return r.id ?? `r${index}`;
+}
+
 function minOf(a: number | null, b: number | null): number | null {
   if (a == null) return b;
   if (b == null) return a;
@@ -72,6 +77,8 @@ export abstract class EngineQuality extends EngineFades {
   // ── Renditions ──
   protected renditions: Rendition[] | null = null;
   protected selectedQuality: string | null = null;
+  /** The app's pick, kept across loads (`null`: automatic). */
+  protected wantedQuality: string | null = null;
   /** The engine's own pick among the renditions (automatic quality). */
   protected abrLevel: number | null = null;
   protected currentRendition: number | null = null;
@@ -123,7 +130,9 @@ export abstract class EngineQuality extends EngineFades {
     if (id != null && !qualities.some((q) => q.id === id)) {
       throw engineError('INVALID_ARGUMENT', `No quality "${id}".`, false);
     }
-    // Nothing to pick from (one file, an audio player): automatic already.
+    // Kept for the next loads too (`load(…, { quality })` overrides it).
+    this.wantedQuality = id;
+    // Nothing to pick from (one file): automatic already.
     if (qualities.length === 0) return;
     this.selectedQuality = id;
     this.log('quality selected', { id: id ?? 'auto' });
@@ -178,8 +187,44 @@ export abstract class EngineQuality extends EngineFades {
       !this.variants.some((v) => v.id === selected)
     )
       this.selectedQuality = null;
+    const wanted = this.wantedQuality;
+    if (
+      this.selectedQuality == null &&
+      wanted != null &&
+      this.renditions == null &&
+      this.variants.some((v) => v.id === wanted)
+    )
+      this.selectedQuality = wanted;
     this.applyQuality('variants');
     this.commit();
+  }
+
+  /**
+   * `load(…, { quality })`: the pick for this load and the next (`null`:
+   * automatic; `undefined`: keep the current one). Checked before anything
+   * changes: an id the source's renditions lack is refused.
+   */
+  protected chooseQuality(
+    source: SourceDescriptor,
+    quality: string | null | undefined
+  ): void {
+    if (quality === undefined) return;
+    const renditions = source.renditions;
+    if (
+      quality != null &&
+      renditions != null &&
+      renditions.length > 0 &&
+      !renditions.some((r, i) => renditionId(r, i) === quality)
+    )
+      throw engineError('INVALID_ARGUMENT', `No quality "${quality}".`, false);
+    this.wantedQuality = quality;
+  }
+
+  /** A rendition's index by its id, `null` when there is none. */
+  protected renditionIndex(id: string): number | null {
+    const index =
+      this.renditions?.findIndex((r, i) => renditionId(r, i) === id) ?? -1;
+    return index >= 0 ? index : null;
   }
 
   // ── Quality switches (hooks the core calls) ──
@@ -207,7 +252,7 @@ export abstract class EngineQuality extends EngineFades {
 
   protected swapFailed(error: PlayerError): void {
     const swap = this.pendingSwap;
-    if (swap != null) this.dropSwap(swap, `failed: ${error.code}`);
+    if (swap != null) this.dropSwap(swap, `failed: ${error.code}`, error);
   }
 
   protected swapNote(event: string): void {
@@ -233,7 +278,6 @@ export abstract class EngineQuality extends EngineFades {
   protected resetQuality(): void {
     this.videoInfo = null;
     this.variants = [];
-    this.selectedQuality = null;
     this.fallbackActive = false;
     this.fallbackSince = null;
     this.stallTimes = [];
@@ -246,10 +290,18 @@ export abstract class EngineQuality extends EngineFades {
     this.lastSwitchAt = -Infinity;
     this.appliedQuality = null;
     const renditions = this._source?.renditions;
+    // An audio player's renditions are all rungs of one ladder: none is the
+    // picture's audio-only fallback.
+    const audio = this.options.video == null;
     this.renditions =
       renditions != null && renditions.length > 0
-        ? renditions.map((r) => ({ ...r }))
+        ? renditions.map((r) => ({ ...r, audioOnly: r.audioOnly && !audio }))
         : null;
+    // The app's pick holds from the first byte where this source has it; an
+    // adaptive source's variants take it when they are known (onVariants).
+    const wanted = this.wantedQuality;
+    this.selectedQuality =
+      wanted != null && this.renditionIndex(wanted) != null ? wanted : null;
     this.abrLevel = this.renditions != null ? this.startLevel() : null;
     this.currentRendition = this.targetRendition();
   }
@@ -258,15 +310,16 @@ export abstract class EngineQuality extends EngineFades {
   protected currentQualityId(): string | null {
     if (this.renditions == null) return this.videoInfo?.variantId ?? null;
     const index = this.currentRendition;
-    return index != null ? `r${index}` : null;
+    return index != null ? renditionId(this.renditions[index]!, index) : null;
   }
 
   protected applyQuality(cause: string): void {
-    if (this.options.video == null || this._source == null) return;
+    if (this._source == null) return;
     if (this.renditions != null) {
       this.retarget(cause);
       return;
     }
+    if (this.options.video == null) return;
     const c = this.constraints();
     const key = `${c.maxHeight}|${c.maxBitrate}|${c.pinned}|${c.audioOnly}`;
     if (key === this.appliedQuality) return;
@@ -276,7 +329,15 @@ export abstract class EngineQuality extends EngineFades {
 
   /** The caps for an adaptive source's ABR (and the allowed renditions). */
   protected constraints(): QualityConstraints {
-    const q = this.options.video!.quality;
+    // An audio player has no caps: they are the picture's.
+    if (this.options.video == null)
+      return {
+        maxHeight: null,
+        maxBitrate: null,
+        pinned: null,
+        audioOnly: false,
+      };
+    const q = this.options.video.quality;
     let { maxHeight, maxBitrate } = q;
     if (this.metered) {
       maxHeight = minOf(maxHeight, q.cellularMaxHeight);
@@ -325,8 +386,9 @@ export abstract class EngineQuality extends EngineFades {
     EngineStatus,
     'qualities' | 'quality' | 'selectedQuality'
   > {
-    // An audio player picks no quality.
-    if (this.options.video == null)
+    // An audio player picks among renditions only: an adaptive source's
+    // variants are the platform's to switch.
+    if (this.options.video == null && this.renditions == null)
       return { qualities: [], quality: null, selectedQuality: null };
     return {
       qualities: this.qualityList(),
@@ -339,10 +401,11 @@ export abstract class EngineQuality extends EngineFades {
     const table = this.renditions;
     if (table == null) return this.variants;
     return table.map((r, i) => ({
-      id: `r${i}`,
+      id: renditionId(r, i),
       height: r.height,
       bitrate: r.bitrate,
-      audioOnly: r.audioOnly,
+      // Every quality of an audio player is sound alone.
+      audioOnly: r.audioOnly || this.options.video == null,
       label: r.label,
     }));
   }
@@ -434,7 +497,7 @@ export abstract class EngineQuality extends EngineFades {
   protected startLevel(): number | null {
     const order = this.allowedOrder();
     if (order.length === 0) return null;
-    const start = this.options.video!.quality.startQuality;
+    const start = this.options.video?.quality.startQuality ?? 'auto';
     if (start === 'lowest') return order[0]!;
     if (start === 'highest') return order.at(-1)!;
     if (typeof start === 'number') return this.tallestUpTo(order, start);
@@ -472,7 +535,7 @@ export abstract class EngineQuality extends EngineFades {
     if (this.audioOnlyReason != null && audio != null) return audio;
     const selected = this.selectedQuality;
     if (selected != null) {
-      const index = Number(selected.slice(1));
+      const index = this.renditionIndex(selected)!;
       const failed = (this.failedUntil.get(index) ?? 0) > this.now;
       return failed ? this.currentRendition : index;
     }
@@ -536,19 +599,48 @@ export abstract class EngineQuality extends EngineFades {
     });
   }
 
-  /** A switch that failed or timed out: its file sits out a while. */
-  protected dropSwap(swap: PendingSwap, reason: string): void {
+  /**
+   * A switch that failed or timed out: its file sits out a while, and the
+   * app hears it (non-fatal: the current file plays on). `cause`: the new
+   * file's own failure, if it had one.
+   */
+  protected dropSwap(
+    swap: PendingSwap,
+    reason: string,
+    cause: PlayerError | null = null
+  ): void {
     this.failedUntil.set(
       swap.rendition,
       this.now + RecoveryPolicy.FAILED_RENDITION_MS
     );
     if (this.abrLevel === swap.rendition) this.abrLevel = this.currentRendition;
     this.cancelSwap(reason);
+    const target = renditionId(
+      this.renditions![swap.rendition]!,
+      swap.rendition
+    );
+    const outcome = cause ? 'failed' : 'timed out';
+    const error = engineError(
+      'QUALITY_SWITCH_FAILED',
+      `The switch to quality "${target}" ${outcome}; the current one plays on.`,
+      true,
+      {
+        // The new file's own failure: its code, then its message.
+        cause: cause ? `${cause.code}: ${cause.message}` : reason,
+        ...(cause?.platformDomain != null
+          ? { platformDomain: cause.platformDomain }
+          : {}),
+        ...(cause?.platformCode != null
+          ? { platformCode: cause.platformCode }
+          : {}),
+      }
+    );
+    this.pendingEvents.push(() => this.delegate?.engineWarning(error));
   }
 
   protected trackBandwidth(t: number, bps: number): void {
     this.trackFallbackBandwidth(t, bps);
-    if (this.options.video == null || this.renditions == null) return;
+    if (this.renditions == null) return;
     const level = this.abrLevel ?? this.currentRendition;
     const bitrate = level != null ? this.videoBitrateOf(level) : null;
     if (bitrate != null && bps < bitrate) this.abrLowSince ??= t;
