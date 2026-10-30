@@ -17,18 +17,20 @@ function sameFields(a: object | null, b: object | null): boolean {
 
 export function statusEquals(a: EngineStatus, b: EngineStatus | null): boolean {
   if (!b) return false;
-  const { interruption, reconnect, route, video, ...scalars } = a;
+  const { interruption, reconnect, route, qualities, video, ...scalars } = a;
   const {
     interruption: bInterruption,
     reconnect: bReconnect,
     route: bRoute,
+    qualities: bQualities,
     video: bVideo,
     ...bScalars
   } = b;
   const nested =
     sameFields(interruption, bInterruption) &&
     sameFields(reconnect, bReconnect) &&
-    sameFields(route, bRoute);
+    sameFields(route, bRoute) &&
+    sameList(qualities, bQualities);
   return nested && sameFields(scalars, bScalars) && videoEquals(video, bVideo);
 }
 
@@ -38,13 +40,9 @@ function videoEquals(
   b: EngineVideoStatus | null
 ): boolean {
   if (a == null || b == null) return a === b;
-  const { qualities, tracks, ...scalars } = a;
-  const { qualities: bQualities, tracks: bTracks, ...bScalars } = b;
-  return (
-    sameFields(scalars, bScalars) &&
-    sameList(qualities, bQualities) &&
-    sameList(tracks, bTracks)
-  );
+  const { tracks, ...scalars } = a;
+  const { tracks: bTracks, ...bScalars } = b;
+  return sameFields(scalars, bScalars) && sameList(tracks, bTracks);
 }
 
 function sameList(a: readonly object[], b: readonly object[]): boolean {

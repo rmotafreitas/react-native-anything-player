@@ -370,6 +370,10 @@ class PlaybackEngine(
         rate = rate,
         route = route,
         sleepAt = sleepWallAt,
+        // An audio player picks no quality.
+        qualities = if (options.video == null) emptyList() else qualityList(),
+        quality = if (options.video == null) null else currentQualityId(),
+        selectedQuality = if (options.video == null) null else selectedQuality,
         video = videoStatus(),
       )
     }
@@ -1004,13 +1008,15 @@ class PlaybackEngine(
 
   // ── Video: commands ──
 
-  /** Pins a quality (`status.video.qualities[].id`), or `null` for automatic. */
+  /** Pins a quality (`status.qualities[].id`), or `null` for automatic. */
   fun selectQuality(id: String?) {
     ensureAlive()
-    if (options.video == null) throw notVideoPlayer()
-    if (id != null && qualityList().none { it.id == id }) {
+    val qualities = if (options.video == null) emptyList() else qualityList()
+    if (id != null && qualities.none { it.id == id }) {
       throw PlayerError(ErrorCode.INVALID_ARGUMENT, "No quality \"$id\".", false)
     }
+    // Nothing to pick from (one file, an audio player): automatic already.
+    if (qualities.isEmpty()) return
     selectedQuality = id
     log("quality selected", mapOf("id" to (id ?: "auto")))
     applyQuality("selected")
@@ -2015,9 +2021,6 @@ class PlaybackEngine(
       firstFrame = firstFrame,
       audioOnly = audioOnlyReason,
       pictureInPicture = pictureInPicture,
-      qualities = qualityList(),
-      quality = currentQualityId(),
-      selectedQuality = selectedQuality,
       tracks = allTracks,
       audioTrack = audioTrack,
       textTrack = textTrack,

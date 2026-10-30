@@ -195,7 +195,7 @@ struct Rendition: Equatable {
   var audioOnly = false
 }
 
-/// A quality of an adaptive source as the driver reports it, or a rendition (`status.video.qualities`).
+/// A quality of an adaptive source as the driver reports it, or a rendition (`status.qualities`).
 struct VideoVariant: Equatable {
   let id: String
   var height: Int? = nil
@@ -267,11 +267,6 @@ struct VideoStatus: Equatable {
   var firstFrame: Bool
   var audioOnly: AudioOnlyReason?
   var pictureInPicture: Bool
-  var qualities: [VideoVariant]
-  /// The quality playing (`nil` when unknown).
-  var quality: String?
-  /// The app's pick; `nil` = automatic.
-  var selectedQuality: String?
   /// The audio and text tracks: the source's, then the app's subtitle files.
   var tracks: [MediaTrack] = []
   var audioTrack: String? = nil
@@ -324,6 +319,12 @@ struct Status: Equatable {
   var route: AudioRoute = .unknown
   /// Wall-clock epoch ms when the sleep timer pauses the player, `nil` when off.
   var sleepAt: Int64? = nil
+  /// The qualities to pick from (`selectQuality`); empty when there is no choice.
+  var qualities: [VideoVariant] = []
+  /// The quality playing (`nil` when unknown).
+  var quality: String? = nil
+  /// The app's pick; `nil` = automatic.
+  var selectedQuality: String? = nil
   /// `nil` for an audio player.
   var video: VideoStatus? = nil
 }

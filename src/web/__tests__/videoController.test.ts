@@ -452,7 +452,7 @@ describe('the video commands', () => {
     controller.videoCommand({ op: 'selectTextTrack' });
     expect(controller.status.video!.textTrack).toBeNull();
     controller.videoCommand({ op: 'selectQuality', id: null });
-    expect(controller.status.video!.selectedQuality).toBeNull();
+    expect(controller.status.selectedQuality).toBeNull();
   });
 
   it('delays the subtitles and listens to the sound alone', async () => {
@@ -596,13 +596,10 @@ describe('what the driver reports', () => {
       width: 1280,
       height: 720,
       hdr: true,
-      quality: 'v2',
       firstFrame: true,
     });
-    expect(controller.status.video!.qualities.map((q) => q.id)).toEqual([
-      'v1',
-      'v2',
-    ]);
+    expect(controller.status.quality).toBe('v2');
+    expect(controller.status.qualities.map((q) => q.id)).toEqual(['v1', 'v2']);
   });
 
   it('passes the source’s tracks and cues on', async () => {

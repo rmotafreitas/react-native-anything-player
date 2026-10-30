@@ -294,6 +294,9 @@ export function statusToMap(status: EngineStatus, seq: number): Dict {
     rate: status.rate,
     route: { ...status.route },
     sleepAt: status.sleepAt,
+    qualities: status.qualities.map((q) => ({ ...q })),
+    quality: status.quality,
+    selectedQuality: status.selectedQuality,
     video: status.video ? videoToMap(status.video) : null,
   };
 }
@@ -301,7 +304,6 @@ export function statusToMap(status: EngineStatus, seq: number): Dict {
 function videoToMap(video: EngineVideoStatus): Dict {
   return {
     ...video,
-    qualities: video.qualities.map((q) => ({ ...q })),
     tracks: video.tracks.map((t) => ({ ...t })),
   };
 }

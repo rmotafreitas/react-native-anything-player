@@ -573,8 +573,18 @@ export class Player {
     await this.video({ op: 'loop', value: !!loop });
   }
 
-  /** Pins a quality from `status.video.qualities`, or `'auto'`. */
+  /** Pins a quality from `status.qualities`, or `'auto'`. */
   async selectQuality(id: string): Promise<void> {
+    this.ensureAlive();
+    // Nothing to pick from (one file, an audio player): automatic already.
+    if (this._status.qualities.length === 0) {
+      if (id === 'auto') return;
+      throw new PlayerError({
+        code: 'INVALID_ARGUMENT',
+        message: `No quality "${id}".`,
+        recoverable: false,
+      });
+    }
     await this.video({ op: 'selectQuality', id: id === 'auto' ? null : id });
   }
 

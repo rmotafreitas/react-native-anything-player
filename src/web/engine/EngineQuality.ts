@@ -13,13 +13,14 @@ import {
   engineError,
   type AudioOnlyReason,
   type EngineStats,
+  type EngineStatus,
   type FallbackPolicy,
   type QualityConstraints,
   type ReadyInfo,
   type Rendition,
   type SourceDescriptor,
   type VideoInfo,
-  type VideoQuality,
+  type Quality,
   type VideoVariant,
   type ViewState,
 } from './types';
@@ -115,13 +116,15 @@ export abstract class EngineQuality extends EngineFades {
 
   // ── Commands ──
 
-  /** Pins a quality (`status.video.qualities[].id`), or `null` for automatic. */
+  /** Pins a quality (`status.qualities[].id`), or `null` for automatic. */
   selectQuality(id: string | null): void {
     this.ensureAlive();
-    if (this.options.video == null) throw notVideoPlayer();
-    if (id != null && !this.qualityList().some((q) => q.id === id)) {
+    const { qualities } = this.qualityStatus();
+    if (id != null && !qualities.some((q) => q.id === id)) {
       throw engineError('INVALID_ARGUMENT', `No quality "${id}".`, false);
     }
+    // Nothing to pick from (one file, an audio player): automatic already.
+    if (qualities.length === 0) return;
     this.selectedQuality = id;
     this.log('quality selected', { id: id ?? 'auto' });
     this.applyQuality('selected');
@@ -318,7 +321,21 @@ export abstract class EngineQuality extends EngineFades {
     return info.height * scale;
   }
 
-  protected qualityList(): VideoQuality[] {
+  protected qualityStatus(): Pick<
+    EngineStatus,
+    'qualities' | 'quality' | 'selectedQuality'
+  > {
+    // An audio player picks no quality.
+    if (this.options.video == null)
+      return { qualities: [], quality: null, selectedQuality: null };
+    return {
+      qualities: this.qualityList(),
+      quality: this.currentQualityId(),
+      selectedQuality: this.selectedQuality,
+    };
+  }
+
+  protected qualityList(): Quality[] {
     const table = this.renditions;
     if (table == null) return this.variants;
     return table.map((r, i) => ({

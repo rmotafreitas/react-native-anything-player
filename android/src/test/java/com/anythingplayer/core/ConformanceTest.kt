@@ -375,6 +375,9 @@ class ConformanceTest {
         "fades" -> assertEquals("$at: fades", (v as Number).toInt(), h.recorder.fades)
         "orderedCommands" -> orderedCommands(at, stringList(v as JSONArray), h.driver.commands)
         "video" -> videoExpect(at, s.video, v as JSONObject?)
+        "qualities" -> assertEquals("$at: qualities", stringList(v as JSONArray), s.qualities.map { it.id })
+        "quality" -> assertEquals("$at: quality", v, s.quality)
+        "selectedQuality" -> assertEquals("$at: selectedQuality", v, s.selectedQuality)
         "wantsMediaSession" -> assertEquals("$at: wantsMediaSession", v, h.engine.wantsMediaSession)
         "wantsScreenAwake" -> assertEquals("$at: wantsScreenAwake", v, h.engine.wantsScreenAwake)
         "refreshes" -> assertEquals("$at: refreshes", stringList(v as JSONArray), h.recorder.refreshes)
@@ -392,7 +395,7 @@ class ConformanceTest {
     h.recorder.refreshes.clear()
   }
 
-  /** Compares the listed `status.video` fields (`qualities` as their ids). */
+  /** Compares the listed `status.video` fields (`tracks` as their ids). */
   private fun videoExpect(at: String, video: VideoStatus?, expected: JSONObject?) {
     if (expected == null) return assertEquals("$at: video", null, video)
     if (video == null) fail("$at: no status.video")
@@ -407,9 +410,6 @@ class ConformanceTest {
         "firstFrame" -> assertEquals(label, want, vs.firstFrame)
         "audioOnly" -> assertEquals(label, want, vs.audioOnly?.wire)
         "pictureInPicture" -> assertEquals(label, want, vs.pictureInPicture)
-        "quality" -> assertEquals(label, want, vs.quality)
-        "selectedQuality" -> assertEquals(label, want, vs.selectedQuality)
-        "qualities" -> assertEquals(label, stringList(want as JSONArray), vs.qualities.map { it.id })
         "tracks" -> assertEquals(label, stringList(want as JSONArray), vs.tracks.map { it.id })
         "audioTrack" -> assertEquals(label, want, vs.audioTrack)
         "textTrack" -> assertEquals(label, want, vs.textTrack)

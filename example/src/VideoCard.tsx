@@ -208,7 +208,7 @@ function VideoPanel({
       />
       <Text style={styles.state} testID="video-state">
         {status.state} · {v?.width ?? '?'}×{v?.height ?? '?'} · q{' '}
-        {v?.quality ?? '-'} · text {v?.textTrack ?? 'off'}
+        {status.quality ?? '-'} · text {v?.textTrack ?? 'off'}
         {v?.firstFrame ? ' · frame' : ''}
         {v?.pictureInPicture ? ' · pip' : ''}
         {v?.fullscreen ? ' · fullscreen' : ''}
@@ -264,18 +264,18 @@ function VideoPanel({
             onPress={() => player.selectAudioTrack(nextAudio.id).catch(fail)}
           />
         )}
-        {v?.qualities.map((q) => (
+        {status.qualities.map((q) => (
           <Small
             key={q.id}
             title={q.audioOnly ? 'audio' : `${q.height ?? '?'}p`}
-            active={v.selectedQuality === q.id}
+            active={status.selectedQuality === q.id}
             onPress={() => player.selectQuality(q.id).catch(fail)}
           />
         ))}
-        {v && v.qualities.length > 0 && (
+        {status.qualities.length > 0 && (
           <Small
             title="auto"
-            active={v.selectedQuality == null}
+            active={status.selectedQuality == null}
             onPress={() => player.selectQuality('auto').catch(fail)}
           />
         )}

@@ -173,7 +173,7 @@ data class Rendition(
   val audioOnly: Boolean = false,
 )
 
-/** A quality of an adaptive source as the driver reports it, or a rendition (`status.video.qualities`). */
+/** A quality of an adaptive source as the driver reports it, or a rendition (`status.qualities`). */
 data class VideoVariant(
   val id: String,
   val height: Int? = null,
@@ -245,11 +245,6 @@ data class VideoStatus(
   val firstFrame: Boolean,
   val audioOnly: AudioOnlyReason?,
   val pictureInPicture: Boolean,
-  val qualities: List<VideoVariant>,
-  /** The quality playing (`null` when unknown). */
-  val quality: String?,
-  /** The app's pick; `null` = automatic. */
-  val selectedQuality: String?,
   /** The audio and text tracks: the source's, then the app's subtitle files. */
   val tracks: List<MediaTrack> = emptyList(),
   val audioTrack: String? = null,
@@ -333,6 +328,12 @@ data class Status(
   val route: AudioRoute = AudioRoute.UNKNOWN,
   /** Wall-clock epoch ms when the sleep timer pauses the player, `null` when off. */
   val sleepAt: Long? = null,
+  /** The qualities to pick from (`selectQuality`); empty when there is no choice. */
+  val qualities: List<VideoVariant> = emptyList(),
+  /** The quality playing (`null` when unknown). */
+  val quality: String? = null,
+  /** The app's pick; `null` = automatic. */
+  val selectedQuality: String? = null,
   /** `null` for an audio player. */
   val video: VideoStatus? = null,
 )

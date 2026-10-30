@@ -384,6 +384,19 @@ function check(
       case 'video':
         videoExpect_(label, s.video, v as Record<string, unknown>);
         break;
+      case 'qualities':
+        expect_(
+          label,
+          s.qualities.map((q) => q.id),
+          v
+        );
+        break;
+      case 'quality':
+        expect_(label, s.quality, v);
+        break;
+      case 'selectedQuality':
+        expect_(label, s.selectedQuality, v);
+        break;
       case 'wantsMediaSession':
         expect_(label, h.engine.wantsMediaSession, v);
         break;
@@ -415,7 +428,7 @@ function check(
   h.recorder.refreshes = [];
 }
 
-/** Compares the listed `status.video` fields (`qualities` as their ids). */
+/** Compares the listed `status.video` fields (`tracks` as their ids). */
 function videoExpect_(
   label: string,
   video: EngineVideoStatus | null,
@@ -426,7 +439,6 @@ function videoExpect_(
   const fields = video as unknown as Record<string, unknown>;
   for (const [k, want] of Object.entries(expected)) {
     let actual = fields[k];
-    if (k === 'qualities') actual = video.qualities.map((q) => q.id);
     if (k === 'tracks') actual = video.tracks.map((t) => t.id);
     expect_(`${label}.${k}`, actual, want);
   }

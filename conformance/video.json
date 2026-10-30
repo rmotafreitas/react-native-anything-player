@@ -26,7 +26,7 @@
       { "call": "background" },
       { "advance": 2000 },
       { "expect": { "state": "playing", "interruption": null, "video": null, "wantsMediaSession": true, "wantsScreenAwake": false, "commands": [] } },
-      { "call": "selectQuality", "id": null, "throws": "INVALID_ARGUMENT" }
+      { "call": "selectQuality", "id": null }, { "call": "selectQuality", "id": "r1", "throws": "INVALID_ARGUMENT" }
     ]
   },
   {
@@ -292,14 +292,14 @@
       { "native": "ready", "duration": 120, "seekable": true },
       { "native": "playing" },
       { "native": "variants", "variants": [{ "id": "v360", "height": 360, "bitrate": 800000 }, { "id": "v720", "height": 720, "bitrate": 2500000 }, { "id": "a", "audioOnly": true, "bitrate": 64000 }] },
-      { "expect": { "video": { "qualities": ["v360", "v720", "a"], "selectedQuality": null }, "commands": ["open(gen=1,start=-,play=true)", "quality(maxH=-,maxBps=-,pin=-,audioOnly=false)"] } },
+      { "expect": { "qualities": ["v360", "v720", "a"], "selectedQuality": null, "commands": ["open(gen=1,start=-,play=true)", "quality(maxH=-,maxBps=-,pin=-,audioOnly=false)"] } },
       { "call": "selectQuality", "id": "v720" },
-      { "expect": { "video": { "selectedQuality": "v720" }, "commands": ["quality(maxH=-,maxBps=-,pin=v720,audioOnly=false)"] } },
+      { "expect": { "selectedQuality": "v720", "commands": ["quality(maxH=-,maxBps=-,pin=v720,audioOnly=false)"] } },
       { "call": "selectQuality", "id": "nope", "throws": "INVALID_ARGUMENT" },
       { "native": "videoInfo", "width": 1280, "height": 720, "variant": "v720" },
-      { "expect": { "video": { "quality": "v720", "width": 1280, "height": 720 } } },
+      { "expect": { "quality": "v720", "video": { "width": 1280, "height": 720 } } },
       { "call": "selectQuality", "id": null },
-      { "expect": { "video": { "selectedQuality": null }, "commands": ["quality(maxH=-,maxBps=-,pin=-,audioOnly=false)"] } },
+      { "expect": { "selectedQuality": null, "commands": ["quality(maxH=-,maxBps=-,pin=-,audioOnly=false)"] } },
       { "native": "firstFrame" },
       { "expect": { "video": { "firstFrame": true } } }
     ]
@@ -328,7 +328,7 @@
     "steps": [
       { "view": {} },
       { "call": "load", "uri": "https://cdn.example/ep01", "autoplay": true, "renditions": [{ "uri": "https://cdn.example/240.mp4", "height": 240, "bitrate": 400000 }, { "uri": "https://cdn.example/480.mp4", "height": 480, "bitrate": 1200000 }, { "uri": "https://cdn.example/720.mp4", "height": 720, "bitrate": 2500000 }, { "uri": "https://cdn.example/1080.mp4", "height": 1080, "bitrate": 5000000 }] },
-      { "expect": { "video": { "quality": "r1", "selectedQuality": null, "qualities": ["r0", "r1", "r2", "r3"] }, "commands": ["open(gen=1,start=-,play=true,r=1)"] } }
+      { "expect": { "qualities": ["r0", "r1", "r2", "r3"], "quality": "r1", "selectedQuality": null, "commands": ["open(gen=1,start=-,play=true,r=1)"] } }
     ]
   },
   {
@@ -338,9 +338,9 @@
       { "networkCost": { "metered": true } },
       { "view": {} },
       { "call": "load", "uri": "https://cdn.example/ep01", "autoplay": true, "renditions": [{ "uri": "https://cdn.example/240.mp4", "height": 240, "bitrate": 400000 }, { "uri": "https://cdn.example/480.mp4", "height": 480, "bitrate": 1200000 }, { "uri": "https://cdn.example/720.mp4", "height": 720, "bitrate": 2500000 }, { "uri": "https://cdn.example/1080.mp4", "height": 1080, "bitrate": 5000000 }] },
-      { "expect": { "video": { "quality": "r2" }, "commands": ["open(gen=1,start=-,play=true,r=2)"] } },
+      { "expect": { "quality": "r2", "commands": ["open(gen=1,start=-,play=true,r=2)"] } },
       { "view": { "height": 300 } },
-      { "expect": { "state": "loading", "video": { "quality": "r1" }, "commands": ["open(gen=2,start=-,play=true,r=1)"] } }
+      { "expect": { "state": "loading", "quality": "r1", "commands": ["open(gen=2,start=-,play=true,r=1)"] } }
     ]
   },
   {
@@ -354,14 +354,14 @@
       { "driver": "position", "value": 30 },
       { "expect": { "commands": ["open(gen=1,start=-,play=true,r=1)"] } },
       { "call": "selectQuality", "id": "r3" },
-      { "expect": { "state": "playing", "gen": 1, "video": { "quality": "r1", "selectedQuality": "r3" }, "commands": ["open(gen=2,start=30.0,play=true,r=3,swap)"] } },
+      { "expect": { "state": "playing", "gen": 1, "quality": "r1", "selectedQuality": "r3", "commands": ["open(gen=2,start=30.0,play=true,r=3,swap)"] } },
       { "native": "ready", "gen": 2, "duration": 120, "seekable": true },
       { "advance": 500 },
       { "expect": { "state": "playing", "gen": 1 } },
       { "native": "playing", "gen": 2 },
-      { "expect": { "state": "playing", "gen": 2, "video": { "quality": "r3" }, "stats": { "qualitySwitches": 1 }, "commands": [] } },
+      { "expect": { "state": "playing", "gen": 2, "quality": "r3", "stats": { "qualitySwitches": 1 }, "commands": [] } },
       { "native": "variants", "gen": 2, "variants": [] },
-      { "expect": { "video": { "quality": "r3", "selectedQuality": "r3" }, "commands": [] } },
+      { "expect": { "quality": "r3", "selectedQuality": "r3", "commands": [] } },
       { "native": "failed", "gen": 1, "code": "NETWORK_ERROR", "recoverable": true },
       { "advance": 1000 },
       { "expect": { "state": "playing", "errors": [], "commands": [] } }
@@ -380,7 +380,7 @@
       { "native": "ready", "gen": 2, "duration": 600, "seekable": true },
       { "expect": { "gen": 1, "duration": 18 } },
       { "native": "playing", "gen": 2 },
-      { "expect": { "state": "playing", "gen": 2, "duration": 600, "seekable": true, "video": { "quality": "r1" } } },
+      { "expect": { "state": "playing", "gen": 2, "duration": 600, "seekable": true, "quality": "r1" } },
       { "call": "seek", "value": 300 },
       { "expect": { "commands": ["seek(300.0)"] } }
     ]
@@ -395,7 +395,7 @@
       { "native": "playing" },
       { "call": "selectQuality", "id": "r3" },
       { "native": "failed", "gen": 2, "code": "HTTP_ERROR", "httpStatus": 404 },
-      { "expect": { "state": "playing", "gen": 1, "video": { "quality": "r1", "selectedQuality": "r3" }, "errors": [], "commands": ["open(gen=1,start=-,play=true,r=1)", "open(gen=2,start=0.0,play=true,r=3,swap)", "cancelSwap(gen=2)"] } },
+      { "expect": { "state": "playing", "gen": 1, "quality": "r1", "selectedQuality": "r3", "errors": [], "commands": ["open(gen=1,start=-,play=true,r=1)", "open(gen=2,start=0.0,play=true,r=3,swap)", "cancelSwap(gen=2)"] } },
       { "advance": 59000 },
       { "expect": { "state": "playing", "commands": [] } },
       { "advance": 2000 },
@@ -414,7 +414,7 @@
       { "advance": 11999 },
       { "expect": { "commands": ["open(gen=1,start=-,play=true,r=1)", "open(gen=2,start=0.0,play=true,r=2,swap)"] } },
       { "advance": 1 },
-      { "expect": { "state": "playing", "gen": 1, "video": { "quality": "r1" }, "commands": ["cancelSwap(gen=2)"] } }
+      { "expect": { "state": "playing", "gen": 1, "quality": "r1", "commands": ["cancelSwap(gen=2)"] } }
     ]
   },
   {
@@ -429,13 +429,13 @@
       { "call": "pause" },
       { "expect": { "state": "paused", "commands": ["open(gen=1,start=-,play=true,r=1)", "open(gen=2,start=0.0,play=true,r=2,swap)", "cancelSwap(gen=2)", "pause"] } },
       { "native": "playing", "gen": 2 },
-      { "expect": { "state": "paused", "gen": 1, "video": { "quality": "r1" } } },
+      { "expect": { "state": "paused", "gen": 1, "quality": "r1" } },
       { "call": "play" },
       { "native": "playing" },
       { "advance": 1000 },
       { "expect": { "state": "playing", "orderedCommands": ["play", "open(gen=3,"] } },
       { "native": "playing", "gen": 3 },
-      { "expect": { "gen": 3, "video": { "quality": "r2" } } }
+      { "expect": { "gen": 3, "quality": "r2" } }
     ]
   },
   {
@@ -462,7 +462,7 @@
       { "native": "ready", "duration": 600, "seekable": true },
       { "driver": "position", "value": 10 },
       { "call": "selectQuality", "id": "r2" },
-      { "expect": { "state": "loading", "playWhenReady": false, "video": { "quality": "r2" }, "commands": ["open(gen=1,start=-,play=false,r=1)", "open(gen=2,start=10.0,play=false,r=2)"] } },
+      { "expect": { "state": "loading", "playWhenReady": false, "quality": "r2", "commands": ["open(gen=1,start=-,play=false,r=1)", "open(gen=2,start=10.0,play=false,r=2)"] } },
       { "native": "ready", "duration": 600, "seekable": true },
       { "expect": { "state": "paused" } }
     ]
@@ -481,7 +481,7 @@
       { "advance": 500 },
       { "expect": { "state": "buffering", "stats": { "rebufferCount": 1 }, "commands": ["open(gen=1,start=-,play=true,r=1)", "open(gen=2,start=30.0,play=true,r=0,swap)"] } },
       { "native": "playing", "gen": 2 },
-      { "expect": { "state": "playing", "gen": 2, "video": { "quality": "r0" } } }
+      { "expect": { "state": "playing", "gen": 2, "quality": "r0" } }
     ]
   },
   {
@@ -546,11 +546,11 @@
       { "expect": { "commands": ["open(gen=1,start=-,play=true,r=1)", "open(gen=2,start=10.0,play=true,r=0,swap)"] } },
       { "native": "playing", "gen": 2 },
       { "advance": 1000 },
-      { "expect": { "video": { "audioOnly": "fallback", "quality": "r0" }, "commands": ["video(off)", "open(gen=3,start=11.0,play=true,r=2,swap)"] } },
+      { "expect": { "quality": "r0", "video": { "audioOnly": "fallback" }, "commands": ["video(off)", "open(gen=3,start=11.0,play=true,r=2,swap)"] } },
       { "native": "playing", "gen": 3 },
       { "native": "bandwidth", "bps": 700000 },
       { "advance": 29000 },
-      { "expect": { "video": { "audioOnly": "fallback", "quality": "r2" }, "commands": [] } },
+      { "expect": { "quality": "r2", "video": { "audioOnly": "fallback" }, "commands": [] } },
       { "advance": 1000 },
       { "expect": { "video": { "audioOnly": null }, "stats": { "audioOnlySwitches": 1 }, "commands": ["video(on)", "open(gen=4,start=41.0,play=true,r=0,swap)"] } }
     ]
@@ -609,7 +609,7 @@
       { "call": "background" },
       { "expect": { "state": "playing", "video": { "audioOnly": "background" }, "commands": ["video(off)", "open(gen=2,start=0.0,play=true,r=2,swap)"] } },
       { "call": "foreground" },
-      { "expect": { "state": "playing", "video": { "audioOnly": null, "quality": "r1" }, "commands": ["video(on)", "cancelSwap(gen=2)"] } }
+      { "expect": { "state": "playing", "quality": "r1", "video": { "audioOnly": null }, "commands": ["video(on)", "cancelSwap(gen=2)"] } }
     ]
   },
   {
@@ -627,7 +627,7 @@
       { "driver": "position", "value": 40 },
       { "expect": { "state": "playing", "orderedCommands": ["open(gen=2,start=30.0,play=true,r=1)"] } },
       { "call": "selectQuality", "id": "r2" },
-      { "expect": { "state": "loading", "video": { "quality": "r2" }, "commands": ["open(gen=3,start=40.0,play=true,r=2)"] } }
+      { "expect": { "state": "loading", "quality": "r2", "commands": ["open(gen=3,start=40.0,play=true,r=2)"] } }
     ]
   },
   {
@@ -873,7 +873,7 @@
       { "native": "videoInfo", "gen": 2, "width": 640, "height": 360 },
       { "expect": { "gen": 1, "video": { "width": 1280, "height": 720 } } },
       { "native": "playing", "gen": 2 },
-      { "expect": { "gen": 2, "video": { "width": 640, "height": 360, "quality": "r0" } } }
+      { "expect": { "gen": 2, "quality": "r0", "video": { "width": 640, "height": 360 } } }
     ]
   }
 ]

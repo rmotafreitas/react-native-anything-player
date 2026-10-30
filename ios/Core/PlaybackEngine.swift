@@ -361,6 +361,12 @@ final class PlaybackEngine {
     s.rate = rate
     s.route = route
     s.sleepAt = sleepWallAt
+    // An audio player picks no quality.
+    if options.video != nil {
+      s.qualities = qualityList()
+      s.quality = currentQualityId()
+      s.selectedQuality = selectedQuality
+    }
     s.video = videoStatus()
     return s
   }
@@ -1784,13 +1790,15 @@ extension PlaybackEngine {
 
   // MARK: Commands
 
-  /// Pins a quality (`status.video.qualities[].id`), or `nil` for automatic.
+  /// Pins a quality (`status.qualities[].id`), or `nil` for automatic.
   func selectQuality(_ id: String?) throws {
     try ensureAlive()
-    guard options.video != nil else { throw notVideoPlayer() }
-    if let id, !qualityList().contains(where: { $0.id == id }) {
+    let qualities = options.video == nil ? [] : qualityList()
+    if let id, !qualities.contains(where: { $0.id == id }) {
       throw PlayerError.code(.invalidArgument, "No quality \"\(id)\".", recoverable: false)
     }
+    // Nothing to pick from (one file, an audio player): automatic already.
+    if qualities.isEmpty { return }
     selectedQuality = id
     log("quality selected", ["id": id ?? "auto"])
     applyQuality("selected")
@@ -2024,7 +2032,6 @@ extension PlaybackEngine {
     return VideoStatus(
       width: videoInfo?.width, height: videoInfo?.height, hdr: videoInfo?.hdr ?? false,
       firstFrame: firstFrame, audioOnly: audioOnlyReason, pictureInPicture: pictureInPicture,
-      qualities: qualityList(), quality: currentQualityId(), selectedQuality: selectedQuality,
       tracks: allTracks, audioTrack: audioTrack, textTrack: textTrack, subtitleDelay: subtitleDelay,
       fullscreen: fullscreen)
   }

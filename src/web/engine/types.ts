@@ -117,8 +117,8 @@ export interface VideoVariant {
   label: string | null;
 }
 
-/** A quality the app can pick (`status.video.qualities`). */
-export type VideoQuality = VideoVariant;
+/** A quality the app can pick (`status.qualities`). */
+export type Quality = VideoVariant;
 
 /** What the driver learned about the picture. */
 export interface VideoInfo {
@@ -234,11 +234,6 @@ export interface EngineVideoStatus {
   firstFrame: boolean;
   audioOnly: AudioOnlyReason | null;
   pictureInPicture: boolean;
-  qualities: VideoQuality[];
-  /** The quality playing (`null` when unknown). */
-  quality: string | null;
-  /** The app's pick; `null` = automatic. */
-  selectedQuality: string | null;
   /** The audio and text tracks: the source's, then the app's subtitle files. */
   tracks: MediaTrack[];
   audioTrack: string | null;
@@ -319,6 +314,12 @@ export interface EngineStatus {
   /** Wall-clock epoch ms when the sleep timer pauses the player, `null` when off. */
   sleepAt: number | null;
   /** `null` for an audio player. */
+  /** The qualities to pick from (`selectQuality`); empty when there is no choice. */
+  qualities: Quality[];
+  /** The quality playing (`null` when unknown). */
+  quality: string | null;
+  /** The app's pick; `null` = automatic. */
+  selectedQuality: string | null;
   video: EngineVideoStatus | null;
 }
 

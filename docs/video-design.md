@@ -93,7 +93,8 @@ export function Screen() {
 | `player.selectQuality(id \| 'auto')`, `selectAudioTrack(id)`, `selectSubtitles(id \| null)`, `setSubtitleDelay(s)`, `setListenOnly(b)`, `setLoop(b)` | Commands. |
 | `player.presentFullscreen({ lockOrientation })`, `dismissFullscreen()`, `startPictureInPicture()`, `stopPictureInPicture()` | The system UI. |
 | `player.getThumbnail(t)`, `player.getStats()`, `seekTo(t, { exact })` | Seek previews, quality-of-experience numbers, frame-accurate seeks. |
-| `status.video` | Size, HDR, first frame, the qualities and the current one, the tracks, audio-only and why, Picture in Picture. |
+| `status.video` | Size, HDR, first frame, the tracks, audio-only and why, Picture in Picture. |
+| `status.qualities`, `quality`, `selectedQuality` | The qualities and the current one, on the status itself (not under `video`): sound has qualities too. |
 | Events | `cues` (and `useCues()`), `firstFrame`, `pictureInPictureChange`, `fullscreenChange`. Stats are read with `player.getStats()`; there is no event. |
 
 ## Architecture
