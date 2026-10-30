@@ -15,6 +15,7 @@ import {
   type EngineStats,
   type FallbackPolicy,
   type QualityConstraints,
+  type ReadyInfo,
   type Rendition,
   type SourceDescriptor,
   type VideoInfo,
@@ -30,6 +31,8 @@ interface PendingSwap {
   generation: number;
   rendition: number;
   startedAt: number;
+  /** What the new file reported when ready: the item's facts once it takes over. */
+  info: ReadyInfo | null;
 }
 
 function minOf(a: number | null, b: number | null): number | null {
@@ -189,6 +192,7 @@ export abstract class EngineQuality extends EngineFades {
     this.pendingSwap = null;
     this._generation = swap.generation;
     this.currentRendition = swap.rendition;
+    if (swap.info != null) this.applyFacts(swap.info);
     this.readyForGeneration = true;
     this.connectionReleased = false;
     this.lastSwitchAt = this.now;
@@ -205,6 +209,11 @@ export abstract class EngineQuality extends EngineFades {
 
   protected swapNote(event: string): void {
     this.log('quality switch', { event });
+  }
+
+  protected swapReady(info: ReadyInfo): void {
+    if (this.pendingSwap != null) this.pendingSwap.info = info;
+    this.swapNote('ready');
   }
 
   protected cancelSwap(reason: string): void {
@@ -492,7 +501,12 @@ export abstract class EngineQuality extends EngineFades {
   protected startSwap(target: number, cause: string): void {
     const position = this.isLive ? null : this.driver.sample().position;
     const generation = this.issueGeneration();
-    this.pendingSwap = { generation, rendition: target, startedAt: this.now };
+    this.pendingSwap = {
+      generation,
+      rendition: target,
+      startedAt: this.now,
+      info: null,
+    };
     this.log('quality switch', { to: `r${target}`, cause });
     this.driver.open({
       generation,

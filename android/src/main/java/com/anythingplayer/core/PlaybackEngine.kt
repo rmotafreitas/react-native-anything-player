@@ -327,7 +327,8 @@ class PlaybackEngine(
     data class Track(val id: String) : TextChoice()
   }
 
-  private data class PendingSwap(val generation: Int, val rendition: Int, val startedAt: Long)
+  /** `info`: what the new file reported when ready, the item's facts once it takes over. */
+  private data class PendingSwap(val generation: Int, val rendition: Int, val startedAt: Long, var info: ReadyInfo? = null)
 
   private data class PendingRefresh(
     val reason: RefreshReason,
@@ -728,11 +729,13 @@ class PlaybackEngine(
   // ── Native observations (generation-guarded) ──
 
   fun onReady(generation: Int, info: ReadyInfo) {
-    if (isSwapGeneration(generation)) return swapNote("ready")
+    if (isSwapGeneration(generation)) {
+      // A quality switch's file: its facts wait for it to take over.
+      pendingSwap?.info = info
+      return swapNote("ready")
+    }
     if (!accepts(generation)) return logStale("ready", generation)
-    duration = info.duration
-    isLive = source?.liveHint ?: info.isLive
-    seekable = info.seekable && !isLive
+    applyFacts(info)
     readyForGeneration = true
     if (state == PlaybackState.LOADING) {
       if (playWhenReady) {
@@ -2062,6 +2065,7 @@ class PlaybackEngine(
     pendingSwap = null
     generation = swap.generation
     currentRendition = swap.rendition
+    swap.info?.let(::applyFacts)
     readyForGeneration = true
     connectionReleased = false
     openedRevision = sourceRevision
@@ -2079,6 +2083,13 @@ class PlaybackEngine(
   private fun swapFailed(error: PlayerError) {
     val swap = pendingSwap ?: return
     dropSwap(swap, "failed: ${error.code.wire}")
+  }
+
+  /** The item's duration, live state and seekability, as the platform reports them. */
+  private fun applyFacts(info: ReadyInfo) {
+    duration = info.duration
+    isLive = source?.liveHint ?: info.isLive
+    seekable = info.seekable && !isLive
   }
 
   private fun swapNote(event: String) {

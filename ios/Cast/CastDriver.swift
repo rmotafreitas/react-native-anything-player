@@ -36,6 +36,8 @@ class CastDriver: NSObject, RemoteOutputDriver {
   private var lastPlayerState: GCKMediaPlayerState = .unknown
   private var playWanted = false
   private var isLive = false
+  /// The app said the source is live (`live: true`): a duration never makes it a file.
+  private var liveHinted = false
   private var duration: Double?
   private var volume: Float = 1
   private var rate: Float = 1
@@ -70,6 +72,7 @@ class CastDriver: NSObject, RemoteOutputDriver {
     self.request = request
     playWanted = request.playWhenReady
     isLive = request.source.liveHint ?? false
+    liveHinted = request.source.liveHint == true
     let gen = generation
     guard request.source.isCastable, let url = URL(string: request.source.uri) else {
       // The runtime brings the player back to the device (CAST_UNSUPPORTED_SOURCE).
@@ -309,6 +312,17 @@ class CastDriver: NSObject, RemoteOutputDriver {
       duration = isLive ? nil : reported
       if receiverRate != 1 { client?.setPlaybackRate(receiverRate) }
       observer?.driverReady(generation: gen, info: ReadyInfo(duration: duration, isLive: isLive, seekable: !isLive))
+    } else if readyGeneration == gen && [.playing, .paused, .buffering].contains(state) {
+      // The receiver learned the duration later, or a better one (#50): the
+      // engine follows. An unknown one taken for live becomes a file then.
+      let reported = status.mediaInformation?.streamDuration ?? 0
+      if reported.isFinite && reported > 0 && reported != duration && !liveHinted
+        && status.mediaInformation?.streamType != .live
+      {
+        isLive = false
+        duration = reported
+        observer?.driverReady(generation: gen, info: ReadyInfo(duration: reported, isLive: false, seekable: true))
+      }
     }
     guard state != lastPlayerState else { return }
     lastPlayerState = state

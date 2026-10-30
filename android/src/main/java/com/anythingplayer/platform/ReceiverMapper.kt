@@ -147,9 +147,17 @@ internal class ReceiverMapper(
   }
 
   private fun becomeReady(status: ReceiverStatus) {
-    if (ready != null) return
     val live = liveHint ?: (status.live || status.duration == null)
     val info = ReadyInfo(if (live) null else status.duration, live, !live && status.seekable)
+    val known = ready
+    if (known != null) {
+      // The receiver learned more about the item (#50): the engine follows.
+      if (info != known && last != Report.TERMINAL) {
+        ready = info
+        observer.onReady(generation, info)
+      }
+      return
+    }
     ready = info
     if (last == Report.NONE) last = Report.READY
     actions.receiverReady()

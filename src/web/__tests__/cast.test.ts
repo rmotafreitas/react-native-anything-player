@@ -489,6 +489,21 @@ describe('playing on a receiver', () => {
     expect(cast.playOrPauses).toBe(2);
   });
 
+  it('follows a duration the receiver learns later, while the state stays the same (#50)', async () => {
+    const { id, element } = await playFile();
+    element.currentTime = 10;
+    cast.duration = 18;
+    cast.connect();
+    await flush();
+    expect(status(id).duration).toBe(18);
+    cast.duration = 600;
+    cast.tick(11);
+    await flush();
+    expect(status(id).duration).toBe(600);
+    await module.seekTo(id, 300);
+    expect(cast.seeks).toContain(300);
+  });
+
   it('carries a rate set on the device to the receiver, and back to 1x (#49)', async () => {
     const { id, element } = await playFile();
     await module.setRate(id, 1.25);

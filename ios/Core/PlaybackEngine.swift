@@ -315,6 +315,8 @@ final class PlaybackEngine {
     let generation: Int
     let rendition: Int
     let startedAt: Int64
+    /// What the new file reported when ready: the item's facts once it takes over.
+    var info: ReadyInfo?
   }
 
   private struct PendingRefresh {
@@ -667,11 +669,13 @@ final class PlaybackEngine {
   // MARK: - Native observations (generation-guarded)
 
   func onReady(generation gen: Int, info: ReadyInfo) {
-    if isSwapGeneration(gen) { return swapNote("ready") }
+    if isSwapGeneration(gen) {
+      // A quality switch's file: its facts wait for it to take over.
+      pendingSwap?.info = info
+      return swapNote("ready")
+    }
     guard accepts(gen) else { return logStale("ready", gen) }
-    duration = info.duration
-    isLive = source?.liveHint ?? info.isLive
-    seekable = info.seekable && !isLive
+    applyFacts(info)
     readyForGeneration = true
     if state == .loading {
       if playWhenReady {
@@ -2066,6 +2070,7 @@ extension PlaybackEngine {
     pendingSwap = nil
     generation = swap.generation
     currentRendition = swap.rendition
+    if let info = swap.info { applyFacts(info) }
     readyForGeneration = true
     connectionReleased = false
     openedRevision = sourceRevision
@@ -2083,6 +2088,13 @@ extension PlaybackEngine {
   fileprivate func swapFailed(_ error: PlayerError) {
     guard let swap = pendingSwap else { return }
     dropSwap(swap, reason: "failed: \(error.code.rawValue)")
+  }
+
+  /// The item's duration, live state and seekability, as the platform reports them.
+  private func applyFacts(_ info: ReadyInfo) {
+    duration = info.duration
+    isLive = source?.liveHint ?? info.isLive
+    seekable = info.seekable && !isLive
   }
 
   fileprivate func swapNote(_ event: String) {

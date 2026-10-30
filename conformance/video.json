@@ -368,6 +368,24 @@
     ]
   },
   {
+    "name": "video: a switch's file reports its facts when ready; they become the item's when it takes over, not before",
+    "options": { "video": true },
+    "steps": [
+      { "view": {} },
+      { "call": "load", "uri": "https://cdn.example/ep01", "live": false, "autoplay": true, "renditions": [{ "uri": "https://cdn.example/480.mp4", "height": 480, "bitrate": 1200000 }, { "uri": "https://cdn.example/1080.mp4", "height": 1080, "bitrate": 5000000 }] },
+      { "native": "ready", "duration": 18, "seekable": true },
+      { "native": "playing" },
+      { "driver": "position", "value": 10 },
+      { "call": "selectQuality", "id": "r1" },
+      { "native": "ready", "gen": 2, "duration": 600, "seekable": true },
+      { "expect": { "gen": 1, "duration": 18 } },
+      { "native": "playing", "gen": 2 },
+      { "expect": { "state": "playing", "gen": 2, "duration": 600, "seekable": true, "video": { "quality": "r1" } } },
+      { "call": "seek", "value": 300 },
+      { "expect": { "commands": ["seek(300.0)"] } }
+    ]
+  },
+  {
     "name": "video: a rendition that fails to switch to is dropped, sits out a minute, then is tried again",
     "options": { "video": true },
     "steps": [

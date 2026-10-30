@@ -12,6 +12,7 @@ import {
   engineError,
   type OpenRequest,
   type PlaybackSample,
+  type ReadyInfo,
   type SourceDescriptor,
 } from '../engine/types';
 import { castableUrl, type CastService, type CastSdk } from './CastService';
@@ -113,6 +114,10 @@ export class CastDriver implements EngineDriver {
   private startPosition = 0;
   private pendingSeek: number | null = null;
   private volume: number | null = null;
+  /** What the engine was last told about the item: a later change is told again. */
+  private reported: ReadyInfo | null = null;
+  /** Taken for live only because the receiver knew no duration yet. */
+  private liveGuessed = false;
   /** The rate asked for, and whether the receiver was asked to play at it. */
   private rate = 1;
   private rateApplied = false;
@@ -388,16 +393,11 @@ export class CastDriver implements EngineDriver {
       return;
     }
     this.loaded = true;
-    const player = this.player!;
-    const duration = this.duration();
-    this.live =
-      this.live || (this.source?.liveHint == null && duration == null);
-    this.observer.onReady(
-      generation,
-      this.live
-        ? { duration: null, isLive: true, seekable: false }
-        : { duration, isLive: false, seekable: player.canSeek }
-    );
+    this.liveGuessed =
+      !this.live && this.source?.liveHint == null && this.duration() == null;
+    this.live = this.live || this.liveGuessed;
+    this.reported = this.facts();
+    this.observer.onReady(generation, this.reported);
     this.applyVolume();
     this.rateSent = false;
     this.applyRate();
@@ -411,11 +411,43 @@ export class CastDriver implements EngineDriver {
     this.receiverChanged();
   }
 
+  /** What the receiver says about the item: duration, live, seekable. */
+  private facts(): ReadyInfo {
+    return this.live
+      ? { duration: null, isLive: true, seekable: false }
+      : {
+          duration: this.duration(),
+          isLive: false,
+          seekable: this.player?.canSeek === true,
+        };
+  }
+
+  /** The receiver learned more about the item (#50): the engine is told, whatever the state. */
+  private factsChanged(): void {
+    // An unknown duration was taken for live; a known one now says otherwise.
+    if (this.liveGuessed && this.duration() != null) {
+      this.live = false;
+      this.liveGuessed = false;
+    }
+    const info = this.facts();
+    const last = this.reported;
+    if (
+      last == null ||
+      (info.duration === last.duration &&
+        info.isLive === last.isLive &&
+        info.seekable === last.seekable)
+    )
+      return;
+    this.reported = info;
+    this.observer.onReady(this.generation, info);
+  }
+
   /** Maps the receiver's player state to the engine's observations. */
   private receiverChanged(): void {
     const player = this.player;
     // A session that is going away reports "idle": WebOutputs hands back.
     if (!this.active || !this.loaded || !player?.isConnected) return;
+    this.factsChanged();
     const state = player.playerState;
     if (state === this.lastState) return;
     this.lastState = state;
@@ -520,6 +552,8 @@ export class CastDriver implements EngineDriver {
     this.expectingPause = false;
     this.lastState = null;
     this.pendingSeek = null;
+    this.reported = null;
+    this.liveGuessed = false;
   }
 
   private failLater(generation: number, cause: string): void {
