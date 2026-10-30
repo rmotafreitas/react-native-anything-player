@@ -474,7 +474,9 @@ export class MediaElementDriver implements EngineDriver {
     on('loadedmetadata', () => this.onLoadedMetadata(generation));
     // The element learns more as it reads (a fragmented MP4's total, a
     // playlist that ended): the engine's duration and seek range follow.
-    on('durationchange', () => this.onDurationChange(generation));
+    // Seek ranges can appear without a new duration.
+    for (const type of ['durationchange', 'canplay', 'progress'])
+      on(type, () => this.onDurationChange(generation));
     on('playing', () => {
       // Something reset the default since (a library's own load): the
       // rate asked for is the one that plays.

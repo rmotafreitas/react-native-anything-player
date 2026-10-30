@@ -28,9 +28,11 @@ export class ItemFacts {
    */
   ready(info: ReadyInfo, start: number | null, guess: boolean): number | null {
     this.reported = info;
-    if (info.duration == null || start == null || start <= 0) return null;
-    if (guess && start > info.duration) this.held = start;
-    return Math.min(start, info.duration);
+    if (start == null || start <= 0) return null;
+    // An unknown or early duration: the start waits for a longer one.
+    if (guess && (info.duration == null || start > info.duration))
+      this.held = start;
+    return info.duration == null ? null : Math.min(start, info.duration);
   }
 
   /** Later facts: whether they are news, and where a start that waited goes now. */

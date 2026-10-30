@@ -176,6 +176,29 @@ describe('a file', () => {
     expect(rec.of('onReady')).toHaveLength(3);
   });
 
+  it('keeps a start given before the duration is known, until there is one (sol S1)', () => {
+    driver.open(open(MP4, { startPosition: 300 }));
+    const video = world.video();
+    video.becomeReady(Infinity);
+    expect(video.currentTime).toBe(0);
+    video.duration = 600;
+    video.seekable = ranges([[0, 600]]);
+    video.dispatch('durationchange');
+    expect(video.currentTime).toBe(300);
+  });
+
+  it('tells the engine a seek range that appears without a new duration (sol S2)', () => {
+    driver.open(open(MP4));
+    const video = world.video();
+    video.becomeReady(120, false);
+    video.seekable = ranges([[0, 120]]);
+    video.dispatch('progress');
+    expect(rec.of('onReady')).toEqual([
+      [1, { duration: 120, isLive: false, seekable: false }],
+      [1, { duration: 120, isLive: false, seekable: true }],
+    ]);
+  });
+
   it('drops a start that waited once something else seeks', () => {
     driver.open(open(MP4, { startPosition: 300 }));
     const video = world.video();
