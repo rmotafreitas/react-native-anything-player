@@ -325,6 +325,10 @@ export interface CastReceiverLike {
 
 export interface CastMediaLike {
   readonly idleReason?: string | null;
+  /** The receiver's id for this media session (media-channel messages name it). */
+  readonly mediaSessionId?: number;
+  /** The rate the receiver reports it plays at. */
+  readonly playbackRate?: number;
   supportsCommand(command: string): boolean;
   /** Turns the receiver's text tracks on and off (`EditTracksInfoRequest`). */
   editTracksInfo?(
@@ -344,6 +348,8 @@ export interface CastSessionLike {
   getMediaSession(): CastMediaLike | null;
   /** Resolves `undefined` on success; an error code (resolved or rejected) on failure. */
   loadMedia(request: unknown): Promise<string | undefined>;
+  /** Sends a message on a channel of the receiver application. */
+  sendMessage?(namespace: string, message: object): Promise<unknown>;
 }
 
 export interface CastContextLike {

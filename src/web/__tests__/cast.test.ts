@@ -466,10 +466,51 @@ describe('playing on a receiver', () => {
     await module.seekTo(id, 60);
     expect(cast.seeks).toEqual([60]);
     await module.setRate(id, 1.5);
+    // The media channel's request, as the native senders send it (#49).
+    expect(cast.messages).toEqual([
+      expect.objectContaining({
+        namespace: 'urn:x-cast:com.google.cast.media',
+        type: 'SET_PLAYBACK_RATE',
+        mediaSessionId: 7,
+        playbackRate: 1.5,
+      }),
+    ]);
+    // What receivers cannot play is said, and reported as 1x.
+    await module.setRate(id, 3);
     expect(notes(id)).toContain('cast rate ignored');
+    expect(cast.messages).toHaveLength(1);
+
     // Nothing to do when it is already as wanted.
     await module.play(id);
     expect(cast.playOrPauses).toBe(2);
+  });
+
+  it('carries a rate set on the device to the receiver, and back to 1x (#49)', async () => {
+    const { id, element } = await playFile();
+    await module.setRate(id, 1.25);
+    element.currentTime = 10;
+    cast.duration = 120;
+    cast.connect();
+    await flush();
+    expect(cast.messages).toMatchObject([
+      { type: 'SET_PLAYBACK_RATE', playbackRate: 1.25 },
+    ]);
+    await module.setRate(id, 1);
+    expect(cast.messages).toMatchObject([
+      { playbackRate: 1.25 },
+      { type: 'SET_PLAYBACK_RATE', playbackRate: 1 },
+    ]);
+  });
+
+  it('notes a receiver that refuses the rate', async () => {
+    const { id } = await playFile();
+    cast.duration = 120;
+    cast.messageBehavior = 'reject';
+    cast.connect();
+    await flush();
+    await module.setRate(id, 1.5);
+    await flush();
+    expect(notes(id)).toContain('cast rate refused');
   });
 
   it('leaves the receiver’s volume alone where it has no stream volume', async () => {

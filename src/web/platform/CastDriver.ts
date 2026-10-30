@@ -34,6 +34,11 @@ type CastObserver = Pick<
   | 'onNote'
 >;
 
+/** The Cast media channel (`SET_PLAYBACK_RATE` goes there). */
+const MEDIA_NAMESPACE = 'urn:x-cast:com.google.cast.media';
+/** A sender's requests carry their own ids (0 is the receiver's broadcasts). */
+let rateRequests = 0;
+
 const CONTENT_TYPES: Array<[RegExp, string]> = [
   [/\.m3u8$/, 'application/x-mpegURL'],
   [/\.mpd$/, 'application/dash+xml'],
@@ -105,6 +110,11 @@ export class CastDriver implements EngineDriver {
   private startPosition = 0;
   private pendingSeek: number | null = null;
   private volume: number | null = null;
+  /** The rate asked for, and whether the receiver was asked to play at it. */
+  private rate = 1;
+  private rateApplied = false;
+  /** A non-1x rate was sent for this media: going back to 1x is sent too. */
+  private rateSent = false;
   private live = false;
   /** The receiver's text track ids of the app's files (`sub:<n>` → 1, 2…). */
   private castTracks = new Map<string, number>();
@@ -181,10 +191,41 @@ export class CastDriver implements EngineDriver {
   }
 
   setRate(rate: number): void {
-    // The Cast sender has no playback-rate request: say so, do not pretend.
-    if (rate !== 1)
+    this.rate = rate;
+    this.applyRate();
+  }
+
+  /**
+   * The web sender has no rate call: the media channel's `SET_PLAYBACK_RATE`
+   * is what the iOS and Android senders send. Receivers play 0.5x–2x, and a
+   * live stream at 1x: anything else is said, and reported as 1x.
+   */
+  private applyRate(): void {
+    this.rateApplied = false;
+    const session = this.cast.session();
+    const media = this.loaded ? session?.getMediaSession() : null;
+    if (!media || (this.rate === 1 && !this.rateSent)) return;
+    const supported = !this.live && this.rate >= 0.5 && this.rate <= 2;
+    if (!supported || media.mediaSessionId == null || !session?.sendMessage) {
       this.observer.onNote(this.generation, 'cast rate ignored', {
-        rate: `${rate}`,
+        rate: `${this.rate}`,
+      });
+      return;
+    }
+    this.rateSent = this.rate !== 1;
+    this.rateApplied = true;
+    session
+      .sendMessage(MEDIA_NAMESPACE, {
+        type: 'SET_PLAYBACK_RATE',
+        requestId: ++rateRequests,
+        mediaSessionId: media.mediaSessionId,
+        playbackRate: this.rate,
+      })
+      .catch((error: unknown) => {
+        this.rateApplied = false;
+        this.observer.onNote(this.generation, 'cast rate refused', {
+          error: String(error),
+        });
       });
   }
 
@@ -225,8 +266,17 @@ export class CastDriver implements EngineDriver {
       buffered: position,
       liveOffset: null,
       isPlaying: this.loaded && this.player?.playerState === 'PLAYING',
-      rate: 1,
+      rate: this.effectiveRate(),
     };
+  }
+
+  /** What the receiver plays at: its own report, else what it was asked. */
+  private effectiveRate(): number {
+    const reported = this.loaded
+      ? this.cast.session()?.getMediaSession()?.playbackRate
+      : undefined;
+    if (reported != null && reported > 0) return reported;
+    return this.rateApplied ? this.rate : 1;
   }
 
   // ── Receiver ──
@@ -333,6 +383,8 @@ export class CastDriver implements EngineDriver {
         : { duration, isLive: false, seekable: player.canSeek }
     );
     this.applyVolume();
+    this.rateSent = false;
+    this.applyRate();
     if (this.pendingSeek != null) {
       const seconds = this.pendingSeek;
       this.pendingSeek = null;
