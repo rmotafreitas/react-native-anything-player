@@ -50,7 +50,7 @@ class RoutingDriverTest {
     driver.open(request)
     driver.seek(3.0)
     assertEquals(
-      listOf("local.unload", "cast.switch(cast:tv1)", "cast.open(gen=1)", "cast.seek(3.0)"),
+      listOf("local.unload", "cast.switch(cast:tv1)", "cast.rate(1.0)", "cast.open(gen=1)", "cast.seek(3.0)"),
       log,
     )
     assertTrue(driver.isRemote)
@@ -71,11 +71,19 @@ class RoutingDriverTest {
   }
 
   @Test
+  fun `the rate goes with the audio to every output, and back`() {
+    driver.setRate(1.5)
+    driver.switchOutput("cast:tv1")
+    driver.switchOutput("local")
+    assertEquals(listOf("local.rate(1.5)", "cast.switch(cast:tv1)", "cast.rate(1.5)", "local.switch(local)", "local.rate(1.5)"), log)
+  }
+
+  @Test
   fun `a cast switch without a cast output stays on the device`() {
     val bare = RoutingDriver(local) { null }
     bare.switchOutput("cast:tv1")
     bare.play()
-    assertEquals(listOf("local.switch(cast:tv1)", "local.play"), log)
+    assertEquals(listOf("local.switch(cast:tv1)", "local.rate(1.0)", "local.play"), log)
     assertFalse(bare.isRemote)
   }
 

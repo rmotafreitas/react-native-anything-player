@@ -13,7 +13,7 @@
 // Twins: `ios/Core/PlaybackEngine.swift`, `android/.../core/PlaybackEngine.kt`.
 // All three run `conformance/`.
 
-import { EngineFades } from './EngineFades';
+import { EngineVideo } from './EngineVideo';
 import { RecoveryPolicy } from './RecoveryPolicy';
 import { continuesIntent } from './status';
 import {
@@ -21,6 +21,7 @@ import {
   type AudioRoute,
   type InterruptionReason,
   type NetworkState,
+  type PlaybackState,
 } from './types';
 
 export type {
@@ -30,7 +31,14 @@ export type {
   LoadOutcome,
 } from './contracts';
 
-export class PlaybackEngine extends EngineFades {
+/** Playback wanted, nothing heard yet: the foreground recovers these at once. */
+const WAITING_STATES: ReadonlySet<PlaybackState> = new Set<PlaybackState>([
+  'reconnecting',
+  'buffering',
+  'loading',
+]);
+
+export class PlaybackEngine extends EngineVideo {
   // ── Output ──
 
   /** The local output changed (headphones, AirPlay, Bluetooth). Ignored while casting. */
@@ -82,7 +90,8 @@ export class PlaybackEngine extends EngineFades {
       this.open(position, 'handoff');
     } else {
       // Old-output callbacks are stale; nothing is loaded on the new one.
-      this._generation += 1;
+      this.cancelSwap('handoff');
+      this._generation = this.issueGeneration();
       this.readyForGeneration = false;
       if (this._source != null) this.connectionReleased = true;
     }
@@ -162,14 +171,12 @@ export class PlaybackEngine extends EngineFades {
 
   /** The app came to the foreground: recover wanted-but-silent audio now. */
   appForegrounded(): void {
-    if (this.isReleased || !this.autoReconnect || this.remote) return;
-    if (
-      this._state === 'reconnecting' ||
-      this._state === 'buffering' ||
-      this._state === 'loading'
-    ) {
-      this.attemptReconnect('app foregrounded');
-    }
+    if (this.isReleased) return;
+    // Read before a video player resumes: its resume is not a stall.
+    const stalled =
+      this.autoReconnect && !this.remote && WAITING_STATES.has(this._state);
+    this.videoForegrounded();
+    if (stalled) this.attemptReconnect('app foregrounded');
     this.commit();
   }
 
@@ -243,6 +250,7 @@ export class PlaybackEngine extends EngineFades {
       }
       case 'playing':
         this.heartbeatPlaying(t, suspect);
+        this.videoHeartbeat(t);
         break;
       case 'buffering':
         if (this.remote) this.heartbeatRemoteBuffering(t);
@@ -282,6 +290,7 @@ export class PlaybackEngine extends EngineFades {
         this.beginWaiting();
         this.stallStartedAt = this.lastPositionAdvanceAt;
         this.silentStall = true;
+        this.stallPublished(t);
       }
     }
     const playing = this.playingSince;
@@ -302,6 +311,12 @@ export class PlaybackEngine extends EngineFades {
       // The stall was ours (native never left playing): the playhead moving
       // again is the only sign it is over.
       this.endSilentStall(t, p);
+      return;
+    }
+    if (this.playheadPlays(t, p)) {
+      // The platform plays but never said so: the playhead is the proof.
+      this.log('playhead moving', { at: p.toFixed(1) });
+      this.onPlaying(this.generation);
       return;
     }
     if (sample.bufferedPosition > this.lastBuffered + 0.01) {
@@ -326,6 +341,26 @@ export class PlaybackEngine extends EngineFades {
     } else {
       // Data is arriving: give the buffer time to recover.
     }
+  }
+
+  /**
+   * Whether the playhead has run on, reading after reading, at about the
+   * playback rate for `PLAYHEAD_PROOF_S` (a jump, like a live edge or a
+   * seek, or a frozen playhead, starts the run again).
+   */
+  protected playheadPlays(t: number, p: number): boolean {
+    const last = this.waitingLast;
+    if (last == null || this.waitingFrom == null || this.remote) return false;
+    const dt = (t - last.at) / 1000;
+    const dp = p - last.position;
+    const rate = Math.max(this.rate, 0.1);
+    const runs =
+      dt > 0 && dp >= 0.5 * rate * dt && dp <= 1.5 * rate * dt + 0.25;
+    this.waitingLast = { position: p, at: t };
+    if (!runs) this.waitingFrom = { position: p, at: t };
+    return (
+      runs && p - this.waitingFrom.position >= RecoveryPolicy.PLAYHEAD_PROOF_S
+    );
   }
 
   /**
@@ -358,8 +393,21 @@ export class PlaybackEngine extends EngineFades {
 
   /** A stall the watchdog gave up waiting on: re-open, or fail with reconnecting off. */
   protected recoverStall(reason: string): void {
-    if (this.options.reconnect) this.attemptReconnect(reason);
+    if (this.stalledAtEnd()) {
+      // A re-open would land at the end and stall again, in a loop.
+      this.log('stall at the end', { reason });
+      this.onEnded(this.generation);
+    } else if (this.options.reconnect) this.attemptReconnect(reason);
     else this.failStall(reason);
+  }
+
+  /** The playhead and the buffer are at a file's end: no data is coming because there is none left. */
+  protected stalledAtEnd(): boolean {
+    const duration = this.duration;
+    if (this.isLive || duration == null || this.remote) return false;
+    const end = duration - RecoveryPolicy.END_SLACK_S;
+    const sample = this.driver.sample();
+    return sample.position >= end && sample.bufferedPosition >= end;
   }
 
   protected failStall(reason: string): void {
@@ -381,6 +429,7 @@ export class PlaybackEngine extends EngineFades {
     this.lastPosition = position;
     this.lastPositionAdvanceAt = t;
     this.playingSince = t;
+    this.videoPlaying(t);
     this.setState('playing', 'silent stall over');
   }
 }

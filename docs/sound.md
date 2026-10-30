@@ -67,7 +67,7 @@ Sounds always mix with your own `Player`s. Next to other apps' audio (their musi
 
 | | What happens |
 |---|---|
-| iOS | An `AVAudioEngine` with a pool of player nodes per sound. The audio session is set to `.playback` with `mixWithOthers` on the first `play()`, only if the app still has iOS's default category. If `Player` (or you) already set a category, it is used as is and never changed or deactivated by `Sound`: once a `Player` has set up its session, the sounds play in it: with `audio: { mixWithOthers: true }` they mix with other apps' audio too, without it (the default) they mix with that `Player` but not with other apps The engine stops 10 s after the last sound ended and starts again on the next one; it survives interruptions, route changes and media services resets |
+| iOS | An `AVAudioEngine` with a pool of player nodes per sound. On the first `play()`, if the app still has iOS's default audio category, `Sound` sets `.playback` with `mixWithOthers`. If a `Player` (or you) already set a category, it is used as is, and `Sound` never changes or deactivates it: the sounds play in that session. With `audio: { mixWithOthers: true }` they mix with other apps' audio; by default they mix with that `Player` but not with other apps. The engine stops 10 s after the last sound ended and starts again on the next one. It survives interruptions, route changes and media services resets |
 | Android | One `SoundPool` shared by every sound, with `USAGE_GAME` audio attributes and no focus request. At most 32 voices play at once over all sounds (see below) |
 | Web | Web Audio: one shared `AudioContext`, each voice a source node through a gain and a stereo panner |
 

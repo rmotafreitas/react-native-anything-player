@@ -109,6 +109,21 @@ export interface Spec extends TurboModule {
     result: CodegenTypes.UnsafeObject
   ): void;
 
+  // ── Video ──
+  /** A video command (`{ op, … }`); resolves with the status after it. */
+  videoCommand(
+    playerId: string,
+    command: CodegenTypes.UnsafeObject
+  ): Promise<CodegenTypes.UnsafeObject>;
+  /** Quality-of-experience numbers since the last load. */
+  getVideoStats(playerId: string): CodegenTypes.UnsafeObject;
+  /** Fetches a text file and decodes it, detecting the encoding: `{ text, charset }`. */
+  fetchText(
+    uri: string,
+    headers: CodegenTypes.UnsafeObject,
+    encoding: string | null
+  ): Promise<CodegenTypes.UnsafeObject>;
+
   /**
    * Player events carry `playerId`. App-global events have none:
    * `{ type: 'castState', state, device }`,

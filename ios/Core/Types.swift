@@ -45,6 +45,10 @@ enum InterruptionReason: String {
   case outputDisconnected = "output-disconnected"
   /// The platform paused the player for a reason it did not report.
   case system
+  /// Video: the app went to the background (`whenBackgrounded`, ambient players).
+  case background
+  /// Video: an ambient player's view left the screen; it resumes when shown again.
+  case offscreen
 }
 
 /// The kind of output the audio goes to. Mirrors `AudioRouteKind` in TS.
@@ -102,6 +106,10 @@ enum ErrorCode: String {
   case castUnavailable = "CAST_UNAVAILABLE"
   case castUnsupportedSource = "CAST_UNSUPPORTED_SOURCE"
   case soundUnavailable = "SOUND_UNAVAILABLE"
+  case videoUnavailable = "VIDEO_UNAVAILABLE"
+  case drmUnsupported = "DRM_UNSUPPORTED"
+  case drmLicenseFailed = "DRM_LICENSE_FAILED"
+  case subtitleLoadFailed = "SUBTITLE_LOAD_FAILED"
 }
 
 struct PlayerError: Error, Equatable {
@@ -138,6 +146,16 @@ struct SourceDescriptor: Equatable {
   var headers: [String: String] = [:]
   /// App hint. `nil` = detect (indefinite duration ⇒ live).
   var liveHint: Bool? = nil
+  /// Separate files of one video at different qualities. The engine picks one
+  /// and switches between them (`uri` is then unused); `nil`: one file or an
+  /// adaptive manifest.
+  var renditions: [Rendition]? = nil
+  /// The app can hand over a new source on 401/403 or before `expiresAt`.
+  var refreshable = false
+  /// Wall-clock epoch ms when the source's URL stops working.
+  var expiresAt: Int64? = nil
+  /// The source is encrypted: its key systems and license servers (`nil`: clear).
+  var drm: DrmDescriptor? = nil
   /// Whether the source is fetched over the network (http/https).
   var isNetwork: Bool {
     let lower = uri.lowercased()
@@ -155,6 +173,113 @@ struct OpenRequest: Equatable {
   /// The engine re-opens on its own (`reconnect`): a driver may then continue
   /// a dropped live connection itself. `false`: it never reconnects.
   var allowReconnect = true
+  /// Open behind the current item and swap on its first frame (a quality
+  /// switch): the current item keeps playing until this one reports
+  /// `playing`, and is dropped then.
+  var swap = false
+  /// Index into the source's renditions, when it has them.
+  var rendition: Int? = nil
+}
+
+/// One file of a video at one quality (`SourceDescriptor.renditions`).
+struct Rendition: Equatable {
+  let uri: String
+  /// `nil`: the source's headers.
+  var headers: [String: String]? = nil
+  /// Pixels; `nil` until the platform reads it from the file.
+  var height: Int? = nil
+  /// Bits per second; `nil` until known.
+  var bitrate: Int64? = nil
+  var label: String? = nil
+  /// Sound only: the last step of the audio-only fallback.
+  var audioOnly = false
+}
+
+/// A quality of an adaptive source as the driver reports it, or a rendition (`status.video.qualities`).
+struct VideoVariant: Equatable {
+  let id: String
+  var height: Int? = nil
+  var bitrate: Int64? = nil
+  /// An audio-only variant (or, for HLS/DASH, the audio rendition alone).
+  var audioOnly = false
+  var label: String? = nil
+}
+
+/// What the driver learned about the picture.
+struct VideoInfo: Equatable {
+  let width: Int
+  let height: Int
+  var hdr = false
+  /// The variant playing (adaptive sources), when the driver knows it.
+  var variantId: String? = nil
+}
+
+/// What the engine asks an adaptive source's driver to keep to.
+struct QualityConstraints: Equatable {
+  let maxHeight: Int?
+  let maxBitrate: Int64?
+  /// A variant the app picked; `nil`: the driver's own ABR.
+  let pinned: String?
+  /// Prefer an audio-only variant (listen-only, background, fallback).
+  let audioOnly: Bool
+}
+
+/// Why a video player plays its sound alone.
+enum AudioOnlyReason: String {
+  case listen
+  case background
+  case fallback
+}
+
+/// Why the engine asks for a new source.
+enum RefreshReason: String {
+  /// A 401/403.
+  case unauthorized
+  /// `expiresAt` is near.
+  case expiring
+}
+
+/// The view showing a video player (`viewChanged`).
+struct ViewState: Equatable {
+  var attached = false
+  var visible = false
+  /// Physical pixels; 0 when unknown.
+  var width = 0
+  var height = 0
+}
+
+/// Quality-of-experience numbers the engine counts (`getStats()`).
+struct EngineStats: Equatable {
+  /// `load()` to the first audio, ms; `nil` until then.
+  var startupMs: Int64? = nil
+  var rebufferCount = 0
+  var rebufferMs: Int64 = 0
+  var qualitySwitches = 0
+  var audioOnlySwitches = 0
+}
+
+/// A video player's part of the status (`status.video`).
+struct VideoStatus: Equatable {
+  var width: Int?
+  var height: Int?
+  var hdr: Bool
+  /// A frame of the current load has been shown.
+  var firstFrame: Bool
+  var audioOnly: AudioOnlyReason?
+  var pictureInPicture: Bool
+  var qualities: [VideoVariant]
+  /// The quality playing (`nil` when unknown).
+  var quality: String?
+  /// The app's pick; `nil` = automatic.
+  var selectedQuality: String?
+  /// The audio and text tracks: the source's, then the app's subtitle files.
+  var tracks: [MediaTrack] = []
+  var audioTrack: String? = nil
+  /// `nil`: no subtitles.
+  var textTrack: String? = nil
+  /// Seconds the subtitles are shown later (negative: earlier).
+  var subtitleDelay: Double = 0
+  var fullscreen = false
 }
 
 /// A point-in-time reading of the native player, taken on demand.
@@ -199,6 +324,8 @@ struct Status: Equatable {
   var route: AudioRoute = .unknown
   /// Wall-clock epoch ms when the sleep timer pauses the player, `nil` when off.
   var sleepAt: Int64? = nil
+  /// `nil` for an audio player.
+  var video: VideoStatus? = nil
 }
 
 /// A linear move from `from` to `to` between two monotonic instants (ms).

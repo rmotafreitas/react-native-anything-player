@@ -3,6 +3,7 @@ package com.anythingplayer.platform
 import com.anythingplayer.core.EngineDriver
 import com.anythingplayer.core.OpenRequest
 import com.anythingplayer.core.PlaybackSample
+import com.anythingplayer.core.QualityConstraints
 
 /** An [EngineDriver] that can also report the extra readings behind the progress snapshot. */
 internal interface Output : EngineDriver {
@@ -28,6 +29,8 @@ internal class RoutingDriver(
 ) : Output {
   private var remote: RemoteOutput? = null
   private var target: Output = local
+  /** The rate the engine asked for: every output plays at it. */
+  private var rate = 1.0
 
   /** Whether the audio currently plays on the remote output. */
   val isRemote: Boolean
@@ -37,6 +40,7 @@ internal class RoutingDriver(
     val next: Output = if (outputId.startsWith(CAST_PREFIX)) remoteOutput() ?: local else local
     target = next
     next.switchOutput(outputId)
+    next.setRate(rate)
   }
 
   private fun remoteOutput(): RemoteOutput? = remote ?: remoteFactory()?.also { remote = it }
@@ -47,12 +51,21 @@ internal class RoutingDriver(
   override fun play() = target.play()
   override fun pause() = target.pause()
   override fun seek(seconds: Double) = target.seek(seconds)
+  override fun seek(seconds: Double, exact: Boolean) = target.seek(seconds, exact)
   override fun releaseConnection() = target.releaseConnection()
   override fun unload() = target.unload()
   override fun setVolume(effective: Double) = target.setVolume(effective)
-  override fun setRate(rate: Double) = target.setRate(rate)
+  override fun setRate(rate: Double) {
+    this.rate = rate
+    target.setRate(rate)
+  }
   override fun sample(): PlaybackSample = target.sample()
   override fun progress(): ProgressReading = target.progress()
+  override fun setVideoEnabled(enabled: Boolean) = target.setVideoEnabled(enabled)
+  override fun setQuality(constraints: QualityConstraints) = target.setQuality(constraints)
+  override fun setLoop(loop: Boolean) = target.setLoop(loop)
+  override fun cancelSwap(generation: Int) = target.cancelSwap(generation)
+  override fun selectTracks(audio: String?, text: String?) = target.selectTracks(audio, text)
 
   /** Frees the remote output; the local driver is destroyed by its owner. */
   fun destroyRemote() {

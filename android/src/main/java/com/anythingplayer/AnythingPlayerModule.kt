@@ -12,8 +12,11 @@ import com.facebook.react.bridge.WritableMap
 import com.anythingplayer.core.ErrorCode
 import com.anythingplayer.core.LoadOutcome
 import com.anythingplayer.core.PlayerError
+import com.anythingplayer.core.TrackKind
+import com.anythingplayer.platform.ActivitySource
 import com.anythingplayer.platform.AnythingPlayerRuntime
 import com.anythingplayer.platform.EventSink
+import com.anythingplayer.platform.LicenseRequests
 import com.anythingplayer.platform.PlayerController
 import com.anythingplayer.platform.SearchRequest
 import com.anythingplayer.platform.Voice
@@ -22,7 +25,10 @@ import com.anythingplayer.platform.fadeMs
 import com.anythingplayer.platform.optBoolean
 import com.anythingplayer.platform.optDouble
 import com.anythingplayer.platform.optMap
+import com.anythingplayer.platform.optArray
 import com.anythingplayer.platform.optString
+import com.anythingplayer.platform.parseSubtitleTracks
+import com.anythingplayer.platform.parseVideoParts
 import com.anythingplayer.platform.toJson
 import com.anythingplayer.platform.toWritableMap
 import com.anythingplayer.platform.parseNowPlaying
@@ -49,15 +55,112 @@ class AnythingPlayerModule(reactContext: ReactApplicationContext) : NativeAnythi
    * instance); emitting under the lock means none is in flight afterwards.
    */
   private val sink = EventSink { event -> synchronized(sinkLock) { if (!invalidated) emitOnPlayerEvent(event) } }
+  /** React Native's current activity: the one on screen before the runtime saw any resume. */
+  private val activities = ActivitySource { reactApplicationContext.currentActivity }
 
   companion object {
     const val NAME = NativeAnythingPlayerSpec.NAME
     private const val PLAYER_RELEASED_MESSAGE = "The player was released."
+
+    private fun notVideo() = PlayerError(ErrorCode.INVALID_ARGUMENT, "This is not a video player (create it with `video`).", false)
+  }
+
+  // ── Video ──
+
+  override fun videoCommand(playerId: String, command: ReadableMap, promise: Promise) {
+    val op = command.optString("op")
+    if (op == "license") {
+      // The app's getLicense answered (any player's request: the ids are unique).
+      LicenseRequests.answer(command.optDouble("requestId")?.toInt() ?: -1, command.optString("license"), command.optString("error"))
+      promise.resolve(null)
+      return
+    }
+    val refreshed = if (op == "refreshed") command.optMap("source")?.let { parseSource(it).first } else null
+    val added = if (op == "addSubtitles") parseSubtitleTracks(command.optArray("tracks")) else emptyList()
+    command(playerId, promise) { controller ->
+      val engine = controller.engine
+      when (op) {
+        "loop" -> engine.setLoop(command.optBoolean("value") == true)
+        "seek" -> engine.seek(command.optDouble("position") ?: 0.0, command.optBoolean("exact") == true)
+        "refreshed" -> if (refreshed != null) engine.sourceRefreshed(command.optDouble("loadId")?.toInt() ?: -1, refreshed)
+        "refreshFailed" -> engine.sourceRefreshFailed(command.optDouble("loadId")?.toInt() ?: -1)
+        else -> {
+          val picture = controller.picture ?: throw notVideo()
+          val id = command.optString("id")
+          when (op) {
+            "selectQuality" -> engine.selectQuality(id)
+            "selectAudioTrack" -> engine.selectAudioTrack(id)
+            "selectTextTrack" -> engine.selectTextTrack(id)
+            "subtitleDelay" -> engine.setSubtitleDelay(command.optDouble("seconds") ?: 0.0)
+            "listenOnly" -> engine.setListenOnly(command.optBoolean("value") == true)
+            "addSubtitles" -> {
+              // The app's files so far (the source's own tracks are `track:` ids), then these.
+              val known = controller.status.video?.tracks.orEmpty().filter { it.kind != TrackKind.AUDIO && !it.id.startsWith("track:") }
+              engine.setAppTracks(known + added)
+            }
+            else -> picture.command(op ?: "", command)
+          }
+        }
+      }
+    }
+  }
+
+  override fun getVideoStats(playerId: String): WritableMap =
+    AnythingPlayerRuntime.players[playerId]?.statsMap() ?: Arguments.createMap()
+
+  override fun fetchText(uri: String, headers: ReadableMap, encoding: String?, promise: Promise) {
+    val builder = okhttp3.Request.Builder().url(uri)
+    val it = headers.keySetIterator()
+    while (it.hasNextKey()) {
+      val key = it.nextKey()
+      headers.optString(key)?.let { value -> builder.header(key, value) }
+    }
+    val request =
+      try {
+        builder.build()
+      } catch (error: IllegalArgumentException) {
+        reject(promise, PlayerError(ErrorCode.INVALID_SOURCE, "Not a URL: $uri", false))
+        return
+      }
+    com.anythingplayer.platform.HttpConnections.client.newCall(request).enqueue(
+      object : okhttp3.Callback {
+        override fun onFailure(call: okhttp3.Call, e: java.io.IOException) {
+          reject(promise, PlayerError(ErrorCode.NETWORK_ERROR, "$uri could not be fetched (${e.message}).", true))
+        }
+
+        override fun onResponse(call: okhttp3.Call, response: okhttp3.Response) {
+          response.use {
+            if (!it.isSuccessful) {
+              val status = it.code
+              reject(
+                promise,
+                PlayerError(ErrorCode.HTTP_ERROR, "The server returned HTTP $status for $uri.", status >= 500, httpStatus = status),
+              )
+              return
+            }
+            val bytes = it.body?.bytes() ?: ByteArray(0)
+            val charset = encoding ?: com.anythingplayer.core.SubtitleCharset.detect(bytes)
+            val text =
+              try {
+                String(bytes, java.nio.charset.Charset.forName(charset))
+              } catch (error: IllegalArgumentException) {
+                String(bytes, Charsets.UTF_8)
+              }
+            promise.resolve(
+              Arguments.createMap().apply {
+                putString("text", text)
+                putString("charset", charset)
+              },
+            )
+          }
+        }
+      },
+    )
   }
 
   override fun initialize() {
     super.initialize()
-    AnythingPlayerRuntime.attachModule(sink)
+    AnythingPlayerRuntime.attachModule(sink, activities)
     main.post { AnythingPlayerRuntime.initialize(reactApplicationContext) }
   }
 
@@ -104,6 +207,7 @@ class AnythingPlayerModule(reactContext: ReactApplicationContext) : NativeAnythi
 
   override fun load(playerId: String, source: ReadableMap, options: ReadableMap, promise: Promise) {
     val (descriptor, fields) = parseSource(source)
+    val parts = parseVideoParts(source)
     val autoplay = options.optBoolean("autoplay")
     val start = options.optDouble("startPosition")
     main.post {
@@ -113,7 +217,7 @@ class AnythingPlayerModule(reactContext: ReactApplicationContext) : NativeAnythi
         return@post
       }
       try {
-        controller.load(descriptor, fields, autoplay, start) { outcome ->
+        controller.load(descriptor, fields, autoplay, start, parts) { outcome ->
           when (outcome) {
             is LoadOutcome.Failed -> reject(promise, outcome.error)
             else -> promise.resolve(controller.statusMap())
@@ -319,7 +423,7 @@ class AnythingPlayerModule(reactContext: ReactApplicationContext) : NativeAnythi
   /** JS reload / React host teardown: no JS can control these players any more. */
   override fun invalidate() {
     synchronized(sinkLock) { invalidated = true }
-    AnythingPlayerRuntime.detachModule(sink)
+    AnythingPlayerRuntime.detachModule(sink, activities)
     main.post { Voice.jsDetached() }
     val ids = synchronized(owned) { owned.toList().also { owned.clear() } }
     main.post {

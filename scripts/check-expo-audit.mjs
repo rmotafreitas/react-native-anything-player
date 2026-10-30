@@ -8,6 +8,7 @@ const patched = new Map([
   ["GHSA-vfj7-8cjw-p6xm", ["braces", "3.0.3"]],
   ["GHSA-86w9-cpqp-85rv", ["node-forge", "1.4.0"]],
   ["GHSA-mrhx-c7xc-m3w5", ["zod", "3.25.76"]],
+  ["GHSA-gcqx-w48m-w2h4", ["deepmerge", "4.3.1"]],
 ]);
 const require = createRequire(path.join(process.cwd(), "package.json"));
 for (const [name, version] of patched.values()) {

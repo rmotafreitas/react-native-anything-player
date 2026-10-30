@@ -1,7 +1,7 @@
 {
   "name": "react-native-anything-player",
   "version": "1.2.1",
-  "description": "Native-first, reliable audio player for React Native: files, streams and internet radio (ICY), with background playback, media sessions and automatic recovery.",
+  "description": "Native-first, reliable audio player for React Native and the web: files, streams and internet radio (ICY), with background playback, media sessions, automatic recovery and opt-in video.",
   "main": "./lib/module/index.js",
   "types": "./lib/typescript/src/index.d.ts",
   "bin": {
@@ -33,6 +33,11 @@
       "react-native-anything-player-source": "./src/sound/web.ts",
       "types": "./lib/typescript/src/sound/web.d.ts",
       "default": "./lib/module/sound/web.js"
+    },
+    "./video": {
+      "react-native-anything-player-source": "./src/video/index.ts",
+      "types": "./lib/typescript/src/video/index.d.ts",
+      "default": "./lib/module/video/index.js"
     },
     "./app.plugin.js": "./app.plugin.js",
     "./package.json": "./package.json"
@@ -91,12 +96,16 @@
   "keywords": [
     "react-native",
     "audio",
+    "video",
     "player",
     "radio",
     "icy",
     "shoutcast",
     "icecast",
     "streaming",
+    "hls",
+    "subtitles",
+    "web",
     "media-session",
     "background-audio",
     "ios",
@@ -148,6 +157,7 @@
     "react-dom": "19.2.3",
     "react-native": "0.86.3",
     "react-native-builder-bob": "^0.43.2",
+    "shaka-player": "^5.3.2",
     "test-renderer": "1.2.0",
     "turbo": "^2.11.10",
     "typedoc": "^0.28.20",
@@ -199,7 +209,8 @@
         "AnythingPlayerSound": "AnythingPlayerSoundModule"
       },
       "componentProvider": {
-        "RNAPRoutePickerView": "RNAPRoutePickerView"
+        "RNAPRoutePickerView": "RNAPRoutePickerView",
+        "RNAPVideoView": "RNAPVideoView"
       }
     }
   },

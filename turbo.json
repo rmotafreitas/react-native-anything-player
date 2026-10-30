@@ -38,6 +38,8 @@
         "RCT_USE_PREBUILT_RNCORE",
         "RNAP_CAST",
         "RNAP_CAR",
+        "RNAP_SOUND",
+        "RNAP_VIDEO",
         "CI_NATIVE_TOOLCHAIN",
         "ImageVersion"
       ],

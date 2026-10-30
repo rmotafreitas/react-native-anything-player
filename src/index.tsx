@@ -7,7 +7,20 @@
 export { Player } from './Player';
 export { PlayerError, isPlayerError } from './errors';
 export { configureHls } from './core/hls';
-export type { HlsConstructor, HlsLike } from './core/hls';
+export { configureShaka } from './core/shaka';
+export type {
+  ShakaLike,
+  ShakaPlayerLike,
+  ShakaTrack,
+  ShakaAudioTrack,
+  ShakaError,
+} from './core/shaka';
+export type {
+  HlsConstructor,
+  HlsLevel,
+  HlsLike,
+  HlsMediaTrack,
+} from './core/hls';
 export {
   addCastStateListener,
   addRoutePickerAvailabilityListener,
@@ -38,6 +51,7 @@ export {
   useCastStatus,
   useRoutePickerAvailable,
   useSleepTimer,
+  useCues,
 } from './hooks';
 export type { SleepTimerState } from './hooks';
 export { RoutePicker } from './components/RoutePicker';
@@ -45,6 +59,27 @@ export type { RoutePickerProps } from './components/RoutePicker';
 export { CastButton } from './components/CastButton';
 export type { CastButtonProps } from './components/CastButton';
 export type {
+  ArtworkInput,
+  AudioFallbackOptions,
+  AudioOnlyReason,
+  CueAlign,
+  CueSpan,
+  CueVertical,
+  DrmConfig,
+  LicenseRequest,
+  MediaTrack,
+  PlaybackStats,
+  Rendition,
+  SourceRefreshRequest,
+  SubtitleCue,
+  SubtitleFormat,
+  SubtitleSource,
+  Thumbnail,
+  TrackKind,
+  VideoOptions,
+  VideoQuality,
+  VideoQualityOptions,
+  VideoStatus,
   Artwork,
   AssetModule,
   AudioRoute,
@@ -82,5 +117,6 @@ export type {
   SleepEvent,
   SleepTimer,
   Source,
+  SourceOptions,
   SourceInput,
 } from './types';

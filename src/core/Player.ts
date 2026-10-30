@@ -1,7 +1,17 @@
 import { PlayerError, toPlayerError } from '../errors';
 import { WEB_ONLY_SCHEMES, host } from './host';
+import { answerLicense, type LicenseRequestEvent } from './drm';
 import { dispatchModuleEvent } from './moduleEvents';
+import type { SubtitleCue } from './subtitles/types';
+import {
+  callRefresh,
+  normalizeVideoSource,
+  SubtitleLoader,
+  subtitleTracks,
+  ThumbnailTrack,
+} from './video';
 import type {
+  ArtworkInput,
   AudioRoute,
   AudioSamplingOptions,
   BlobInput,
@@ -11,6 +21,7 @@ import type {
   MediaMetadata,
   NowPlayingMetadata,
   PlaybackState,
+  PlaybackStats,
   PlayerEvent,
   PlayerEventMap,
   PlayerOptions,
@@ -19,7 +30,10 @@ import type {
   RemoteCommandEvent,
   SearchPlayEvent,
   SleepTimer,
+  Source,
   SourceInput,
+  SubtitleSource,
+  Thumbnail,
 } from '../types';
 
 type NativeStatus = PlayerStatus & { seq: number };
@@ -118,14 +132,15 @@ export function normalizeSource(input: SourceInput): Record<string, unknown> {
   if (typeof input === 'string') source = { uri: input };
   else if (typeof input === 'number') source = { uri: resolveAsset(input) };
   else source = input;
-  if (!source || typeof source.uri !== 'string' || source.uri.trim() === '') {
+  const uri = sourceUri(source);
+  if (uri === '') {
     throw new PlayerError({
       code: 'INVALID_SOURCE',
-      message: 'A source needs a non-empty `uri`.',
+      message:
+        'A source needs a non-empty `uri` (or, for a video, `renditions`).',
       recoverable: false,
     });
   }
-  const uri = source.uri.trim();
   const scheme = URI_SCHEME.exec(uri)?.[0]?.slice(0, -1).toLowerCase();
   // No scheme: an absolute path, or (Android release builds) a bundled asset's resource name.
   if (
@@ -143,7 +158,35 @@ export function normalizeSource(input: SourceInput): Record<string, unknown> {
   if (source.headers) out.headers = { ...source.headers };
   if (typeof source.live === 'boolean') out.live = source.live;
   if (source.metadata) out.metadata = normalizeNowPlaying(source.metadata);
-  return out;
+  return { ...out, ...normalizeVideoSource(source, artworkUri) };
+}
+
+/** The source's `uri`; with renditions and no `uri`, the first picture's file. */
+function sourceUri(source: Source | null | undefined): string {
+  if (source == null || typeof source !== 'object') return '';
+  if (typeof source.uri === 'string' && source.uri.trim() !== '')
+    return source.uri.trim();
+  const renditions = Array.isArray(source.renditions) ? source.renditions : [];
+  const first = renditions.find((r) => !r?.audioOnly) ?? renditions[0];
+  return typeof first?.uri === 'string' ? first.uri.trim() : '';
+}
+
+/** Frees a player the app cannot use; nothing waits for it. */
+function releaseQuietly(id: string): void {
+  native()
+    .releasePlayer(id)
+    .catch(() => undefined);
+}
+
+function wantsVideo(options: PlayerOptions): boolean {
+  return options.video != null && options.video !== false;
+}
+
+/** An artwork or poster as a URI (`require()` assets resolved). */
+function artworkUri(art: ArtworkInput): string | null {
+  if (typeof art === 'number') return resolveAsset(art);
+  if (typeof art === 'string') return art;
+  return typeof art?.uri === 'string' ? art.uri : null;
 }
 
 /** Exported for tests. */
@@ -154,13 +197,9 @@ export function normalizeNowPlaying(
   if (metadata.title != null) out.title = String(metadata.title);
   if (metadata.artist != null) out.artist = String(metadata.artist);
   if (metadata.album != null) out.album = String(metadata.album);
-  const art = metadata.artwork;
-  if (typeof art === 'number') out.artwork = resolveAsset(art);
-  else if (typeof art === 'string') out.artwork = art;
-  else if (art && typeof art.uri === 'string') out.artwork = art.uri;
-  else {
-    // Omit absent or unsupported artwork.
-  }
+  // Absent or unsupported artwork is left out.
+  const art = metadata.artwork != null ? artworkUri(metadata.artwork) : null;
+  if (art != null) out.artwork = art;
   if (metadata.duration != null) {
     assertFinite('duration', metadata.duration);
     out.duration = Math.max(0, metadata.duration);
@@ -233,6 +272,26 @@ export class Player {
   private _metadata: MediaMetadata | null = null;
   private readonly listeners = new Map<PlayerEvent, Set<AnyListener>>();
   private released = false;
+  /** The current source's `refresh`, its headers and its thumbnail track. */
+  private refreshSource: Source['refresh'] | null = null;
+  /** Counts the loads, so an answer for an earlier one changes nothing. */
+  private loads = 0;
+  /** The current source's `drm.getLicense`. */
+  private licenseHook: NonNullable<Source['drm']>['getLicense'] | null = null;
+  private sourceHeaders: Record<string, string> = {};
+  private thumbnails: ThumbnailTrack | null = null;
+  private cuesOnScreen: SubtitleCue[] = [];
+  private readonly subtitles = new SubtitleLoader({
+    sendCues: async (session, trackId, cues) => {
+      await native().videoCommand(this.id, {
+        op: 'cues',
+        session,
+        trackId,
+        cues,
+      });
+    },
+    failed: (error) => this.emit('error', error, { fatal: false }),
+  });
 
   constructor(options: PlayerOptions = {}) {
     if (options.progressInterval != null) {
@@ -267,6 +326,18 @@ export class Player {
     this.id = native().createPlayer(options as object);
     players.set(this.id, this);
     this._status = native().getStatus(this.id) as NativeStatus;
+    if (wantsVideo(options) && this._status.video == null) {
+      players.delete(this.id);
+      releaseQuietly(this.id);
+      throw new PlayerError({
+        code: 'VIDEO_UNAVAILABLE',
+        message:
+          'Video is not built into this app. Turn the video module on and rebuild: ' +
+          '`npx rnap add video`, or `rnapVideo=true` in android/gradle.properties and ' +
+          "`RNAP_VIDEO=1 pod install` on iOS, or the Expo plugin's `video` option.",
+        recoverable: false,
+      });
+    }
     if (options.diagnostics) native().setDiagnosticsEnabled(this.id, true);
   }
 
@@ -343,7 +414,36 @@ export class Player {
     if (options.startPosition != null)
       nativeOptions.startPosition = options.startPosition;
     this._metadata = null;
-    await this.run(() => native().load(this.id, normalized, nativeOptions));
+    const full =
+      typeof source === 'object' && !isBlob(source) ? (source as Source) : null;
+    this.beginVideoLoad(full, normalized);
+    const loading = this.run(() =>
+      native().load(this.id, normalized, nativeOptions)
+    );
+    // Subtitle files load alongside: their cues are ready about when the picture is.
+    if (full?.subtitles != null)
+      this.subtitles.add(subtitleTracks(full.subtitles), this.sourceHeaders);
+    await loading;
+  }
+
+  /** A new source: its refresh, thumbnails and subtitle session. */
+  private beginVideoLoad(
+    source: Source | null,
+    normalized: Record<string, unknown>
+  ): void {
+    this.loads += 1;
+    this.refreshSource = source?.refresh ?? null;
+    this.licenseHook = source?.drm?.getLicense ?? null;
+    this.sourceHeaders = { ...source?.headers };
+    this.thumbnails =
+      source?.thumbnails != null
+        ? new ThumbnailTrack(source.thumbnails, this.sourceHeaders)
+        : null;
+    this.cuesOnScreen = [];
+    this.subtitles.cancel();
+    const session = this.subtitles.begin();
+    // Subtitle files are a video player's; an audio load stays as it was.
+    if (this._status.video != null) normalized.subtitleSession = session;
   }
 
   /** Starts or resumes playback (re-opens live streams at the live edge when needed). */
@@ -372,9 +472,19 @@ export class Player {
     await this.run(() => native().reset(this.id));
   }
 
-  /** Seconds. Rejects with `NOT_SEEKABLE` for live streams. */
-  async seekTo(position: number): Promise<void> {
+  /**
+   * Seconds. Rejects with `NOT_SEEKABLE` for live streams. `exact`: to the
+   * frame (slower); by default the nearest keyframe is fine.
+   */
+  async seekTo(
+    position: number,
+    options: { exact?: boolean } = {}
+  ): Promise<void> {
     assertFinite('position', position);
+    if (options.exact === true) {
+      await this.video({ op: 'seek', position, exact: true });
+      return;
+    }
     await this.run(() => native().seekTo(this.id, position));
   }
 
@@ -456,10 +566,183 @@ export class Player {
     }
   }
 
+  // ── Video ──
+
+  /** Repeats a finite source from the start, seamlessly where the platform can. */
+  async setLoop(loop: boolean): Promise<void> {
+    await this.video({ op: 'loop', value: !!loop });
+  }
+
+  /** Pins a quality from `status.video.qualities`, or `'auto'`. */
+  async selectQuality(id: string): Promise<void> {
+    await this.video({ op: 'selectQuality', id: id === 'auto' ? null : id });
+  }
+
+  /** Plays an audio track from `status.video.tracks`, or `'auto'`. */
+  async selectAudioTrack(id: string): Promise<void> {
+    await this.video({ op: 'selectAudioTrack', id: id === 'auto' ? null : id });
+  }
+
+  /** Shows a text track from `status.video.tracks`; `null` turns subtitles off. */
+  async selectSubtitles(id: string | null): Promise<void> {
+    await this.video({ op: 'selectTextTrack', id });
+  }
+
+  /** Shows the subtitles `seconds` later (negative: earlier), to fix a file out of sync. */
+  async setSubtitleDelay(seconds: number): Promise<void> {
+    assertFinite('seconds', seconds);
+    await this.video({ op: 'subtitleDelay', seconds });
+  }
+
+  /** Adds subtitle files to the current source. */
+  async addSubtitles(files: SubtitleSource[]): Promise<void> {
+    const tracks = subtitleTracks(files, this.subtitles.size);
+    await this.video({ op: 'addSubtitles', tracks: tracks.map((t) => t.info) });
+    this.subtitles.add(tracks, this.sourceHeaders);
+  }
+
+  /** Plays the sound alone (an audio-only variant or rendition where there is one). */
+  async setListenOnly(enabled: boolean): Promise<void> {
+    await this.video({ op: 'listenOnly', value: !!enabled });
+  }
+
+  /** The system's fullscreen player. `lockOrientation` holds the screen while it lasts. */
+  async presentFullscreen(
+    options: { lockOrientation?: 'landscape' | 'portrait' | false } = {}
+  ): Promise<void> {
+    await this.video({
+      op: 'fullscreen',
+      active: true,
+      lockOrientation: options.lockOrientation ?? false,
+    });
+  }
+
+  /** Closes the system's fullscreen player. */
+  async dismissFullscreen(): Promise<void> {
+    await this.video({ op: 'fullscreen', active: false });
+  }
+
+  /** Picture in Picture. Rejects with `INVALID_ARGUMENT` where the platform has none. */
+  async startPictureInPicture(): Promise<void> {
+    await this.video({ op: 'pictureInPicture', active: true });
+  }
+
+  /** Closes Picture in Picture (on Android, the app comes back to the front). */
+  async stopPictureInPicture(): Promise<void> {
+    await this.video({ op: 'pictureInPicture', active: false });
+  }
+
+  /** Start-up time, rebuffers, switches and the last bandwidth since `load()`. */
+  getStats(): PlaybackStats {
+    return native().getVideoStats(this.id) as PlaybackStats;
+  }
+
+  /** The seek-preview image for `time` (seconds) from `Source.thumbnails`, or `null`. */
+  async getThumbnail(time: number): Promise<Thumbnail | null> {
+    assertFinite('time', time);
+    return (await this.thumbnails?.at(time)) ?? null;
+  }
+
+  /** The subtitles on screen now (the `cues` event's latest). */
+  getCues(): SubtitleCue[] {
+    return this.cuesOnScreen;
+  }
+
+  /**
+   * The web: shows the picture in `element` (`null` takes it out). In React
+   * and React Native, use `<VideoView player={player} />`.
+   */
+  attachTo(
+    element: unknown,
+    options: {
+      contentFit?: 'contain' | 'cover' | 'fill';
+      /** The browser's own controls on the picture. */
+      nativeControls?: boolean;
+    } = {}
+  ): void {
+    this.ensureAlive();
+    const attach = host().attachVideo;
+    if (!attach) {
+      throw new PlayerError({
+        code: 'INVALID_ARGUMENT',
+        message:
+          'attachTo() is for web pages. In React Native, use <VideoView player={player} />.',
+        recoverable: false,
+      });
+    }
+    attach(
+      this.id,
+      element,
+      options.contentFit,
+      options.nativeControls === true
+    );
+  }
+
+  /**
+   * `<VideoView>`'s cleanup: the picture leaves `element` only if it is still
+   * there (a newer view keeps it), and goes back to the newest view left.
+   * @internal
+   */
+  detachFrom(element: unknown): void {
+    if (this.isReleased) return;
+    host().detachVideo?.(this.id, element);
+  }
+
+  private async video(command: Record<string, unknown>): Promise<void> {
+    await this.run(() => native().videoCommand(this.id, command));
+  }
+
+  /** The platform needs a license: the app's `drm.getLicense` answers. */
+  private async licenseRequested(event: LicenseRequestEvent): Promise<void> {
+    const hook = this.licenseHook;
+    const answer = hook
+      ? await answerLicense(hook, event)
+      : { error: 'The source has no drm.getLicense.' };
+    if (this.released) return;
+    await native()
+      .videoCommand(this.id, {
+        op: 'license',
+        requestId: event.requestId,
+        ...answer,
+      })
+      .catch(() => undefined);
+  }
+
+  /** The engine asks for a fresh source: the app's `refresh` answers. */
+  private async refreshRequested(
+    loadId: number,
+    reason: 'unauthorized' | 'expiring'
+  ): Promise<void> {
+    const refresh = this.refreshSource;
+    const load = this.loads;
+    const next = refresh ? await callRefresh(refresh, reason) : null;
+    if (this.released) return;
+    let source: Record<string, unknown> | null = null;
+    try {
+      if (next != null) source = normalizeSource(next as SourceInput);
+    } catch {
+      source = null;
+    }
+    // A refreshed source's own DRM hook answers from now on (unless a new
+    // source was loaded meanwhile).
+    const drm = source != null ? (next as Source).drm : undefined;
+    if (drm != null && this.loads === load) {
+      this.licenseHook = drm.getLicense ?? null;
+    }
+    const command =
+      source != null
+        ? { op: 'refreshed', loadId, source }
+        : { op: 'refreshFailed', loadId };
+    await native()
+      .videoCommand(this.id, command)
+      .catch(() => undefined);
+  }
+
   /** Stops playback and frees every native resource. The player is unusable afterwards. */
   async release(): Promise<void> {
     if (this.released) return;
     this.released = true;
+    this.subtitles.cancel();
     players.delete(this.id);
     try {
       await native().releasePlayer(this.id);
@@ -613,6 +896,21 @@ export class Player {
           timestamp: event.timestamp as number,
         });
         break;
+      case 'cues':
+        this.cuesOnScreen = event.cues as SubtitleCue[];
+        this.emit('cues', this.cuesOnScreen);
+        break;
+      case 'refreshRequest':
+        this.refreshRequested(
+          event.loadId as number,
+          event.reason as 'unauthorized' | 'expiring'
+        ).catch(() => undefined);
+        break;
+      case 'licenseRequest':
+        this.licenseRequested(event as unknown as LicenseRequestEvent).catch(
+          () => undefined
+        );
+        break;
       case 'audioSample':
         this.emit('audioSample', {
           waveform: event.waveform as number[],
@@ -647,6 +945,19 @@ export class Player {
       this.emit('stateChange', this._status.state, previous.state);
     if (!sameRoute(previous.route, this._status.route))
       this.emit('routeChange', this._status.route, previous.route);
+    this.emitVideoChanges(previous.video ?? null, this._status.video ?? null);
+  }
+
+  private emitVideoChanges(
+    previous: PlayerStatus['video'],
+    next: PlayerStatus['video']
+  ): void {
+    if (next == null) return;
+    if (next.firstFrame && !previous?.firstFrame) this.emit('firstFrame');
+    if (next.pictureInPicture !== (previous?.pictureInPicture ?? false))
+      this.emit('pictureInPictureChange', next.pictureInPicture);
+    if (next.fullscreen !== (previous?.fullscreen ?? false))
+      this.emit('fullscreenChange', next.fullscreen);
   }
 
   private ensureAlive(): void {

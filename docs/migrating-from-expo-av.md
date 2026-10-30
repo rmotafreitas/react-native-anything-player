@@ -2,7 +2,7 @@
 
 This guide moves audio playback from `expo-av` (`Audio.Sound`) to RNAP. It was written against `expo-av` 16.0.8, read from its published npm package. Its changelog records that Expo AV is deprecated ("Expo AV has now been deprecated"), and that its `Video` component carries a deprecation warning.
 
-RNAP is an audio player. It does not record and it does not play video, so those parts of expo-av need another library ([below](#what-differs-or-is-missing)).
+This guide covers audio. RNAP does not record, so that part of expo-av needs another library. RNAP has an opt-in [video module](video.md), but it is not a drop-in for the `Video` component ([below](#what-differs-or-is-missing)).
 
 ## Why switch
 
@@ -11,7 +11,7 @@ RNAP is an audio player. It does not record and it does not play video, so those
 - **Real background playback.** expo-av's `staysActiveInBackground` is a flag on the audio mode. RNAP runs a media foreground service on Android and keeps recovering on iOS while the app is in the background ([background playback](background-and-system.md#background-playback)).
 - **Radio metadata.** expo-av's `setOnMetadataUpdate` is iOS-only and carries a `title` and nothing else (`AVMetadata`). RNAP publishes ICY title, artist, station and genre on both platforms, when they are *heard* ([internet radio](internet-radio.md)).
 
-> **Licence.** expo-av is MIT. RNAP is PolyForm Noncommercial: free for personal, educational, non-profit and other noncommercial use, and it needs a commercial licence otherwise ([roadmap, P0 licence](roadmap.md#p0-—-adoption-blockers), [COMMERCIAL.md](../COMMERCIAL.md)). Check which applies to you before you move. If you are leaving expo-av because it is deprecated, [expo-audio](migrating-from-expo-audio.md) is its MIT successor.
+> **Licence.** expo-av is MIT. RNAP is PolyForm Noncommercial: free for personal, educational, non-profit and other noncommercial use, and it needs a commercial licence otherwise ([roadmap, P0 licence](roadmap.md#p0-adoption-blockers), [COMMERCIAL.md](../COMMERCIAL.md)). Check which applies to you before you move. If you are leaving expo-av because it is deprecated, [expo-audio](migrating-from-expo-audio.md) is its MIT successor.
 
 ## Install and setup
 
@@ -67,7 +67,7 @@ You do not unload on unmount. Call `player.release()` only when you are done wit
 | `sound.setVolumeAsync(volume, audioPan)` | `player.setVolume(volume)`; no pan |
 | `status.isMuted` / `setStatusAsync({ isMuted })` | `player.setMuted(bool)` |
 | `sound.setRateAsync(rate, shouldCorrectPitch, quality)` | `player.setRate(rate)`; no pitch options |
-| `sound.setIsLoopingAsync(bool)` | none. `player.on('ended', () => player.play())` restarts a finished file |
+| `sound.setIsLoopingAsync(bool)` | `player.setLoop(bool)` |
 | `sound.setProgressUpdateIntervalAsync(ms)` | `useProgress(player, ms)`, or `new Player({ progressInterval })` for native `progress` events |
 | `sound.getStatusAsync()` | `player.status` (synchronous), `player.getProgress()` |
 | `sound.unloadAsync()` | `player.reset()` unloads; `player.release()` frees the player |
@@ -76,8 +76,8 @@ You do not unload on unmount. Call `player.release()` only when you are done wit
 | `sound.setOnAudioSampleReceived(fn)` | `player.setAudioSampling({ enabled: true })` and the `audioSample` event ([visualizer](visualizer.md)) |
 | `Audio.setIsEnabledAsync(false)` | none; `player.pause()` or `player.release()` |
 | `Audio.setAudioModeAsync(mode)` | constructor options, see [below](#audio-mode) |
-| `Audio.Recording` | none: recording is [out of scope](roadmap.md#p2-—-platform-reach) |
-| `Video` component | none: RNAP plays audio only |
+| `Audio.Recording` | none: recording is [out of scope](roadmap.md#p2-platform-reach) |
+| `Video` component | `<VideoView>` from the opt-in [video module](video.md) |
 
 ## Status and events
 
@@ -190,11 +190,11 @@ player.on('error', (error, { fatal }) => { if (fatal) showToast(error.message); 
 
 ## What differs or is missing
 
-- **Recording** (`Audio.Recording`): out of scope. RNAP stays a player to stay small. Use `expo-audio` or `react-native-audio-api` for recording ([roadmap](roadmap.md#p2-—-platform-reach)).
-- **Video** (the `Video` component): RNAP plays audio only. Use a video library for that.
+- **Recording** (`Audio.Recording`): out of scope. RNAP stays a player to stay small. Use `expo-audio` or `react-native-audio-api` for recording ([roadmap](roadmap.md#p2-platform-reach)).
+- **Video** (the `Video` component): this guide covers the audio half of expo-av. RNAP has an opt-in [video module](video.md); it is not a drop-in for the `Video` component.
 - **Several `Sound` objects.** RNAP can run several players, but the lock screen shows the most recently started one ([several players](playback.md#several-players)). For short effects and UI clicks, use the [Sound API](sound.md) instead: it preloads, plays many copies at once with volume, rate, pan and loop, and mixes with other audio without a media session.
 - **No queue.** expo-av never had one; if you built a playlist on top of it, the same pattern works: load the next item on `ended` ([details and limits](migrating-from-track-player.md#the-queue-is-the-big-difference)).
-- **No looping, pan or pitch control.**
+- **No pan or pitch control** on a `Player` (the [Sound API](sound.md) has pan).
 - **Seconds, not milliseconds.** Every position, duration and start offset.
 - **`await` order.** Commands are applied in call order and their promises resolve after the status changed. `play()` rejects with `AUDIO_FOCUS_DENIED` during a call.
 - **`downloadFirst`.** expo-av downloads a remote file before playing by default (`downloadFirst = true`). RNAP streams it. For offline playback, download the file yourself and load the `file://` URI.

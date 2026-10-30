@@ -28,14 +28,18 @@ const TYPES = {
   '.png': 'image/png',
   '.ico': 'image/x-icon',
   '.mp3': 'audio/mpeg',
+  '.mp4': 'video/mp4',
 };
 
 /** hls.js, from node_modules: the example's HLS player outside Safari (an app would bundle it). */
 const HLS_JS = join(root, 'node_modules', 'hls.js', 'dist', 'hls.min.js');
+/** Shaka Player, from node_modules: the example's DASH player (an app would bundle it). */
+const SHAKA_JS = join(root, 'node_modules', 'shaka-player', 'dist', 'shaka-player.compiled.js');
 
 /** `/lib/…` is the built library; everything else is this folder (or `site`). */
 function resolve(pathname) {
   if (!site && pathname === '/vendor/hls.min.js') return HLS_JS;
+  if (!site && pathname === '/vendor/shaka-player.compiled.js') return SHAKA_JS;
   if (site) {
     const file = normalize(join(site, decodeURIComponent(pathname.slice(1)) || 'index.html'));
     return file.startsWith(site + sep) ? file : null;

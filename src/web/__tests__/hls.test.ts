@@ -261,15 +261,21 @@ describe('where it does not', () => {
     expect(status(id)).toMatchObject({ isLive: true });
   });
 
-  it('applies the start position of an on-demand playlist', async () => {
+  it('starts hls.js at the start position, with no seek of its own (#57)', async () => {
     const id = module.createPlayer({});
     const loading = module.load(id, { uri: URI }, { startPosition: 30 });
     await flush();
+    expect(FakeHls.last().config.startPosition).toBe(30);
     FakeHls.last().level(false, 90);
     world.element().becomeReady(90);
     await flush();
     await loading;
-    expect(world.element().currentTime).toBe(30);
+    expect(world.element().currentTime).toBe(0);
+  });
+
+  it('gives hls.js no start position from the beginning', async () => {
+    await open();
+    expect(FakeHls.last().config.startPosition).toBeUndefined();
   });
 
   it('notes the manifest', async () => {

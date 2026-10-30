@@ -38,6 +38,8 @@ test('info --json has versions, modules and the doctor summary', (t) => {
     'siri',
     'sound',
     'car',
+    'video',
+    'video-decoders',
   ]);
   assert.equal(result.json.doctor.ok, true);
   assert.deepEqual(result.json.doctor.summary, {

@@ -27,6 +27,8 @@ test('every module has an id, a description, a platform and a docs anchor', () =
     'background-audio',
     'sound',
     'car',
+    'video',
+    'video-decoders',
   ]);
   for (const id of MODULE_IDS) {
     const module = findModule(id);
@@ -41,7 +43,16 @@ test('every module has an id, a description, a platform and a docs anchor', () =
 test('the Expo plugin options come from the registry', () => {
   assert.deepEqual(
     expoOptions().map((option) => option.key),
-    ['cast', 'siri', 'assistant', 'backgroundAudio', 'sound', 'car']
+    [
+      'cast',
+      'siri',
+      'assistant',
+      'backgroundAudio',
+      'sound',
+      'car',
+      'video',
+      'videoDecoders',
+    ]
   );
 });
 
@@ -58,7 +69,7 @@ test('modules lists every module and where its state comes from', (t) => {
     android: true,
   });
   assert.equal(result.json.summary.on, 3);
-  assert.equal(result.json.summary.total, 7);
+  assert.equal(result.json.summary.total, 9);
 
   const hls = byId(result.json, 'hls');
   assert.equal(hls.effective, true);
@@ -69,7 +80,7 @@ test('modules lists every module and where its state comes from', (t) => {
   const cast = byId(result.json, 'cast');
   assert.equal(cast.effective, false);
   assert.equal(cast.source, 'default');
-  assert.deepEqual(cast.size, { r8: 1467731, noR8: 7391451 });
+  assert.deepEqual(cast.size, { r8: 1484123, noR8: 7391455 });
 
   // iOS-only modules still carry their platform note.
   assert.equal(byId(result.json, 'siri').size, null);
@@ -89,7 +100,7 @@ test('modules prints the one-line summary and the next commands', (t) => {
   const root = bareGood(t);
   const result = runCli(['modules'], { cwd: root });
   assert.equal(result.status, 0);
-  assert.match(result.stdout, /3 of 7 on/);
+  assert.match(result.stdout, /3 of 9 on/);
   assert.match(result.stdout, /npx rnap add <module>/);
   assert.match(result.stdout, /npx rnap size/);
   assert.match(result.stdout, /64 KB of the default build/);
@@ -270,6 +281,20 @@ test('sound is a build switch on both platforms, like cast', (t) => {
   });
   const again = runCli(['remove', 'sound', '--yes'], { cwd: root });
   assert.match(again.stdout, /sound is already off in this project/);
+});
+
+test('a list of software decoders counts as on', (t) => {
+  const root = bareGood(t);
+  fs.appendFileSync(
+    path.join(root, 'android/gradle.properties'),
+    'rnapVideoDecoders=ffmpeg,av1\n'
+  );
+  const decoders = byId(
+    runCli(['modules', '--json'], { cwd: root }).json,
+    'video-decoders'
+  );
+  assert.equal(decoders.effective, true);
+  assert.equal(decoders.source, 'android/gradle.properties');
 });
 
 test('car switches Android Auto and CarPlay, and prints the CarPlay steps', (t) => {

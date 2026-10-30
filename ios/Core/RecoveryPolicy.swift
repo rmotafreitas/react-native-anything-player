@@ -36,6 +36,12 @@ enum RecoveryPolicy {
   static let suspectStallDeadMs: Int64 = 1_500
   /// A stall that trickles data but never recovers is re-opened after this.
   static let stallMaxMs: Int64 = 20_000
+  /// A stall this close to a file's end (seconds), with the rest buffered, is
+  /// its end: nothing more will come.
+  static let endSlackS = 0.1
+  /// A playhead that advances this far (seconds), at about the playback rate,
+  /// while the platform still says buffering: it is playing.
+  static let playheadProofS: Double = 1.5
 
   /// How long after a connectivity edge the link is treated as suspect.
   static let networkSuspectMs: Int64 = 20_000
@@ -62,6 +68,39 @@ enum RecoveryPolicy {
 
   /// How often a fade (play, pause, stop, `fadeTo`, the sleep timer) updates the volume.
   static let fadeTickMs: Int64 = 50
+
+  // MARK: Video
+
+  /// A player without a view this long stops decoding the picture (a move between views keeps it).
+  static let viewDetachGraceMs: Int64 = 1_000
+  /// In the background, Picture in Picture may start (or the app return) this long after the event.
+  static let pipGraceMs: Int64 = 1_000
+  /// A quality switch's new file must play within this, or the switch is dropped.
+  static let swapTimeoutMs: Int64 = 12_000
+  /// A rendition that failed is not picked again for this long.
+  static let failedRenditionMs: Int64 = 60_000
+  /// How long a 401/403 waits for the app's new source before the backoff takes over.
+  static let refreshTimeoutMs: Int64 = 10_000
+  /// A source with `expiresAt` asks for a new one this long ahead.
+  static let refreshAheadMs: Int64 = 60_000
+  /// Automatic quality: a rendition fits a bandwidth this many times its bitrate.
+  static let abrFitRatio = 0.7
+  /// A stall steps down when the bandwidth is under this × the current bitrate.
+  static let abrStallRatio = 1.2
+  /// The bandwidth under the current bitrate for this long steps down.
+  static let abrLowMs: Int64 = 10_000
+  /// The bandwidth above this × the next bitrate…
+  static let abrUpRatio = 1.5
+  /// …for this long steps up (and as long after any switch or stall).
+  static let abrUpMs: Int64 = 30_000
+  /// Two stalls in this window step down whatever the bandwidth.
+  static let abrStallWindowMs: Int64 = 30_000
+  /// Data Saver, Low Data Mode, `saveData`: the highest picture.
+  static let dataSaverMaxHeight = 480
+  /// Automatic start with no bandwidth reading: the lowest rendition at least this high.
+  static let startMinHeight = 480
+  /// Audio-only fallback without bandwidth readings: try the picture again after this long without a stall.
+  static let fallbackProbeMs: Int64 = 60_000
 }
 
 /// App-configurable recovery knobs (`PlayerOptions` in TS).
@@ -79,6 +118,82 @@ struct EngineOptions: Equatable {
   var fadeInMs: Int64 = 0
   /// Fade-out before a pause or a stop, and the sleep timer's default (`0` = none).
   var fadeOutMs: Int64 = 0
+  /// A video player's rules; `nil` for an audio player.
+  var video: VideoEngineOptions? = nil
+}
+
+/// What a video player does when the app goes to the background.
+enum BackgroundMode: String {
+  case pause
+  case audio
+  case pip
+}
+
+/// Where automatic quality starts (`PlayerOptions.video.quality.startQuality`).
+enum StartQuality: Equatable {
+  case auto
+  case lowest
+  case highest
+  /// The tallest at or below this height.
+  case height(Int)
+}
+
+/// Quality caps (`PlayerOptions.video.quality`).
+struct QualityPolicy: Equatable {
+  var maxHeight: Int? = nil
+  var maxBitrate: Int64? = nil
+  var cellularMaxHeight: Int? = nil
+  var cellularMaxBitrate: Int64? = nil
+  var startQuality: StartQuality = .auto
+  /// Data Saver, Low Data Mode, `saveData`: at most 480p.
+  var followDataSaver = true
+  /// Never more pixels than the view shows.
+  var capToView = true
+}
+
+/// The audio-only fallback's thresholds (`fallbackToAudio`).
+struct FallbackPolicy: Equatable {
+  /// Drop when the bandwidth stays under this × the lowest video quality…
+  var dropBelowRatio = 1.2
+  /// …for this long.
+  var dropAfterMs: Int64 = 10_000
+  /// Or after this many stalls…
+  var dropAfterStalls = 2
+  /// …within this window.
+  var stallWindowMs: Int64 = 30_000
+  /// Return when the bandwidth stays above this × the lowest video quality…
+  var returnAboveRatio = 1.5
+  /// …for this long.
+  var returnAfterMs: Int64 = 30_000
+}
+
+/// A video player's engine rules (`EngineOptions.video`).
+struct VideoEngineOptions: Equatable {
+  var whenBackgrounded: BackgroundMode = .pause
+  /// Decorative: no focus, no media session, paused off screen and in the background.
+  var ambient = false
+  var keepAwake = true
+  var focusWhenMuted = false
+  /// `nil`: no audio-only fallback.
+  var fallback: FallbackPolicy? = nil
+  var quality = QualityPolicy()
+  var tracks = TrackPolicy()
+}
+
+/// How the starting audio and text tracks are chosen (`PlayerOptions.video.tracks`).
+struct TrackPolicy: Equatable {
+  /// The user's languages, in order.
+  var languages: [String] = []
+  /// Follow the OS's captions and audio-description settings.
+  var followSystem = true
+}
+
+/// What the OS says about the user (`systemPreferencesChanged`).
+struct SystemPreferences: Equatable {
+  /// The device's languages, in order.
+  var languages: [String] = []
+  var captions = false
+  var audioDescriptions = false
 }
 
 /// Deterministic exponential backoff with injectable jitter.

@@ -45,17 +45,28 @@ export function deriveSizeData(apk, size) {
   // HLS is on in the default entry: what turning it off saves.
   if (base && noHls)
     modules.hls = { r8: base.r8 - noHls.r8, noR8: base.noR8 - noHls.noR8 };
-  // Cast, Sound and Car are off in the default entry: what turning one on adds.
-  // A module with no entry in the APK run is reported as not measured.
+  // Cast, Sound, Car and video are off in the default entry: what turning one
+  // on adds. A module with no entry in the APK run is reported as not measured.
   for (const [id, entryId] of [
     ['cast', 'rnapCast'],
     ['sound', 'rnapSound'],
     ['car', 'rnapCar'],
+    ['video', 'rnapVideo'],
   ]) {
     const entry = apkBytes(apk.libraries.find((item) => item.id === entryId));
     if (base && entry)
       modules[id] = { r8: entry.r8 - base.r8, noR8: entry.noR8 - base.noR8 };
   }
+  // The software decoders come with video: what they add to it.
+  const video = apkBytes(apk.libraries.find((item) => item.id === 'rnapVideo'));
+  const decoders = apkBytes(
+    apk.libraries.find((item) => item.id === 'rnapVideoDecoders')
+  );
+  if (video && decoders)
+    modules['video-decoders'] = {
+      r8: decoders.r8 - video.r8,
+      noR8: decoders.noR8 - video.noR8,
+    };
 
   const web = [];
   for (const page of size.web ?? []) {

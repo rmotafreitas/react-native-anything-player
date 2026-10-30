@@ -19,6 +19,7 @@ import type {
   FocusResult,
   OpenRequest,
   PlaybackSample,
+  QualityConstraints,
 } from '../engine/types';
 
 /** The fake wall clock reads this at monotonic 0. */
@@ -32,10 +33,12 @@ export class FakeClock implements EngineClock {
   }
 }
 
-export type Motion = 'flowing' | 'frozen' | 'trickle';
+/** `loaded`: the whole file is buffered: the playhead advances, the buffer stays where it is. */
+export type Motion = 'flowing' | 'frozen' | 'trickle' | 'loaded';
 
 const f1 = (v: number) => v.toFixed(1);
 const f2 = (v: number) => v.toFixed(2);
+const orDash = (v: number | string | null) => (v == null ? '-' : `${v}`);
 
 /** Records every driver call and simulates a playhead. */
 export class FakeDriver implements EngineDriver {
@@ -48,13 +51,16 @@ export class FakeDriver implements EngineDriver {
   private anchorTime = 0;
   private anchorPosition = 0;
   private anchorBuffered = 0;
+  /** The item an `open({ swap: true })` is preparing, and where it starts. */
+  swapGeneration: number | null = null;
+  private swapStart = 0;
 
   constructor(private readonly clock: FakeClock) {}
 
-  setMotion(next: Motion): void {
+  setMotion(next: Motion, buffered?: number): void {
     const current = this.sample();
     this.anchorPosition = current.position;
-    this.anchorBuffered = current.bufferedPosition;
+    this.anchorBuffered = buffered ?? current.bufferedPosition;
     this.anchorTime = this.clock.monotonicMs;
     this.motion = next;
     if (next === 'flowing')
@@ -84,6 +90,11 @@ export class FakeDriver implements EngineDriver {
           position: this.anchorPosition,
           bufferedPosition: this.anchorBuffered + elapsed * 0.5,
         };
+      case 'loaded':
+        return {
+          position: this.anchorPosition + elapsed,
+          bufferedPosition: this.anchorBuffered,
+        };
       default:
         return {
           position: this.anchorPosition,
@@ -95,9 +106,19 @@ export class FakeDriver implements EngineDriver {
   open(request: OpenRequest): void {
     const start =
       request.startPosition != null ? f1(request.startPosition) : '-';
+    const rendition =
+      request.rendition != null ? `,r=${request.rendition}` : '';
+    const swap = request.swap === true ? ',swap' : '';
     this.commands.push(
-      `open(gen=${request.generation},start=${start},play=${request.playWhenReady})`
+      `open(gen=${request.generation},start=${start},play=${request.playWhenReady}${rendition}${swap})`
     );
+    if (request.swap === true) {
+      // Prepared behind the current item: its playhead is not this one's.
+      this.swapGeneration = request.generation;
+      this.swapStart = request.startPosition ?? 0;
+      return;
+    }
+    this.swapGeneration = null;
     this.anchorPosition = request.startPosition ?? 0;
     this.anchorBuffered = this.anchorPosition;
     this.anchorTime = this.clock.monotonicMs;
@@ -126,8 +147,8 @@ export class FakeDriver implements EngineDriver {
     this.commands.push('pause');
   }
 
-  seek(seconds: number): void {
-    this.commands.push(`seek(${f1(seconds)})`);
+  seek(seconds: number, exact?: boolean): void {
+    this.commands.push(`seek(${f1(seconds)}${exact === true ? ',exact' : ''})`);
     this.setPosition(seconds);
   }
 
@@ -145,6 +166,38 @@ export class FakeDriver implements EngineDriver {
 
   setRate(rate: number): void {
     this.commands.push(`rate(${f2(rate)})`);
+  }
+
+  setVideoEnabled(enabled: boolean): void {
+    this.commands.push(`video(${enabled ? 'on' : 'off'})`);
+  }
+
+  setQuality(c: QualityConstraints): void {
+    this.commands.push(
+      `quality(maxH=${orDash(c.maxHeight)},maxBps=${orDash(c.maxBitrate)},pin=${orDash(c.pinned)},audioOnly=${c.audioOnly})`
+    );
+  }
+
+  setLoop(loop: boolean): void {
+    this.commands.push(`loop(${loop})`);
+  }
+
+  selectTracks(audio: string | null, text: string | null): void {
+    this.commands.push(`tracks(audio=${orDash(audio)},text=${orDash(text)})`);
+  }
+
+  cancelSwap(generation: number): void {
+    this.commands.push(`cancelSwap(gen=${generation})`);
+    if (this.swapGeneration === generation) this.swapGeneration = null;
+  }
+
+  /** The swap's item shows its first frame: its playhead becomes the one. */
+  completeSwap(): void {
+    this.swapGeneration = null;
+    this.anchorPosition = this.swapStart;
+    this.anchorBuffered = this.swapStart + 10;
+    this.anchorTime = this.clock.monotonicMs;
+    this.motion = 'flowing';
   }
 
   switchOutput(outputId: string): void {
@@ -167,6 +220,8 @@ export class Recorder implements EngineDelegate {
   fades = 0;
   diagnostics: EngineDiagnostic[] = [];
   wakeupAt: number | null = null;
+  /** Source refreshes asked for, `loadId:reason`. */
+  refreshes: string[] = [];
   /** Ordering invariant breaches (an event delivered before its status). */
   violations: string[] = [];
 
@@ -220,6 +275,13 @@ export class Recorder implements EngineDelegate {
 
   engineWakeupAt(at: number | null): void {
     this.wakeupAt = at;
+  }
+
+  engineRequestsSourceRefresh(
+    loadId: number,
+    reason: 'unauthorized' | 'expiring'
+  ): void {
+    this.refreshes.push(`${loadId}:${reason}`);
   }
 }
 

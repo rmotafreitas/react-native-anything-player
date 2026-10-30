@@ -8,6 +8,18 @@ import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
 
+/** A track from a fixture (shared with `SubtitleTest`). */
+internal fun track(t: JSONObject): MediaTrack =
+  MediaTrack(
+    id = t.getString("id"),
+    kind = TrackKind.fromWire(t.getString("kind")),
+    language = if (t.has("language") && !t.isNull("language")) t.getString("language") else null,
+    forced = t.optBoolean("forced", false),
+    isDefault = t.optBoolean("default", false),
+    sdh = t.optBoolean("sdh", false),
+    describesVideo = t.optBoolean("describesVideo", false),
+  )
+
 /** Runs every scenario in the `conformance` JSON files (shared with the Swift engine). */
 class ConformanceTest {
   companion object {
@@ -50,12 +62,84 @@ class ConformanceTest {
       if (o.has("liveMaxDriftMs")) options = options.copy(liveMaxDriftMs = o.getLong("liveMaxDriftMs"))
       if (o.has("fadeInMs")) options = options.copy(fadeInMs = o.getLong("fadeInMs"))
       if (o.has("fadeOutMs")) options = options.copy(fadeOutMs = o.getLong("fadeOutMs"))
+      if (o.has("video")) options = options.copy(video = videoOptions(o.get("video")))
     }
     val h = EngineHarness(options)
     val steps = scenario.getJSONArray("steps")
     for (i in 0 until steps.length()) apply(steps.getJSONObject(i), h, "$name [step $i]")
     assertEquals("$name: event ordering", emptyList<String>(), h.recorder.violations)
   }
+
+  /** `"video": true` or partial `VideoEngineOptions` (`"fallback": true` takes its defaults). */
+  private fun videoOptions(value: Any): VideoEngineOptions {
+    val o = value as? JSONObject ?: return VideoEngineOptions()
+    val fallback =
+      when (val f = o.opt("fallback")) {
+        true -> FallbackPolicy()
+        is JSONObject -> FallbackPolicy(dropAfterMs = f.optLong("dropAfterMs", 10_000L))
+        else -> null
+      }
+    val q = o.optJSONObject("quality") ?: JSONObject()
+    val start =
+      when (val v = q.opt("startQuality")) {
+        "lowest" -> StartQuality.Lowest
+        "highest" -> StartQuality.Highest
+        is Number -> StartQuality.Height(v.toInt())
+        else -> StartQuality.Auto
+      }
+    val t = o.optJSONObject("tracks") ?: JSONObject()
+    return VideoEngineOptions(
+      tracks = TrackPolicy(strings(t.optJSONArray("languages")), t.optBoolean("followSystem", true)),
+      whenBackgrounded = BackgroundMode.fromWire(o.optString("whenBackgrounded", "pause")),
+      ambient = o.optBoolean("ambient", false),
+      keepAwake = o.optBoolean("keepAwake", true),
+      focusWhenMuted = o.optBoolean("focusWhenMuted", false),
+      fallback = fallback,
+      quality =
+        QualityPolicy(
+          maxHeight = intOrNull(q, "maxHeight"),
+          maxBitrate = longOrNull(q, "maxBitrate"),
+          cellularMaxHeight = intOrNull(q, "cellularMaxHeight"),
+          cellularMaxBitrate = longOrNull(q, "cellularMaxBitrate"),
+          startQuality = start,
+          followDataSaver = q.optBoolean("followDataSaver", true),
+          capToView = q.optBoolean("capToView", true),
+        ),
+    )
+  }
+
+  private fun intOrNull(o: JSONObject, key: String): Int? = if (o.has(key) && !o.isNull(key)) o.getInt(key) else null
+
+  private fun longOrNull(o: JSONObject, key: String): Long? = if (o.has(key) && !o.isNull(key)) o.getLong(key) else null
+
+  private fun renditions(value: JSONArray?): List<Rendition>? =
+    value?.let { array ->
+      (0 until array.length()).map {
+        val r = array.getJSONObject(it)
+        Rendition(r.getString("uri"), null, intOrNull(r, "height"), longOrNull(r, "bitrate"), null, r.optBoolean("audioOnly", false))
+      }
+    }
+
+  private fun strings(array: JSONArray?): List<String> =
+    if (array == null) emptyList() else (0 until array.length()).map { array.getString(it) }
+
+  private fun tracks(array: JSONArray): List<MediaTrack> = (0 until array.length()).map { track(array.getJSONObject(it)) }
+
+  private fun variants(array: JSONArray): List<VideoVariant> =
+    (0 until array.length()).map {
+      val v = array.getJSONObject(it)
+      VideoVariant(v.getString("id"), intOrNull(v, "height"), longOrNull(v, "bitrate"), v.optBoolean("audioOnly", false))
+    }
+
+  private fun source(step: JSONObject, h: EngineHarness, refreshable: Boolean) =
+    SourceDescriptor(
+      step.getString("uri"),
+      emptyMap(),
+      if (step.has("live")) step.getBoolean("live") else null,
+      renditions = renditions(step.optJSONArray("renditions")),
+      refreshable = refreshable,
+      expiresAt = longOrNull(step, "expiresIn")?.let { h.clock.wallMs + it },
+    )
 
   private fun apply(step: JSONObject, h: EngineHarness, at: String) {
     when {
@@ -82,6 +166,11 @@ class ConformanceTest {
           gen = if (g == "prev") h.engine.generation - 1 else (g as Number).toInt()
         }
         val accepted = h.engine.accepts(gen)
+        if (step.getString("native") == "playing" && gen == h.driver.swapGeneration) {
+          h.driver.completeSwap()
+          h.engine.onPlaying(gen)
+          return
+        }
         when (val native = step.getString("native")) {
           "ready" ->
             h.engine.onReady(
@@ -107,8 +196,22 @@ class ConformanceTest {
           "failed" -> {
             if (accepted) h.driver.setMotion(FakeDriver.Motion.FROZEN)
             val code = ErrorCode.fromWire(step.getString("code")) ?: error("$at: bad code")
-            h.engine.onFailed(gen, PlayerError(code, "test", step.optBoolean("recoverable", false)))
+            h.engine.onFailed(
+              gen,
+              PlayerError(code, "test", step.optBoolean("recoverable", false), httpStatus = intOrNull(step, "httpStatus")),
+            )
           }
+          "bandwidth" -> h.engine.onBandwidth(gen, step.getDouble("bps"))
+          "variants" -> h.engine.onVariants(gen, variants(step.getJSONArray("variants")))
+          "videoInfo" ->
+            h.engine.onVideoInfo(
+              gen,
+              VideoInfo(step.getInt("width"), step.getInt("height"), step.optBoolean("hdr", false), text(step, "variant")),
+            )
+          "firstFrame" -> h.engine.onFirstFrame(gen)
+          "tracks" -> h.engine.onTracks(gen, tracks(step.getJSONArray("tracks")))
+          "renditionInfo" ->
+            h.engine.renditionInfo(step.getInt("index"), intOrNull(step, "height"), longOrNull(step, "bitrate"))
           "pausedExternally" ->
             h.engine.onPausedExternally(gen, InterruptionReason.fromWire(step.optString("reason")) ?: InterruptionReason.SYSTEM)
           else -> fail("$at: unknown native step $native")
@@ -119,6 +222,7 @@ class ConformanceTest {
           "flowing" -> h.driver.setMotion(FakeDriver.Motion.FLOWING)
           "frozen" -> h.driver.setMotion(FakeDriver.Motion.FROZEN)
           "trickle" -> h.driver.setMotion(FakeDriver.Motion.TRICKLE)
+          "loaded" -> h.driver.setMotion(FakeDriver.Motion.LOADED, step.optDouble("value", 0.0))
           "reentrant" -> h.driver.reentrant = true
           "position" -> h.driver.setPosition(step.optDouble("value", 0.0))
           else -> fail("$at: unknown driver step $d")
@@ -145,6 +249,24 @@ class ConformanceTest {
           text(step, "name"),
         ),
       )
+      step.has("view") -> {
+        val v = step.getJSONObject("view")
+        h.engine.viewChanged(
+          ViewState(v.optBoolean("attached", true), v.optBoolean("visible", true), v.optInt("width", 0), v.optInt("height", 0)),
+        )
+      }
+      step.has("pip") -> h.engine.pictureInPictureChanged(step.getBoolean("pip"))
+      step.has("system") -> {
+        val p = step.getJSONObject("system")
+        h.engine.systemPreferencesChanged(
+          SystemPreferences(strings(p.optJSONArray("languages")), p.optBoolean("captions", false), p.optBoolean("audioDescriptions", false)),
+        )
+      }
+      step.has("fullscreen") -> h.engine.fullscreenChanged(step.getBoolean("fullscreen"))
+      step.has("networkCost") -> {
+        val c = step.getJSONObject("networkCost")
+        h.engine.networkCostChanged(c.optBoolean("metered", false), c.optBoolean("saveData", false))
+      }
       step.has("platformReset") -> h.engine.platformReset()
       step.has("advance") -> h.advance(step.getLong("advance"))
       step.has("expect") -> check(step.getJSONObject("expect"), h, at)
@@ -157,16 +279,26 @@ class ConformanceTest {
     when (call) {
       "load" ->
         h.engine.load(
-          SourceDescriptor(step.getString("uri"), emptyMap(), if (step.has("live")) step.getBoolean("live") else null),
+          source(step, h, step.optBoolean("refreshable", false)),
           if (step.has("autoplay")) step.getBoolean("autoplay") else null,
           if (step.has("start")) step.getDouble("start") else null,
         )
+      "background" -> h.engine.appBackgrounded()
+      "selectQuality" -> h.engine.selectQuality(text(step, "id"))
+      "listenOnly" -> h.engine.setListenOnly(step.optBoolean("value", false))
+      "loop" -> h.engine.setLoop(step.optBoolean("value", false))
+      "sourceRefreshed" -> h.engine.sourceRefreshed(h.engine.loadId, source(step, h, true))
+      "sourceRefreshFailed" -> h.engine.sourceRefreshFailed(h.engine.loadId)
+      "appTracks" -> h.engine.setAppTracks(tracks(step.getJSONArray("tracks")))
+      "selectAudioTrack" -> h.engine.selectAudioTrack(text(step, "id"))
+      "selectTextTrack" -> h.engine.selectTextTrack(text(step, "id"))
+      "subtitleDelay" -> h.engine.setSubtitleDelay(value)
       "play" -> h.engine.play()
       "pause" -> h.engine.pause()
       "stop" -> h.engine.stop()
       "reset" -> h.engine.reset()
       "release" -> h.engine.release()
-      "seek" -> h.engine.seek(value)
+      "seek" -> h.engine.seek(value, step.optBoolean("exact", false))
       "volume" -> h.engine.setVolume(value)
       "muted" -> h.engine.setMuted(step.optBoolean("value", false))
       "rate" -> h.engine.setRate(value)
@@ -242,6 +374,12 @@ class ConformanceTest {
         "sleeps" -> assertEquals("$at: sleeps", (v as Number).toInt(), h.recorder.sleeps)
         "fades" -> assertEquals("$at: fades", (v as Number).toInt(), h.recorder.fades)
         "orderedCommands" -> orderedCommands(at, stringList(v as JSONArray), h.driver.commands)
+        "video" -> videoExpect(at, s.video, v as JSONObject?)
+        "wantsMediaSession" -> assertEquals("$at: wantsMediaSession", v, h.engine.wantsMediaSession)
+        "wantsScreenAwake" -> assertEquals("$at: wantsScreenAwake", v, h.engine.wantsScreenAwake)
+        "refreshes" -> assertEquals("$at: refreshes", stringList(v as JSONArray), h.recorder.refreshes)
+        "gen" -> assertEquals("$at: gen", (v as Number).toInt(), h.engine.generation)
+        "stats" -> statsExpect(at, h.engine.stats, v as JSONObject)
         else -> fail("$at: unknown expectation $key")
       }
     }
@@ -251,5 +389,50 @@ class ConformanceTest {
     h.recorder.ended = 0
     h.recorder.sleeps = 0
     h.recorder.fades = 0
+    h.recorder.refreshes.clear()
+  }
+
+  /** Compares the listed `status.video` fields (`qualities` as their ids). */
+  private fun videoExpect(at: String, video: VideoStatus?, expected: JSONObject?) {
+    if (expected == null) return assertEquals("$at: video", null, video)
+    if (video == null) fail("$at: no status.video")
+    val vs = video!!
+    for (key in expected.keys()) {
+      val want = nullable(expected, key)
+      val label = "$at: video.$key"
+      when (key) {
+        "width" -> assertEquals(label, (want as Number?)?.toInt(), vs.width)
+        "height" -> assertEquals(label, (want as Number?)?.toInt(), vs.height)
+        "hdr" -> assertEquals(label, want, vs.hdr)
+        "firstFrame" -> assertEquals(label, want, vs.firstFrame)
+        "audioOnly" -> assertEquals(label, want, vs.audioOnly?.wire)
+        "pictureInPicture" -> assertEquals(label, want, vs.pictureInPicture)
+        "quality" -> assertEquals(label, want, vs.quality)
+        "selectedQuality" -> assertEquals(label, want, vs.selectedQuality)
+        "qualities" -> assertEquals(label, stringList(want as JSONArray), vs.qualities.map { it.id })
+        "tracks" -> assertEquals(label, stringList(want as JSONArray), vs.tracks.map { it.id })
+        "audioTrack" -> assertEquals(label, want, vs.audioTrack)
+        "textTrack" -> assertEquals(label, want, vs.textTrack)
+        "subtitleDelay" -> assertEquals(label, (want as Number).toDouble(), vs.subtitleDelay, 0.0)
+        "fullscreen" -> assertEquals(label, want, vs.fullscreen)
+        else -> fail("$at: unknown video expectation $key")
+      }
+    }
+  }
+
+  private fun statsExpect(at: String, stats: EngineStats, expected: JSONObject) {
+    for (key in expected.keys()) {
+      val want = (nullable(expected, key) as Number?)?.toLong()
+      val actual =
+        when (key) {
+          "startupMs" -> stats.startupMs
+          "rebufferCount" -> stats.rebufferCount.toLong()
+          "rebufferMs" -> stats.rebufferMs
+          "qualitySwitches" -> stats.qualitySwitches.toLong()
+          "audioOnlySwitches" -> stats.audioOnlySwitches.toLong()
+          else -> fail("$at: unknown stats expectation $key")
+        }
+      assertEquals("$at: stats.$key", want, actual)
+    }
   }
 }

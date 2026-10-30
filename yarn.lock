@@ -11969,6 +11969,7 @@ __metadata:
     react-dom: "npm:19.2.3"
     react-native: "npm:0.86.3"
     react-native-builder-bob: "npm:^0.43.2"
+    shaka-player: "npm:^5.3.2"
     test-renderer: "npm:1.2.0"
     turbo: "npm:^2.11.10"
     typedoc: "npm:^0.28.20"
@@ -12738,6 +12739,13 @@ __metadata:
   version: 1.2.0
   resolution: "setprototypeof@npm:1.2.0"
   checksum: 10c0/68733173026766fa0d9ecaeb07f0483f4c2dc70ca376b3b7c40b7cda909f94b0918f6c5ad5ce27a9160bdfb475efaa9d5e705a11d8eaae18f9835d20976028bc
+  languageName: node
+  linkType: hard
+
+"shaka-player@npm:^5.3.2":
+  version: 5.3.2
+  resolution: "shaka-player@npm:5.3.2"
+  checksum: 10c0/5be5e806ad9215e3181d6e3aca44593708430d863e2e9c9fc3bb183bfe012cde1b9701324ca2de47877ec05bd470c79a18ca1da419a1a27d03cfa42209dcfbde
   languageName: node
   linkType: hard
 

@@ -5,6 +5,8 @@
 import type { PlayerError } from '../../errors';
 import {
   DEFAULT_ENGINE_OPTIONS,
+  DEFAULT_FALLBACK_POLICY,
+  DEFAULT_VIDEO_OPTIONS,
   type EngineOptions,
 } from '../engine/RecoveryPolicy';
 import type {
@@ -12,9 +14,17 @@ import type {
   StreamTitleFormat,
 } from '../engine/StreamMetadata';
 import type {
+  BackgroundMode,
   EngineDiagnostic,
   EngineStatus,
+  EngineVideoStatus,
+  FallbackPolicy,
+  MediaTrack,
+  QualityPolicy,
+  Rendition,
   SourceDescriptor,
+  VideoEngineOptions,
+  DrmDescriptor,
 } from '../engine/types';
 import type { ProgressReading } from './MediaElementDriver';
 
@@ -64,6 +74,67 @@ export const NO_FIELDS: NowPlayingFields = {
   live: null,
 };
 
+/** `PlayerOptions.video`: `true` takes every default; absent or `false`, an audio player. */
+export function parseVideo(value: unknown): VideoEngineOptions | null {
+  if (value === true)
+    return { ...DEFAULT_VIDEO_OPTIONS, whenBackgrounded: 'audio' };
+  const map = dict(value);
+  if (map == null) return null;
+  const mode = str(map.whenBackgrounded);
+  // A hidden tab plays on, as browsers do: the web's default is `audio`.
+  const whenBackgrounded: BackgroundMode =
+    mode === 'pause' || mode === 'pip' ? mode : 'audio';
+  return {
+    whenBackgrounded,
+    ambient: bool(map.ambient) ?? false,
+    keepAwake: bool(map.keepAwake) ?? true,
+    focusWhenMuted: bool(map.focusWhenMuted) ?? false,
+    fallback: parseFallback(map.fallbackToAudio),
+    quality: parseQuality(map.quality),
+    tracks: parseTracks(map.tracks),
+  };
+}
+
+function parseTracks(value: unknown): VideoEngineOptions['tracks'] {
+  const map = dict(value) ?? {};
+  const languages = Array.isArray(map.languages)
+    ? map.languages.filter((l): l is string => typeof l === 'string')
+    : [];
+  return { languages, followSystem: bool(map.followSystem) ?? true };
+}
+
+function parseFallback(value: unknown): FallbackPolicy | null {
+  if (value === true) return DEFAULT_FALLBACK_POLICY;
+  const map = dict(value);
+  if (map == null) return null;
+  const d = DEFAULT_FALLBACK_POLICY;
+  return {
+    dropBelowRatio: num(map.dropBelowRatio) ?? d.dropBelowRatio,
+    dropAfterMs: num(map.dropAfterMs) ?? d.dropAfterMs,
+    dropAfterStalls: num(map.dropAfterStalls) ?? d.dropAfterStalls,
+    stallWindowMs: num(map.stallWindowMs) ?? d.stallWindowMs,
+    returnAboveRatio: num(map.returnAboveRatio) ?? d.returnAboveRatio,
+    returnAfterMs: num(map.returnAfterMs) ?? d.returnAfterMs,
+  };
+}
+
+function parseQuality(value: unknown): QualityPolicy {
+  const map = dict(value) ?? {};
+  const cellular = dict(map.cellular);
+  const start = map.startQuality;
+  const startQuality: QualityPolicy['startQuality'] =
+    start === 'lowest' || start === 'highest' ? start : (num(start) ?? 'auto');
+  return {
+    maxHeight: num(map.maxResolution),
+    maxBitrate: num(map.maxBitrate),
+    cellularMaxHeight: num(cellular?.maxResolution),
+    cellularMaxBitrate: num(cellular?.maxBitrate),
+    startQuality,
+    followDataSaver: bool(map.followDataSaver) ?? true,
+    capToView: bool(map.capToView) ?? true,
+  };
+}
+
 export function parseOptions(value: unknown): WebPlayerOptions {
   const map = dict(value) ?? {};
   const recovery = dict(map.recovery);
@@ -88,6 +159,7 @@ export function parseOptions(value: unknown): WebPlayerOptions {
       liveMaxDriftMs:
         num(recovery?.liveMaxDriftMs) ?? DEFAULT_ENGINE_OPTIONS.liveMaxDriftMs,
       ...parseFade(map.fade),
+      video: parseVideo(map.video),
     },
     mediaSession: bool(session?.enabled) ?? true,
     remoteCommands: new Set(commands),
@@ -109,18 +181,81 @@ export function parseFade(value: unknown): {
   return { fadeInMs: ms(num(fade?.in)), fadeOutMs: ms(num(fade?.out)) };
 }
 
+function strings(value: unknown): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [key, header] of Object.entries(dict(value) ?? {})) {
+    if (typeof header === 'string') out[key] = header;
+  }
+  return out;
+}
+
+function parseRenditions(value: unknown): Rendition[] | null {
+  if (!Array.isArray(value) || value.length === 0) return null;
+  return value.map((r) => {
+    const map = dict(r) ?? {};
+    return {
+      uri: str(map.uri) ?? '',
+      headers: map.headers != null ? strings(map.headers) : null,
+      height: num(map.height),
+      bitrate: num(map.bitrate),
+      label: str(map.label),
+      audioOnly: bool(map.audioOnly) ?? false,
+    };
+  });
+}
+
 export function parseSource(
   value: unknown
 ): [SourceDescriptor, NowPlayingFields] {
   const map = dict(value) ?? {};
-  const headers: Record<string, string> = {};
-  for (const [key, header] of Object.entries(dict(map.headers) ?? {})) {
-    if (typeof header === 'string') headers[key] = header;
-  }
-  return [
-    { uri: str(map.uri) ?? '', headers, liveHint: bool(map.live) },
-    parseNowPlaying(map.metadata),
-  ];
+  const descriptor: SourceDescriptor = {
+    uri: str(map.uri) ?? '',
+    headers: strings(map.headers),
+    liveHint: bool(map.live),
+  };
+  // Only what the source uses: an audio source stays as it was.
+  const renditions = parseRenditions(map.renditions);
+  if (renditions != null) descriptor.renditions = renditions;
+  if (bool(map.refreshable) === true) descriptor.refreshable = true;
+  const expiresAt = num(map.expiresAt);
+  if (expiresAt != null) descriptor.expiresAt = expiresAt;
+  // Validated by normalizeDrm on the way in.
+  const drm = dict(map.drm);
+  if (drm != null) descriptor.drm = drm as unknown as DrmDescriptor;
+  return [descriptor, parseNowPlaying(map.metadata)];
+}
+
+/** What a video load brings besides the source: its poster, subtitle files and their session. */
+export interface VideoLoadParts {
+  poster: string | null;
+  session: string | null;
+  subtitles: MediaTrack[];
+}
+
+export function parseSubtitleTracks(value: unknown): MediaTrack[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((t) => {
+    const map = dict(t) ?? {};
+    return {
+      id: str(map.id) ?? '',
+      kind: map.kind === 'captions' ? 'captions' : 'subtitles',
+      language: str(map.language),
+      label: str(map.label),
+      forced: bool(map.forced) ?? false,
+      default: bool(map.default) ?? false,
+      sdh: map.kind === 'captions',
+      describesVideo: false,
+    };
+  });
+}
+
+export function parseVideoParts(value: unknown): VideoLoadParts {
+  const map = dict(value) ?? {};
+  return {
+    poster: str(map.poster),
+    session: str(map.subtitleSession),
+    subtitles: parseSubtitleTracks(map.subtitles),
+  };
 }
 
 export function parseNowPlaying(value: unknown): NowPlayingFields {
@@ -159,6 +294,15 @@ export function statusToMap(status: EngineStatus, seq: number): Dict {
     rate: status.rate,
     route: { ...status.route },
     sleepAt: status.sleepAt,
+    video: status.video ? videoToMap(status.video) : null,
+  };
+}
+
+function videoToMap(video: EngineVideoStatus): Dict {
+  return {
+    ...video,
+    qualities: video.qualities.map((q) => ({ ...q })),
+    tracks: video.tracks.map((t) => ({ ...t })),
   };
 }
 

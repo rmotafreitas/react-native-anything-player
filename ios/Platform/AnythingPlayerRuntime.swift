@@ -39,8 +39,18 @@ final class AnythingPlayerRuntime: AudioSessionListener, RemoteCommandTarget {
   private let session = AudioSessionCoordinator()
   private let nowPlaying = NowPlayingController()
   private let keepalive = BackgroundKeepalive()
-  private lazy var network = NetworkMonitor { [weak self] state, changed in
-    self?.all.forEach { $0.engine.networkChanged(state, interfaceChanged: changed) }
+  private lazy var network = NetworkMonitor(
+    onChange: { [weak self] state, changed in
+      self?.all.forEach { $0.engine.networkChanged(state, interfaceChanged: changed) }
+    },
+    onCost: { [weak self] expensive, constrained in
+      self?.all.filter { $0.picture != nil }.forEach {
+        $0.engine.networkCostChanged(metered: expensive, saveData: constrained)
+      }
+    })
+  /// The OS's languages and caption settings, for video players' track choice.
+  private lazy var preferences = SystemPreferencesMonitor { [weak self] prefs in
+    self?.all.filter { $0.picture != nil }.forEach { $0.engine.systemPreferencesChanged(prefs) }
   }
   private var lifecycleObservers: [NSObjectProtocol] = []
   private var inBackground = false
@@ -124,6 +134,12 @@ final class AnythingPlayerRuntime: AudioSessionListener, RemoteCommandTarget {
     register(controller)
     controller.engine.networkChanged(networkState, interfaceChanged: false)
     controller.engine.routeChanged(localRoute)
+    if controller.picture != nil {
+      controller.engine.networkCostChanged(metered: network.expensive, saveData: network.constrained)
+      controller.engine.systemPreferencesChanged(preferences.current())
+      if inBackground { controller.appBackgrounded() }
+      VideoSupport.playerRegistered()
+    }
     return controller
   }
 
@@ -140,8 +156,11 @@ final class AnythingPlayerRuntime: AudioSessionListener, RemoteCommandTarget {
     lifecycleObservers = [
       center.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) {
         [weak self] _ in
-        self?.inBackground = true
-        self?.keepaliveCheck()
+        guard let self else { return }
+        self.inBackground = true
+        // Video players: `whenBackgrounded` (and the layers detached in time, QA1668).
+        self.all.forEach { $0.appBackgrounded() }
+        self.keepaliveCheck()
       },
       center.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main) {
         [weak self] _ in
@@ -221,8 +240,16 @@ final class AnythingPlayerRuntime: AudioSessionListener, RemoteCommandTarget {
 
   // MARK: - State fan-in (main)
 
+  /// Keeps the screen on while any video player plays in a visible view.
+  /// Main thread.
+  func updateScreenAwake() {
+    let awake = all.contains { $0.picture != nil && $0.engine.wantsScreenAwake }
+    if UIApplication.shared.isIdleTimerDisabled != awake { UIApplication.shared.isIdleTimerDisabled = awake }
+  }
+
   func statusChanged(_ controller: PlayerController) {
     let status = controller.status
+    if controller.picture != nil { updateScreenAwake() }
     if controller.options.mediaSession && status.playWhenReady { active = controller }
     if active == nil && controller.options.mediaSession && status.state != .idle { active = controller }
     voice.statusChanged(controller)

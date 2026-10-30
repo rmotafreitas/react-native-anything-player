@@ -1,0 +1,463 @@
+[
+  {
+    "name": "the device's language picks the dubbed audio, and the forced signs track in it",
+    "tracks": [
+      {
+        "id": "ja",
+        "kind": "audio",
+        "language": "jpn",
+        "label": null,
+        "forced": false,
+        "default": true,
+        "sdh": false,
+        "describesVideo": false
+      },
+      {
+        "id": "en-dub",
+        "kind": "audio",
+        "language": "eng",
+        "label": null,
+        "forced": false,
+        "default": false,
+        "sdh": false,
+        "describesVideo": false
+      },
+      {
+        "id": "sub-en",
+        "kind": "subtitles",
+        "language": "eng",
+        "label": null,
+        "forced": false,
+        "default": true,
+        "sdh": false,
+        "describesVideo": false
+      },
+      {
+        "id": "sub-pt",
+        "kind": "subtitles",
+        "language": "por",
+        "label": null,
+        "forced": false,
+        "default": false,
+        "sdh": false,
+        "describesVideo": false
+      },
+      {
+        "id": "signs",
+        "kind": "subtitles",
+        "language": "eng",
+        "label": null,
+        "forced": true,
+        "default": false,
+        "sdh": false,
+        "describesVideo": false
+      }
+    ],
+    "preferences": {
+      "languages": [],
+      "followSystem": true,
+      "systemLanguages": [
+        "en-US"
+      ],
+      "systemCaptions": false,
+      "systemAudioDescriptions": false
+    },
+    "expect": {
+      "audio": "en-dub",
+      "text": "signs"
+    }
+  },
+  {
+    "name": "a Portuguese user: the original Japanese audio (no Portuguese dub) with Portuguese subtitles",
+    "tracks": [
+      {
+        "id": "ja",
+        "kind": "audio",
+        "language": "jpn",
+        "label": null,
+        "forced": false,
+        "default": true,
+        "sdh": false,
+        "describesVideo": false
+      },
+      {
+        "id": "en-dub",
+        "kind": "audio",
+        "language": "eng",
+        "label": null,
+        "forced": false,
+        "default": false,
+        "sdh": false,
+        "describesVideo": false
+      },
+      {
+        "id": "sub-en",
+        "kind": "subtitles",
+        "language": "eng",
+        "label": null,
+        "forced": false,
+        "default": true,
+        "sdh": false,
+        "describesVideo": false
+      },
+      {
+        "id": "sub-pt",
+        "kind": "subtitles",
+        "language": "por",
+        "label": null,
+        "forced": false,
+        "default": false,
+        "sdh": false,
+        "describesVideo": false
+      },
+      {
+        "id": "signs",
+        "kind": "subtitles",
+        "language": "eng",
+        "label": null,
+        "forced": true,
+        "default": false,
+        "sdh": false,
+        "describesVideo": false
+      }
+    ],
+    "preferences": {
+      "languages": [
+        "pt-BR"
+      ],
+      "followSystem": true,
+      "systemLanguages": [
+        "pt-BR"
+      ],
+      "systemCaptions": false,
+      "systemAudioDescriptions": false
+    },
+    "expect": {
+      "audio": "ja",
+      "text": "sub-pt"
+    }
+  },
+  {
+    "name": "audio in a foreign language turns subtitles in the top language on",
+    "tracks": [
+      {
+        "id": "ja",
+        "kind": "audio",
+        "language": "ja",
+        "label": null,
+        "forced": false,
+        "default": false,
+        "sdh": false,
+        "describesVideo": false
+      },
+      {
+        "id": "en",
+        "kind": "subtitles",
+        "language": "en",
+        "label": null,
+        "forced": false,
+        "default": false,
+        "sdh": false,
+        "describesVideo": false
+      },
+      {
+        "id": "en-sdh",
+        "kind": "subtitles",
+        "language": "en",
+        "label": null,
+        "forced": false,
+        "default": false,
+        "sdh": true,
+        "describesVideo": false
+      }
+    ],
+    "preferences": {
+      "languages": [],
+      "followSystem": true,
+      "systemLanguages": [
+        "en-US"
+      ],
+      "systemCaptions": false,
+      "systemAudioDescriptions": false
+    },
+    "expect": {
+      "audio": "ja",
+      "text": "en"
+    }
+  },
+  {
+    "name": "audio in the top language: only its forced subtitles",
+    "tracks": [
+      {
+        "id": "en",
+        "kind": "audio",
+        "language": "en",
+        "label": null,
+        "forced": false,
+        "default": false,
+        "sdh": false,
+        "describesVideo": false
+      },
+      {
+        "id": "en-full",
+        "kind": "subtitles",
+        "language": "en",
+        "label": null,
+        "forced": false,
+        "default": false,
+        "sdh": false,
+        "describesVideo": false
+      },
+      {
+        "id": "en-forced",
+        "kind": "subtitles",
+        "language": "en",
+        "label": null,
+        "forced": true,
+        "default": false,
+        "sdh": false,
+        "describesVideo": false
+      }
+    ],
+    "preferences": {
+      "languages": [],
+      "followSystem": true,
+      "systemLanguages": [
+        "en-US"
+      ],
+      "systemCaptions": false,
+      "systemAudioDescriptions": false
+    },
+    "expect": {
+      "audio": "en",
+      "text": "en-forced"
+    }
+  },
+  {
+    "name": "the OS's captions setting picks SDH",
+    "tracks": [
+      {
+        "id": "en",
+        "kind": "audio",
+        "language": "en",
+        "label": null,
+        "forced": false,
+        "default": false,
+        "sdh": false,
+        "describesVideo": false
+      },
+      {
+        "id": "en-full",
+        "kind": "subtitles",
+        "language": "en",
+        "label": null,
+        "forced": false,
+        "default": false,
+        "sdh": false,
+        "describesVideo": false
+      },
+      {
+        "id": "en-cc",
+        "kind": "captions",
+        "language": "en",
+        "label": null,
+        "forced": false,
+        "default": false,
+        "sdh": false,
+        "describesVideo": false
+      }
+    ],
+    "preferences": {
+      "languages": [],
+      "followSystem": true,
+      "systemLanguages": [
+        "en-US"
+      ],
+      "systemCaptions": true,
+      "systemAudioDescriptions": false
+    },
+    "expect": {
+      "audio": "en",
+      "text": "en-cc"
+    }
+  },
+  {
+    "name": "followSystem off ignores the captions setting",
+    "tracks": [
+      {
+        "id": "en",
+        "kind": "audio",
+        "language": "en",
+        "label": null,
+        "forced": false,
+        "default": false,
+        "sdh": false,
+        "describesVideo": false
+      },
+      {
+        "id": "en-full",
+        "kind": "subtitles",
+        "language": "en",
+        "label": null,
+        "forced": false,
+        "default": false,
+        "sdh": false,
+        "describesVideo": false
+      },
+      {
+        "id": "en-cc",
+        "kind": "captions",
+        "language": "en",
+        "label": null,
+        "forced": false,
+        "default": false,
+        "sdh": false,
+        "describesVideo": false
+      }
+    ],
+    "preferences": {
+      "languages": [],
+      "followSystem": false,
+      "systemLanguages": [
+        "en-US"
+      ],
+      "systemCaptions": true,
+      "systemAudioDescriptions": false
+    },
+    "expect": {
+      "audio": "en",
+      "text": null
+    }
+  },
+  {
+    "name": "audio descriptions when the OS asks for them, never otherwise",
+    "tracks": [
+      {
+        "id": "en-ad",
+        "kind": "audio",
+        "language": "en",
+        "label": null,
+        "forced": false,
+        "default": false,
+        "sdh": false,
+        "describesVideo": true
+      },
+      {
+        "id": "en",
+        "kind": "audio",
+        "language": "en",
+        "label": null,
+        "forced": false,
+        "default": true,
+        "sdh": false,
+        "describesVideo": false
+      }
+    ],
+    "preferences": {
+      "languages": [],
+      "followSystem": true,
+      "systemLanguages": [
+        "en-US"
+      ],
+      "systemCaptions": false,
+      "systemAudioDescriptions": true
+    },
+    "expect": {
+      "audio": "en-ad",
+      "text": null
+    }
+  },
+  {
+    "name": "without audio descriptions asked, the plain track even when the described one comes first",
+    "tracks": [
+      {
+        "id": "en-ad",
+        "kind": "audio",
+        "language": "en",
+        "label": null,
+        "forced": false,
+        "default": false,
+        "sdh": false,
+        "describesVideo": true
+      },
+      {
+        "id": "en",
+        "kind": "audio",
+        "language": "en",
+        "label": null,
+        "forced": false,
+        "default": false,
+        "sdh": false,
+        "describesVideo": false
+      }
+    ],
+    "preferences": {
+      "languages": [],
+      "followSystem": true,
+      "systemLanguages": [
+        "en-US"
+      ],
+      "systemCaptions": false,
+      "systemAudioDescriptions": false
+    },
+    "expect": {
+      "audio": "en",
+      "text": null
+    }
+  },
+  {
+    "name": "no language matches: the default audio",
+    "tracks": [
+      {
+        "id": "de",
+        "kind": "audio",
+        "language": "de",
+        "label": null,
+        "forced": false,
+        "default": false,
+        "sdh": false,
+        "describesVideo": false
+      },
+      {
+        "id": "fr",
+        "kind": "audio",
+        "language": "fr",
+        "label": null,
+        "forced": false,
+        "default": true,
+        "sdh": false,
+        "describesVideo": false
+      }
+    ],
+    "preferences": {
+      "languages": [],
+      "followSystem": true,
+      "systemLanguages": [
+        "en-US"
+      ],
+      "systemCaptions": false,
+      "systemAudioDescriptions": false
+    },
+    "expect": {
+      "audio": "fr",
+      "text": null
+    }
+  },
+  {
+    "name": "unknown languages and no tracks",
+    "tracks": [],
+    "preferences": {
+      "languages": [],
+      "followSystem": true,
+      "systemLanguages": [
+        "en-US"
+      ],
+      "systemCaptions": false,
+      "systemAudioDescriptions": false
+    },
+    "expect": {
+      "audio": null,
+      "text": null
+    }
+  }
+]

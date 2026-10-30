@@ -27,6 +27,7 @@ import {
   type EngineStatus,
   type FocusResult,
   type Interruption,
+  type EngineVideoStatus,
   type InterruptionReason,
   type NetworkState,
   type PlaybackState,
@@ -54,6 +55,12 @@ export abstract class EngineCore {
   // ── Source & intent ──
   protected _source: SourceDescriptor | null = null;
   protected _generation = 0;
+  /**
+   * The last generation handed out. Every open takes the next one, so an item
+   * a quality switch was preparing (a generation ahead of the current one)
+   * can never share a number with a later open.
+   */
+  protected issuedGeneration = 0;
   protected _loadId = 0;
   protected pendingLoadId: number | null = null;
   protected _state: PlaybackState = 'idle';
@@ -74,6 +81,8 @@ export abstract class EngineCore {
   protected volume = 1;
   protected muted = false;
   protected rate = 1;
+  /** Repeat a finite item from the start instead of ending. */
+  protected loop = false;
 
   // ── Output ──
   protected route: AudioRoute = UNKNOWN_ROUTE;
@@ -91,6 +100,12 @@ export abstract class EngineCore {
   protected lastPositionAdvanceAt = 0;
   protected lastBuffered = 0;
   protected lastBufferedAdvanceAt = 0;
+  /**
+   * While waiting, where the playhead's current run at the playback rate
+   * began, and the last reading (the playhead can prove playback).
+   */
+  protected waitingFrom: { position: number; at: number } | null = null;
+  protected waitingLast: { position: number; at: number } | null = null;
   protected pausedAt: number | null = null;
   protected driftMs = 0;
   protected playingSince: number | null = null;
@@ -184,6 +199,7 @@ export abstract class EngineCore {
       rate: this.rate,
       route: this.route,
       sleepAt: this.sleepWallAt,
+      video: this.videoStatus(),
     };
   }
 
@@ -199,7 +215,7 @@ export abstract class EngineCore {
 
   /** Whether the player holds (or may soon re-take) audio focus. */
   get needsAudioFocus(): boolean {
-    if (this.remote) return false;
+    if (this.remote || this.focusExempt) return false;
     return (
       this._playWhenReady ||
       this.fadingOut ||
@@ -242,6 +258,7 @@ export abstract class EngineCore {
     this.resumePosition = startPosition;
     this._playWhenReady = wanted;
     if (wanted) this.applyFocus(this.requestFocus());
+    this.videoLoad();
     if (this._playWhenReady) this.startFadeIn(flowing);
     this.log('load', {
       uri: newSource.uri,
@@ -341,7 +358,8 @@ export abstract class EngineCore {
     this.ensureAlive();
     this.cancelFadeOut();
     this.settlePendingLoad(SUPERSEDED);
-    this._generation += 1;
+    this.cancelSwap('reset');
+    this._generation = this.issueGeneration();
     this._source = null;
     this._playWhenReady = false;
     this._interruption = null;
@@ -357,7 +375,7 @@ export abstract class EngineCore {
     this.commit();
   }
 
-  seek(seconds: number): void {
+  seek(seconds: number, exact = false): void {
     this.ensureAlive();
     if (this._source == null) throw noSource();
     if (!this.seekable || this.isLive) {
@@ -372,6 +390,8 @@ export abstract class EngineCore {
     }
     const target =
       this.duration != null ? Math.min(seconds, this.duration) : seconds;
+    // A quality switch in flight was opened at the old position.
+    this.cancelSwap('seek');
     this.resumePosition = target;
     this.lastPosition = target;
     this.lastPositionAdvanceAt = this.now;
@@ -384,7 +404,7 @@ export abstract class EngineCore {
       this.commit();
       return;
     }
-    this.driver.seek(target);
+    this.driver.seek(target, exact);
     this.commit();
   }
 
@@ -405,8 +425,18 @@ export abstract class EngineCore {
 
   setMuted(value: boolean): void {
     this.ensureAlive();
+    const was = this.muted;
     this.muted = value;
     this.applyVolume();
+    if (was && !value) this.unmuted();
+    this.commit();
+  }
+
+  /** Repeat a finite item from the start (the driver loops it seamlessly where it can). */
+  setLoop(value: boolean): void {
+    this.ensureAlive();
+    this.loop = value;
+    this.driver.setLoop?.(value);
     this.commit();
   }
 
@@ -435,6 +465,7 @@ export abstract class EngineCore {
     if (this.isReleased) return;
     this.settlePendingLoad({ kind: 'failed', error: released() });
     this.releaseFades();
+    this.cancelSwap('release');
     this._playWhenReady = false;
     this._interruption = null;
     this.resetRecovery();
@@ -449,6 +480,7 @@ export abstract class EngineCore {
   // ── Driver observations (generation-guarded) ──
 
   onReady(generation: number, info: ReadyInfo): void {
+    if (this.isSwapGeneration(generation)) return this.swapNote('ready');
     if (!this.accepts(generation)) return this.logStale('ready', generation);
     this.duration = info.duration;
     this.isLive = this._source?.liveHint ?? info.isLive;
@@ -470,6 +502,8 @@ export abstract class EngineCore {
 
   /** Audio is actually flowing. */
   onPlaying(generation: number): void {
+    // A quality switch's new item plays: it is the current item from now on.
+    if (this.isSwapGeneration(generation)) this.completeSwap();
     if (!this.accepts(generation)) return this.logStale('playing', generation);
     if (!this._playWhenReady) {
       // Fading out: the audio keeps going until the fade ends.
@@ -496,6 +530,7 @@ export abstract class EngineCore {
     this.lastPosition = this.driver.sample().position;
     this.lastPositionAdvanceAt = t;
     this.playingSince = t;
+    this.videoPlaying(t);
     this.startPendingFadeIn();
     // Drift is only enforced at moments that are silent anyway (resuming from a
     // pause, or during a published stall), never by cutting audio that resumed.
@@ -505,6 +540,7 @@ export abstract class EngineCore {
 
   /** Playback wanted, waiting for data. */
   onBuffering(generation: number): void {
+    if (this.isSwapGeneration(generation)) return this.swapNote('buffering');
     if (!this.accepts(generation))
       return this.logStale('buffering', generation);
     // Nothing left to fade.
@@ -520,6 +556,10 @@ export abstract class EngineCore {
   }
 
   onFailed(generation: number, error: PlayerError): void {
+    if (this.isSwapGeneration(generation)) {
+      this.swapFailed(error);
+      return this.commit();
+    }
     if (!this.accepts(generation)) return this.logStale('failed', generation);
     this.completeFadeOut();
     // A stop's fade-out landed: the item is gone.
@@ -529,6 +569,7 @@ export abstract class EngineCore {
   }
 
   onEnded(generation: number): void {
+    if (this.isSwapGeneration(generation)) return this.swapNote('ended');
     if (!this.accepts(generation)) return this.logStale('ended', generation);
     if (this._state === 'ended')
       return this.logStale('ended again', generation);
@@ -544,6 +585,9 @@ export abstract class EngineCore {
       this.handleFailure(
         engineError('STREAM_ENDED', 'The stream closed the connection.', true)
       );
+    } else if (this.loop && this._playWhenReady) {
+      // The driver could not loop it seamlessly: start over.
+      this.restartFromEnd('loop');
     } else {
       this._playWhenReady = false;
       this.resumePosition = 0;
@@ -556,6 +600,7 @@ export abstract class EngineCore {
 
   /** The platform paused the player without being asked to. */
   onPausedExternally(generation: number, reason: InterruptionReason): void {
+    if (this.isSwapGeneration(generation)) return this.swapNote('paused');
     if (!this.accepts(generation))
       return this.logStale('paused externally', generation);
     if (this.fadingOut) {
@@ -592,6 +637,7 @@ export abstract class EngineCore {
     const t = this.now;
     this.releasePausedConnectionIfDue(t);
     this.publishStallIfDue(t);
+    this.videoWakeup(t);
     if (this._state === 'reconnecting') {
       const due = this.nextAttemptAt;
       if (due != null && due <= t) {
@@ -634,6 +680,7 @@ export abstract class EngineCore {
       this.beginWaiting();
       this.stallStartedAt = started;
       this.lastBufferedAdvanceAt = started;
+      this.stallPublished(t);
     }
   }
 
@@ -645,7 +692,7 @@ export abstract class EngineCore {
 
   /** Audio focus is the device's: a remote output always has it. */
   protected requestFocus(): FocusResult {
-    if (this.remote) return 'granted';
+    if (this.remote || this.focusExempt) return 'granted';
     return this.delegate?.engineRequestsAudioFocus() ?? 'granted';
   }
 
@@ -721,6 +768,7 @@ export abstract class EngineCore {
   }
 
   protected pauseIntent(cause: string): void {
+    this.cancelSwap('pause');
     this.holdGain();
     this.resetRecovery();
     this.stallStartedAt = null;
@@ -750,7 +798,8 @@ export abstract class EngineCore {
   protected open(startPosition: number | null, reason: string): void {
     const source = this._source;
     if (source == null) return;
-    this._generation += 1;
+    this.cancelSwap('open');
+    this._generation = this.issueGeneration();
     this.readyForGeneration = false;
     this.flowedSinceOpen = false;
     this.silentStall = false;
@@ -768,13 +817,16 @@ export abstract class EngineCore {
     this.lastPositionAdvanceAt = this.now;
     this.lastHeartbeatAt = this.now;
     this.setState('loading', reason);
+    const target = this.openTarget(source);
     this.driver.open({
       generation: this._generation,
-      source,
+      source: target.source,
       startPosition,
       playWhenReady: this._playWhenReady,
       allowReconnect: this.options.reconnect,
+      ...(target.rendition != null ? { rendition: target.rendition } : {}),
     });
+    this.videoOpened();
   }
 
   protected reopen(reason: string, startPosition: number | null = null): void {
@@ -817,10 +869,15 @@ export abstract class EngineCore {
     this.stallStartedAt = this.now;
     this.playingSince = null;
     this.lastBufferedAdvanceAt = this.now;
-    this.lastBuffered = this.driver.sample().bufferedPosition;
+    const sample = this.driver.sample();
+    this.lastBuffered = sample.bufferedPosition;
+    this.waitingFrom = { position: sample.position, at: this.now };
+    this.waitingLast = this.waitingFrom;
   }
 
   protected handleFailure(error: PlayerError): void {
+    // A 401/403 on a source the app can refresh waits for a new URL first.
+    if (this.refreshOnFailure(error)) return;
     this.lastError = error;
     const wasInitialLoad =
       !this.readyForGeneration && this.pendingLoadId != null;
@@ -960,7 +1017,8 @@ export abstract class EngineCore {
    * player out of `stopped`, `paused` or `error`. Resuming opens a new one.
    */
   protected releaseItemConnection(): void {
-    this._generation += 1;
+    this.cancelSwap('release');
+    this._generation = this.issueGeneration();
     this.readyForGeneration = false;
     this.silentStall = false;
     this.driver.releaseConnection();
@@ -971,6 +1029,47 @@ export abstract class EngineCore {
     this.networkRevision += 1;
     this.suspectUntil = t + RecoveryPolicy.NETWORK_SUSPECT_MS;
   }
+
+  protected issueGeneration(): number {
+    this.issuedGeneration += 1;
+    return this.issuedGeneration;
+  }
+
+  // ── Video (EngineVideo.ts) ──
+
+  /** `status.video`; `null` for an audio player. */
+  protected abstract videoStatus(): EngineVideoStatus | null;
+  /** Audio focus is not this player's business (ambient, or muted without `focusWhenMuted`). */
+  protected abstract get focusExempt(): boolean;
+  /** A new source: the video facts reset and the start quality is picked. */
+  protected abstract videoLoad(): void;
+  /** What an open plays: the source, or one of its renditions. */
+  protected abstract openTarget(source: SourceDescriptor): {
+    source: SourceDescriptor;
+    rendition: number | null;
+  };
+  /** After every open: the quality constraints for the new item. */
+  protected abstract videoOpened(): void;
+  protected abstract isSwapGeneration(generation: number): boolean;
+  /** A quality switch's new item plays: it becomes the current item. */
+  protected abstract completeSwap(): void;
+  protected abstract swapFailed(error: PlayerError): void;
+  /** Anything else a quality switch's new item reports is only logged. */
+  protected abstract swapNote(event: string): void;
+  /** Drops a quality switch in flight (`reason` for the log). */
+  protected abstract cancelSwap(reason: string): void;
+  /** `true` when the failure waits for the app's new source instead. */
+  protected abstract refreshOnFailure(error: PlayerError): boolean;
+  /** The audio flows (stats, a stall's end). */
+  protected abstract videoPlaying(t: number): void;
+  /** A stall was published (quality, the audio-only fallback, stats). */
+  protected abstract stallPublished(t: number): void;
+  /** Every state change (the rebuffer counter). */
+  protected abstract stateChanged(next: PlaybackState): void;
+  /** The app unmuted: a muted video player that took no focus asks now. */
+  protected abstract unmuted(): void;
+  protected abstract videoWakeup(t: number): void;
+  protected abstract videoWakeups(candidates: number[]): void;
 
   // ── Fades & the sleep timer (EngineFades.ts) ──
 
@@ -1012,6 +1111,7 @@ export abstract class EngineCore {
     if (next !== 'playing') this.stallPublishAt = null;
     const previous = this._state;
     this._state = next;
+    this.stateChanged(next);
     this.log('transition', { from: previous, to: next, cause });
   }
 
@@ -1052,6 +1152,7 @@ export abstract class EngineCore {
     if (this.heartbeatDue)
       candidates.push(this.lastHeartbeatAt + RecoveryPolicy.HEARTBEAT_MS);
     this.fadeWakeups(candidates);
+    this.videoWakeups(candidates);
     return candidates.length > 0 ? Math.min(...candidates) : null;
   }
 }

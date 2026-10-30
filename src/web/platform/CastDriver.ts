@@ -34,8 +34,17 @@ type CastObserver = Pick<
   | 'onNote'
 >;
 
+/** The Cast media channel (`SET_PLAYBACK_RATE` goes there). */
+const MEDIA_NAMESPACE = 'urn:x-cast:com.google.cast.media';
+/**
+ * A sender's requests carry their own ids (0 is the receiver's broadcasts).
+ * These start far from the SDK's own, so a reply never settles one of its.
+ */
+let rateRequests = 0x40000000;
+
 const CONTENT_TYPES: Array<[RegExp, string]> = [
   [/\.m3u8$/, 'application/x-mpegURL'],
+  [/\.mpd$/, 'application/dash+xml'],
   [/\.(aac|adts)$/, 'audio/aac'],
   [/\.(m4a|mp4)$/, 'audio/mp4'],
   [/\.(ogg|oga|opus)$/, 'audio/ogg'],
@@ -43,12 +52,45 @@ const CONTENT_TYPES: Array<[RegExp, string]> = [
   [/\.wav$/, 'audio/wav'],
 ];
 
-function contentTypeOf(uri: string): string {
+/** A video player's files: the same manifests, and video containers. */
+const VIDEO_CONTENT_TYPES: Array<[RegExp, string]> = [
+  [/\.m3u8$/, 'application/x-mpegURL'],
+  [/\.mpd$/, 'application/dash+xml'],
+  [/\.webm$/, 'video/webm'],
+  [/\.(ts|m2ts)$/, 'video/mp2t'],
+  [/\.mkv$/, 'video/x-matroska'],
+  [/\.mov$/, 'video/quicktime'],
+  [/\.(m4a|aac)$/, 'audio/mp4'],
+];
+
+export function contentTypeOf(uri: string, video = false): string {
   const path = uri.split(/[?#]/)[0]!.toLowerCase();
-  return (
-    CONTENT_TYPES.find(([pattern]) => pattern.test(path))?.[1] ?? 'audio/mpeg'
-  );
+  const [table, fallback] = video
+    ? [VIDEO_CONTENT_TYPES, 'video/mp4']
+    : [CONTENT_TYPES, 'audio/mpeg'];
+  return table.find(([pattern]) => pattern.test(path))?.[1] ?? fallback;
 }
+
+/** What a video player hands the receiver besides the source. */
+export interface CastMedia {
+  video: boolean;
+  /** The app's subtitle files, as WebVTT (already shifted by the subtitle delay). */
+  subtitles: Array<{
+    id: string;
+    kind: 'subtitles' | 'captions';
+    language: string | null;
+    label: string | null;
+    vtt: string;
+  }>;
+  /** The text track shown (`status.video.textTrack`). */
+  textTrack: string | null;
+}
+
+const NO_MEDIA: CastMedia = { video: false, subtitles: [], textTrack: null };
+
+/** A WebVTT file a receiver fetches without a server: a `data:` URL. */
+export const vttDataUrl = (vtt: string) =>
+  `data:text/vtt;charset=utf-8,${encodeURIComponent(vtt)}`;
 
 const finite = (value: number): number | null =>
   Number.isFinite(value) && value >= 0 ? value : null;
@@ -71,12 +113,20 @@ export class CastDriver implements EngineDriver {
   private startPosition = 0;
   private pendingSeek: number | null = null;
   private volume: number | null = null;
+  /** The rate asked for, and whether the receiver was asked to play at it. */
+  private rate = 1;
+  private rateApplied = false;
+  /** A non-1x rate was sent for this media: going back to 1x is sent too. */
+  private rateSent = false;
   private live = false;
+  /** The receiver's text track ids of the app's files (`sub:<n>` → 1, 2…). */
+  private castTracks = new Map<string, number>();
 
   constructor(
     private readonly observer: CastObserver,
     private readonly nowPlaying: () => NowPlaying,
-    private readonly cast: CastService
+    private readonly cast: CastService,
+    private readonly media: () => CastMedia = () => NO_MEDIA
   ) {}
 
   // ── EngineDriver ──
@@ -144,15 +194,77 @@ export class CastDriver implements EngineDriver {
   }
 
   setRate(rate: number): void {
-    // The Cast sender has no playback-rate request: say so, do not pretend.
-    if (rate !== 1)
+    this.rate = rate;
+    this.applyRate();
+  }
+
+  /**
+   * The web sender has no rate call: the media channel's `SET_PLAYBACK_RATE`
+   * is what the iOS and Android senders send. Receivers play 0.5x–2x, and a
+   * live stream at 1x: anything else is said, and reported as 1x.
+   */
+  private applyRate(): void {
+    this.rateApplied = false;
+    const session = this.cast.session();
+    const media = this.loaded ? session?.getMediaSession() : null;
+    if (!media || (this.rate === 1 && !this.rateSent)) return;
+    const supported = !this.live && this.rate >= 0.5 && this.rate <= 2;
+    if (!supported)
       this.observer.onNote(this.generation, 'cast rate ignored', {
-        rate: `${rate}`,
+        rate: `${this.rate}`,
+      });
+    // Unsupported after a rate was sent: the receiver goes back to 1x.
+    const target = supported ? this.rate : 1;
+    if (!supported && !this.rateSent) return;
+    if (media.mediaSessionId == null || !session?.sendMessage) {
+      if (supported)
+        this.observer.onNote(this.generation, 'cast rate ignored', {
+          rate: `${this.rate}`,
+        });
+      return;
+    }
+    this.rateSent = target !== 1;
+    this.rateApplied = supported;
+    rateRequests += 1;
+    const request = rateRequests;
+    session
+      .sendMessage(MEDIA_NAMESPACE, {
+        type: 'SET_PLAYBACK_RATE',
+        requestId: request,
+        mediaSessionId: media.mediaSessionId,
+        playbackRate: target,
+      })
+      // A message that could not be sent (a receiver that answers with an
+      // error shows it in its status instead). A newer request replaced it?
+      // Then its outcome is the one that counts.
+      .catch((error: unknown) => {
+        if (request === rateRequests) this.rateApplied = false;
+        this.observer.onNote(this.generation, 'cast rate refused', {
+          error: String(error),
+        });
       });
   }
 
   switchOutput(): void {
     // The routing driver chooses the output; this one is the Cast output.
+  }
+
+  /** The text track to show: one of the app's files the receiver was given, or none. */
+  selectTracks(_audio: string | null, text: string | null): void {
+    if (!this.loaded) return;
+    const sdk = this.cast.sdk();
+    const media = this.cast.session()?.getMediaSession();
+    const Request = sdk?.chrome.media.EditTracksInfoRequest;
+    if (!media?.editTracksInfo || !Request) return;
+    const id = text != null ? this.castTracks.get(text) : undefined;
+    media.editTracksInfo(
+      new Request(id != null ? [id] : []),
+      () => undefined,
+      (error) =>
+        this.observer.onNote(this.generation, 'cast text track refused', {
+          error: String(error),
+        })
+    );
   }
 
   sample(): PlaybackSample {
@@ -170,31 +282,84 @@ export class CastDriver implements EngineDriver {
       buffered: position,
       liveOffset: null,
       isPlaying: this.loaded && this.player?.playerState === 'PLAYING',
-      rate: 1,
+      rate: this.effectiveRate(),
     };
+  }
+
+  /** What the receiver plays at: its own report, else what it was asked. */
+  private effectiveRate(): number {
+    const reported = this.loaded
+      ? this.cast.session()?.getMediaSession()?.playbackRate
+      : undefined;
+    if (reported != null && reported > 0) return reported;
+    return this.rateApplied ? this.rate : 1;
   }
 
   // ── Receiver ──
 
   private loadRequest(sdk: CastSdk, request: OpenRequest, url: string) {
-    const { media, Image } = sdk.chrome;
-    const info = new media.MediaInfo(url, contentTypeOf(request.source.uri));
+    const { media } = sdk.chrome;
+    const extra = this.media();
+    const info = new media.MediaInfo(
+      url,
+      contentTypeOf(request.source.uri, extra.video)
+    );
     info.streamType = this.live
       ? media.StreamType.LIVE
       : media.StreamType.BUFFERED;
-    const shown = this.nowPlaying();
-    const metadata = new media.MusicTrackMediaMetadata();
-    if (shown.title) metadata.title = shown.title;
-    if (shown.artist) metadata.artist = shown.artist;
-    if (shown.album) metadata.albumName = shown.album;
-    const artwork = shown.artwork ? castableUrl(shown.artwork) : null;
-    if (artwork) metadata.images = [new Image(artwork)];
-    info.metadata = metadata;
+    info.metadata = this.metadata(sdk, extra.video);
+    const tracks = this.textTracks(sdk, extra);
+    if (tracks.length > 0) info.tracks = tracks;
     const load = new media.LoadRequest(info);
     load.autoplay = request.playWhenReady;
     if (request.startPosition != null && request.startPosition > 0)
       load.currentTime = request.startPosition;
+    const active =
+      extra.textTrack != null ? this.castTracks.get(extra.textTrack) : null;
+    if (tracks.length > 0) load.activeTrackIds = active != null ? [active] : [];
     return load;
+  }
+
+  /** What the receiver shows: a movie's title line for a video, else the song. */
+  private metadata(sdk: CastSdk, video: boolean): unknown {
+    const { media, Image } = sdk.chrome;
+    const shown = this.nowPlaying();
+    const artwork = shown.artwork ? castableUrl(shown.artwork) : null;
+    const images = artwork ? [new Image(artwork)] : undefined;
+    if (video && media.MovieMetadata) {
+      const metadata = new media.MovieMetadata();
+      metadata.title = shown.title ?? undefined;
+      metadata.subtitle = shown.artist ?? shown.album ?? undefined;
+      metadata.images = images;
+      return metadata;
+    }
+    const metadata = new media.MusicTrackMediaMetadata();
+    metadata.title = shown.title ?? undefined;
+    metadata.artist = shown.artist ?? undefined;
+    metadata.albumName = shown.album ?? undefined;
+    metadata.images = images;
+    return metadata;
+  }
+
+  /** The app's subtitle files as the receiver's WebVTT text tracks. */
+  private textTracks(sdk: CastSdk, extra: CastMedia): unknown[] {
+    const { Track, TrackType, TextTrackType } = sdk.chrome.media;
+    this.castTracks = new Map();
+    if (!Track || !TrackType || !TextTrackType) return [];
+    return extra.subtitles.map((file, i) => {
+      const id = i + 1;
+      this.castTracks.set(file.id, id);
+      const track = new Track(id, TrackType.TEXT);
+      track.trackContentId = vttDataUrl(file.vtt);
+      track.trackContentType = 'text/vtt';
+      track.subtype =
+        file.kind === 'captions'
+          ? TextTrackType.CAPTIONS
+          : TextTrackType.SUBTITLES;
+      track.name = file.label ?? file.language;
+      track.language = file.language;
+      return track;
+    });
   }
 
   /** The player and its controller are created once and outlive the sessions. */
@@ -234,6 +399,8 @@ export class CastDriver implements EngineDriver {
         : { duration, isLive: false, seekable: player.canSeek }
     );
     this.applyVolume();
+    this.rateSent = false;
+    this.applyRate();
     if (this.pendingSeek != null) {
       const seconds = this.pendingSeek;
       this.pendingSeek = null;

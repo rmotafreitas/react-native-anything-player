@@ -247,7 +247,7 @@ function main() {
   const apkFile = path.join(RESULTS, 'apk.json');
   if (fs.existsSync(apkFile)) {
     const apk = JSON.parse(fs.readFileSync(apkFile, 'utf8'));
-    const variants = new Set(['rnapNoHls', 'rnapCast', 'rnapSound', 'rnapCar']);
+    const variants = new Set(['rnapNoHls', 'rnapCast', 'rnapSound', 'rnapCar', 'rnapVideo', 'rnapVideoDecoders']);
     const built = apk.libraries.filter((l) => !l.failed);
     const kb = (bytes) => bytes / 1024;
     const rows = built

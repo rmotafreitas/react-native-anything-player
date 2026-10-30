@@ -57,7 +57,7 @@ const features = [
   },
   {
     title: 'Honest state',
-    body: 'Sequence-numbered snapshots, generations that drop stale native events, commands applied in call order. No flicker, no races.',
+    body: 'Sequence-numbered snapshots, generations that drop stale native events, commands applied in call order. A late event cannot roll the state back.',
   },
   {
     title: 'Synchronous progress',
@@ -83,7 +83,7 @@ const outage = [
     at: '+3 s, no data',
     state: 'reconnecting',
     title: 'Dead socket detected',
-    body: 'No buffered progress for 3 s while the device is offline. Attempts are skipped; every third one runs as a probe.',
+    body: 'No buffered progress for 3 s while the device is offline. Attempts are skipped; after 3 in a row, the next one runs as a probe.',
   },
   {
     at: 'Network back',
@@ -103,7 +103,7 @@ const outage = [
 const APK_PLAYERS = ['react-native-anything-player', '@rntp/player', 'react-native-video', 'react-native-audio-pro'];
 
 const stats = [
-  { value: '105', label: 'engine scenarios, run on Swift, Kotlin and TypeScript' },
+  { value: '185', label: 'engine scenarios, run on Swift, Kotlin and TypeScript' },
   { value: '3 s', label: 'to detect a dead socket and re-open' },
   { value: '~10 µs', label: 'getProgress() over JSI (iOS p50)' },
   { value: '1', label: 'connection per stream, counted server-side' },
@@ -286,7 +286,7 @@ const stats = [
         <li>Any web page</li>
         <li>Electron, Tauri</li>
       </ul>
-      <p class="sub">In the browser, by engine: Chromium, Firefox and Safari are tested on every change.</p>
+      <p class="sub">In the browser, by engine: Chromium, Firefox and WebKit (Safari's engine) are tested on every change.</p>
       <ul class="platforms">
         <li>Chromium (Chrome, Edge)</li>
         <li>Firefox</li>
@@ -312,7 +312,7 @@ const stats = [
     </section>
 
     <section class="cta">
-      <h2>Ship the player you stop thinking about.</h2>
+      <h2>Play a stream that reconnects on its own.</h2>
       <div class="actions">
         <a class="btn brand" :href="withBase('/docs/getting-started')">Get started</a>
         <a class="btn alt" :href="withBase('/docs/architecture')">How it works</a>

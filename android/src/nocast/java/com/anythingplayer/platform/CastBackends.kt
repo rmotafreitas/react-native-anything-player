@@ -17,7 +17,7 @@ internal object CastBackends {
 private object UnavailableCastBackend : CastBackend {
   override val status = CastStatus.UNAVAILABLE
 
-  override fun newOutput(observer: DriverObserver, nowPlaying: () -> NowPlaying): RemoteOutput? = null
+  override fun newOutput(observer: DriverObserver, nowPlaying: () -> NowPlaying, media: () -> CastMedia): RemoteOutput? = null
 
   override fun showPicker(activity: Activity?) {
     throw PlayerError(

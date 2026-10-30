@@ -46,11 +46,21 @@ public final class AnythingPlayerBridge: NSObject {
       _ = runtime.claim(id)
       detachable = false
     }
-    lock.sync { _ = owned.insert(id) }
+    lock.sync {
+      _ = owned.insert(id)
+      // Until main has built it, JS reads this player's first status from here.
+      pending[id] = parsed
+    }
     let runtime = self.runtime
-    DispatchQueue.main.async { runtime.createPlayer(id: id, options: parsed, detachable: detachable) }
+    DispatchQueue.main.async { [weak self] in
+      runtime.createPlayer(id: id, options: parsed, detachable: detachable)
+      self?.lock.sync { _ = self?.pending.removeValue(forKey: id) }
+    }
     return id
   }
+
+  /// Players created on JS's side whose controller main has not built yet.
+  private var pending: [String: PlayerOptions] = [:]
 
   @objc public func releasePlayer(
     _ id: String, resolve: @escaping (Any?) -> Void, reject: @escaping (String, String, NSError?) -> Void
@@ -72,6 +82,7 @@ public final class AnythingPlayerBridge: NSObject {
     resolve: @escaping (Any?) -> Void, reject: @escaping (String, String, NSError?) -> Void
   ) {
     let (descriptor, fields) = SourceDescriptor.parse(source)
+    let parts = VideoLoadParts(source)
     let autoplay = options["autoplay"] as? Bool
     let start = (options["startPosition"] as? NSNumber)?.doubleValue
     DispatchQueue.main.async { [weak self] in
@@ -79,7 +90,7 @@ public final class AnythingPlayerBridge: NSObject {
         return Self.reject(reject, PlayerError.code(.playerReleased, "The player was released.", recoverable: false))
       }
       do {
-        try controller.load(descriptor, fields: fields, autoplay: autoplay, start: start) { result in
+        try controller.load(descriptor, fields: fields, autoplay: autoplay, start: start, parts: parts) { result in
           switch result {
           case .success(let status): resolve(status)
           case .failure(let error): Self.reject(reject, error)
@@ -201,7 +212,15 @@ public final class AnythingPlayerBridge: NSObject {
   }
 
   @objc public func status(_ id: String) -> NSDictionary {
-    (runtime.player(id)?.statusDictionary() ?? Serialization.status(Status(), seq: 0)) as NSDictionary
+    if let controller = runtime.player(id) { return controller.statusDictionary() as NSDictionary }
+    // Not built yet: a video player's first status still says it is one.
+    var initial = Status()
+    if let options = lock.sync({ pending[id] }), options.engine.video != nil {
+      initial.video = VideoStatus(
+        width: nil, height: nil, hdr: false, firstFrame: false, audioOnly: nil, pictureInPicture: false,
+        qualities: [], quality: nil, selectedQuality: nil)
+    }
+    return Serialization.status(initial, seq: 0) as NSDictionary
   }
 
   @objc public func progress(_ id: String) -> NSDictionary {
@@ -348,6 +367,109 @@ public final class AnythingPlayerBridge: NSObject {
         }
       }
     }
+  }
+
+  // MARK: Video
+
+  /// Loop, an exact seek and a refreshed source work for every player; the
+  /// rest is a video player's (qualities, tracks, subtitles, fullscreen,
+  /// Picture in Picture).
+  @objc(videoCommand:command:resolve:reject:)
+  public func videoCommand(
+    _ id: String, command: NSDictionary,
+    resolve: @escaping (Any?) -> Void, reject: @escaping (String, String, NSError?) -> Void
+  ) {
+    let op = command["op"] as? String ?? ""
+    if op == "license" {
+      // The app's getLicense answered (any player's request: the ids are unique).
+      LicenseRequests.shared.answer(
+        (command["requestId"] as? NSNumber)?.intValue ?? -1, license: command["license"] as? String,
+        error: command["error"] as? String)
+      return resolve(nil)
+    }
+    let refreshed = (command["source"] as? NSDictionary).map { SourceDescriptor.parse($0).0 }
+    DispatchQueue.main.async { [weak self] in
+      guard let controller = self?.runtime.player(id) else {
+        return Self.reject(reject, PlayerError.code(.playerReleased, "The player was released.", recoverable: false))
+      }
+      let engine = controller.engine
+      let loadId = (command["loadId"] as? NSNumber)?.intValue ?? -1
+      do {
+        switch op {
+        case "loop": try engine.setLoop(command["value"] as? Bool ?? false)
+        case "seek":
+          try engine.seek(
+            to: (command["position"] as? NSNumber)?.doubleValue ?? 0, exact: command["exact"] as? Bool ?? false)
+        case "refreshed": if let refreshed { engine.sourceRefreshed(loadId: loadId, source: refreshed) }
+        case "refreshFailed": engine.sourceRefreshFailed(loadId: loadId)
+        default:
+          guard let picture = controller.picture else {
+            throw PlayerError.code(
+              .invalidArgument, "This is not a video player (create it with `video`).", recoverable: false)
+          }
+          let id = command["id"] as? String
+          switch op {
+          case "selectQuality": try engine.selectQuality(id)
+          case "selectAudioTrack": try engine.selectAudioTrack(id)
+          case "selectTextTrack": try engine.selectTextTrack(id)
+          case "subtitleDelay": try engine.setSubtitleDelay((command["seconds"] as? NSNumber)?.doubleValue ?? 0)
+          case "listenOnly": try engine.setListenOnly(command["value"] as? Bool ?? false)
+          case "addSubtitles":
+            // The app's files so far (the source's own tracks are `track:` ids), then these.
+            let known = (controller.status.video?.tracks ?? []).filter {
+              $0.kind != .audio && !$0.id.hasPrefix("track:")
+            }
+            engine.setAppTracks(known + VideoLoadParts.tracks(command["tracks"] as? [NSDictionary]))
+          default: try picture.command(op, command)
+          }
+        }
+        resolve(controller.statusDictionary())
+      } catch let error as PlayerError {
+        Self.reject(reject, error)
+      } catch {
+        Self.reject(reject, PlayerError.code(.internalError, "\(error)", recoverable: false))
+      }
+    }
+  }
+
+  @objc(videoStats:)
+  public func videoStats(_ id: String) -> NSDictionary {
+    (runtime.player(id)?.statsDictionary() ?? [:]) as NSDictionary
+  }
+
+  /// A text file (subtitles, a thumbnail track), decoded with the encoding detected.
+  @objc(fetchText:headers:encoding:resolve:reject:)
+  public func fetchText(
+    _ uri: String, headers: NSDictionary, encoding: String?,
+    resolve: @escaping (Any?) -> Void, reject: @escaping (String, String, NSError?) -> Void
+  ) {
+    guard let url = URL(string: uri) else {
+      return Self.reject(reject, PlayerError.code(.invalidSource, "Not a URL: \(uri)", recoverable: false))
+    }
+    var request = URLRequest(url: url)
+    headers.forEach { key, value in
+      if let k = key as? String, let v = value as? String { request.setValue(v, forHTTPHeaderField: k) }
+    }
+    URLSession.shared.dataTask(with: request) { data, response, error in
+      if let error {
+        return Self.reject(
+          reject,
+          PlayerError.code(.networkError, "\(uri) could not be fetched (\(error.localizedDescription)).", recoverable: true))
+      }
+      let status = (response as? HTTPURLResponse)?.statusCode ?? 200
+      guard (200..<300).contains(status) else {
+        var failure = PlayerError.code(
+          .httpError, "The server returned HTTP \(status) for \(uri).", recoverable: status >= 500)
+        failure.httpStatus = status
+        return Self.reject(reject, failure)
+      }
+      let bytes = [UInt8](data ?? Data())
+      let charset = encoding ?? SubtitleCharset.detect(bytes)
+      let text =
+        String(bytes: bytes, encoding: SubtitleCharset.encoding(charset))
+        ?? String(decoding: bytes, as: UTF8.self)
+      resolve(["text": text, "charset": charset])
+    }.resume()
   }
 
   @objc public func setSearchHandlerEnabled(_ enabled: Bool) {

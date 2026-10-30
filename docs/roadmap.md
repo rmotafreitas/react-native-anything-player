@@ -4,16 +4,16 @@ RNAP's goal is to be the audio library React Native developers pick first: **lig
 
 ## Where RNAP already wins
 
-- **Bulletproof streaming.** It is the only library that recovers a stream on its own: dead-socket and silent-stall detection, backoff, offline probing, Wi-Fi ↔ cellular handoff, and live-edge re-open. All of it is native, so it keeps working while JS is frozen. RNTP 5, RNTP 4 and expo-audio leave every one of these to app code ([matrix](comparison.md#what-you-get-out-of-the-box)).
-- **Correctness under races.** Generations, sequence-numbered snapshots and ordered events, checked by 127 shared conformance scenarios run against all three engines (Swift, Kotlin, TypeScript).
+- **Bulletproof streaming.** Of the libraries compared, only RNAP recovers a stream on its own on iOS and Android (on the web, icecast-metadata-player reconnects too, [comparison](comparison.md)): dead-socket and silent-stall detection, backoff, offline probing, Wi-Fi ↔ cellular handoff, and live-edge re-open. All of it is native, so it keeps working while JS is frozen. RNTP 5, RNTP 4 and expo-audio leave every one of these to app code ([matrix](comparison.md#what-you-get-out-of-the-box)).
+- **Correctness under races.** Generations, sequence-numbered snapshots and ordered events, checked by 185 shared conformance scenarios run against all three engines (Swift, Kotlin, TypeScript).
 - **Radio.** ICY metadata timed to when it is *heard*, charset repair, one connection per stream, paused-stream release, song progress on the lock screen, and a visualizer for iOS live streams (no one else has one).
 - **Everywhere.** One engine and one API on iOS, Android, Expo web, React Native Web, React (Vite, Next.js) and plain web pages, with AirPlay, Google Cast, the voice assistants, CarPlay and Android Auto ([feature matrix](features.md)). Desktop apps built on a web view (Electron, Tauri) run the web engine ([Desktop](desktop.md)).
-- **More than streams.** A sleep timer and fades run by the engine, and a game-ready [Sound API](sound.md) for short effects, both from the same package.
-- **Lean.** Media3 and MediaRouter on Android, with Google Cast, Siri, the Sound API and cars opt-in ([`npx rnap add`](cli.md#modules)); no framework requirement, zero runtime JS dependencies, about 30 KB of JS on a web page.
+- **More than streams.** A sleep timer and fades run by the engine, and a [Sound API](sound.md) for short effects (a pool of voices per clip, volume, rate and pan), both from the same package.
+- **Lean.** Media3 and MediaRouter on Android, with Google Cast, Siri, the Sound API and cars opt-in ([`npx rnap add`](cli.md#modules)); no framework requirement, zero runtime JS dependencies, about 56 KB of JS on a web page (25 KB of it video).
 
 ## Gaps, in priority order
 
-### P0 — adoption blockers
+### P0: adoption blockers
 
 | Gap | Why it matters | Proposal |
 |---|---|---|
@@ -22,7 +22,7 @@ RNAP's goal is to be the audio library React Native developers pick first: **lig
 | **Migration guides** | Switching costs are the real moat of RNTP and expo-audio. | **Done:** [from react-native-track-player 4 & 5](migrating-from-track-player.md), [from expo-audio](migrating-from-expo-audio.md) and [from expo-av](migrating-from-expo-av.md), with API mapping tables and the recovery code you get to delete. |
 | **Published device benchmarks** | "Bulletproof" needs proof. | Run the [protocol in benchmarks/README.md](../benchmarks/README.md#on-device-benchmarks-protocol) on real devices and publish the charts: drop recovery, outage recovery, handoff silence, connection hygiene. |
 
-### P1 — the features people search for
+### P1: the features people search for
 
 | Gap | Proposal |
 |---|---|
@@ -30,9 +30,10 @@ RNAP's goal is to be the audio library React Native developers pick first: **lig
 | **Modular install** | **Done (step 1):** opt-in modules (Cast, Siri, the Sound API, cars) and HLS are build switches, and [`npx rnap add` / `remove`](cli.md#modules) writes them, showing each one's measured size. Visualizer, local-files-only and media-session switches were [measured and left out](configuration.md#modules). Step 2, if the package grows: split packages (`@rnap/sound`, `@rnap/queue`, `@rnap/cache`), each with its own podspec and Gradle module. |
 | **CLI: `npx rnap`** | **Done:** [`modules`, `add`, `remove`, `size`, `info` and `migrate`](cli.md) list and switch the build modules with their measured size, print a bug-ready report and rewrite a Track Player, expo-audio or expo-av migration; `doctor` and `init` check the project setup (background audio, the New Architecture, the Expo plugin, the iOS 27 scene life cycle, Cast / Siri / Assistant wiring), the native build, and stream URLs (cleartext rules, ICY, CORS, Cast codecs), and `init` applies the safe fixes after showing each diff. |
 | **Cache & preload** | Media3 `SimpleCache` + `CacheDataSource` on Android; on iOS the stream proxy already owns the bytes, so it can write them to disk. `cache: { maxSizeBytes }`, plus `preload(source)`, which the queue uses for the next item. |
+| **Video** | **In progress** ([design](video-design.md)): a video is a `Player` with a picture, on the same engine and recovery. OS players with remux for MKV/WebM/TS, HLS/DASH, separate quality files switched without a spinner, subtitles (SubRip, WebVTT, TTML, CEA-608/708, basic ASS) in one overlay, Picture in Picture, fullscreen, AirPlay and Cast video, an audio-only fallback on bad networks, DRM, opt-in software decoders (built and published for Android; iOS and web not built). Not built yet: HDR filtering, and reading a rendition's height and bitrate from the file's headers (today they are given, or the playing file's height is learned). Opt-in on native (`npx rnap add video`). |
 | **Sleep timer & fades** | **Done:** `player.sleep({ after, fadeOut })`, `status.sleepAt`, opt-in fades on play, pause and stop, and `fadeTo`, run by the engine (held to the conformance suite) so they work while JS is frozen. See [Sleep timer and fades](playback.md#sleep-timer-and-fades). |
 
-### P2 — platform reach
+### P2: platform reach
 
 In order: web first, then outputs, casting and voice, then cars (CarPlay and Android Auto reuse the voice catalog), then [desktop](#desktop).
 

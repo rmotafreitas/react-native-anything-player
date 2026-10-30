@@ -1,0 +1,89 @@
+{
+  "muxed": [
+    256,
+    257
+  ],
+  "tracks": [
+    {
+      "id": 256,
+      "kind": "video",
+      "codec": "hvc1.1.6.L30.90",
+      "entry": "hvc1",
+      "config": "0101600000009000000000001ef000fcfdf8f800000f03a00001001840010c01ffff01600000030090000003000003001e959009a10001002942010101600000030090000003000003001ea01020496595924932bc05a02000000300200000030321a2000100074401c172b42240",
+      "objectType": 0,
+      "timescale": 90000,
+      "width": 128,
+      "height": 72,
+      "sar": "1:1",
+      "sampleRate": 0,
+      "channels": 0,
+      "language": null,
+      "name": null,
+      "default": false,
+      "forced": false,
+      "unsupported": null
+    },
+    {
+      "id": 257,
+      "kind": "audio",
+      "codec": "ac-3",
+      "entry": "ac-3",
+      "config": "1008c0",
+      "objectType": 0,
+      "timescale": 48000,
+      "width": 0,
+      "height": 0,
+      "sar": "1:1",
+      "sampleRate": 48000,
+      "channels": 1,
+      "language": "eng",
+      "name": null,
+      "default": false,
+      "forced": false,
+      "unsupported": null
+    },
+    {
+      "id": 258,
+      "kind": "audio",
+      "codec": "mp4a.6B",
+      "entry": "mp4a",
+      "config": null,
+      "objectType": 107,
+      "timescale": 44100,
+      "width": 0,
+      "height": 0,
+      "sar": "1:1",
+      "sampleRate": 44100,
+      "channels": 1,
+      "language": "fra",
+      "name": null,
+      "default": false,
+      "forced": false,
+      "unsupported": null
+    }
+  ],
+  "segments": {
+    "main.mp4": [
+      "ftyp 28",
+      "moov 1117",
+      "moof 680",
+      "mdat 14808",
+      "moof 848",
+      "mdat 20956",
+      "moof 872",
+      "mdat 22398"
+    ],
+    "audio-258.mp4": [
+      "ftyp 28",
+      "moov 564",
+      "moof 400",
+      "mdat 4083",
+      "moof 392",
+      "mdat 3979",
+      "moof 392",
+      "mdat 3978",
+      "moof 96",
+      "mdat 113"
+    ]
+  }
+}

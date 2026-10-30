@@ -1,0 +1,52 @@
+[
+  {
+    "name": "ASCII only reads as UTF-8",
+    "hex": "310a30303a30303a30312c303030202d2d3e2030303a30303a30322c3030300a48656c6c6f0a",
+    "expect": "utf-8"
+  },
+  {
+    "name": "a UTF-8 byte-order mark",
+    "hex": "efbbbf6f6cc3a1",
+    "expect": "utf-8"
+  },
+  {
+    "name": "valid UTF-8 Portuguese",
+    "hex": "41c3a7c3a36f206520656d6fc3a7c3a36f2c206ec3a36f20c3a93f",
+    "expect": "utf-8"
+  },
+  {
+    "name": "a UTF-16 little-endian byte-order mark",
+    "hex": "fffe48006900",
+    "expect": "utf-16le"
+  },
+  {
+    "name": "a UTF-16 big-endian byte-order mark",
+    "hex": "feff00480069",
+    "expect": "utf-16be"
+  },
+  {
+    "name": "UTF-16 little-endian without a mark",
+    "hex": "480065006c006c006f00200074006800650072006500",
+    "expect": "utf-16le"
+  },
+  {
+    "name": "Windows-1252 Portuguese",
+    "hex": "41e7e36f206520656d6fe7e36f2c206ee36f20e93f",
+    "expect": "windows-1252"
+  },
+  {
+    "name": "Windows-1252 French",
+    "hex": "c761207661207472e873206269656e2c20e02064656d61696e",
+    "expect": "windows-1252"
+  },
+  {
+    "name": "Windows-1251 Russian",
+    "hex": "cff0e8e2e5f22c20eae0ea20e4e5ebe03f20c2f1b820f5eef0eef8ee2e",
+    "expect": "windows-1251"
+  },
+  {
+    "name": "Shift-JIS Japanese",
+    "hex": "82b182f182c982bf82cd814190a28a458142834a835e834a8369",
+    "expect": "shift_jis"
+  }
+]

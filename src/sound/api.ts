@@ -4,8 +4,7 @@
  *
  * @module sound
  */
-// What every Sound entry exports: `react-native-anything-player/sound`
-// (native and web) and the web entries (`/web`, `/react`).
+// What the Sound entry exports, natively and on the web.
 export { Sound, SoundClip, SoundVoice } from '../core/sound';
 export type {
   SoundConfiguration,

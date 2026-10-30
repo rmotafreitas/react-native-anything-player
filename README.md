@@ -2,7 +2,7 @@
 
 # React Native Anything Player (RNAP)
 
-`react-native-anything-player` is a native-first audio player for React Native and the web — files, streams and **internet radio** — that keeps playing correctly in the background, through network loss, interruptions and JavaScript freezes. One API on iOS, Android, Expo web, React Native Web, React (Vite, Next.js) and plain web pages, with AirPlay, Google Cast and the voice assistants.
+`react-native-anything-player` is a native-first audio player for React Native and the web — files, streams and **internet radio**, with opt-in video — that keeps playing correctly in the background, through network loss, interruptions and JavaScript freezes. One API on iOS, Android, Expo web, React Native Web, React (Vite, Next.js) and plain web pages, with AirPlay, Google Cast and the voice assistants.
 
 ```ts
 import { Player } from 'react-native-anything-player';
@@ -16,7 +16,7 @@ That is the whole integration for a radio that reconnects on its own, survives W
 
 ## Why
 
-Playback logic that lives in JavaScript breaks in exactly the situations a player must handle: React Native suspends JS timers in the background, the JS thread can be frozen or reloaded, and native events race JS commands. RNAP keeps the whole player — state machine, recovery, audio focus, interruptions, media session, clocks — in native code. JavaScript sends commands and mirrors native state; it is never required for playback to work.
+Playback logic that lives in JavaScript breaks in exactly the situations a player must handle: React Native suspends JS timers in the background, the JS thread can be frozen or reloaded, and native events race JS commands. RNAP keeps the whole player — state machine, recovery, audio focus, interruptions, media session, clocks — in native code. On iOS and Android, JavaScript sends commands and mirrors native state, and a frozen JS thread does not stop playback. Only what you ask JavaScript for needs it (`refresh`, `getLicense`, sideloaded subtitles); on the web the engine itself is JavaScript.
 
 RNAP was built by [@rmotafreitas](https://github.com/rmotafreitas), developer of the Rádio Animu mobile app and part of the [animu.moe](https://www.animu.moe) team, when React Native Track Player went commercial (v5 needs a paid licence even for a free app from a non-profit) and staying on air through a dropped network, a phone call or a switch to Instagram still took a pile of app code with every available player. [docs/why.md](docs/why.md) has the full story with sources; [docs/recovery.md](docs/recovery.md) lists every recovery rule and the failure behind it.
 
@@ -31,6 +31,7 @@ Read from each library's published source; sizes, methodology and the gaps RNAP 
 - **Recovery**: stall and silent-stall detection, dead-socket re-open, jittered exponential backoff, offline-aware probing, network-handoff awareness, a give-up limit, circuit breakers against connection storms.
 - **System integration**: background playback, lock screen / Control Center / notification, headset, Bluetooth, car and Wear controls, Android audio focus (incl. Android 15 rules), iOS interruptions, output disconnects, media-services reset.
 - **Correctness**: per-open generations reject stale native events; commands are applied in call order; status snapshots are sequence-numbered; events are ordered after the status they imply.
+- **Video** (opt-in): a `Player` with a picture. HLS, DASH, MP4, and MKV, WebM and MPEG-TS through a remux; renditions, subtitles, DRM, fullscreen, Picture in Picture, AirPlay and Cast. See [Video](docs/video.md).
 - **Visualizer**: decoded-audio windows (`audioSample`) on iOS, Android and the web — including live HTTP streams on iOS, where AVPlayer's audio tap never runs.
 - **Outputs and casting**: where the audio goes (`status.route`), the system output picker (`<RoutePicker />`: AirPlay, Android's Output Switcher), and Google Cast as a build option (`<CastButton />`), with radio titles kept while casting.
 - **Voice assistants**: a catalog stored on the device answers "Hey Siri / Hey Google, play X on MyApp", even with the app closed; Siri shortcuts on iOS 16+; the same search on the web (`playFromSearch`).
@@ -117,6 +118,8 @@ function NowPlaying() {
 | [Feature matrix](docs/features.md) | What works where: iOS, Android and the web, feature by feature |
 | [Web](docs/web.md) | Expo web, React Native Web, React (Vite, Next.js), plain pages: setup, CORS, autoplay, browser support |
 | [Desktop](docs/desktop.md) | Electron and Tauri through the web engine; native macOS and Windows on the roadmap |
+| [Video](docs/video.md) | `<VideoView>`: sources, DASH, MKV/WebM/TS, DRM, qualities and renditions, fullscreen, Picture in Picture, software decoders |
+| [Subtitles](docs/subtitles.md) | SubRip, WebVTT, TTML and ASS files, a source's own tracks, the overlay, drawing them yourself |
 | [Sound effects](docs/sound.md) | `Sound`: short effects with low latency, many at once, mixed with other audio, on iOS, Android and the web |
 | [Visualizer](docs/visualizer.md) | Decoded-audio windows for oscilloscopes and meters (iOS streams included) |
 | [Errors](docs/errors.md) | Normalized error codes |
@@ -129,7 +132,7 @@ function NowPlaying() {
 | [Roadmap](docs/roadmap.md) | What RNAP still needs, in priority order: the queue, caching, native desktop |
 | [Changelog](CHANGELOG.md), [Versioning & releases](docs/releases.md) | Every release; what a version number promises |
 
-The same pages are published as a site (search included): `yarn docs` runs it locally, `yarn docs:build` builds it. The site also carries an API reference for every export, generated from the TSDoc in `src/` by TypeDoc (`yarn docs:api` writes it to `docs/api/`, which is not committed). Diagrams are PlantUML sources in `docs/diagrams/` (`node scripts/render-diagrams.mjs`); charts come from `benchmarks/` (`node benchmarks/size/measure.mjs && node benchmarks/charts/render.mjs`).
+The same pages are published as a site (search included): `yarn docs` runs it locally, `yarn docs:build` builds it. The site also carries an API reference for every public entry (`react-native-anything-player` and its `/sound`, `/video`, `/web` and `/react` entries), generated from the TSDoc in `src/` by TypeDoc (`yarn docs:api` writes it to `docs/api/`, which is not committed). Diagrams are PlantUML sources in `docs/diagrams/` (`node scripts/render-diagrams.mjs`); charts come from `benchmarks/` (`node benchmarks/size/measure.mjs && node benchmarks/charts/render.mjs`).
 
 ## License
 

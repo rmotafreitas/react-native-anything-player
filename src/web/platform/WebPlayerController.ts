@@ -2,6 +2,8 @@
 // `Player`. Twin of `PlayerController.kt` / `PlayerController.swift`, on the
 // browser's single thread.
 
+import type { LicenseRequestEvent } from '../../core/drm';
+import { answerLicense } from './licenseRequests';
 import type { PlayerError } from '../../errors';
 import {
   PlaybackEngine,
@@ -12,6 +14,7 @@ import {
 import type { StreamMetadata } from '../engine/StreamMetadata';
 import { TrackClock } from '../engine/TrackClock';
 import {
+  engineError,
   UNKNOWN_ROUTE,
   type AudioRoute,
   type EngineDiagnostic,
@@ -20,7 +23,13 @@ import {
   type InterruptionReason,
   type ReadyInfo,
   type SourceDescriptor,
+  type VideoInfo,
+  type VideoVariant,
 } from '../engine/types';
+import type { MediaTrack } from '../../core/subtitles/tracks';
+import { cuesToVtt } from '../../core/subtitles/vtt';
+import type { CastMedia } from './CastDriver';
+import type { SubtitleCue } from '../../core/subtitles/types';
 import { AudioSampler } from './AudioSampler';
 import type { CastService } from './CastService';
 import { browser, monotonicNow, type AudioElementLike } from './dom';
@@ -37,11 +46,16 @@ import {
   diagnosticToMap,
   errorToMap,
   metadataToMap,
+  parseSource,
+  parseSubtitleTracks,
   progressToMap,
   statusToMap,
   type NowPlayingFields,
+  type VideoLoadParts,
   type WebPlayerOptions,
 } from './serialization';
+import { SwapDriver, type LocalDriver } from './SwapDriver';
+import { WebVideo, type ContentFit, type VideoHost } from './WebVideo';
 
 export type EventSink = (event: Record<string, unknown>) => void;
 
@@ -88,9 +102,13 @@ interface PendingLoad {
   reject: (error: PlayerError) => void;
 }
 
-export class WebPlayerController implements EngineDelegate, DriverObserver {
-  /** The local output: the <audio> element. */
-  readonly driver: MediaElementDriver;
+export class WebPlayerController
+  implements EngineDelegate, DriverObserver, VideoHost
+{
+  /** The local output: the <audio> element, or a video player's <video>s. */
+  readonly driver: LocalDriver;
+  /** A video player's stage, subtitles and system UI (`null` for audio). */
+  readonly video: WebVideo | null;
   /** What the engine commands: the local output or the Cast receiver. */
   readonly routing: RoutingDriver;
   readonly engine: PlaybackEngine;
@@ -124,11 +142,26 @@ export class WebPlayerController implements EngineDelegate, DriverObserver {
     private readonly runtime: PlayerRuntime,
     private readonly sink: EventSink
   ) {
-    this.driver = new MediaElementDriver(this, options.titleFormat);
+    const video = options.engine.video != null ? new WebVideo(this) : null;
+    this.video = video;
+    this.driver = video
+      ? new SwapDriver(
+          this,
+          (observer) =>
+            new MediaElementDriver(observer, options.titleFormat, 'video'),
+          video
+        )
+      : new MediaElementDriver(this, options.titleFormat);
+    video?.show(this.driver.element, null);
     this.routing = new RoutingDriver(this.driver, () => {
       const parts = runtime.cast.parts;
       return parts
-        ? new parts.CastDriver(this, () => this.nowPlaying(), runtime.cast)
+        ? new parts.CastDriver(
+            this,
+            () => this.nowPlaying(),
+            runtime.cast,
+            () => this.castMedia()
+          )
         : null;
     });
     this.engine = new PlaybackEngine(this.routing, webClock, options.engine);
@@ -157,7 +190,8 @@ export class WebPlayerController implements EngineDelegate, DriverObserver {
     fields: NowPlayingFields,
     autoplay: boolean | null,
     start: number | null,
-    objectUrl: string | null = null
+    objectUrl: string | null = null,
+    parts: VideoLoadParts | null = null
   ): Promise<object> {
     this.sourceFields = fields;
     this.overrides = NO_FIELDS;
@@ -166,7 +200,11 @@ export class WebPlayerController implements EngineDelegate, DriverObserver {
     this.station = { name: null, genre: null };
     this.driver.lastPlayAttempt = null;
     this.runtime.beforeLoad(this, source, autoplay);
+    this.video?.beginSession(parts?.session ?? null);
+    this.video?.setPoster(parts?.poster ?? null);
     this.engine.load(source, autoplay, start);
+    if (this.video && parts && parts.subtitles.length > 0)
+      this.engine.setAppTracks(parts.subtitles);
     // The replaced item is gone from the element: nothing can ask for it again.
     this.revoke(this.objectUrl);
     this.objectUrl = objectUrl;
@@ -226,6 +264,121 @@ export class WebPlayerController implements EngineDelegate, DriverObserver {
     return AudioSampler.supported;
   }
 
+  // ── Video ──
+
+  /** `VideoHost`: the `<video>` on screen now. */
+  element(): AudioElementLike {
+    return this.driver.element;
+  }
+
+  /** `videoCommand` from `Player` (`{ op, … }`). */
+  videoCommand(command: Record<string, unknown>): Promise<void> | void {
+    const op = command.op;
+    if (op === 'loop') return this.engine.setLoop(command.value === true);
+    if (op === 'seek')
+      return this.engine.seek(
+        command.position as number,
+        command.exact === true
+      );
+    if (op === 'refreshed') {
+      const [source] = parseSource(command.source);
+      return this.engine.sourceRefreshed(command.loadId as number, source);
+    }
+    if (op === 'refreshFailed')
+      return this.engine.sourceRefreshFailed(command.loadId as number);
+    if (op === 'license') return answerLicense(command);
+    return this.videoOnly(op, command);
+  }
+
+  /** The commands only a video player has. */
+  private videoOnly(
+    op: unknown,
+    c: Record<string, unknown>
+  ): Promise<void> | void {
+    const video = this.video;
+    if (video == null) {
+      throw engineError(
+        'INVALID_ARGUMENT',
+        'This is not a video player (create it with `video`).',
+        false
+      );
+    }
+    const id = (c.id as string | null | undefined) ?? null;
+    switch (op) {
+      case 'selectQuality':
+        return this.engine.selectQuality(id);
+      case 'selectAudioTrack':
+        return this.engine.selectAudioTrack(id);
+      case 'selectTextTrack':
+        return this.engine.selectTextTrack(id);
+      case 'subtitleDelay':
+        return this.engine.setSubtitleDelay(c.seconds as number);
+      case 'listenOnly':
+        return this.engine.setListenOnly(c.value === true);
+      case 'addSubtitles': {
+        const added = parseSubtitleTracks(c.tracks);
+        const known =
+          this.status.video?.tracks.filter((t) => t.kind !== 'audio') ?? [];
+        const app = known.filter((t) => !t.id.startsWith('track:'));
+        return this.engine.setAppTracks([...app, ...added]);
+      }
+      case 'cues':
+        return video.setCues(
+          c.session as string,
+          c.trackId as string,
+          c.cues as SubtitleCue[]
+        );
+      case 'fullscreen':
+        return video.setFullscreen(
+          c.active === true,
+          (c.lockOrientation as string | false) ?? false
+        );
+      case 'pictureInPicture':
+        return video.setPictureInPicture(c.active === true);
+      default:
+        throw engineError(
+          'INVALID_ARGUMENT',
+          `Unknown video command "${String(op)}".`,
+          false
+        );
+    }
+  }
+
+  /** `attachTo` / `<VideoView>`: the page element the picture goes in. */
+  attachVideo(
+    element: unknown,
+    fit: ContentFit = 'contain',
+    controls = false
+  ): void {
+    if (this.video == null) {
+      throw engineError(
+        'INVALID_ARGUMENT',
+        'This is not a video player (create it with `video`).',
+        false
+      );
+    }
+    this.video.attach(element as never, fit, controls);
+  }
+
+  /** `<VideoView>`'s cleanup: the picture leaves `element` if a newer view has not taken it. */
+  detachVideo(element: unknown): void {
+    this.video?.detach(element as never);
+  }
+
+  /** `getStats()`: the engine's counters, the dropped frames and the bandwidth. */
+  statsMap(): Record<string, unknown> {
+    const quality = (
+      this.driver.element as {
+        getVideoPlaybackQuality?: () => { droppedVideoFrames: number };
+      }
+    ).getVideoPlaybackQuality?.();
+    return {
+      ...this.engine.stats,
+      droppedFrames: quality?.droppedVideoFrames ?? null,
+      bandwidth: this.engine.bandwidthEstimate,
+    };
+  }
+
   /** Unloads the source (back to `idle`) and frees a picked file's object URL. */
   reset(): void {
     this.engine.reset();
@@ -244,6 +397,7 @@ export class WebPlayerController implements EngineDelegate, DriverObserver {
     this.clearTimers();
     this.engine.release();
     this.elementRoute.detach();
+    this.video?.release();
     this.routing.destroy();
     this.revoke(this.objectUrl);
     this.objectUrl = null;
@@ -333,13 +487,15 @@ export class WebPlayerController implements EngineDelegate, DriverObserver {
     );
   }
 
-  private emit(type: string, payload: Record<string, unknown>): void {
+  emit(type: string, payload: Record<string, unknown>): void {
     if (this.released && type !== 'status') return;
     this.seq += 1;
     this.sink({ ...payload, playerId: this.id, type, seq: this.seq });
   }
 
   private updateSampler(): void {
+    // The visualizer is audio's: a <video> is never routed through Web Audio.
+    if (this.video) return;
     const element = this.driver.element;
     this.sampler.update(element, this.driver.isStreamed);
     this.driver.tapped = this.sampler.isAttached(element);
@@ -394,7 +550,15 @@ export class WebPlayerController implements EngineDelegate, DriverObserver {
     );
     this.updateProgressTicks(status.state);
     if (status.state === 'playing') this.updateSampler();
+    this.video?.statusChanged(status);
     this.runtime.onStatusChanged(this);
+  }
+
+  engineRequestsSourceRefresh(
+    loadId: number,
+    reason: 'unauthorized' | 'expiring'
+  ): void {
+    this.emit('refreshRequest', { loadId, reason });
   }
 
   engineLoadSettled(loadId: number, outcome: LoadOutcome): void {
@@ -523,6 +687,81 @@ export class WebPlayerController implements EngineDelegate, DriverObserver {
   onElementReplaced(element: AudioElementLike): void {
     this.driver.tapped = false;
     this.elementRoute.attach(element);
+  }
+
+  onVideoInfo(generation: number, info: VideoInfo): void {
+    this.engine.onVideoInfo(generation, info);
+  }
+
+  onFirstFrame(generation: number): void {
+    this.engine.onFirstFrame(generation);
+  }
+
+  onVariants(generation: number, variants: VideoVariant[]): void {
+    this.engine.onVariants(generation, variants);
+  }
+
+  onBandwidth(generation: number, bitsPerSecond: number): void {
+    this.engine.onBandwidth(generation, bitsPerSecond);
+  }
+
+  /** What a Cast receiver gets besides the source: the app's subtitle files as WebVTT. */
+  private castMedia(): CastMedia {
+    const video = this.video;
+    const status = this.engine.status.video;
+    if (video == null || status == null)
+      return { video: false, subtitles: [], textTrack: null };
+    // The app's files whose cues have loaded (the source's own reach the receiver with it).
+    const subtitles = status.tracks.flatMap((track) => {
+      const cues =
+        track.kind === 'audio' || track.id.startsWith('track:')
+          ? null
+          : video.cuesFor(track.id);
+      if (cues == null) return [];
+      return [
+        {
+          id: track.id,
+          kind: track.kind === 'captions' ? 'captions' : 'subtitles',
+          language: track.language,
+          label: track.label,
+          vtt: cuesToVtt(cues, status.subtitleDelay),
+        } as const,
+      ];
+    });
+    return { video: true, subtitles, textTrack: status.textTrack };
+  }
+
+  onTracks(generation: number, tracks: MediaTrack[]): void {
+    this.engine.onTracks(generation, tracks);
+  }
+
+  /** The browser's own controls: the user's command, as if the app had sent it. */
+  onUserCommand(
+    generation: number,
+    command: 'play' | 'pause' | 'seek',
+    position: number
+  ): void {
+    if (!this.engine.accepts(generation)) return;
+    try {
+      if (command === 'play') this.engine.play();
+      else if (command === 'pause') this.engine.pause();
+      else this.engine.seek(position, true);
+    } catch {
+      // Nothing to play or not seekable: the element's own state stays.
+    }
+  }
+
+  onWarning(generation: number, error: PlayerError): void {
+    if (this.engine.accepts(generation)) this.engineError(error, false);
+  }
+
+  onLicenseRequest(generation: number, request: LicenseRequestEvent): void {
+    if (this.engine.accepts(generation))
+      this.emit('licenseRequest', { ...request });
+  }
+
+  onSourceCues(generation: number, cues: SubtitleCue[]): void {
+    if (this.engine.accepts(generation)) this.video?.sourceCues(cues);
   }
 }
 

@@ -11,7 +11,7 @@ RNAP is a player. It does not record, so keep `expo-audio` for recording if you 
 - **Lock-screen controls without bookkeeping.** In expo-audio you call `setActiveForLockScreen` for one player, and `interruptionMode` has to be `doNotMix` or `doNotMixPersistent` for it to work. In RNAP the lock screen, notification and headset controls are on by default.
 - **Same API on the web.** `react-native-anything-player/web` runs the `Player` API in Expo web, React Native Web and plain pages ([Web](web.md)).
 
-> **Licence.** expo-audio is MIT. RNAP is PolyForm Noncommercial: free for personal, educational, non-profit and other noncommercial use, and it needs a commercial licence otherwise ([roadmap, P0 licence](roadmap.md#p0-—-adoption-blockers), [COMMERCIAL.md](../COMMERCIAL.md)). Check which applies to you before you move.
+> **Licence.** expo-audio is MIT. RNAP is PolyForm Noncommercial: free for personal, educational, non-profit and other noncommercial use, and it needs a commercial licence otherwise ([roadmap, P0 licence](roadmap.md#p0-adoption-blockers), [COMMERCIAL.md](../COMMERCIAL.md)). Check which applies to you before you move.
 
 ## Install and setup
 
@@ -76,7 +76,7 @@ Call `player.release()` only when you are done with it for good.
 | `player.seekTo(seconds, toleranceBefore, toleranceAfter)` | `player.seekTo(seconds)` (no tolerance arguments); rejects `NOT_SEEKABLE` on live |
 | `player.volume = v` | `player.setVolume(v)` |
 | `player.muted = true` | `player.setMuted(true)` |
-| `player.loop = true` | none. `player.on('ended', () => player.play())` restarts a finished file |
+| `player.loop = true` | `player.setLoop(true)` |
 | `player.setPlaybackRate(rate, quality)` | `player.setRate(rate)`; there is no pitch-correction option |
 | `player.currentTime`, `player.duration` | `player.getProgress().position`, `.duration` (`null` for live or unknown, where expo-audio gives `0`) |
 | `player.playing`, `player.paused` | `status.state === 'playing'`, `status.playWhenReady` |
@@ -87,10 +87,10 @@ Call `player.release()` only when you are done with it for good.
 | `options.preferredForwardBufferDuration` | none; the engine chooses |
 | `options.keepAudioSessionActive`, `setIsAudioActiveAsync(bool)` | none; the audio session follows playback |
 | `options.allowsExternalPlayback` (AirPlay) | [`<RoutePicker />`](routes-and-casting.md) and `status.route` |
-| `preload(source)`, `clearPreloadedSource` | none yet ([cache and preload are roadmap P1](roadmap.md#p1-—-the-features-people-search-for)) |
+| `preload(source)`, `clearPreloadedSource` | none yet ([cache and preload are roadmap P1](roadmap.md#p1-the-features-people-search-for)) |
 | `useAudioPlaylist`, `createAudioPlaylist`, `playlist.next()`, `previous()`, `skipTo()`, `add()`, `insert()`, `remove()`, `loop: 'all'` | **No equivalent: RNAP has no native queue yet.** The pattern is in the [track-player guide](migrating-from-track-player.md#the-queue-is-the-big-difference) |
 | `useAudioSampleListener(player, fn)`, `setAudioSamplingEnabled` | `player.setAudioSampling({ enabled: true })` and the `audioSample` event ([visualizer](visualizer.md)) |
-| `useAudioStream`, `useAudioRecorder`, `useAudioRecorderState`, permission functions | none: recording is [out of scope](roadmap.md#p2-—-platform-reach) |
+| `useAudioStream`, `useAudioRecorder`, `useAudioRecorderState`, permission functions | none: recording is [out of scope](roadmap.md#p2-platform-reach) |
 
 ## Status and events
 
@@ -108,7 +108,7 @@ Call `player.release()` only when you are done with it for good.
 | `currentOffsetFromLive` | `getProgress().liveOffset` (`null` when it cannot be measured; use `bufferedAhead`) |
 | `playbackRate` | `status.rate` |
 | `mute` | `status.muted` |
-| `loop` | none |
+| `loop` | `player.setLoop(bool)` (not in `status`) |
 | `playbackState`, `timeControlStatus`, `reasonForWaitingToPlay` (strings) | `status.state` and `status.interruption` ([state model](playback.md#state-model)) |
 | `mediaServicesDidReset` | none needed: RNAP rebuilds its players and re-opens what was loaded ([iOS media services reset](background-and-system.md#ios-media-services-reset)) |
 
@@ -187,9 +187,8 @@ player.on('error', (error, { fatal }) => { if (fatal) showToast(error.message); 
 
 ## What differs or is missing
 
-- **Playlists.** `AudioPlaylist` has no RNAP counterpart yet; a native queue is the top roadmap item ([P0](roadmap.md#p0-—-adoption-blockers)). Until then, load the next item on `ended`. On iOS that does not run while JS is suspended, and there is no gapless transition.
-- **Recording** (`useAudioRecorder`, `AudioRecorder`, `useAudioStream`, microphone permissions): out of scope. RNAP stays a player to stay small ([roadmap](roadmap.md#p2-—-platform-reach)). Keep `expo-audio` for it. Both can be installed, but only RNAP should own playback; do not use expo-audio players for the same audio, because both would compete for audio focus.
-- **Looping** a single file: restart it from the `ended` event.
+- **Playlists.** `AudioPlaylist` has no RNAP counterpart yet; a native queue is the top roadmap item ([P0](roadmap.md#p0-adoption-blockers)). Until then, load the next item on `ended`. On iOS that does not run while JS is suspended, and there is no gapless transition.
+- **Recording** (`useAudioRecorder`, `AudioRecorder`, `useAudioStream`, microphone permissions): out of scope. RNAP stays a player to stay small ([roadmap](roadmap.md#p2-platform-reach)). Keep `expo-audio` for it. Both can be installed, but only RNAP should own playback; do not use expo-audio players for the same audio, because both would compete for audio focus.
 - **Pitch correction, `downloadFirst`, preload:** no counterpart.
 - **Lifecycle.** expo-audio's hook releases the player on unmount; RNAP's `Player` lives until `release()`.
 - **Async commands.** `play()` and `pause()` return promises that resolve after the status changed, and reject with a [`PlayerError`](errors.md). `play()` rejects with `AUDIO_FOCUS_DENIED` during a call.

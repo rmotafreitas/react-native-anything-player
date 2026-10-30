@@ -9,5 +9,6 @@ export {
   useRoutePickerAvailable,
   useSleepTimer,
   useStreamMetadata,
+  useCues,
 } from './core/hooks';
 export type { SleepTimerState } from './core/hooks';

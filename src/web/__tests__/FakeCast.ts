@@ -72,6 +72,11 @@ export class FakeCast {
   options: Record<string, unknown> = {};
   supportsStreamVolume = true;
   volumes: number[] = [];
+  /** Messages sent on the receiver's channels (`SET_PLAYBACK_RATE`). */
+  messages: Array<Record<string, unknown>> = [];
+  messageBehavior: 'resolve' | 'reject' = 'resolve';
+  /** The rate the receiver reports (`undefined`: it does not say). */
+  playbackRate?: number;
   playOrPauses = 0;
   stops = 0;
   seeks: number[] = [];
@@ -167,6 +172,8 @@ export class FakeCast {
         this.isMediaLoaded
           ? {
               idleReason: this.idleReason,
+              mediaSessionId: 7,
+              playbackRate: this.playbackRate,
               supportsCommand: (command: string) =>
                 this.supportsStreamVolume && command === 'STREAM_VOLUME',
               setVolume: (request: { volume: { level: number | null } }) => {
@@ -174,6 +181,12 @@ export class FakeCast {
               },
             }
           : null,
+      sendMessage: (namespace: string, message: Record<string, unknown>) => {
+        this.messages.push({ namespace, ...message });
+        return this.messageBehavior === 'reject'
+          ? Promise.reject(new Error('invalid_parameter'))
+          : Promise.resolve();
+      },
       loadMedia: (request: {
         media: {
           contentId: string;

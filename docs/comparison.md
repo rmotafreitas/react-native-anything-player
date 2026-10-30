@@ -15,9 +15,9 @@ Every number here comes from a script in [`benchmarks/`](../benchmarks/README.md
 
 | Where | Compared with | Where RNAP leads | Where RNAP is behind |
 |---|---|---|---|
-| iOS, Android | RNTP 4 and 5, expo-audio, expo-av, react-native-video, and four more | Recovers a stream with no app code; follows the network; radio titles; a visualizer for iOS live streams; several players; CarPlay, Android Auto and Wear OS browsing from the same catalog as the voice assistants; a sleep timer and fades run by the native engine; adds 1.2 MB to a release APK with R8, against 2.7 MB for RNTP 5 (which always includes Cast; RNAP with Cast: 2.6 MB); no extras to install | Queues, caching; JS size (6.3 KB, the others 2–7 KB); more native source than RNTP 5 (14.2k lines against 13.2k), though less of it reaches the APK; the licence |
-| Expo web, React Native Web | the same packages, on the web | The only one that recovers a stream or reads radio titles in the browser; Cast and AirPlay; nothing to fetch before it plays (RNTP 4 fetches 367 KB of shaka-player) | Page weight (31.5 KB against 4–15 KB): it carries a streaming engine, the others wrap `<audio>` |
-| React, plain web pages | howler.js, Plyr, Vidstack, react-player, icecast-metadata-player and others | Recovery, radio titles, Media Session, Cast and AirPlay together, in one library; the same player as on the phone | No player UI or video; short sounds (the separate `/sound` entry) without sprites or spatial audio; heavier than howler.js (10 KB) |
+| iOS, Android | RNTP 4 and 5, expo-audio, expo-av, react-native-video, and four more | Recovers a stream with no app code; follows the network; radio titles; a visualizer for iOS live streams; several players; CarPlay, Android Auto and Wear OS browsing from the same catalog as the voice assistants; a sleep timer and fades run by the native engine; adds 1.2 MB to a release APK with R8, against 2.7 MB for RNTP 5 (which always includes Cast; RNAP with Cast: 2.6 MB); no extras to install | Queues, caching; for video, no ads or downloads yet (react-native-video has them), and its FairPlay not yet tried on a device; JS size (16.2 KB with the video API and the subtitle parsers, which run in JavaScript; the others 2–17 KB); more native source than RNTP 5 (25.2k lines against 12.8k), though less of it reaches the APK; the licence |
+| Expo web, React Native Web | the same packages, on the web | The only one that recovers a stream or reads radio titles in the browser; Cast and AirPlay; nothing to fetch before it plays (RNTP 4 fetches 367 KB of shaka-player) | Page weight (57 KB against 5–15 KB): it carries a streaming engine with video, the others wrap `<audio>` |
+| React, plain web pages | howler.js, Plyr, Vidstack, react-player, icecast-metadata-player and others | Recovery, radio titles, Media Session, Cast and AirPlay together, in one library; the same player as on the phone | No player UI of its own (the browser's controls, or yours) and no YouTube or Vimeo embeds; short sounds (the separate `/sound` entry) without sprites or spatial audio; heavier on load than all but Vidstack (56 KB; howler.js 10 KB, Plyr 33 KB, Vidstack 79 KB) |
 
 ## Where each library runs
 
@@ -61,11 +61,13 @@ What an app's users download: each library built into a React Native 0.86 app, i
 
 | Library | With R8 | Without R8 | Code (dex) | Native libraries | Resources |
 |---|--:|--:|--:|--:|--:|
-| **RNAP** | 1,192 KB | 3,790 KB | 853 KB | 90 KB | 242 KB |
-| RNAP without HLS (`rnapHls=false`) | 1,128 KB | 3,694 KB | 792 KB | 90 KB | 242 KB |
-| RNAP with Cast (`rnapCast=true`) | 2,625 KB | 11,008 KB | 1,210 KB | 100 KB | 1,213 KB |
-| RNAP with the Sound API (`rnapSound=true`) | 1,192 KB | 3,790 KB | 858 KB | 90 KB | 242 KB |
-| RNAP with Android Auto (`rnapCar=true`) | 1,193 KB | 3,790 KB | 853 KB | 90 KB | 242 KB |
+| **RNAP** | 1,208 KB | 3,854 KB | 867 KB | 92 KB | 242 KB |
+| RNAP without HLS (`rnapHls=false`) | 1,144 KB | 3,758 KB | 810 KB | 92 KB | 242 KB |
+| RNAP with Cast (`rnapCast=true`) | 2,657 KB | 11,072 KB | 1,228 KB | 102 KB | 1,213 KB |
+| RNAP with the Sound API (`rnapSound=true`) | 1,208 KB | 3,854 KB | 874 KB | 92 KB | 242 KB |
+| RNAP with Android Auto (`rnapCar=true`) | 1,209 KB | 3,854 KB | 867 KB | 92 KB | 242 KB |
+| RNAP with video (`rnapVideo=true`, DASH included) | 1,351 KB | 3,966 KB | 990 KB | 92 KB | 255 KB |
+| RNAP with video and its software decoders (`rnapVideoDecoders=true`) | 4,215 KB | 6,830 KB | 1,009 KB | 2,910 KB | 255 KB |
 | RNTP 5 (Cast always in) | 2,670 KB | 10,956 KB | 1,306 KB | 55 KB | 1,213 KB |
 | react-native-video | 1,272 KB | 3,384 KB | 762 KB | 0 | 487 KB |
 | react-native-audio-pro | 849 KB | 2,587 KB | 659 KB | 0 | 184 KB |
@@ -77,12 +79,12 @@ What an app's users download: each library built into a React Native 0.86 app, i
 | expo-av (over the runtime) | 747 KB | 2,479 KB | 526 KB | 94 KB | 117 KB |
 | RNTP 4 | — | — | | | |
 
-Built 2026-10-22 (`benchmarks/results/apk.json`); the code, native and resource columns are with R8, as stored in the APK. RNTP 4.1.2 does not compile against React Native 0.86. The Expo rows come from a second app: the same bare app plus the Expo modules runtime. The runtime row is what that runtime adds to the bare app; the expo-audio and expo-av rows are what each adds on top of it. expo-av's prebuilt binary links against older Expo APIs, so its R8 build also needs three `-dontwarn` rules that its package does not ship.
+Built 2026-10-24 (`benchmarks/results/apk.json`); the code, native and resource columns are with R8, as stored in the APK. RNTP 4.1.2 does not compile against React Native 0.86. The Expo rows come from a second app: the same bare app plus the Expo modules runtime. The runtime row is what that runtime adds to the bare app; the expo-audio and expo-av rows are what each adds on top of it. expo-av's prebuilt binary links against older Expo APIs, so its R8 build also needs three `-dontwarn` rules that its package does not ship.
 
 How to read it:
 
 - **R8 is where the size goes.** Media3 is large on disk and mostly unused by any one app: R8 removes two thirds of what the Media3-based players add. Turn it on for release builds; RNAP needs no rules of its own (see [Configuration](configuration.md#release-builds-and-r8)).
-- **RNAP is shaped for R8.** It builds ExoPlayer with only the audio and metadata renderers, so the video, subtitle and image code is removed, and Android compiles only its module's C++, not the iOS-only AirPlay button's. Release 1.1.0 added 1,400 KB with R8 and 1.1.1 added 1,176 KB; 1.2.0, with the sleep timer, fades and the browse tree, adds 1,192 KB. The Sound API and Android Auto cost almost nothing on top (SoundPool and a manifest entry).
+- **RNAP is shaped for R8.** It builds ExoPlayer with only the audio and metadata renderers, so the video, subtitle and image code is removed, and Android compiles only its module's C++, not the iOS-only AirPlay button's. Release 1.1.0 added 1,400 KB with R8 and 1.1.1 added 1,176 KB; 1.2.0, with the sleep timer, fades and the browse tree, added 1,192 KB, and the next release adds 1,208 KB. The Sound API and Android Auto cost almost nothing on top (SoundPool and a manifest entry). Video is the one module that brings Media3 code back: the video and text renderers and DASH, 142 KB with R8 (`rnapDash=false` leaves DASH out). Its software decoders are native libraries, 2.8 MB more for one ABI (about 1.2 MB to download), and only for apps that turn them on.
 - **Same work, same size.** react-native-audio-pro is smaller with less to do (no HLS, no output picker, no recovery). With Cast in, RNAP and RNTP 5 land within 45 KB of each other: the Cast framework is most of it.
 - **Native code that R8 cannot touch:** react-native-audio-api ships FFmpeg and its audio engine as native libraries, and react-native-nitro-sound its C++ through Nitro.
 - **Expo modules need the Expo runtime.** An app that does not use Expo yet adds 3,912 KB with R8 for the runtime (its core modules and their C++) before the module itself. An app already on Expo pays only the module: 1,076 KB for expo-audio, 747 KB for expo-av.
@@ -99,8 +101,8 @@ How to read it:
 
 | Package | Version | Licence | Download | Unpacked | JS (min+gz) | Native code | Android artifacts | Required extras |
 |---|---|---|--:|--:|--:|--:|--:|---|
-| **RNAP** | 1.2.0 | PolyForm NC | 368 KB | 1,230 KB | 6.3 KB | 14,230 lines (+2,081 opt-in) | 5 (+2 with Cast) | — |
-| RNTP 5 (@rntp/player) | 5.12.1 | commercial | 253 KB | 1,211 KB | 2.4 KB | 13,232 lines | 7 | — |
+| **RNAP** | 1.2.1 | PolyForm NC | 662 KB | 2,251 KB | 16.2 KB | 25,195 lines (+5,004 opt-in) | 6 (+2 with Cast) | — |
+| RNTP 5 (@rntp/player) | 5.12.1 | commercial | 253 KB | 1,211 KB | 2.4 KB | 12,767 lines (+465 opt-in) | 7 | — |
 | RNTP 4 | 4.1.2 | Apache-2.0 | 83 KB | 378 KB | 3.5 KB | 3,500 lines | 5 | — |
 | expo-audio | 58.0.10 | MIT | 758 KB | 1,313 KB | 2.9 KB | 7,896 lines | 10 | `expo`, `expo-asset` |
 | expo-av | 16.0.8 | MIT | 561 KB | 1,268 KB | 6.6 KB | 8,660 lines | 4 | `expo` |
@@ -110,15 +112,15 @@ How to read it:
 | react-native-audio-api | 0.13.6 | MIT | 1769 KB | 9,243 KB | 16.7 KB | 164,791 lines | 4 | `semver` |
 | react-native-sound | 0.13.0 | MIT | 23 KB | 92 KB | 1.7 KB | 878 lines | 0 | — |
 
-Measured 2026-10-22 against the latest npm releases (`benchmarks/results/size.json`). RNAP is packed from this repository, as it would be published. Google Cast is opt-in: its native code and its two Android artifacts are counted apart, because an app without the `cast` option does not compile them.
+Measured 2026-10-25 against the latest npm releases (`benchmarks/results/size.json`). RNAP is packed from this repository, as it would be published. Its opt-in modules (Google Cast, video, the Sound API, cars) are counted apart, because an app without them does not compile them; so are Google Cast's two Android artifacts.
 
 How to read it:
 
-- **JavaScript is not where the cost is.** Every player adds 2–7 KB of gzipped JS, because they all do their work in native code. RNAP's 6.3 KB is everything its main entry exports: the player, hooks, the sleep timer and fades, the voice catalog and its browse options, the Cast and output functions, and the two buttons (their icons are image assets, not JS). The browser engine is not in it: bundlers load it only on the web. The meaningful costs are the native code and the Android libraries your app compiles.
-- **RNAP's native code** (source lines: [what reaches the APK](#added-to-a-release-apk) is the better measure) is 14.2k lines for the engine twins (now with the sleep timer and fades), the iOS stream proxy, the iOS stream visualizer, the media sessions, outputs and the output picker, and the voice catalog with its browse tree for cars and watches, Siri and the assistants. The opt-in parts add 2.1k lines when they are turned on: Google Cast, the Sound API and CarPlay / Android Auto. RNTP 5 is 13.2k. The minimal players (react-native-sound, audio-pro, RNTP 4) are smaller because they do much less: no recovery, no proxy, no visualizer.
+- **JavaScript is not where the cost is.** Most players add 2–7 KB of gzipped JS, because they do their work in native code. RNAP's 16.2 KB is everything its main entry exports: the player, hooks, the sleep timer and fades, the voice catalog and its browse options, the Cast and output functions, the two buttons (their icons are image assets, not JS), and the video API with the subtitle parsers (SubRip, WebVTT, ASS and TTML are parsed in JavaScript on every platform). An audio-only app carries the video parts too: Metro bundles everything the entry imports. The browser engine is not in it: bundlers load it only on the web. The meaningful costs are the native code and the Android libraries your app compiles.
+- **RNAP's native code** (source lines: [what reaches the APK](#added-to-a-release-apk) is the better measure) is 25.2k lines for the engine twins (with the sleep timer, fades and the video rules), the iOS stream proxy and its remuxer (Matroska, WebM and MPEG-TS for AVPlayer), DRM, the iOS stream visualizer, the media sessions, outputs and the output picker, and the voice catalog with its browse tree for cars and watches, Siri and the assistants. The opt-in parts add 5.0k lines when they are turned on: Google Cast, video, the Sound API and CarPlay / Android Auto. RNTP 5 is 12.8k (+0.5k opt-in). The minimal players (react-native-sound, audio-pro, RNTP 4) are smaller because they do much less: no recovery, no proxy, no visualizer.
 - **Android libraries**: RNAP pulls in Media3 (ExoPlayer, session, the OkHttp data source and HLS) and AndroidX MediaRouter (the system output picker). HLS can be left out with `rnapHls=false`; Google Cast adds Media3 Cast and the Cast framework only with `rnapCast`. expo-audio adds DASH, SmoothStreaming and Media3 UI; react-native-video adds IMA ads and RTSP as well.
 - **No extras.** RNAP needs nothing beyond React Native: no framework (`expo` is optional, for the config plugin only), no Nitro, no worklets, no state library.
-- **Download size** is mostly the compiled JS and the native sources. RNAP ships only what an app uses: the compiled output for every entry (React Native, the web engine, React DOM) with its type declarations, no source maps and no second copy of the sources; the native sources for iOS and Android (Cast, the Sound API, CarPlay / Android Auto and the Siri templates included, compiled only when turned on); the Expo plugin; and the CLI as one minified file (112 KB, the largest single file). Most of the difference with RNTP 5 is the web and the CLI: RNAP carries a complete engine there, the same one as on the phone, which never reaches a native app's bundle.
+- **Download size** is mostly the compiled JS and the native sources. RNAP ships only what an app uses: the compiled output for every entry (React Native, the web engine, React DOM) with its type declarations, no source maps and no second copy of the sources; the native sources for iOS and Android (Cast, the Sound API, CarPlay / Android Auto and the Siri templates included, compiled only when turned on); the Expo plugin; and the CLI as one minified file (114 KB, the largest single file). Most of the difference with RNTP 5 is the web and the CLI: RNAP carries a complete engine there, the same one as on the phone, which never reaches a native app's bundle.
 
 ## Expo web and React Native Web
 
@@ -128,7 +130,7 @@ The same React Native packages, bundled for the browser the way Metro and React 
 
 | Package | On page load | Fetched to play | Lock screen (Media Session) | Recovers a dropped stream | Radio titles | HLS outside Safari |
 |---|--:|--:|---|---|---|---|
-| **RNAP** | 31.5 KB | — | ✓ | ✓ | ✓ | ✓ with hls.js (the app adds it, 184 KB) |
+| **RNAP** | 57.4 KB | — | ✓ | ✓ | ✓ | ✓ with hls.js (the app adds it, 185 KB) |
 | RNTP 5 | 9.0 KB | — | ✓ | – (`retry()` for the app) | – | ✓ with shaka-player (288 KB) |
 | RNTP 4 | 5.7 KB | 367 KB (shaka-player, for anything) | – | – (`retry()` for the app) | – | ✓ shaka-player |
 | expo-audio | 8.3 KB | — | ✓ | – | – | – |
@@ -138,7 +140,7 @@ The same React Native packages, bundled for the browser the way Metro and React 
 
 Minified and gzipped, with `react`, `react-native-web` and `expo` excluded (every such app has them). Read from each package's web sources.
 
-RNAP is the heaviest page here because it is the only one with a streaming engine on the web: it reads the stream itself (Media Source Extensions), so it can time radio titles to the audio, notice a stall, and reconnect under the same recovery rules as on the phone. The others hand a URL to an `<audio>` element and report what it does. RNTP 4 is light on load and then fetches shaka-player, its web player, before it plays anything. Google Cast, the hls.js glue and the Firefox repackaging load only when they are used (8 KB more).
+RNAP is the heaviest page here because it is the only one with a streaming engine on the web: it reads the stream itself (Media Source Extensions), so it can time radio titles to the audio, notice a stall, and reconnect under the same recovery rules as on the phone. The others hand a URL to an `<audio>` element and report what it does. RNTP 4 is light on load and then fetches shaka-player, its web player, before it plays anything. About 25 KB of RNAP's page is video (the engine's video rules and the stage), there whether the page plays video or not. Google Cast, the hls.js and Shaka glue, the remuxer, DRM and the subtitle parsers load only when they are used (38 KB more).
 
 ## React and plain web pages
 
@@ -156,26 +158,26 @@ RNAP's web entries are the same engine with no React Native: `react-native-anyth
 
 | Library | Version | Licence | On page load | Everything it can load | What it is |
 |---|---|---|--:|--:|---|
-| **RNAP `/web`** | 1.2.0 | PolyForm NC | 30.0 KB | 37.7 KB | A streaming player: recovery, radio titles, Media Session, Cast, AirPlay |
-| **RNAP `/react`** | 1.2.0 | PolyForm NC | 31.5 KB | 39.2 KB | The same, with hooks and the output and Cast buttons |
+| **RNAP `/web`** | 1.2.1 | PolyForm NC | 55.8 KB | 94.3 KB | A streaming audio and video player: recovery, radio titles, Media Session, Cast, AirPlay |
+| **RNAP `/react`** | 1.2.1 | PolyForm NC | 57.5 KB | 96.0 KB | The same, with hooks, `<VideoView>` and the output and Cast buttons |
 | howler.js | 2.2.4 | MIT | 10.0 KB | 10.0 KB | Sound effects and short files over Web Audio: sprites, spatial audio |
 | use-sound | 5.0.0 | MIT | 0.9 KB | 10.6 KB | A React hook over howler.js, which it loads on first use |
 | Amplitude.js | 5.3.2 | MIT | 16.6 KB | 16.6 KB | Playlists and a bring-your-own-HTML player UI |
 | react-h5-audio-player | 3.10.2 | MIT | 12.1 KB | 12.1 KB | A player UI around `<audio>` (its CSS not counted) |
 | react-audio-player | 0.17.0 | MIT | 3.6 KB | 3.6 KB | A thin React wrapper for `<audio>` |
 | Plyr | 3.8.5 | MIT | 33.1 KB | 33.1 KB | A themed audio and video player UI, with YouTube and Vimeo |
-| react-player | 3.4.0 | MIT | 3.1 KB | 614 KB | A component that embeds YouTube, Vimeo, HLS, Mux and others, each loaded when used |
-| Vidstack | 1.15.7 | MIT | 32.8 KB | 103 KB | A video and audio player UI, with HLS, Cast and AirPlay |
+| react-player | 3.4.0 | MIT | 2.3 KB | 615 KB | A component that embeds YouTube, Vimeo, HLS, Mux and others, each loaded when used |
+| Vidstack | 1.15.7 | MIT | 79.0 KB | 103 KB | A video and audio player UI, with HLS, Cast and AirPlay |
 | icecast-metadata-player | 1.17.13 | LGPL-3.0 | 23.3 KB | 238 KB | An Icecast / Shoutcast player with radio titles; WebAssembly decoders for codecs the browser cannot stream |
 
-Minified and gzipped, with `react` and `react-dom` excluded. "On page load" is what a page loads up front; "everything it can load" adds the parts a library fetches with `import()` when a feature is used. (For RNAP that is Google Cast and the MP4 repackaging Firefox needs.)
+Minified and gzipped, with `react` and `react-dom` excluded. "On page load" is what a page loads up front; "everything it can load" adds the parts a library fetches with `import()` when a feature is used. (For RNAP: Google Cast, the hls.js and Shaka glue, the remuxer, DRM and the subtitle parsers.)
 
 How to read it:
 
 - **Recovery is the gap.** Of these libraries, only RNAP and icecast-metadata-player reconnect a dropped live stream on their own. Vidstack and react-player get hls.js's fragment retries for HLS; the rest leave it to the app.
 - **For internet radio,** icecast-metadata-player is the closest peer: it reads radio titles and reconnects too. RNAP adds Media Session, Cast, AirPlay and a visualizer, and is the same player on iOS and Android.
 - **howler.js is smaller** (10 KB) and has sprites and spatial audio. RNAP's short sounds come from a separate entry (`react-native-anything-player/sound`) that a streaming page does not load; howler.js has no streaming recovery, radio titles or Media Session.
-- **Plyr and Vidstack are about the same weight on load** (33 KB), and come with a player UI and video. RNAP has no UI beyond its output and Cast buttons: you draw your own controls with its hooks or events.
+- **Plyr (33 KB) and Vidstack (79 KB) come with a player UI.** RNAP (56 KB) has no UI beyond its output and Cast buttons: you draw your own controls with its hooks or events.
 
 ## Methodology
 

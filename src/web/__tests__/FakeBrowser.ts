@@ -299,6 +299,7 @@ export class FakeAudio extends FakeEvents {
   volume = 1;
   muted = false;
   playbackRate = 1;
+  defaultPlaybackRate = 1;
   preload = '';
   crossOrigin: string | null = null;
   disableRemotePlayback = false;
@@ -335,6 +336,8 @@ export class FakeAudio extends FakeEvents {
   set src(value: string) {
     this._src = value;
     this.srcHistory.push(value);
+    // The media load algorithm: the rate goes back to the default.
+    this.playbackRate = this.defaultPlaybackRate;
     this.attachMediaSource(value);
   }
 
@@ -399,6 +402,7 @@ export class FakeAudio extends FakeEvents {
 
   load(): void {
     this.loads += 1;
+    this.playbackRate = this.defaultPlaybackRate;
   }
 
   canPlayType(type: string): string {

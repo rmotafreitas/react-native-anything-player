@@ -1,32 +1,33 @@
 {
-  "measuredAt": "2026-10-22",
+  "measuredAt": "2026-10-30",
   "method": "benchmarks/size/measure.mjs",
   "packages": [
     {
       "name": "react-native-anything-player",
       "label": "RNAP",
       "role": "player (this repo)",
-      "version": "1.2.0",
+      "version": "1.2.1",
       "license": "PolyForm-Noncommercial-1.0.0",
-      "tarballBytes": 376598,
-      "unpackedBytes": 1259190,
-      "jsMinBytes": 17788,
-      "jsGzipBytes": 6402,
+      "tarballBytes": 677905,
+      "unpackedBytes": 2304896,
+      "jsMinBytes": 46417,
+      "jsGzipBytes": 16556,
       "runtimeDependencies": [],
       "requiredPeers": [],
       "native": {
-        "files": 73,
-        "bytes": 599270,
-        "lines": 14230,
+        "files": 101,
+        "bytes": 1066270,
+        "lines": 25195,
         "optIn": {
-          "files": 13,
-          "bytes": 86975,
-          "lines": 2081
+          "files": 24,
+          "bytes": 205927,
+          "lines": 5015
         }
       },
       "androidDependencies": [
         "androidx.media3:media3-datasource-okhttp",
         "androidx.media3:media3-exoplayer",
+        "androidx.media3:media3-exoplayer-dash",
         "androidx.media3:media3-exoplayer-hls",
         "androidx.media3:media3-session",
         "androidx.mediarouter:mediarouter"
@@ -41,18 +42,18 @@
       "name": "@rntp/player",
       "label": "RNTP 5 (@rntp/player)",
       "role": "player, commercial",
-      "version": "5.12.1",
+      "version": "5.13.0",
       "license": "SEE LICENSE IN <license.txt>",
-      "tarballBytes": 259505,
-      "unpackedBytes": 1239680,
+      "tarballBytes": 260230,
+      "unpackedBytes": 1243631,
       "jsMinBytes": 6164,
       "jsGzipBytes": 2480,
       "runtimeDependencies": [],
       "requiredPeers": [],
       "native": {
         "files": 68,
-        "bytes": 488200,
-        "lines": 12767,
+        "bytes": 490319,
+        "lines": 12821,
         "optIn": {
           "files": 2,
           "bytes": 21980,
@@ -312,16 +313,16 @@
         {
           "name": "react-native-anything-player",
           "label": "RNAP",
-          "version": "1.2.0",
+          "version": "1.2.1",
           "license": "PolyForm-Noncommercial-1.0.0",
-          "initialMinBytes": 100882,
-          "initialGzipBytes": 32240,
-          "totalGzipBytes": 40106,
+          "initialMinBytes": 185520,
+          "initialGzipBytes": 58753,
+          "totalGzipBytes": 98269,
           "later": [
             {
               "name": "hls.js",
-              "version": "1.7.3",
-              "gzipBytes": 188659,
+              "version": "1.7.4",
+              "gzipBytes": 189946,
               "when": "HLS outside Safari (the app adds it)",
               "required": false
             }
@@ -330,16 +331,16 @@
         {
           "name": "@rntp/player",
           "label": "RNTP 5",
-          "version": "5.12.1",
+          "version": "5.13.0",
           "license": "SEE LICENSE IN <license.txt>",
           "initialMinBytes": 33077,
-          "initialGzipBytes": 9187,
-          "totalGzipBytes": 299262,
+          "initialGzipBytes": 9185,
+          "totalGzipBytes": 300784,
           "later": [
             {
               "name": "shaka-player",
-              "version": "5.3.1",
-              "gzipBytes": 294416,
+              "version": "5.3.3",
+              "gzipBytes": 295968,
               "when": "HLS / DASH outside Safari",
               "required": false
             }
@@ -351,13 +352,13 @@
           "version": "4.1.2",
           "license": "Apache-2.0",
           "initialMinBytes": 18857,
-          "initialGzipBytes": 5803,
-          "totalGzipBytes": 376220,
+          "initialGzipBytes": 5804,
+          "totalGzipBytes": 377733,
           "later": [
             {
               "name": "shaka-player",
-              "version": "5.3.1",
-              "gzipBytes": 376280,
+              "version": "5.3.3",
+              "gzipBytes": 377973,
               "when": "playing anything",
               "required": true
             }
@@ -412,11 +413,11 @@
         {
           "name": "react-native-anything-player",
           "label": "RNAP /react",
-          "version": "1.2.0",
+          "version": "1.2.1",
           "license": "PolyForm-Noncommercial-1.0.0",
-          "initialMinBytes": 100971,
-          "initialGzipBytes": 32282,
-          "totalGzipBytes": 40152,
+          "initialMinBytes": 185896,
+          "initialGzipBytes": 58871,
+          "totalGzipBytes": 98259,
           "later": []
         },
         {
@@ -425,8 +426,8 @@
           "version": "5.0.0",
           "license": "MIT",
           "initialMinBytes": 1771,
-          "initialGzipBytes": 942,
-          "totalGzipBytes": 10872,
+          "initialGzipBytes": 943,
+          "totalGzipBytes": 10873,
           "later": []
         },
         {
@@ -454,9 +455,9 @@
           "label": "react-player",
           "version": "3.4.0",
           "license": "MIT",
-          "initialMinBytes": 8159,
-          "initialGzipBytes": 3265,
-          "totalGzipBytes": 628490,
+          "initialMinBytes": 5435,
+          "initialGzipBytes": 2356,
+          "totalGzipBytes": 634484,
           "later": []
         },
         {
@@ -464,9 +465,9 @@
           "label": "Vidstack",
           "version": "1.15.7",
           "license": "MIT",
-          "initialMinBytes": 95018,
-          "initialGzipBytes": 33548,
-          "totalGzipBytes": 105722,
+          "initialMinBytes": 256737,
+          "initialGzipBytes": 80874,
+          "totalGzipBytes": 105740,
           "later": []
         }
       ]
@@ -478,11 +479,11 @@
         {
           "name": "react-native-anything-player",
           "label": "RNAP /web",
-          "version": "1.2.0",
+          "version": "1.2.1",
           "license": "PolyForm-Noncommercial-1.0.0",
-          "initialMinBytes": 97071,
-          "initialGzipBytes": 30737,
-          "totalGzipBytes": 38607,
+          "initialMinBytes": 181457,
+          "initialGzipBytes": 57178,
+          "totalGzipBytes": 96566,
           "later": []
         },
         {
@@ -521,8 +522,8 @@
           "version": "1.17.13",
           "license": "LGPL-3.0-or-later",
           "initialMinBytes": 73982,
-          "initialGzipBytes": 23873,
-          "totalGzipBytes": 243402,
+          "initialGzipBytes": 23871,
+          "totalGzipBytes": 243393,
           "later": []
         }
       ]

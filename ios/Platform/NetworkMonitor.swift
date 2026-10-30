@@ -10,11 +10,17 @@ final class NetworkMonitor {
   private let queue = DispatchQueue(label: "anythingplayer.network")
   private var lastInterface: NWInterface.InterfaceType?
   private(set) var state: NetworkState = .unknown
+  /// Cellular or a personal hotspot (video quality caps).
+  private(set) var expensive = false
+  /// Low Data Mode.
+  private(set) var constrained = false
   private let onChange: (NetworkState, Bool) -> Void
+  private let onCost: (Bool, Bool) -> Void
   private var started = false
 
-  init(onChange: @escaping (NetworkState, Bool) -> Void) {
+  init(onChange: @escaping (NetworkState, Bool) -> Void, onCost: @escaping (Bool, Bool) -> Void = { _, _ in }) {
     self.onChange = onChange
+    self.onCost = onCost
   }
 
   func start() {
@@ -24,7 +30,12 @@ final class NetworkMonitor {
       let online = path.status == .satisfied
       let primary: NWInterface.InterfaceType? =
         [.wifi, .cellular, .wiredEthernet, .other].first { path.usesInterfaceType($0) }
-      DispatchQueue.main.async { self?.update(online: online, primary: primary) }
+      let expensive = path.isExpensive
+      let constrained = path.isConstrained
+      DispatchQueue.main.async {
+        self?.update(online: online, primary: primary)
+        self?.updateCost(expensive: expensive, constrained: constrained)
+      }
     }
     monitor.start(queue: queue)
   }
@@ -33,6 +44,13 @@ final class NetworkMonitor {
     guard started else { return }
     started = false
     monitor.cancel()
+  }
+
+  private func updateCost(expensive: Bool, constrained: Bool) {
+    guard expensive != self.expensive || constrained != self.constrained else { return }
+    self.expensive = expensive
+    self.constrained = constrained
+    onCost(expensive, constrained)
   }
 
   private func update(online: Bool, primary: NWInterface.InterfaceType?) {

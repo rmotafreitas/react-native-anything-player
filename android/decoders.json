@@ -1,0 +1,10 @@
+{
+  "media3": "1.11.1",
+  "release": "android-decoders-1.11.1-1",
+  "url": "https://github.com/rmotafreitas/react-native-anything-player/releases/download/android-decoders-1.11.1-1/",
+  "sha256": {
+    "ffmpeg": "8377f18592455cda0a954103e0c08bbad54072173fcf65580430c7b1fcd07256",
+    "vp9": "443b0bf5baaceb44b826713cc3203326d8dfd53791916efa8cfc9709d70fb5ad",
+    "av1": "3960872ec58ff265c71314cf8224629e1d0ab6db3d0761ad4761f6d9bc1f35e9"
+  }
+}

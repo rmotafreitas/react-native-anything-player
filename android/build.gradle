@@ -58,6 +58,19 @@ def includeSound = ["rnapSound"].any { name ->
   def value = project.hasProperty(name) ? project.property(name) : (rootProject.ext.has(name) ? rootProject.ext.get(name) : null)
   value != null && value.toString() == "true"
 }
+// Video players (`new Player({ video })`, `<VideoView>`) are opt-in too: tens
+// of KB of views and glue, no extra library (ExoPlayer plays video already).
+// `rnapVideo=true` in gradle.properties (or -PrnapVideo=true, or `rnapVideo`
+// in the root `ext`). Off, `src/novideo` stubs make `new Player({ video })`
+// throw VIDEO_UNAVAILABLE and `<VideoView>` an empty box.
+def includeVideo = ["rnapVideo"].any { name ->
+  def value = project.hasProperty(name) ? project.property(name) : (rootProject.ext.has(name) ? rootProject.ext.get(name) : null)
+  value != null && value.toString() == "true"
+}
+// DASH (`.mpd`, Media3's DASH module): built in with video unless
+// `rnapDash=false`, and into an audio-only app with `rnapDash=true`.
+def dashProperty = project.hasProperty("rnapDash") ? project.property("rnapDash") : (rootProject.ext.has("rnapDash") ? rootProject.ext.get("rnapDash") : null)
+def includeDash = dashProperty != null ? dashProperty.toString() == "true" : includeVideo
 // Android Auto is opt-in: `rnapCar=true` (or -PrnapCar=true, or `rnapCar` in
 // the root `ext`) declares the app a media app for Android Auto. The browse
 // tree itself (Wear OS, Android Automotive OS, Assistant) needs no flag.
@@ -65,6 +78,93 @@ def includeCar = ["rnapCar"].any { name ->
   def value = project.hasProperty(name) ? project.property(name) : (rootProject.ext.has(name) ? rootProject.ext.get(name) : null)
   value != null && value.toString() == "true"
 }
+// Software decoders are opt-in: Media3's FFmpeg (audio: AC-3, E-AC-3, DTS,
+// TrueHD, MPEG audio layer II), libvpx (VP9) and dav1d (AV1), used only for
+// what the device cannot decode. `rnapVideoDecoders=true` for all three, or
+// a list (`ffmpeg,av1`). Media3 does not publish them: RNAP builds them
+// (scripts/decoders/build-android.sh) into a GitHub Release that
+// decoders.json pins with checksums; they are downloaded once into Gradle's
+// cache and checked. `rnapDecodersDir` takes a folder of them instead
+// (offline, or built for another Media3).
+def decodersProperty = project.hasProperty("rnapVideoDecoders") ? project.property("rnapVideoDecoders") : (rootProject.ext.has("rnapVideoDecoders") ? rootProject.ext.get("rnapVideoDecoders") : null)
+def decoderNames = decodersProperty == null || decodersProperty.toString() == "false" ? [] :
+  decodersProperty.toString() == "true" ? ["ffmpeg", "vp9", "av1"] :
+  decodersProperty.toString().split(",").collect { it.trim() }.findAll { it }
+def sha256 = { File f -> java.security.MessageDigest.getInstance("SHA-256").digest(f.bytes).encodeHex().toString() }
+// The chosen decoders' AARs, as [name, file] pairs.
+def decoderFiles = { manifest ->
+  def unknown = decoderNames.findAll { !(it in ["ffmpeg", "vp9", "av1"]) }
+  if (!unknown.isEmpty()) {
+    throw new GradleException("rnapVideoDecoders: unknown decoder(s) ${unknown}; use true, or a list of ffmpeg, vp9, av1.")
+  }
+  def localDir = project.hasProperty("rnapDecodersDir") ? project.property("rnapDecodersDir") : (rootProject.ext.has("rnapDecodersDir") ? rootProject.ext.get("rnapDecodersDir") : null)
+  if (localDir != null) {
+    return decoderNames.collect { decoder ->
+      def found = rootProject.file(localDir.toString()).listFiles()?.find { it.name.startsWith("media3-decoder-${decoder}-") && it.name.endsWith(".aar") }
+      if (found == null) throw new GradleException("rnapDecodersDir: no media3-decoder-${decoder}-*.aar in ${localDir}.")
+      [decoder, found]
+    }
+  }
+  if (media3Version != manifest.media3) {
+    throw new GradleException("RNAP's software decoders are built for Media3 ${manifest.media3}, and this app uses ${media3Version}: build them for it (scripts/decoders/build-android.sh) and set rnapDecodersDir.")
+  }
+  def cache = new File(gradle.gradleUserHomeDir, "caches/rnap-decoders/${manifest.release}")
+  cache.mkdirs()
+  return decoderNames.collect { decoder ->
+    def expected = manifest.sha256[decoder]
+    if (expected == null) {
+      throw new GradleException("RNAP's software decoders are not published for this version yet: build them (scripts/decoders/build-android.sh) and set rnapDecodersDir.")
+    }
+    def aar = new File(cache, "media3-decoder-${decoder}-${manifest.media3}.aar")
+    if (!aar.exists() || sha256(aar) != expected) {
+      def part = new File(cache, "${aar.name}.part")
+      try {
+        new URL("${manifest.url}${aar.name}").withInputStream { input -> part.withOutputStream { it << input } }
+      } catch (IOException e) {
+        throw new GradleException("Could not download ${aar.name} (${e.message}); offline, set rnapDecodersDir to a folder with it.", e)
+      }
+      if (sha256(part) != expected) {
+        part.delete()
+        throw new GradleException("${aar.name}: the download does not match decoders.json's checksum.")
+      }
+      part.renameTo(aar)
+    }
+    [decoder, aar]
+  }
+}
+// AGP refuses a library's local .aar files in release builds, so the AARs
+// go into a Maven repository of their own in Gradle's cache (versioned by
+// their checksum), which every project of the build reads.
+def decoderDependencies = { ->
+  def manifest = new groovy.json.JsonSlurper().parse(file("decoders.json"))
+  def repo = new File(gradle.gradleUserHomeDir, "caches/rnap-decoders/m2")
+  def group = "com.anythingplayer.decoders"
+  def coordinates = decoderFiles(manifest).collect { decoder, File aar ->
+    def artifact = "media3-decoder-${decoder}"
+    def version = "${manifest.media3}-${sha256(aar).take(12)}"
+    def dir = new File(repo, "${group.replace('.', '/')}/${artifact}/${version}")
+    def target = new File(dir, "${artifact}-${version}.aar")
+    if (!target.exists()) {
+      dir.mkdirs()
+      new File(dir, "${artifact}-${version}.pom").text =
+        "<project xmlns=\"http://maven.apache.org/POM/4.0.0\"><modelVersion>4.0.0</modelVersion>" +
+        "<groupId>${group}</groupId><artifactId>${artifact}</artifactId><version>${version}</version>" +
+        "<packaging>aar</packaging></project>\n"
+      def part = new File(dir, "${target.name}.part")
+      java.nio.file.Files.copy(aar.toPath(), part.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+      part.renameTo(target)
+    }
+    "${group}:${artifact}:${version}"
+  }
+  rootProject.allprojects { p ->
+    p.repositories.maven {
+      url = repo
+      content { includeGroup(group) }
+    }
+  }
+  coordinates
+}
+
 // HLS is on by default (many stations and podcasts are HLS-only). Apps that
 // only play progressive streams can drop it with `rnapHls=false` in
 // gradle.properties (64 KB in an R8-shrunk APK, 96 KB without R8).
@@ -88,6 +188,7 @@ android {
   sourceSets {
     main.java.srcDirs += includeCast ? "src/cast/java" : "src/nocast/java"
     main.java.srcDirs += includeSound ? "src/sound/java" : "src/nosound/java"
+    main.java.srcDirs += includeVideo ? "src/video/java" : "src/novideo/java"
     // Cast's options provider and Output Switcher receiver, and Android Auto's
     // meta-data, are declared only when built in: merged on top of the main
     // manifest. A source set holds one manifest, so both together have their own.
@@ -122,6 +223,13 @@ dependencies {
   implementation "androidx.mediarouter:mediarouter:$mediaRouterVersion"
   if (includeHls) {
     implementation "androidx.media3:media3-exoplayer-hls:$media3Version"
+  }
+  if (includeDash) {
+    implementation "androidx.media3:media3-exoplayer-dash:$media3Version"
+  }
+
+  if (!decoderNames.isEmpty()) {
+    decoderDependencies().each { implementation it }
   }
 
   if (includeCast) {

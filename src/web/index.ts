@@ -1,13 +1,20 @@
-// `react-native-anything-player/web`: the player for any web page, with no
-// React or React Native. The same `Player` API, on the browser engine.
-//
-//   import { Player } from 'react-native-anything-player/web';
-//   const player = new Player();
-//   button.onclick = () => player.load('https://radio.example/stream', { autoplay: true });
+/**
+ * `react-native-anything-player/web`: the player for any web page, with no
+ * React or React Native. The same `Player` API, on the browser engine.
+ *
+ * ```ts
+ * import { Player } from 'react-native-anything-player/web';
+ * const player = new Player();
+ * button.onclick = () => player.load('https://radio.example/stream', { autoplay: true });
+ * ```
+ *
+ * @module web
+ */
 
 import { WEB_ONLY_SCHEMES, installHost } from '../core/host';
 import { browser } from './platform/dom';
 import { webModule } from './platform/WebModule';
+import type { ContentFit } from './platform/WebVideo';
 
 installHost({
   module: webModule,
@@ -30,12 +37,34 @@ installHost({
   resolveAsset: () => null,
   acceptsScheme: (scheme) => WEB_ONLY_SCHEMES.has(scheme),
   acceptsBlobs: true,
+  attachVideo: (playerId, element, fit, controls) =>
+    webModule().attachVideo(
+      playerId,
+      element,
+      fit as ContentFit | undefined,
+      controls
+    ),
+  detachVideo: (playerId, element) =>
+    webModule().detachVideo(playerId, element),
 });
 
 export { Player } from '../core/Player';
 export { PlayerError, isPlayerError } from '../errors';
 export { configureHls } from '../core/hls';
-export type { HlsConstructor, HlsLike } from '../core/hls';
+export { configureShaka } from '../core/shaka';
+export type {
+  ShakaLike,
+  ShakaPlayerLike,
+  ShakaTrack,
+  ShakaAudioTrack,
+  ShakaError,
+} from '../core/shaka';
+export type {
+  HlsConstructor,
+  HlsLevel,
+  HlsLike,
+  HlsMediaTrack,
+} from '../core/hls';
 export {
   addCastStateListener,
   addRoutePickerAvailabilityListener,
@@ -58,6 +87,27 @@ export type {
   SearchInput,
 } from '../core/system';
 export type {
+  ArtworkInput,
+  AudioFallbackOptions,
+  AudioOnlyReason,
+  CueAlign,
+  CueSpan,
+  CueVertical,
+  DrmConfig,
+  LicenseRequest,
+  MediaTrack,
+  PlaybackStats,
+  Rendition,
+  SourceRefreshRequest,
+  SubtitleCue,
+  SubtitleFormat,
+  SubtitleSource,
+  Thumbnail,
+  TrackKind,
+  VideoOptions,
+  VideoQuality,
+  VideoQualityOptions,
+  VideoStatus,
   Artwork,
   AudioRoute,
   AudioRouteKind,
@@ -94,5 +144,6 @@ export type {
   SleepEvent,
   SleepTimer,
   Source,
+  SourceOptions,
   SourceInput,
 } from '../types';

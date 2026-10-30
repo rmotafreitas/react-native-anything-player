@@ -1,22 +1,22 @@
 {
-  "measuredAt": "2026-10-22",
+  "measuredAt": "2026-10-24",
   "method": "benchmarks/android/measure-apk.mjs",
   "reactNative": "0.86.3",
   "abi": "arm64-v8a",
   "baseline": {
     "r8": {
-      "apkBytes": 14859850,
+      "apkBytes": 14859870,
       "dexBytes": 1017131,
       "nativeBytes": 12154584,
       "resourceBytes": 490184,
-      "otherBytes": 1058871
+      "otherBytes": 1058889
     },
     "noR8": {
-      "apkBytes": 18027277,
+      "apkBytes": 18027293,
       "dexBytes": 4101283,
       "nativeBytes": 12154584,
       "resourceBytes": 569459,
-      "otherBytes": 1059896
+      "otherBytes": 1059914
     }
   },
   "libraries": [
@@ -24,113 +24,161 @@
       "id": "rnap",
       "label": "RNAP",
       "name": "react-native-anything-player",
-      "version": "1.2.0",
+      "version": "1.2.1",
       "gradle": {},
       "r8": {
-        "apkBytes": 1220766,
-        "dexBytes": 873128,
-        "nativeBytes": 92576,
+        "apkBytes": 1237150,
+        "dexBytes": 887600,
+        "nativeBytes": 94432,
         "resourceBytes": 247672,
-        "otherBytes": 5136
+        "otherBytes": 5144
       },
       "noR8": {
-        "apkBytes": 3880525,
-        "dexBytes": 3057473,
-        "nativeBytes": 92576,
+        "apkBytes": 3946069,
+        "dexBytes": 3122359,
+        "nativeBytes": 94432,
         "resourceBytes": 673161,
-        "otherBytes": 5223
+        "otherBytes": 5231
       }
     },
     {
       "id": "rnapNoHls",
       "label": "RNAP without HLS",
       "name": "react-native-anything-player",
-      "version": "1.2.0",
+      "version": "1.2.1",
       "gradle": {
         "rnapHls": "false"
       },
       "r8": {
-        "apkBytes": 1155230,
-        "dexBytes": 811387,
-        "nativeBytes": 92576,
+        "apkBytes": 1171614,
+        "dexBytes": 829401,
+        "nativeBytes": 94432,
         "resourceBytes": 247672,
-        "otherBytes": 5103
+        "otherBytes": 5124
       },
       "noR8": {
-        "apkBytes": 3782221,
-        "dexBytes": 2971002,
-        "nativeBytes": 92576,
+        "apkBytes": 3847765,
+        "dexBytes": 3032653,
+        "nativeBytes": 94432,
         "resourceBytes": 673161,
-        "otherBytes": 5209
+        "otherBytes": 5223
       }
     },
     {
       "id": "rnapCast",
       "label": "RNAP with Cast",
       "name": "react-native-anything-player",
-      "version": "1.2.0",
+      "version": "1.2.1",
       "gradle": {
         "rnapCast": "true"
       },
       "r8": {
-        "apkBytes": 2688497,
-        "dexBytes": 1238829,
-        "nativeBytes": 102672,
+        "apkBytes": 2721273,
+        "dexBytes": 1257529,
+        "nativeBytes": 104528,
         "resourceBytes": 1242142,
-        "otherBytes": 21503
+        "otherBytes": 21507
       },
       "noR8": {
-        "apkBytes": 11271976,
-        "dexBytes": 9456914,
-        "nativeBytes": 102672,
+        "apkBytes": 11337524,
+        "dexBytes": 9526269,
+        "nativeBytes": 104528,
         "resourceBytes": 1587802,
-        "otherBytes": 28629
+        "otherBytes": 28649
       }
     },
     {
       "id": "rnapSound",
       "label": "RNAP with Sound",
       "name": "react-native-anything-player",
-      "version": "1.2.0",
+      "version": "1.2.1",
       "gradle": {
         "rnapSound": "true"
       },
       "r8": {
-        "apkBytes": 1220766,
-        "dexBytes": 878335,
-        "nativeBytes": 92576,
+        "apkBytes": 1237150,
+        "dexBytes": 894966,
+        "nativeBytes": 94432,
         "resourceBytes": 247672,
-        "otherBytes": 5154
+        "otherBytes": 5146
       },
       "noR8": {
-        "apkBytes": 3880525,
-        "dexBytes": 3065611,
-        "nativeBytes": 92576,
+        "apkBytes": 3946069,
+        "dexBytes": 3127665,
+        "nativeBytes": 94432,
         "resourceBytes": 673161,
-        "otherBytes": 5225
+        "otherBytes": 5226
       }
     },
     {
       "id": "rnapCar",
       "label": "RNAP with Android Auto",
       "name": "react-native-anything-player",
-      "version": "1.2.0",
+      "version": "1.2.1",
       "gradle": {
         "rnapCar": "true"
       },
       "r8": {
-        "apkBytes": 1221258,
-        "dexBytes": 873128,
-        "nativeBytes": 92576,
+        "apkBytes": 1237646,
+        "dexBytes": 887600,
+        "nativeBytes": 94432,
         "resourceBytes": 248010,
-        "otherBytes": 5194
+        "otherBytes": 5203
       },
       "noR8": {
-        "apkBytes": 3880881,
-        "dexBytes": 3057726,
-        "nativeBytes": 92576,
+        "apkBytes": 3946425,
+        "dexBytes": 3122253,
+        "nativeBytes": 94432,
         "resourceBytes": 673363,
-        "otherBytes": 5271
+        "otherBytes": 5287
+      }
+    },
+    {
+      "id": "rnapVideo",
+      "label": "RNAP with video",
+      "name": "react-native-anything-player",
+      "version": "1.2.1",
+      "gradle": {
+        "rnapVideo": "true"
+      },
+      "r8": {
+        "apkBytes": 1383051,
+        "dexBytes": 1013658,
+        "nativeBytes": 94432,
+        "resourceBytes": 261631,
+        "otherBytes": 5180
+      },
+      "noR8": {
+        "apkBytes": 4060815,
+        "dexBytes": 3247966,
+        "nativeBytes": 94432,
+        "resourceBytes": 673161,
+        "otherBytes": 5222
+      }
+    },
+    {
+      "id": "rnapVideoDecoders",
+      "label": "RNAP with video and its software decoders",
+      "name": "react-native-anything-player",
+      "version": "1.2.1",
+      "gradle": {
+        "rnapVideo": "true",
+        "rnapVideoDecoders": "true",
+        "rnapDecodersDir": "/home/rmotafreitas/rnap-decoders/out"
+      },
+      "r8": {
+        "apkBytes": 4316079,
+        "dexBytes": 1033659,
+        "nativeBytes": 2979896,
+        "resourceBytes": 261631,
+        "otherBytes": 5168
+      },
+      "noR8": {
+        "apkBytes": 6993843,
+        "dexBytes": 3259877,
+        "nativeBytes": 2979896,
+        "resourceBytes": 673161,
+        "otherBytes": 5232
       }
     },
     {

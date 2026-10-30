@@ -26,8 +26,18 @@
 //               GET /hls/stream     the live playlist without the extension
 //                                   (found by its Content-Type)
 //               GET /hls/seg-N.mp3  one segment (N counts on, looping)
-// Files:        GET /file.mp3, /program.mp3, /artwork.png, /artwork2.png
+// Files:        GET /file.mp3, /program.mp3, /artwork.png, /artwork2.png,
+//               /video-360.mp4, /video-720.mp4, /video-audio.m4a, /subs.srt,
+//               /subs.vtt (the video ones when generated)
+// Video HLS:    GET /video-hls/master.m3u8  360p + 720p, audio in English and
+//               Spanish, WebVTT subtitles in English and Portuguese
+// Video DASH:   GET /video-dash/manifest.mpd  the same as CMAF DASH (360p, 720p)
 //               (Range supported; `?delay=MS` slows the response)
+// Remux:        GET /remux/movie.mkv (two audio languages, SubRip and ASS),
+//               /remux/movie.ts, /remux/movie.webm (Range supported)
+//               GET /live.ts   a live MPEG-TS channel (paced, looping)
+// DRM:          GET /drm/hls/index.m3u8  the video as fMP4 HLS, CENC-encrypted with a Clear Key
+//               POST /drm/clearkey     its license server (`?status=N`, `?token=T`)
 // Control:      GET /control?down=1|0     refuse every new stream connection
 //               GET /control?stall=1|0    freeze every open stream
 //               GET /control?drop=1       destroy every open stream now
@@ -37,8 +47,8 @@
 // CORS:         every response allows any origin and exposes the ICY headers,
 //               as Icecast does, so browsers can read streams with fetch().
 import { createServer } from 'node:http';
-import { existsSync, readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { dirname, extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -54,6 +64,106 @@ const FILES = {
   '/artwork.png': { body: media('artwork.png'), type: 'image/png' },
   '/artwork2.png': { body: media('artwork2.png'), type: 'image/png' },
 };
+/** Optional (generate-media.sh): the video fixtures. */
+const VIDEO_FILES = {
+  '/video-360.mp4': 'video/mp4',
+  '/video-720.mp4': 'video/mp4',
+  '/video-audio.m4a': 'audio/mp4',
+  '/subs.srt': 'application/x-subrip; charset=utf-8',
+  '/subs.vtt': 'text/vtt; charset=utf-8',
+};
+for (const [path, type] of Object.entries(VIDEO_FILES)) {
+  if (existsSync(join(here, 'media', path.slice(1))))
+    FILES[path] = { body: media(path.slice(1)), type };
+}
+/** Optional (generate-media.sh): the video as HLS with its own tracks, at /video-hls/. */
+const HLS_VIDEO_TYPES = {
+  '.m3u8': 'application/vnd.apple.mpegurl',
+  '.ts': 'video/mp2t',
+  '.vtt': 'text/vtt; charset=utf-8',
+};
+if (existsSync(join(here, 'media', 'hls-video'))) {
+  for (const name of readdirSync(join(here, 'media', 'hls-video'))) {
+    const type = HLS_VIDEO_TYPES[extname(name)];
+    if (type)
+      FILES[`/video-hls/${name}`] = { body: media(`hls-video/${name}`), type };
+  }
+}
+/** Optional (generate-media.sh): the video as CMAF DASH, at /video-dash/. */
+const DASH_VIDEO_TYPES = {
+  '.mpd': 'application/dash+xml',
+  '.m4s': 'video/iso.segment',
+};
+if (existsSync(join(here, 'media', 'dash-video'))) {
+  for (const name of readdirSync(join(here, 'media', 'dash-video'))) {
+    const type = DASH_VIDEO_TYPES[extname(name)];
+    if (type)
+      FILES[`/video-dash/${name}`] = { body: media(`dash-video/${name}`), type };
+  }
+}
+/** The Clear Key the DRM fixture is encrypted with (generate-media.sh). */
+const DRM_KID = 'a7e61c373e219033c21091fa607bf3b8';
+const DRM_KEY = '76a6c65c5ea762046bd749a2e632ccbb';
+const DRM_TYPES = {
+  '.m3u8': 'application/vnd.apple.mpegurl',
+  '.mp4': 'video/mp4',
+  '.m4s': 'video/iso.segment',
+};
+if (existsSync(join(here, 'media', 'drm', 'hls'))) {
+  for (const name of readdirSync(join(here, 'media', 'drm', 'hls'))) {
+    const type = DRM_TYPES[extname(name)];
+    if (type) FILES[`/drm/hls/${name}`] = { body: media(`drm/hls/${name}`), type };
+  }
+}
+
+/**
+ * A W3C Clear Key license server: the browser's (or MediaDrm's) request
+ * `{"kids": […]}` in, the JWK set for the fixture's key out. `?status=N`
+ * answers N instead; `?token=T` wants `X-Drm-Token: T`.
+ */
+function clearKeyLicense(req, res, url) {
+  const chunks = [];
+  req.on('data', (c) => chunks.push(c));
+  req.on('end', () => {
+    const status = Number(url.searchParams.get('status') ?? 200);
+    const token = url.searchParams.get('token');
+    record({ kind: 'license', status, token: req.headers['x-drm-token'] ?? null });
+    if (status !== 200 || (token && req.headers['x-drm-token'] !== token)) {
+      res.writeHead(status !== 200 ? status : 403);
+      return res.end();
+    }
+    let kids = [];
+    try {
+      kids = JSON.parse(Buffer.concat(chunks).toString()).kids ?? [];
+    } catch {
+      kids = [];
+    }
+    const keyId = Buffer.from(DRM_KID, 'hex').toString('base64url');
+    const keys = kids
+      .filter((kid) => kid === keyId)
+      .map((kid) => ({ kty: 'oct', kid, k: Buffer.from(DRM_KEY, 'hex').toString('base64url') }));
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ keys, type: 'temporary' }));
+  });
+}
+
+/** Optional (generate-media.sh): Matroska, MPEG-TS and WebM, at /remux/. */
+const REMUX_TYPES = {
+  '.mkv': 'video/x-matroska',
+  '.ts': 'video/mp2t',
+  '.webm': 'video/webm',
+};
+/** A minute of MPEG-TS sent as a live channel (/live.ts), looping. */
+let LIVE_TS = null;
+if (existsSync(join(here, 'media', 'remux'))) {
+  for (const name of readdirSync(join(here, 'media', 'remux'))) {
+    const type = REMUX_TYPES[extname(name)];
+    if (type && name !== 'live.ts')
+      FILES[`/remux/${name}`] = { body: media(`remux/${name}`), type };
+  }
+  if (existsSync(join(here, 'media', 'remux', 'live.ts')))
+    LIVE_TS = media('remux/live.ts');
+}
 const BYTES_PER_SECOND = 128_000 / 8;
 const LIVE_STREAMS = {
   '/live.mp3': { body: PROGRAM, type: 'audio/mpeg', rate: BYTES_PER_SECOND },
@@ -61,6 +171,15 @@ const LIVE_STREAMS = {
   ...(PROGRAM_AAC
     ? {
         '/live.aac': { body: PROGRAM_AAC, type: 'audio/aac', rate: 8_000 },
+      }
+    : {}),
+  ...(LIVE_TS
+    ? {
+        '/live.ts': {
+          body: LIVE_TS,
+          type: 'video/mp2t',
+          rate: Math.ceil(LIVE_TS.length / 60),
+        },
       }
     : {}),
 };
@@ -426,7 +545,8 @@ function staticFile(req, res, url) {
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'Icy-MetaData, Range, User-Agent, Authorization',
+  'Access-Control-Allow-Headers':
+    'Icy-MetaData, Range, User-Agent, Authorization, Content-Type, X-Drm-Token',
   'Access-Control-Expose-Headers':
     'icy-metaint, icy-name, icy-genre, icy-br, icy-url, Content-Range, Accept-Ranges',
 };
@@ -444,6 +564,7 @@ const server = createServer((req, res) => {
   if (LIVE_STREAMS[url.pathname]) return liveStream(req, res, url);
   if (url.pathname.startsWith('/hls/')) return hls(req, res, url);
   if (FILES[url.pathname]) return staticFile(req, res, url);
+  if (url.pathname === '/drm/clearkey') return clearKeyLicense(req, res, url);
   if (url.pathname === '/control') {
     const q = url.searchParams;
     const delay = Number(q.get('delay') ?? state.delay);

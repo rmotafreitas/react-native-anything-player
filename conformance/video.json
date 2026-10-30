@@ -1,0 +1,861 @@
+[
+  {
+    "name": "video: the background pauses a video player (whenBackgrounded pause), and nothing resumes it",
+    "options": { "video": true },
+    "steps": [
+      { "view": {} },
+      { "call": "load", "uri": "https://cdn.example/v.m3u8", "autoplay": true },
+      { "native": "ready", "duration": 120, "seekable": true },
+      { "native": "playing" },
+      { "expect": { "state": "playing", "wantsMediaSession": true, "commands": ["open(gen=1,start=-,play=true)", "quality(maxH=-,maxBps=-,pin=-,audioOnly=false)"] } },
+      { "call": "background" },
+      { "expect": { "state": "paused", "playWhenReady": false, "interruption": "background", "interruptionResumable": false, "commands": ["pause"] } },
+      { "call": "foreground" },
+      { "expect": { "state": "paused", "interruption": "background", "commands": [] } },
+      { "call": "play" },
+      { "expect": { "state": "buffering", "playWhenReady": true, "interruption": null, "commands": ["play"] } }
+    ]
+  },
+  {
+    "name": "video: an audio player ignores the background and has no video status",
+    "steps": [
+      { "call": "load", "uri": "https://cdn.example/song.mp3", "autoplay": true },
+      { "native": "ready", "duration": 120, "seekable": true },
+      { "native": "playing" },
+      { "expect": { "commands": ["open(gen=1,start=-,play=true)"] } },
+      { "call": "background" },
+      { "advance": 2000 },
+      { "expect": { "state": "playing", "interruption": null, "video": null, "wantsMediaSession": true, "wantsScreenAwake": false, "commands": [] } },
+      { "call": "selectQuality", "id": null, "throws": "INVALID_ARGUMENT" }
+    ]
+  },
+  {
+    "name": "video: whenBackgrounded audio keeps the sound, turns the picture off and asks for audio only",
+    "options": { "video": { "whenBackgrounded": "audio" } },
+    "steps": [
+      { "view": {} },
+      { "call": "load", "uri": "https://cdn.example/v.m3u8", "autoplay": true },
+      { "native": "ready", "duration": 120, "seekable": true },
+      { "native": "playing" },
+      { "expect": { "commands": ["open(gen=1,start=-,play=true)", "quality(maxH=-,maxBps=-,pin=-,audioOnly=false)"] } },
+      { "call": "background" },
+      { "expect": { "state": "playing", "interruption": null, "video": { "audioOnly": "background" }, "commands": ["video(off)", "quality(maxH=-,maxBps=-,pin=-,audioOnly=true)"] } },
+      { "call": "foreground" },
+      { "expect": { "state": "playing", "video": { "audioOnly": null }, "stats": { "audioOnlySwitches": 1 }, "commands": ["video(on)", "quality(maxH=-,maxBps=-,pin=-,audioOnly=false)"] } }
+    ]
+  },
+  {
+    "name": "video: with Picture in Picture up, the background keeps playing",
+    "options": { "video": { "whenBackgrounded": "pip" } },
+    "steps": [
+      { "view": {} },
+      { "call": "load", "uri": "https://cdn.example/v.m3u8", "autoplay": true },
+      { "native": "ready", "duration": 120, "seekable": true },
+      { "native": "playing" },
+      { "expect": { "commands": ["open(gen=1,start=-,play=true)", "quality(maxH=-,maxBps=-,pin=-,audioOnly=false)"] } },
+      { "pip": true },
+      { "call": "background" },
+      { "advance": 2000 },
+      { "expect": { "state": "playing", "interruption": null, "video": { "pictureInPicture": true, "audioOnly": null }, "commands": [] } }
+    ]
+  },
+  {
+    "name": "video: whenBackgrounded pip without Picture in Picture pauses after the grace",
+    "options": { "video": { "whenBackgrounded": "pip" } },
+    "steps": [
+      { "view": {} },
+      { "call": "load", "uri": "https://cdn.example/v.m3u8", "autoplay": true },
+      { "native": "ready", "duration": 120, "seekable": true },
+      { "native": "playing" },
+      { "expect": { "commands": ["open(gen=1,start=-,play=true)", "quality(maxH=-,maxBps=-,pin=-,audioOnly=false)"] } },
+      { "call": "background" },
+      { "advance": 999 },
+      { "expect": { "state": "playing", "commands": [] } },
+      { "advance": 1 },
+      { "expect": { "state": "paused", "interruption": "background", "interruptionResumable": false, "commands": ["pause"] } }
+    ]
+  },
+  {
+    "name": "video: Picture in Picture that starts just after the background keeps playing",
+    "options": { "video": { "whenBackgrounded": "pip" } },
+    "steps": [
+      { "view": {} },
+      { "call": "load", "uri": "https://cdn.example/v.m3u8", "autoplay": true },
+      { "native": "ready", "duration": 120, "seekable": true },
+      { "native": "playing" },
+      { "call": "background" },
+      { "advance": 500 },
+      { "pip": true },
+      { "advance": 2000 },
+      { "expect": { "state": "playing", "interruption": null, "video": { "pictureInPicture": true } } }
+    ]
+  },
+  {
+    "name": "video: closing Picture in Picture in the background pauses, unless the app comes back",
+    "options": { "video": { "whenBackgrounded": "pip" } },
+    "steps": [
+      { "view": {} },
+      { "call": "load", "uri": "https://cdn.example/v.m3u8", "autoplay": true },
+      { "native": "ready", "duration": 120, "seekable": true },
+      { "native": "playing" },
+      { "pip": true },
+      { "call": "background" },
+      { "pip": false },
+      { "advance": 500 },
+      { "call": "foreground" },
+      { "advance": 2000 },
+      { "expect": { "state": "playing", "interruption": null, "video": { "pictureInPicture": false } } },
+      { "pip": true },
+      { "call": "background" },
+      { "advance": 3000 },
+      { "pip": false },
+      { "advance": 999 },
+      { "expect": { "state": "playing" } },
+      { "advance": 1 },
+      { "expect": { "state": "paused", "interruption": "background" } }
+    ]
+  },
+  {
+    "name": "video: a video on a Cast receiver plays on in the background",
+    "options": { "video": true },
+    "steps": [
+      { "view": {} },
+      { "call": "load", "uri": "https://cdn.example/v.m3u8", "autoplay": true },
+      { "native": "ready", "duration": 120, "seekable": true },
+      { "native": "playing" },
+      { "driver": "position", "value": 30 },
+      { "call": "handoff", "route": "cast", "name": "TV", "output": "cast:tv", "resume": true },
+      { "native": "ready", "duration": 120, "seekable": true },
+      { "native": "playing" },
+      { "expect": { "state": "playing", "route": "cast", "orderedCommands": ["unload", "switchOutput(cast:tv)", "open(gen=2,start=30.0,play=true)"] } },
+      { "call": "background" },
+      { "advance": 3000 },
+      { "expect": { "state": "playing", "interruption": null, "video": { "audioOnly": null }, "commands": [] } }
+    ]
+  },
+  {
+    "name": "video: an ambient player plays only while shown, resumes when shown again, and never asks for focus",
+    "options": { "video": { "ambient": true } },
+    "steps": [
+      { "focus": "denied" },
+      { "call": "loop", "value": true },
+      { "call": "load", "uri": "https://cdn.example/loop.mp4", "autoplay": true },
+      { "expect": { "state": "loading", "playWhenReady": false, "interruption": "offscreen", "interruptionResumable": true, "needsAudioFocus": false, "wantsMediaSession": false, "commands": ["loop(true)", "open(gen=1,start=-,play=false)", "quality(maxH=-,maxBps=-,pin=-,audioOnly=false)"] } },
+      { "native": "ready", "duration": 10, "seekable": true },
+      { "expect": { "state": "paused" } },
+      { "view": {} },
+      { "expect": { "state": "buffering", "playWhenReady": true, "interruption": null, "commands": ["play"] } },
+      { "native": "playing" },
+      { "expect": { "state": "playing", "wantsScreenAwake": false, "needsAudioFocus": false } },
+      { "view": { "visible": false } },
+      { "expect": { "state": "paused", "interruption": "offscreen", "interruptionResumable": true, "commands": ["pause"] } },
+      { "view": {} },
+      { "expect": { "state": "buffering", "interruption": null, "commands": ["play"] } },
+      { "native": "playing" },
+      { "call": "background" },
+      { "expect": { "state": "paused", "interruption": "background", "interruptionResumable": true, "commands": ["pause"] } },
+      { "call": "foreground" },
+      { "expect": { "state": "buffering", "interruption": null, "commands": ["play"] } },
+      { "native": "playing" },
+      { "call": "pause" },
+      { "call": "play" },
+      { "expect": { "state": "buffering", "playWhenReady": true, "interruption": null } }
+    ]
+  },
+  {
+    "name": "video: a player without a view stops decoding the picture after a second; a move between views keeps it",
+    "options": { "video": true },
+    "steps": [
+      { "call": "load", "uri": "https://cdn.example/v.m3u8", "autoplay": true },
+      { "native": "ready", "duration": 120, "seekable": true },
+      { "native": "playing" },
+      { "advance": 999 },
+      { "expect": { "commands": ["open(gen=1,start=-,play=true)", "quality(maxH=-,maxBps=-,pin=-,audioOnly=false)"] } },
+      { "advance": 1 },
+      { "expect": { "state": "playing", "commands": ["video(off)"] } },
+      { "view": {} },
+      { "expect": { "commands": ["video(on)"] } },
+      { "view": { "attached": false } },
+      { "advance": 500 },
+      { "view": {} },
+      { "advance": 2000 },
+      { "expect": { "state": "playing", "commands": [] } }
+    ]
+  },
+  {
+    "name": "video: the screen stays awake while a visible video plays or waits to",
+    "options": { "video": true },
+    "steps": [
+      { "view": {} },
+      { "call": "load", "uri": "https://cdn.example/v.m3u8", "autoplay": true },
+      { "expect": { "state": "loading", "wantsScreenAwake": true } },
+      { "native": "ready", "duration": 120, "seekable": true },
+      { "native": "playing" },
+      { "expect": { "wantsScreenAwake": true } },
+      { "call": "pause" },
+      { "expect": { "wantsScreenAwake": false } },
+      { "call": "play" },
+      { "expect": { "state": "buffering", "wantsScreenAwake": true } },
+      { "view": { "visible": false } },
+      { "expect": { "wantsScreenAwake": false } },
+      { "view": {} },
+      { "expect": { "wantsScreenAwake": true } },
+      { "call": "background" },
+      { "expect": { "state": "paused", "wantsScreenAwake": false } }
+    ]
+  },
+  {
+    "name": "video: keepAwake false never keeps the screen on",
+    "options": { "video": { "keepAwake": false } },
+    "steps": [
+      { "view": {} },
+      { "call": "load", "uri": "https://cdn.example/v.m3u8", "autoplay": true },
+      { "native": "ready", "duration": 120, "seekable": true },
+      { "native": "playing" },
+      { "expect": { "state": "playing", "wantsScreenAwake": false } }
+    ]
+  },
+  {
+    "name": "video: a muted video takes no focus and no media session; unmuting asks, and a refusal pauses",
+    "options": { "video": true },
+    "steps": [
+      { "view": {} },
+      { "call": "muted", "value": true },
+      { "focus": "denied" },
+      { "call": "load", "uri": "https://cdn.example/v.m3u8", "autoplay": true },
+      { "expect": { "state": "loading", "playWhenReady": true, "needsAudioFocus": false, "wantsMediaSession": false, "commands": ["volume(0.00)", "open(gen=1,start=-,play=true)", "quality(maxH=-,maxBps=-,pin=-,audioOnly=false)"] } },
+      { "native": "ready", "duration": 120, "seekable": true },
+      { "native": "playing" },
+      { "call": "muted", "value": false },
+      { "expect": { "state": "paused", "playWhenReady": false, "interruption": "audio-focus-denied", "commands": ["volume(1.00)", "pause"] } }
+    ]
+  },
+  {
+    "name": "video: unmuting with focus granted keeps playing and takes the media session",
+    "options": { "video": true },
+    "steps": [
+      { "view": {} },
+      { "call": "muted", "value": true },
+      { "call": "load", "uri": "https://cdn.example/v.m3u8", "autoplay": true },
+      { "native": "ready", "duration": 120, "seekable": true },
+      { "native": "playing" },
+      { "expect": { "wantsMediaSession": false, "needsAudioFocus": false } },
+      { "call": "muted", "value": false },
+      { "expect": { "state": "playing", "wantsMediaSession": true, "needsAudioFocus": true, "commands": ["volume(1.00)"] } }
+    ]
+  },
+  {
+    "name": "video: focusWhenMuted asks for focus even muted",
+    "options": { "video": { "focusWhenMuted": true } },
+    "steps": [
+      { "view": {} },
+      { "call": "muted", "value": true },
+      { "focus": "denied" },
+      { "call": "load", "uri": "https://cdn.example/v.m3u8", "autoplay": true },
+      { "expect": { "playWhenReady": false, "interruption": "audio-focus-denied", "wantsMediaSession": true } },
+      { "call": "play", "throws": "AUDIO_FOCUS_DENIED" }
+    ]
+  },
+  {
+    "name": "video: the caps follow the network cost, the data saver and the view's size; Picture in Picture keeps the cap it started with",
+    "options": { "video": { "quality": { "maxHeight": 1080, "cellularMaxHeight": 720, "cellularMaxBitrate": 3000000 } } },
+    "steps": [
+      { "view": {} },
+      { "call": "load", "uri": "https://cdn.example/v.m3u8", "autoplay": true },
+      { "expect": { "commands": ["open(gen=1,start=-,play=true)", "quality(maxH=1080,maxBps=-,pin=-,audioOnly=false)"] } },
+      { "networkCost": { "metered": true } },
+      { "expect": { "commands": ["quality(maxH=720,maxBps=3000000,pin=-,audioOnly=false)"] } },
+      { "networkCost": { "metered": true, "saveData": true } },
+      { "expect": { "commands": ["quality(maxH=480,maxBps=3000000,pin=-,audioOnly=false)"] } },
+      { "networkCost": { "metered": false } },
+      { "expect": { "commands": ["quality(maxH=1080,maxBps=-,pin=-,audioOnly=false)"] } },
+      { "view": { "height": 300 } },
+      { "expect": { "commands": ["quality(maxH=360,maxBps=-,pin=-,audioOnly=false)"] } },
+      { "native": "ready", "duration": 120, "seekable": true },
+      { "native": "videoInfo", "width": 1920, "height": 1080 },
+      { "view": { "width": 400, "height": 300 } },
+      { "expect": { "video": { "width": 1920, "height": 1080 }, "commands": ["quality(maxH=240,maxBps=-,pin=-,audioOnly=false)"] } },
+      { "pip": true },
+      { "expect": { "video": { "pictureInPicture": true }, "commands": [] } },
+      { "view": { "width": 200, "height": 112 } },
+      { "expect": { "commands": [] } },
+      { "pip": false },
+      { "expect": { "commands": ["quality(maxH=144,maxBps=-,pin=-,audioOnly=false)"] } }
+    ]
+  },
+  {
+    "name": "video: an adaptive source's qualities can be pinned and released",
+    "options": { "video": true },
+    "steps": [
+      { "view": {} },
+      { "call": "load", "uri": "https://cdn.example/v.m3u8", "autoplay": true },
+      { "native": "ready", "duration": 120, "seekable": true },
+      { "native": "playing" },
+      { "native": "variants", "variants": [{ "id": "v360", "height": 360, "bitrate": 800000 }, { "id": "v720", "height": 720, "bitrate": 2500000 }, { "id": "a", "audioOnly": true, "bitrate": 64000 }] },
+      { "expect": { "video": { "qualities": ["v360", "v720", "a"], "selectedQuality": null }, "commands": ["open(gen=1,start=-,play=true)", "quality(maxH=-,maxBps=-,pin=-,audioOnly=false)"] } },
+      { "call": "selectQuality", "id": "v720" },
+      { "expect": { "video": { "selectedQuality": "v720" }, "commands": ["quality(maxH=-,maxBps=-,pin=v720,audioOnly=false)"] } },
+      { "call": "selectQuality", "id": "nope", "throws": "INVALID_ARGUMENT" },
+      { "native": "videoInfo", "width": 1280, "height": 720, "variant": "v720" },
+      { "expect": { "video": { "quality": "v720", "width": 1280, "height": 720 } } },
+      { "call": "selectQuality", "id": null },
+      { "expect": { "video": { "selectedQuality": null }, "commands": ["quality(maxH=-,maxBps=-,pin=-,audioOnly=false)"] } },
+      { "native": "firstFrame" },
+      { "expect": { "video": { "firstFrame": true } } }
+    ]
+  },
+  {
+    "name": "video: listen-only plays the sound alone",
+    "options": { "video": true },
+    "steps": [
+      { "view": {} },
+      { "call": "load", "uri": "https://cdn.example/v.m3u8", "autoplay": true },
+      { "native": "ready", "duration": 120, "seekable": true },
+      { "native": "playing" },
+      { "expect": { "commands": ["open(gen=1,start=-,play=true)", "quality(maxH=-,maxBps=-,pin=-,audioOnly=false)"] } },
+      { "call": "listenOnly", "value": true },
+      { "expect": { "state": "playing", "video": { "audioOnly": "listen" }, "commands": ["video(off)", "quality(maxH=-,maxBps=-,pin=-,audioOnly=true)"] } },
+      { "call": "background" },
+      { "expect": { "video": { "audioOnly": "listen" }, "state": "paused", "commands": ["pause"] } },
+      { "call": "foreground" },
+      { "call": "listenOnly", "value": false },
+      { "expect": { "video": { "audioOnly": null }, "commands": ["video(on)", "quality(maxH=-,maxBps=-,pin=-,audioOnly=false)"] } }
+    ]
+  },
+  {
+    "name": "video: renditions start at the lowest 480p-or-taller file with no bandwidth reading",
+    "options": { "video": true },
+    "steps": [
+      { "view": {} },
+      { "call": "load", "uri": "https://cdn.example/ep01", "autoplay": true, "renditions": [{ "uri": "https://cdn.example/240.mp4", "height": 240, "bitrate": 400000 }, { "uri": "https://cdn.example/480.mp4", "height": 480, "bitrate": 1200000 }, { "uri": "https://cdn.example/720.mp4", "height": 720, "bitrate": 2500000 }, { "uri": "https://cdn.example/1080.mp4", "height": 1080, "bitrate": 5000000 }] },
+      { "expect": { "video": { "quality": "r1", "selectedQuality": null, "qualities": ["r0", "r1", "r2", "r3"] }, "commands": ["open(gen=1,start=-,play=true,r=1)"] } }
+    ]
+  },
+  {
+    "name": "video: renditions start at the highest the cellular cap allows, and the view's size caps them",
+    "options": { "video": { "quality": { "startQuality": "highest", "cellularMaxHeight": 720 } } },
+    "steps": [
+      { "networkCost": { "metered": true } },
+      { "view": {} },
+      { "call": "load", "uri": "https://cdn.example/ep01", "autoplay": true, "renditions": [{ "uri": "https://cdn.example/240.mp4", "height": 240, "bitrate": 400000 }, { "uri": "https://cdn.example/480.mp4", "height": 480, "bitrate": 1200000 }, { "uri": "https://cdn.example/720.mp4", "height": 720, "bitrate": 2500000 }, { "uri": "https://cdn.example/1080.mp4", "height": 1080, "bitrate": 5000000 }] },
+      { "expect": { "video": { "quality": "r2" }, "commands": ["open(gen=1,start=-,play=true,r=2)"] } },
+      { "view": { "height": 300 } },
+      { "expect": { "state": "loading", "video": { "quality": "r1" }, "commands": ["open(gen=2,start=-,play=true,r=1)"] } }
+    ]
+  },
+  {
+    "name": "video: picking a rendition while playing switches behind the picture, under a new generation; the new file's own variants keep the pick",
+    "options": { "video": true },
+    "steps": [
+      { "view": {} },
+      { "call": "load", "uri": "https://cdn.example/ep01", "autoplay": true, "renditions": [{ "uri": "https://cdn.example/240.mp4", "height": 240, "bitrate": 400000 }, { "uri": "https://cdn.example/480.mp4", "height": 480, "bitrate": 1200000 }, { "uri": "https://cdn.example/720.mp4", "height": 720, "bitrate": 2500000 }, { "uri": "https://cdn.example/1080.mp4", "height": 1080, "bitrate": 5000000 }] },
+      { "native": "ready", "duration": 120, "seekable": true },
+      { "native": "playing" },
+      { "driver": "position", "value": 30 },
+      { "expect": { "commands": ["open(gen=1,start=-,play=true,r=1)"] } },
+      { "call": "selectQuality", "id": "r3" },
+      { "expect": { "state": "playing", "gen": 1, "video": { "quality": "r1", "selectedQuality": "r3" }, "commands": ["open(gen=2,start=30.0,play=true,r=3,swap)"] } },
+      { "native": "ready", "gen": 2, "duration": 120, "seekable": true },
+      { "advance": 500 },
+      { "expect": { "state": "playing", "gen": 1 } },
+      { "native": "playing", "gen": 2 },
+      { "expect": { "state": "playing", "gen": 2, "video": { "quality": "r3" }, "stats": { "qualitySwitches": 1 }, "commands": [] } },
+      { "native": "variants", "gen": 2, "variants": [] },
+      { "expect": { "video": { "quality": "r3", "selectedQuality": "r3" }, "commands": [] } },
+      { "native": "failed", "gen": 1, "code": "NETWORK_ERROR", "recoverable": true },
+      { "advance": 1000 },
+      { "expect": { "state": "playing", "errors": [], "commands": [] } }
+    ]
+  },
+  {
+    "name": "video: a rendition that fails to switch to is dropped, sits out a minute, then is tried again",
+    "options": { "video": true },
+    "steps": [
+      { "view": {} },
+      { "call": "load", "uri": "https://cdn.example/ep01", "autoplay": true, "renditions": [{ "uri": "https://cdn.example/240.mp4", "height": 240, "bitrate": 400000 }, { "uri": "https://cdn.example/480.mp4", "height": 480, "bitrate": 1200000 }, { "uri": "https://cdn.example/720.mp4", "height": 720, "bitrate": 2500000 }, { "uri": "https://cdn.example/1080.mp4", "height": 1080, "bitrate": 5000000 }] },
+      { "native": "ready", "duration": 600, "seekable": true },
+      { "native": "playing" },
+      { "call": "selectQuality", "id": "r3" },
+      { "native": "failed", "gen": 2, "code": "HTTP_ERROR", "httpStatus": 404 },
+      { "expect": { "state": "playing", "gen": 1, "video": { "quality": "r1", "selectedQuality": "r3" }, "errors": [], "commands": ["open(gen=1,start=-,play=true,r=1)", "open(gen=2,start=0.0,play=true,r=3,swap)", "cancelSwap(gen=2)"] } },
+      { "advance": 59000 },
+      { "expect": { "state": "playing", "commands": [] } },
+      { "advance": 2000 },
+      { "expect": { "orderedCommands": ["open(gen=3,"] } }
+    ]
+  },
+  {
+    "name": "video: a switch that does not play within 12 s is dropped",
+    "options": { "video": true },
+    "steps": [
+      { "view": {} },
+      { "call": "load", "uri": "https://cdn.example/ep01", "autoplay": true, "renditions": [{ "uri": "https://cdn.example/240.mp4", "height": 240, "bitrate": 400000 }, { "uri": "https://cdn.example/480.mp4", "height": 480, "bitrate": 1200000 }, { "uri": "https://cdn.example/720.mp4", "height": 720, "bitrate": 2500000 }] },
+      { "native": "ready", "duration": 600, "seekable": true },
+      { "native": "playing" },
+      { "call": "selectQuality", "id": "r2" },
+      { "advance": 11999 },
+      { "expect": { "commands": ["open(gen=1,start=-,play=true,r=1)", "open(gen=2,start=0.0,play=true,r=2,swap)"] } },
+      { "advance": 1 },
+      { "expect": { "state": "playing", "gen": 1, "video": { "quality": "r1" }, "commands": ["cancelSwap(gen=2)"] } }
+    ]
+  },
+  {
+    "name": "video: a pause cancels a switch, its late events are stale, and the next open takes a fresh generation",
+    "options": { "video": true },
+    "steps": [
+      { "view": {} },
+      { "call": "load", "uri": "https://cdn.example/ep01", "autoplay": true, "renditions": [{ "uri": "https://cdn.example/240.mp4", "height": 240, "bitrate": 400000 }, { "uri": "https://cdn.example/480.mp4", "height": 480, "bitrate": 1200000 }, { "uri": "https://cdn.example/720.mp4", "height": 720, "bitrate": 2500000 }] },
+      { "native": "ready", "duration": 600, "seekable": true },
+      { "native": "playing" },
+      { "call": "selectQuality", "id": "r2" },
+      { "call": "pause" },
+      { "expect": { "state": "paused", "commands": ["open(gen=1,start=-,play=true,r=1)", "open(gen=2,start=0.0,play=true,r=2,swap)", "cancelSwap(gen=2)", "pause"] } },
+      { "native": "playing", "gen": 2 },
+      { "expect": { "state": "paused", "gen": 1, "video": { "quality": "r1" } } },
+      { "call": "play" },
+      { "native": "playing" },
+      { "advance": 1000 },
+      { "expect": { "state": "playing", "orderedCommands": ["play", "open(gen=3,"] } },
+      { "native": "playing", "gen": 3 },
+      { "expect": { "gen": 3, "video": { "quality": "r2" } } }
+    ]
+  },
+  {
+    "name": "video: a seek cancels a switch, which is issued again from the new position",
+    "options": { "video": true },
+    "steps": [
+      { "view": {} },
+      { "call": "load", "uri": "https://cdn.example/ep01", "autoplay": true, "renditions": [{ "uri": "https://cdn.example/240.mp4", "height": 240, "bitrate": 400000 }, { "uri": "https://cdn.example/480.mp4", "height": 480, "bitrate": 1200000 }, { "uri": "https://cdn.example/720.mp4", "height": 720, "bitrate": 2500000 }] },
+      { "native": "ready", "duration": 600, "seekable": true },
+      { "native": "playing" },
+      { "call": "selectQuality", "id": "r2" },
+      { "call": "seek", "value": 100, "exact": true },
+      { "expect": { "commands": ["open(gen=1,start=-,play=true,r=1)", "open(gen=2,start=0.0,play=true,r=2,swap)", "cancelSwap(gen=2)", "seek(100.0,exact)"] } },
+      { "advance": 1000 },
+      { "expect": { "commands": ["open(gen=3,start=101.0,play=true,r=2,swap)"] } }
+    ]
+  },
+  {
+    "name": "video: picking a rendition while paused re-opens it paused at the same position",
+    "options": { "video": true },
+    "steps": [
+      { "view": {} },
+      { "call": "load", "uri": "https://cdn.example/ep01", "renditions": [{ "uri": "https://cdn.example/240.mp4", "height": 240, "bitrate": 400000 }, { "uri": "https://cdn.example/480.mp4", "height": 480, "bitrate": 1200000 }, { "uri": "https://cdn.example/720.mp4", "height": 720, "bitrate": 2500000 }] },
+      { "native": "ready", "duration": 600, "seekable": true },
+      { "driver": "position", "value": 10 },
+      { "call": "selectQuality", "id": "r2" },
+      { "expect": { "state": "loading", "playWhenReady": false, "video": { "quality": "r2" }, "commands": ["open(gen=1,start=-,play=false,r=1)", "open(gen=2,start=10.0,play=false,r=2)"] } },
+      { "native": "ready", "duration": 600, "seekable": true },
+      { "expect": { "state": "paused" } }
+    ]
+  },
+  {
+    "name": "video: a stall on a slow link steps down to the rendition that fits the bandwidth",
+    "options": { "video": true },
+    "steps": [
+      { "view": {} },
+      { "call": "load", "uri": "https://cdn.example/ep01", "autoplay": true, "renditions": [{ "uri": "https://cdn.example/240.mp4", "height": 240, "bitrate": 400000 }, { "uri": "https://cdn.example/480.mp4", "height": 480, "bitrate": 1200000 }, { "uri": "https://cdn.example/720.mp4", "height": 720, "bitrate": 2500000 }] },
+      { "native": "ready", "duration": 600, "seekable": true },
+      { "native": "playing" },
+      { "native": "bandwidth", "bps": 700000 },
+      { "driver": "position", "value": 30 },
+      { "native": "buffering" },
+      { "advance": 500 },
+      { "expect": { "state": "buffering", "stats": { "rebufferCount": 1 }, "commands": ["open(gen=1,start=-,play=true,r=1)", "open(gen=2,start=30.0,play=true,r=0,swap)"] } },
+      { "native": "playing", "gen": 2 },
+      { "expect": { "state": "playing", "gen": 2, "video": { "quality": "r0" } } }
+    ]
+  },
+  {
+    "name": "video: two stalls in 30 s step down one rendition without a bandwidth reading",
+    "options": { "video": true },
+    "steps": [
+      { "view": {} },
+      { "call": "load", "uri": "https://cdn.example/ep01", "autoplay": true, "renditions": [{ "uri": "https://cdn.example/240.mp4", "height": 240, "bitrate": 400000 }, { "uri": "https://cdn.example/480.mp4", "height": 480, "bitrate": 1200000 }, { "uri": "https://cdn.example/720.mp4", "height": 720, "bitrate": 2500000 }] },
+      { "native": "ready", "duration": 600, "seekable": true },
+      { "native": "playing" },
+      { "driver": "position", "value": 20 },
+      { "native": "buffering" },
+      { "advance": 500 },
+      { "expect": { "state": "buffering", "commands": ["open(gen=1,start=-,play=true,r=1)"] } },
+      { "native": "playing" },
+      { "advance": 5000 },
+      { "native": "buffering" },
+      { "advance": 500 },
+      { "expect": { "state": "buffering", "stats": { "rebufferCount": 2 }, "commands": ["open(gen=2,start=25.0,play=true,r=0,swap)"] } }
+    ]
+  },
+  {
+    "name": "video: 30 s of headroom steps up one rendition",
+    "options": { "video": true },
+    "steps": [
+      { "view": {} },
+      { "call": "load", "uri": "https://cdn.example/ep01", "autoplay": true, "renditions": [{ "uri": "https://cdn.example/240.mp4", "height": 240, "bitrate": 400000 }, { "uri": "https://cdn.example/480.mp4", "height": 480, "bitrate": 1200000 }, { "uri": "https://cdn.example/720.mp4", "height": 720, "bitrate": 2500000 }] },
+      { "native": "ready", "duration": 600, "seekable": true },
+      { "native": "playing" },
+      { "native": "bandwidth", "bps": 6000000 },
+      { "advance": 29000 },
+      { "expect": { "commands": ["open(gen=1,start=-,play=true,r=1)"] } },
+      { "advance": 1000 },
+      { "expect": { "commands": ["open(gen=2,start=30.0,play=true,r=2,swap)"] } }
+    ]
+  },
+  {
+    "name": "video: 10 s under the current bitrate steps down one rendition",
+    "options": { "video": true },
+    "steps": [
+      { "view": {} },
+      { "call": "load", "uri": "https://cdn.example/ep01", "autoplay": true, "renditions": [{ "uri": "https://cdn.example/240.mp4", "height": 240, "bitrate": 400000 }, { "uri": "https://cdn.example/480.mp4", "height": 480, "bitrate": 1200000 }, { "uri": "https://cdn.example/720.mp4", "height": 720, "bitrate": 2500000 }] },
+      { "native": "ready", "duration": 600, "seekable": true },
+      { "native": "playing" },
+      { "native": "bandwidth", "bps": 1000000 },
+      { "advance": 9000 },
+      { "expect": { "commands": ["open(gen=1,start=-,play=true,r=1)"] } },
+      { "advance": 1000 },
+      { "expect": { "commands": ["open(gen=2,start=10.0,play=true,r=0,swap)"] } }
+    ]
+  },
+  {
+    "name": "video: renditions fall back to the audio-only file below the lowest video, and come back",
+    "options": { "video": { "fallback": true } },
+    "steps": [
+      { "view": {} },
+      { "call": "load", "uri": "https://cdn.example/ep01", "autoplay": true, "renditions": [{ "uri": "https://cdn.example/240.mp4", "height": 240, "bitrate": 400000 }, { "uri": "https://cdn.example/480.mp4", "height": 480, "bitrate": 1200000 }, { "uri": "https://cdn.example/audio.m4a", "audioOnly": true, "bitrate": 96000 }] },
+      { "native": "ready", "duration": 600, "seekable": true },
+      { "native": "playing" },
+      { "native": "bandwidth", "bps": 300000 },
+      { "advance": 10000 },
+      { "expect": { "commands": ["open(gen=1,start=-,play=true,r=1)", "open(gen=2,start=10.0,play=true,r=0,swap)"] } },
+      { "native": "playing", "gen": 2 },
+      { "advance": 1000 },
+      { "expect": { "video": { "audioOnly": "fallback", "quality": "r0" }, "commands": ["video(off)", "open(gen=3,start=11.0,play=true,r=2,swap)"] } },
+      { "native": "playing", "gen": 3 },
+      { "native": "bandwidth", "bps": 700000 },
+      { "advance": 29000 },
+      { "expect": { "video": { "audioOnly": "fallback", "quality": "r2" }, "commands": [] } },
+      { "advance": 1000 },
+      { "expect": { "video": { "audioOnly": null }, "stats": { "audioOnlySwitches": 1 }, "commands": ["video(on)", "open(gen=4,start=41.0,play=true,r=0,swap)"] } }
+    ]
+  },
+  {
+    "name": "video: two stalls drop an adaptive source to audio only; with no bandwidth reading the picture is tried again after a minute",
+    "options": { "video": { "fallback": true } },
+    "steps": [
+      { "view": {} },
+      { "call": "load", "uri": "https://cdn.example/v.m3u8", "autoplay": true },
+      { "native": "ready", "duration": 600, "seekable": true },
+      { "native": "playing" },
+      { "native": "variants", "variants": [{ "id": "v360", "height": 360, "bitrate": 800000 }, { "id": "v720", "height": 720, "bitrate": 2500000 }, { "id": "a", "audioOnly": true, "bitrate": 64000 }] },
+      { "driver": "position", "value": 10 },
+      { "native": "buffering" },
+      { "advance": 500 },
+      { "native": "playing" },
+      { "advance": 2000 },
+      { "native": "buffering" },
+      { "advance": 500 },
+      { "expect": { "video": { "audioOnly": "fallback" }, "commands": ["open(gen=1,start=-,play=true)", "quality(maxH=-,maxBps=-,pin=-,audioOnly=false)", "video(off)", "quality(maxH=-,maxBps=-,pin=-,audioOnly=true)"] } },
+      { "native": "playing" },
+      { "advance": 58000 },
+      { "expect": { "video": { "audioOnly": "fallback" }, "commands": [] } },
+      { "advance": 3000 },
+      { "expect": { "video": { "audioOnly": null }, "commands": ["video(on)", "quality(maxH=-,maxBps=-,pin=-,audioOnly=false)"] } }
+    ]
+  },
+  {
+    "name": "video: without an audio-only option there is no fallback",
+    "options": { "video": { "fallback": true } },
+    "steps": [
+      { "view": {} },
+      { "call": "load", "uri": "https://cdn.example/v.m3u8", "autoplay": true },
+      { "native": "ready", "duration": 600, "seekable": true },
+      { "native": "playing" },
+      { "native": "variants", "variants": [{ "id": "v360", "height": 360, "bitrate": 800000 }, { "id": "v720", "height": 720, "bitrate": 2500000 }] },
+      { "native": "buffering" },
+      { "advance": 500 },
+      { "native": "playing" },
+      { "advance": 2000 },
+      { "native": "buffering" },
+      { "advance": 500 },
+      { "expect": { "video": { "audioOnly": null }, "commands": ["open(gen=1,start=-,play=true)", "quality(maxH=-,maxBps=-,pin=-,audioOnly=false)"] } }
+    ]
+  },
+  {
+    "name": "video: whenBackgrounded audio switches renditions to the audio-only file, and back",
+    "options": { "video": { "whenBackgrounded": "audio" } },
+    "steps": [
+      { "view": {} },
+      { "call": "load", "uri": "https://cdn.example/ep01", "autoplay": true, "renditions": [{ "uri": "https://cdn.example/240.mp4", "height": 240, "bitrate": 400000 }, { "uri": "https://cdn.example/480.mp4", "height": 480, "bitrate": 1200000 }, { "uri": "https://cdn.example/audio.m4a", "audioOnly": true, "bitrate": 96000 }] },
+      { "native": "ready", "duration": 600, "seekable": true },
+      { "native": "playing" },
+      { "expect": { "commands": ["open(gen=1,start=-,play=true,r=1)"] } },
+      { "call": "background" },
+      { "expect": { "state": "playing", "video": { "audioOnly": "background" }, "commands": ["video(off)", "open(gen=2,start=0.0,play=true,r=2,swap)"] } },
+      { "call": "foreground" },
+      { "expect": { "state": "playing", "video": { "audioOnly": null, "quality": "r1" }, "commands": ["video(on)", "cancelSwap(gen=2)"] } }
+    ]
+  },
+  {
+    "name": "video: on a Cast receiver a rendition change re-opens in place, without a switch behind the picture",
+    "options": { "video": true },
+    "steps": [
+      { "view": {} },
+      { "call": "load", "uri": "https://cdn.example/ep01", "autoplay": true, "renditions": [{ "uri": "https://cdn.example/240.mp4", "height": 240, "bitrate": 400000 }, { "uri": "https://cdn.example/480.mp4", "height": 480, "bitrate": 1200000 }, { "uri": "https://cdn.example/720.mp4", "height": 720, "bitrate": 2500000 }] },
+      { "native": "ready", "duration": 600, "seekable": true },
+      { "native": "playing" },
+      { "driver": "position", "value": 30 },
+      { "call": "handoff", "route": "cast", "name": "TV", "output": "cast:tv", "resume": true },
+      { "native": "ready", "duration": 600, "seekable": true },
+      { "native": "playing" },
+      { "driver": "position", "value": 40 },
+      { "expect": { "state": "playing", "orderedCommands": ["open(gen=2,start=30.0,play=true,r=1)"] } },
+      { "call": "selectQuality", "id": "r2" },
+      { "expect": { "state": "loading", "video": { "quality": "r2" }, "commands": ["open(gen=3,start=40.0,play=true,r=2)"] } }
+    ]
+  },
+  {
+    "name": "video: AirPlay keeps a video playing in the background",
+    "options": { "video": true },
+    "steps": [
+      { "view": {} },
+      { "call": "load", "uri": "https://cdn.example/v.m3u8", "autoplay": true },
+      { "native": "ready", "duration": 120, "seekable": true },
+      { "native": "playing" },
+      { "route": "airplay", "name": "Living Room" },
+      { "call": "background" },
+      { "advance": 2000 },
+      { "expect": { "state": "playing", "interruption": null } }
+    ]
+  },
+  {
+    "name": "refresh: a 403 on a refreshable source waits for the app's new source and re-opens where it was",
+    "steps": [
+      { "call": "load", "uri": "https://cdn.example/song.mp3?sig=1", "autoplay": true, "refreshable": true },
+      { "native": "ready", "duration": 600, "seekable": true },
+      { "native": "playing" },
+      { "driver": "position", "value": 42 },
+      { "native": "failed", "code": "HTTP_ERROR", "httpStatus": 403 },
+      { "expect": { "state": "reconnecting", "playWhenReady": true, "refreshes": ["1:unauthorized"], "errors": [], "commands": ["open(gen=1,start=-,play=true)"] } },
+      { "call": "sourceRefreshed", "uri": "https://cdn.example/song.mp3?sig=2" },
+      { "expect": { "state": "loading", "commands": ["open(gen=2,start=42.0,play=true)"] } },
+      { "native": "ready", "duration": 600, "seekable": true },
+      { "native": "playing" },
+      { "expect": { "state": "playing", "error": null } }
+    ]
+  },
+  {
+    "name": "refresh: with no answer in 10 s the backoff retries, and the next 403 asks again",
+    "steps": [
+      { "call": "load", "uri": "https://cdn.example/song.mp3?sig=1", "autoplay": true, "refreshable": true },
+      { "native": "ready", "duration": 600, "seekable": true },
+      { "native": "playing" },
+      { "driver": "position", "value": 42 },
+      { "native": "failed", "code": "HTTP_ERROR", "httpStatus": 403 },
+      { "expect": { "refreshes": ["1:unauthorized"] } },
+      { "advance": 9999 },
+      { "expect": { "state": "reconnecting", "errors": [] } },
+      { "advance": 1 },
+      { "expect": { "state": "reconnecting", "reconnectAttempt": 1, "errors": ["HTTP_ERROR:recoverable"] } },
+      { "advance": 1000 },
+      { "expect": { "state": "loading", "commands": ["open(gen=2,start=42.0,play=true)"] } },
+      { "native": "failed", "code": "HTTP_ERROR", "httpStatus": 403 },
+      { "expect": { "state": "reconnecting", "refreshes": ["1:unauthorized"] } }
+    ]
+  },
+  {
+    "name": "refresh: when the app cannot make a new source the original error ends playback",
+    "steps": [
+      { "call": "load", "uri": "https://cdn.example/song.mp3?sig=1", "autoplay": true, "refreshable": true },
+      { "native": "ready", "duration": 600, "seekable": true },
+      { "native": "playing" },
+      { "native": "failed", "code": "HTTP_ERROR", "httpStatus": 401 },
+      { "expect": { "state": "reconnecting", "refreshes": ["1:unauthorized"] } },
+      { "call": "sourceRefreshFailed" },
+      { "expect": { "state": "error", "error": "HTTP_ERROR", "errors": ["HTTP_ERROR:fatal"], "commands": ["release"] } }
+    ]
+  },
+  {
+    "name": "refresh: expiresAt asks a minute ahead without interrupting, and a later 403 uses the new source at once",
+    "steps": [
+      { "call": "load", "uri": "https://cdn.example/song.mp3?sig=1", "autoplay": true, "refreshable": true, "expiresIn": 120000 },
+      { "native": "ready", "duration": 600, "seekable": true },
+      { "native": "playing" },
+      { "advance": 59999 },
+      { "expect": { "refreshes": [] } },
+      { "advance": 1 },
+      { "expect": { "state": "playing", "refreshes": ["1:expiring"] } },
+      { "call": "sourceRefreshed", "uri": "https://cdn.example/song.mp3?sig=2" },
+      { "expect": { "state": "playing", "commands": [] } },
+      { "native": "failed", "code": "HTTP_ERROR", "httpStatus": 403 },
+      { "expect": { "state": "loading", "refreshes": [], "errors": [], "commands": ["open(gen=2,start=60.0,play=true)"] } }
+    ]
+  },
+  {
+    "name": "refresh: a source without refresh still fails on a 403",
+    "steps": [
+      { "call": "load", "uri": "https://cdn.example/song.mp3?sig=1", "autoplay": true },
+      { "native": "ready", "duration": 600, "seekable": true },
+      { "native": "playing" },
+      { "native": "failed", "code": "HTTP_ERROR", "httpStatus": 403 },
+      { "expect": { "state": "error", "refreshes": [], "errors": ["HTTP_ERROR:fatal"] } }
+    ]
+  },
+  {
+    "name": "refresh: a paused first load that gets a 403 settles when the new source is ready",
+    "steps": [
+      { "call": "load", "uri": "https://cdn.example/song.mp3?sig=1", "refreshable": true },
+      { "native": "failed", "code": "HTTP_ERROR", "httpStatus": 403 },
+      { "expect": { "state": "loading", "loads": [], "refreshes": ["1:unauthorized"] } },
+      { "call": "sourceRefreshed", "uri": "https://cdn.example/song.mp3?sig=2" },
+      { "expect": { "state": "loading", "commands": ["open(gen=2,start=-,play=false)"] } },
+      { "native": "ready", "duration": 600, "seekable": true },
+      { "expect": { "state": "paused", "loads": ["1:ready"] } }
+    ]
+  },
+  {
+    "name": "loop: a looping item that ends starts over without an ended event",
+    "steps": [
+      { "call": "load", "uri": "https://cdn.example/clip.mp4", "autoplay": true },
+      { "call": "loop", "value": true },
+      { "native": "ready", "duration": 10, "seekable": true },
+      { "native": "playing" },
+      { "native": "ended" },
+      { "expect": { "state": "buffering", "playWhenReady": true, "ended": 0, "commands": ["open(gen=1,start=-,play=true)", "loop(true)", "seek(0.0)", "play"] } },
+      { "native": "playing" },
+      { "call": "loop", "value": false },
+      { "native": "ended" },
+      { "expect": { "state": "ended", "ended": 1 } }
+    ]
+  },
+  {
+    "name": "stats: start-up time and rebuffers are counted",
+    "steps": [
+      { "call": "load", "uri": "https://cdn.example/song.mp3", "autoplay": true },
+      { "advance": 1500 },
+      { "native": "ready", "duration": 600, "seekable": true },
+      { "native": "playing" },
+      { "expect": { "stats": { "startupMs": 1500, "rebufferCount": 0, "rebufferMs": 0 } } },
+      { "native": "buffering" },
+      { "advance": 500 },
+      { "advance": 1000 },
+      { "native": "playing" },
+      { "expect": { "stats": { "startupMs": 1500, "rebufferCount": 1, "rebufferMs": 1000, "qualitySwitches": 0 } } }
+    ]
+  },
+  {
+    "name": "tracks: the source's own tracks follow the device's language, and the driver is told",
+    "options": { "video": true },
+    "steps": [
+      { "view": {} },
+      { "system": { "languages": ["en-US"] } },
+      { "call": "load", "uri": "https://cdn.example/v.m3u8", "autoplay": true },
+      { "native": "ready", "duration": 600, "seekable": true },
+      { "native": "playing" },
+      { "expect": { "commands": ["open(gen=1,start=-,play=true)", "quality(maxH=-,maxBps=-,pin=-,audioOnly=false)"] } },
+      { "native": "tracks", "tracks": [{ "id": "track:0", "kind": "audio", "language": "jpn", "default": true }, { "id": "track:1", "kind": "audio", "language": "eng" }, { "id": "track:2", "kind": "subtitles", "language": "eng" }] },
+      { "expect": { "video": { "tracks": ["track:0", "track:1", "track:2"], "audioTrack": "track:1", "textTrack": null }, "commands": ["tracks(audio=track:1,text=-)"] } }
+    ]
+  },
+  {
+    "name": "tracks: an app's subtitle file in the user's language is shown over foreign audio; the driver shows none of its own",
+    "options": { "video": { "tracks": { "languages": ["pt"] } } },
+    "steps": [
+      { "view": {} },
+      { "system": { "languages": ["pt-BR"] } },
+      { "call": "load", "uri": "https://cdn.example/v.m3u8", "autoplay": true },
+      { "native": "ready", "duration": 600, "seekable": true },
+      { "native": "playing" },
+      { "expect": { "commands": ["open(gen=1,start=-,play=true)", "quality(maxH=-,maxBps=-,pin=-,audioOnly=false)"] } },
+      { "native": "tracks", "tracks": [{ "id": "track:0", "kind": "audio", "language": "ja" }, { "id": "track:1", "kind": "subtitles", "language": "en" }] },
+      { "call": "appTracks", "tracks": [{ "id": "pt", "kind": "subtitles", "language": "pt" }] },
+      { "expect": { "video": { "tracks": ["track:0", "track:1", "pt"], "audioTrack": "track:0", "textTrack": "pt" }, "commands": ["tracks(audio=track:0,text=-)"] } }
+    ]
+  },
+  {
+    "name": "tracks: turning subtitles off sticks; picking an unknown or wrong-kind track throws",
+    "options": { "video": { "tracks": { "languages": ["pt"] } } },
+    "steps": [
+      { "view": {} },
+      { "system": { "languages": ["pt-BR"] } },
+      { "call": "load", "uri": "https://cdn.example/v.m3u8", "autoplay": true },
+      { "native": "ready", "duration": 600, "seekable": true },
+      { "native": "playing" },
+      { "native": "tracks", "tracks": [{ "id": "track:0", "kind": "audio", "language": "ja" }, { "id": "track:1", "kind": "subtitles", "language": "en" }] },
+      { "call": "appTracks", "tracks": [{ "id": "pt", "kind": "subtitles", "language": "pt" }] },
+      { "call": "selectTextTrack", "id": null },
+      { "call": "appTracks", "tracks": [{ "id": "pt", "kind": "subtitles", "language": "pt" }] },
+      { "expect": { "video": { "textTrack": null } } },
+      { "call": "selectTextTrack", "id": "nope", "throws": "INVALID_ARGUMENT" },
+      { "call": "selectAudioTrack", "id": "pt", "throws": "INVALID_ARGUMENT" },
+      { "call": "selectTextTrack", "id": "track:1" },
+      { "expect": { "video": { "textTrack": "track:1", "audioTrack": "track:0" }, "commands": ["tracks(audio=track:0,text=track:1)"] } },
+      { "call": "selectAudioTrack", "id": null },
+      { "expect": { "video": { "audioTrack": "track:0" }, "commands": [] } }
+    ]
+  },
+  {
+    "name": "tracks: the OS's captions setting changes the automatic choice",
+    "options": { "video": true },
+    "steps": [
+      { "view": {} },
+      { "system": { "languages": ["en"] } },
+      { "call": "load", "uri": "https://cdn.example/v.m3u8", "autoplay": true },
+      { "native": "ready", "duration": 600, "seekable": true },
+      { "native": "playing" },
+      { "native": "tracks", "tracks": [{ "id": "a0", "kind": "audio", "language": "en" }, { "id": "t-sub", "kind": "subtitles", "language": "en" }, { "id": "t-cc", "kind": "captions", "language": "en" }] },
+      { "expect": { "video": { "textTrack": null }, "orderedCommands": ["tracks(audio=a0,text=-)"] } },
+      { "system": { "languages": ["en"], "captions": true } },
+      { "expect": { "video": { "textTrack": "t-cc" }, "commands": ["tracks(audio=a0,text=t-cc)"] } }
+    ]
+  },
+  {
+    "name": "tracks: a reconnect tells the new item again; a new load starts over",
+    "options": { "video": true },
+    "steps": [
+      { "view": {} },
+      { "system": { "languages": ["en"] } },
+      { "call": "load", "uri": "https://cdn.example/v.m3u8", "autoplay": true },
+      { "native": "ready", "duration": 600, "seekable": true },
+      { "native": "playing" },
+      { "native": "tracks", "tracks": [{ "id": "a0", "kind": "audio", "language": "en" }, { "id": "a1", "kind": "audio", "language": "fr" }] },
+      { "expect": { "video": { "audioTrack": "a0" }, "orderedCommands": ["tracks(audio=a0,text=-)"] } },
+      { "native": "failed", "code": "NETWORK_ERROR", "recoverable": true },
+      { "advance": 1000 },
+      { "native": "ready", "duration": 600, "seekable": true },
+      { "native": "tracks", "tracks": [{ "id": "a0", "kind": "audio", "language": "en" }, { "id": "a1", "kind": "audio", "language": "fr" }] },
+      { "expect": { "orderedCommands": ["open(gen=2,", "quality(maxH=-,maxBps=-,pin=-,audioOnly=false)", "tracks(audio=a0,text=-)"] } },
+      { "call": "load", "uri": "https://cdn.example/other.m3u8", "autoplay": true },
+      { "expect": { "video": { "tracks": [], "audioTrack": null, "textTrack": null } } }
+    ]
+  },
+  {
+    "name": "subtitles: the delay and fullscreen are in the status; a new load resets the delay",
+    "options": { "video": true },
+    "steps": [
+      { "view": {} },
+      { "call": "load", "uri": "https://cdn.example/v.m3u8", "autoplay": true },
+      { "call": "subtitleDelay", "value": 0.5 },
+      { "fullscreen": true },
+      { "expect": { "video": { "subtitleDelay": 0.5, "fullscreen": true } } },
+      { "call": "load", "uri": "https://cdn.example/next.m3u8", "autoplay": true },
+      { "expect": { "video": { "subtitleDelay": 0, "fullscreen": true } } },
+      { "fullscreen": false },
+      { "expect": { "video": { "fullscreen": false } } }
+    ]
+  },
+  {
+    "name": "video: a switch's new file says its picture while it prepares; that picture is the status once it takes over",
+    "options": { "video": true },
+    "steps": [
+      { "view": {} },
+      { "call": "load", "uri": "https://cdn.example/ep01", "autoplay": true, "renditions": [{ "uri": "https://cdn.example/360.mp4", "height": 360, "bitrate": 500000 }, { "uri": "https://cdn.example/720.mp4", "height": 720, "bitrate": 1300000 }] },
+      { "native": "ready", "duration": 600, "seekable": true },
+      { "native": "playing" },
+      { "native": "videoInfo", "width": 1280, "height": 720 },
+      { "call": "selectQuality", "id": "r0" },
+      { "native": "videoInfo", "gen": 2, "width": 640, "height": 360 },
+      { "expect": { "gen": 1, "video": { "width": 1280, "height": 720 } } },
+      { "native": "playing", "gen": 2 },
+      { "expect": { "gen": 2, "video": { "width": 640, "height": 360, "quality": "r0" } } }
+    ]
+  }
+]

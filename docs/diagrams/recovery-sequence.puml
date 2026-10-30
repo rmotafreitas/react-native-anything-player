@@ -16,7 +16,7 @@ note right of E: detection turns eager\n(networkSuspectMs 20 s)
 D -> E : buffering (buffer drained)
 E -> E : no buffer progress 3 s\n→ socket is dead
 E -> J : status: reconnecting\nattempt 1 · offline probe
-...offline: attempts are skipped, every third runs as a probe...
+...offline: three attempts skipped, then one runs as a probe...
 N -> E : network online (restore edge)
 E -> E : reset backoff
 E -> D : open(gen + 1)\nat the live edge

@@ -55,8 +55,9 @@ private fun causeChain(error: Throwable?): String {
  * native code, its name and the whole cause chain are always kept.
  *
  * @param offline the device reported no connectivity when the error landed.
- * @param hadPlayed audio had flowed for this source (a malformed chunk in a
- *   live stream that was playing is a transient server glitch, not a bad file).
+ * @param hadPlayed the item was ready or played (its container and codecs were
+ *   taken: a malformed chunk or a decoding failure now is a transient glitch,
+ *   not a bad file).
  */
 @OptIn(UnstableApi::class)
 internal fun mapPlaybackException(error: PlaybackException, offline: Boolean, hadPlayed: Boolean): PlayerError {
@@ -120,6 +121,30 @@ internal fun mapPlaybackException(error: PlaybackException, offline: Boolean, ha
     PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED,
     PlaybackException.ERROR_CODE_DECODING_FAILED ->
       make(ErrorCode.DECODER_ERROR, "The audio could not be decoded.", hadPlayed)
+    PlaybackException.ERROR_CODE_DRM_SCHEME_UNSUPPORTED ->
+      make(ErrorCode.DRM_UNSUPPORTED, "This device does not have the source's key system.", false)
+    PlaybackException.ERROR_CODE_DRM_CONTENT_ERROR ->
+      make(ErrorCode.DRM_UNSUPPORTED, "The source is not packaged for the key system of its `drm` this device uses.", false)
+    PlaybackException.ERROR_CODE_DRM_DISALLOWED_OPERATION,
+    PlaybackException.ERROR_CODE_DRM_DEVICE_REVOKED ->
+      make(ErrorCode.DRM_UNSUPPORTED, "This device is not allowed to decrypt the source (${error.errorCodeName}).", false)
+    PlaybackException.ERROR_CODE_DRM_LICENSE_ACQUISITION_FAILED -> {
+      val hook = findCause<LicenseHookException>(error)
+      val status = http?.responseCode
+      when {
+        hook != null -> make(ErrorCode.DRM_LICENSE_FAILED, hook.message ?: "The app's getLicense failed.", false)
+        status != null ->
+          make(ErrorCode.DRM_LICENSE_FAILED, "The DRM server returned HTTP $status.", status >= 500 || status == 429, status)
+        else -> make(ErrorCode.DRM_LICENSE_FAILED, "The DRM license request failed.", true)
+      }
+    }
+    PlaybackException.ERROR_CODE_DRM_PROVISIONING_FAILED ->
+      make(ErrorCode.DRM_LICENSE_FAILED, "The device's DRM could not be provisioned.", true)
+    PlaybackException.ERROR_CODE_DRM_LICENSE_EXPIRED ->
+      make(ErrorCode.DRM_LICENSE_FAILED, "The DRM license expired.", true)
+    PlaybackException.ERROR_CODE_DRM_SYSTEM_ERROR,
+    PlaybackException.ERROR_CODE_DRM_UNSPECIFIED ->
+      make(ErrorCode.DRM_LICENSE_FAILED, "The device's DRM failed (${error.errorCodeName}).", false)
     PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW ->
       make(ErrorCode.NATIVE_PLAYER_ERROR, "Playback fell behind the live window.", true)
     else -> make(ErrorCode.NATIVE_PLAYER_ERROR, error.message ?: "Native player error.", true)

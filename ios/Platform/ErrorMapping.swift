@@ -94,6 +94,9 @@ enum ErrorMapping {
         return make(.nativePlayerError, "The system media services were reset.", true)
       case .noLongerPlayable:
         return make(.nativePlayerError, "The item is no longer playable.", true)
+      case .contentIsProtected, .contentIsNotAuthorized, .applicationIsNotAuthorized:
+        return make(
+          .drmUnsupported, "The source is encrypted (DRM): give its FairPlay license server in `drm`.", false)
       default:
         break
       }

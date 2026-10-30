@@ -42,8 +42,8 @@ internal interface CastHost {
 internal interface CastBackend {
   val status: CastStatus
 
-  /** An output for one player's routing driver. */
-  fun newOutput(observer: DriverObserver, nowPlaying: () -> NowPlaying): RemoteOutput?
+  /** An output for one player's routing driver; `media`: a video player's extras (its subtitle files). */
+  fun newOutput(observer: DriverObserver, nowPlaying: () -> NowPlaying, media: () -> CastMedia): RemoteOutput?
 
   /** The device chooser, or the dialog to stop while connected. Throws `CAST_UNAVAILABLE`. Main thread. */
   fun showPicker(activity: Activity?)

@@ -57,6 +57,8 @@ export interface AudioElementLike extends EventTargetLike {
   volume: number;
   muted: boolean;
   playbackRate: number;
+  /** The rate a load resets `playbackRate` to (the media load algorithm). */
+  defaultPlaybackRate: number;
   preload: string;
   crossOrigin: string | null;
   disableRemotePlayback?: boolean;
@@ -75,6 +77,152 @@ export interface AudioElementLike extends EventTargetLike {
   canPlayType(type: string): string;
   removeAttribute(name: string): void;
   appendChild(child: SourceElementLike): void;
+  /** Encrypted Media Extensions: the keys that decrypt what the element plays. */
+  setMediaKeys?(keys: MediaKeysLike | null): Promise<void>;
+}
+
+/** A key system the browser grants (`requestMediaKeySystemAccess`). */
+export interface MediaKeySystemAccessLike {
+  readonly keySystem: string;
+  createMediaKeys(): Promise<MediaKeysLike>;
+}
+
+export interface MediaKeysLike {
+  createSession(type?: string): MediaKeySessionLike;
+  setServerCertificate(certificate: Uint8Array): Promise<boolean>;
+}
+
+/** A license exchange: `message` events carry the challenge, `update` takes the license. */
+export interface MediaKeySessionLike extends EventTargetLike {
+  generateRequest(
+    initDataType: string,
+    initData: Uint8Array | ArrayBuffer
+  ): Promise<void>;
+  update(license: Uint8Array): Promise<void>;
+  close(): Promise<void>;
+}
+
+/** What every element RNAP styles has. */
+export interface BoxLike {
+  readonly style: Record<string, string>;
+  className: string;
+  readonly parentNode: object | null;
+  remove(): void;
+  setAttribute(name: string, value: string): void;
+  requestFullscreen?(): Promise<void>;
+  webkitRequestFullscreen?(): void;
+}
+
+/** A styled box: the video stage, the subtitle overlay and its lines. */
+export interface ElementLike extends EventTargetLike, BoxLike {
+  textContent: string | null;
+  appendChild(child: unknown): unknown;
+  replaceChildren?(...children: unknown[]): void;
+}
+
+/** A `<video>`: an audio element with a picture. */
+export interface VideoElementLike extends AudioElementLike, BoxLike {
+  readonly videoWidth: number;
+  readonly videoHeight: number;
+  poster: string;
+  loop: boolean;
+  playsInline: boolean;
+  /** The browser's own controls. */
+  controls: boolean;
+  requestPictureInPicture?(): Promise<unknown>;
+  /** Safari's Picture in Picture and fullscreen. */
+  webkitSupportsPresentationMode?(mode: string): boolean;
+  webkitSetPresentationMode?(mode: string): void;
+  readonly webkitPresentationMode?: string;
+  /** iPhone Safari's only fullscreen: the native player. */
+  webkitEnterFullscreen?(): void;
+  webkitExitFullscreen?(): void;
+  requestVideoFrameCallback?(callback: () => void): number;
+  getVideoPlaybackQuality?(): { droppedVideoFrames: number };
+  fastSeek?(time: number): void;
+  /** The source's own text tracks (in-band, Safari's HLS, hls.js's). */
+  readonly textTracks?: TrackListLike<TextTrackLike>;
+  /** A text track of the page's own (a remuxed Matroska file's subtitles). */
+  addTextTrack?(
+    kind: string,
+    label?: string,
+    language?: string
+  ): WritableTextTrackLike;
+  /** The source's own audio tracks (Safari). */
+  readonly audioTracks?: TrackListLike<AudioTrackLike>;
+}
+
+/** `TextTrackList` / `AudioTrackList`: `addtrack`, `removetrack`, `change`. */
+export interface TrackListLike<T> extends EventTargetLike {
+  readonly length: number;
+  readonly [index: number]: T;
+}
+
+/** A `TextTrack`: subtitles or captions (also `metadata`, which RNAP skips). */
+export interface TextTrackLike extends EventTargetLike {
+  readonly kind: string;
+  readonly label: string;
+  readonly language: string;
+  /** `disabled`, `hidden` (cues, no rendering: RNAP's overlay draws them) or `showing`. */
+  mode: string;
+  readonly activeCues: {
+    readonly length: number;
+    readonly [index: number]: VttCueLike;
+  } | null;
+}
+
+/** A text track the page fills (`addTextTrack`). */
+export interface WritableTextTrackLike extends TextTrackLike {
+  addCue(cue: unknown): void;
+}
+
+/** A `VTTCue` the page makes, placed like a WebVTT cue's settings would. */
+export interface WritableVttCue {
+  align: string;
+  line: number | string;
+  snapToLines: boolean;
+  lineAlign: string;
+  position: number | string;
+}
+
+/** A `VTTCue` (or a plain `TextTrackCue`, which has only times). */
+export interface VttCueLike {
+  readonly startTime: number;
+  readonly endTime: number;
+  readonly text?: string;
+  readonly line?: number | string;
+  readonly snapToLines?: boolean;
+  readonly lineAlign?: string;
+  readonly position?: number | string;
+  readonly align?: string;
+}
+
+/** An `AudioTrack` (Safari). */
+export interface AudioTrackLike {
+  readonly id: string;
+  readonly kind: string;
+  readonly label: string;
+  readonly language: string;
+  enabled: boolean;
+}
+
+/** `IntersectionObserver` / `ResizeObserver`: the view's visibility and size. */
+export interface ObserverLike {
+  observe(target: unknown): void;
+  disconnect(): void;
+}
+
+export interface IntersectionEntryLike {
+  readonly isIntersecting: boolean;
+  readonly intersectionRatio: number;
+}
+
+export interface ResizeEntryLike {
+  readonly contentRect: { readonly width: number; readonly height: number };
+}
+
+export interface WakeLockSentinelLike {
+  release(): Promise<void>;
 }
 
 export interface SourceBufferLike extends EventTargetLike {
@@ -84,6 +232,8 @@ export interface SourceBufferLike extends EventTargetLike {
   appendBuffer(data: Uint8Array): void;
   remove(start: number, end: number): void;
   abort(): void;
+  /** Takes segments of another codec from now on (a remuxed file's other audio track). */
+  changeType?(type: string): void;
 }
 
 export interface MediaSourceLike extends EventTargetLike {
@@ -112,6 +262,7 @@ export interface ResponseLike {
   readonly status: number;
   readonly headers: HeadersLike;
   readonly body: { getReader(): ReaderLike } | null;
+  arrayBuffer?(): Promise<ArrayBuffer>;
 }
 
 export type MediaSessionAction =
@@ -174,7 +325,17 @@ export interface CastReceiverLike {
 
 export interface CastMediaLike {
   readonly idleReason?: string | null;
+  /** The receiver's id for this media session (media-channel messages name it). */
+  readonly mediaSessionId?: number;
+  /** The rate the receiver reports it plays at. */
+  readonly playbackRate?: number;
   supportsCommand(command: string): boolean;
+  /** Turns the receiver's text tracks on and off (`EditTracksInfoRequest`). */
+  editTracksInfo?(
+    request: unknown,
+    onSuccess: () => void,
+    onError: (error: unknown) => void
+  ): void;
   setVolume(
     request: unknown,
     onSuccess: () => void,
@@ -187,6 +348,8 @@ export interface CastSessionLike {
   getMediaSession(): CastMediaLike | null;
   /** Resolves `undefined` on success; an error code (resolved or rejected) on failure. */
   loadMedia(request: unknown): Promise<string | undefined>;
+  /** Sends a message on a channel of the receiver application. */
+  sendMessage?(namespace: string, message: object): Promise<unknown>;
 }
 
 export interface CastContextLike {
@@ -238,6 +401,17 @@ export interface CastFrameworkLike {
 export interface CastMediaInfoLike {
   streamType: string;
   metadata: unknown;
+  /** Video: the text tracks the receiver may show. */
+  tracks?: unknown[];
+}
+
+/** A `chrome.cast.media.Track`: a text track for the receiver (WebVTT). */
+export interface CastTrackLike {
+  trackContentId: string;
+  trackContentType: string;
+  subtype: string;
+  name: string | null;
+  language: string | null;
 }
 
 /** `chrome.cast`, once the Cast sender SDK is loaded. */
@@ -259,9 +433,20 @@ export interface ChromeCastLike {
       albumName?: string;
       images?: unknown[];
     };
+    /** Video: a movie's metadata (the receiver's video layout). */
+    MovieMetadata?: new () => {
+      title?: string;
+      subtitle?: string;
+      images?: unknown[];
+    };
+    Track?: new (trackId: number, trackType: string) => CastTrackLike;
+    TrackType?: { TEXT: string };
+    TextTrackType?: { SUBTITLES: string; CAPTIONS: string };
+    EditTracksInfoRequest?: new (activeTrackIds: number[]) => unknown;
     LoadRequest: new (mediaInfo: CastMediaInfoLike) => {
       autoplay: boolean;
       currentTime?: number;
+      activeTrackIds?: number[];
     };
     VolumeRequest: new (volume: unknown) => unknown;
   };
@@ -275,22 +460,56 @@ export interface ScriptElementLike {
 
 export interface NetworkInformationLike extends EventTargetLike {
   readonly type?: string;
+  /** Mbps (Chromium). */
+  readonly downlink?: number;
+  readonly saveData?: boolean;
 }
 
 export interface BrowserGlobals {
   document?: EventTargetLike & {
     readonly visibilityState: string;
     readonly head?: { appendChild(node: ScriptElementLike): void };
+    /** Where a video's stage waits, unseen, without a view. */
+    readonly body?: { appendChild(node: ElementLike): void } | null;
     createElement(tag: 'audio'): AudioElementLike;
+    createElement(tag: 'video'): VideoElementLike;
+    createElement(tag: 'div' | 'span'): ElementLike;
     createElement(tag: 'source'): SourceElementLike;
     createElement(tag: 'script'): ScriptElementLike;
+    readonly fullscreenElement?: unknown;
+    readonly webkitFullscreenElement?: unknown;
+    exitFullscreen?(): Promise<void>;
+    webkitExitFullscreen?(): void;
+    readonly pictureInPictureElement?: unknown;
+    exitPictureInPicture?(): Promise<void>;
   };
   navigator?: {
     readonly onLine: boolean;
     readonly userAgent?: string;
     readonly mediaSession?: MediaSessionLike;
     readonly connection?: NetworkInformationLike;
+    readonly languages?: readonly string[];
+    requestMediaKeySystemAccess?(
+      keySystem: string,
+      configurations: object[]
+    ): Promise<MediaKeySystemAccessLike>;
+    readonly wakeLock?: {
+      request(type: 'screen'): Promise<WakeLockSentinelLike>;
+    };
   };
+  screen?: {
+    orientation?: { lock?(o: string): Promise<void>; unlock?(): void };
+  };
+  devicePixelRatio?: number;
+  matchMedia?(query: string): { readonly matches: boolean };
+  IntersectionObserver?: new (
+    callback: (entries: IntersectionEntryLike[]) => void,
+    options?: { threshold?: number[] }
+  ) => ObserverLike;
+  ResizeObserver?: new (
+    callback: (entries: ResizeEntryLike[]) => void
+  ) => ObserverLike;
+  TextDecoder?: new (label: string) => { decode(bytes: Uint8Array): string };
   location?: { readonly href: string; readonly origin: string };
   addEventListener?: EventTargetLike['addEventListener'];
   readonly isSecureContext?: boolean;
@@ -300,6 +519,7 @@ export interface BrowserGlobals {
   __onGCastApiAvailable?: (available: boolean) => void;
   MediaSource?: MediaSourceConstructor;
   ManagedMediaSource?: MediaSourceConstructor;
+  VTTCue?: new (start: number, end: number, text: string) => WritableVttCue;
   MediaMetadata?: new (init: {
     title?: string;
     artist?: string;
@@ -325,7 +545,7 @@ export interface BrowserGlobals {
     url: string,
     init: {
       headers: Record<string, string>;
-      signal: AbortSignalLike;
+      signal?: AbortSignalLike;
       cache: string;
       mode: string;
     }

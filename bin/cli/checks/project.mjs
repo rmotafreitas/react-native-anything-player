@@ -178,6 +178,15 @@ const STRING_OPTIONS = new Set(
   )
 );
 const OPTION_LIST = EXPO_OPTIONS.map((option) => option.key).join(', ');
+/** The keys of the options that take an object, and their types. */
+const OBJECT_OPTIONS = {
+  cast: {
+    receiverApplicationId: 'string',
+    localNetworkUsageDescription: 'string',
+  },
+  siri: { usageDescription: 'string', appIntents: 'boolean' },
+  video: { pictureInPicture: 'boolean' },
+};
 
 function isPlainObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -247,12 +256,11 @@ function checkOptions(ctx, findings) {
         );
         continue;
       }
-      const allowed =
-        key === 'cast'
-          ? ['receiverApplicationId', 'localNetworkUsageDescription']
-          : ['usageDescription', 'appIntents'];
+      const types = OBJECT_OPTIONS[key] ?? {};
+      const allowed = Object.keys(types);
       for (const [inner, innerValue] of Object.entries(value)) {
-        if (!allowed.includes(inner)) {
+        const type = types[inner];
+        if (!type) {
           findings.push(
             finding(
               'expo-plugin-options',
@@ -265,7 +273,7 @@ function checkOptions(ctx, findings) {
             )
           );
         } else if (
-          inner === 'appIntents'
+          type === 'boolean'
             ? typeof innerValue !== 'boolean'
             : typeof innerValue !== 'string' || innerValue === ''
         ) {
@@ -273,10 +281,10 @@ function checkOptions(ctx, findings) {
             finding(
               'expo-plugin-options',
               'error',
-              `Plugin option \`${key}.${inner}\` must be a ${inner === 'appIntents' ? 'boolean' : 'non-empty string'}.`,
+              `Plugin option \`${key}.${inner}\` must be a ${type === 'boolean' ? 'boolean' : 'non-empty string'}.`,
               {
                 file: 'app.json',
-                change: `set \`${key}.${inner}\` to a ${inner === 'appIntents' ? 'boolean' : 'string'}`,
+                change: `set \`${key}.${inner}\` to a ${type}`,
               }
             )
           );

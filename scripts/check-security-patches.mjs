@@ -65,6 +65,18 @@ export function verifySecurityPatch(name, cwd = process.cwd()) {
     }
     const { error } = z.set(z.number()).max(1).safeParse(new Set(flood.map((x, i) => x + i)));
     assert.equal(error.issues.length, 1);
+  } else if (name === "deepmerge") {
+    // GHSA-gcqx-w48m-w2h4: mergeObject() assigned a source's "__proto__" key,
+    // setting the result's prototype when the target was not a plain object.
+    // No fixed release: the Expo CLI's 4.3.1 is patched to write own properties.
+    const evil = JSON.parse('{"__proto__":{"polluted":true},"a":1}');
+    for (const target of [{}, Object.create(null), 5]) {
+      const merged = library(target, evil);
+      assert.equal(Object.getPrototypeOf(merged), Object.prototype);
+      assert.equal(merged.polluted, undefined);
+      assert.equal(merged.a, 1);
+    }
+    assert.deepEqual(library({ a: { b: 1 } }, { a: { c: 2 } }), { a: { b: 1, c: 2 } });
   } else {
     throw new Error("Unknown security patch: " + name);
   }

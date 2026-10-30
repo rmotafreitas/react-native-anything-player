@@ -25,20 +25,52 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const ROOT = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '../..'
+);
 const OUT = path.join(ROOT, 'benchmarks/results/size.json');
 
 /** The field. `role` is what it is to an app choosing an audio library. */
 const PACKAGES = [
-  { name: '@rntp/player', label: 'RNTP 5 (@rntp/player)', role: 'player, commercial' },
-  { name: 'react-native-track-player', version: '4', label: 'RNTP 4', role: 'player, last Apache-2.0 line' },
+  {
+    name: '@rntp/player',
+    label: 'RNTP 5 (@rntp/player)',
+    role: 'player, commercial',
+  },
+  {
+    name: 'react-native-track-player',
+    version: '4',
+    label: 'RNTP 4',
+    role: 'player, last Apache-2.0 line',
+  },
   { name: 'expo-audio', label: 'expo-audio', role: 'player + recorder' },
   { name: 'expo-av', label: 'expo-av', role: 'deprecated audio/video' },
-  { name: 'react-native-audio-pro', label: 'react-native-audio-pro', role: 'player' },
-  { name: 'react-native-nitro-sound', label: 'react-native-nitro-sound', role: 'player + recorder' },
-  { name: 'react-native-video', label: 'react-native-video', role: 'video player' },
-  { name: 'react-native-audio-api', label: 'react-native-audio-api', role: 'Web Audio engine' },
-  { name: 'react-native-sound', label: 'react-native-sound', role: 'sound effects' },
+  {
+    name: 'react-native-audio-pro',
+    label: 'react-native-audio-pro',
+    role: 'player',
+  },
+  {
+    name: 'react-native-nitro-sound',
+    label: 'react-native-nitro-sound',
+    role: 'player + recorder',
+  },
+  {
+    name: 'react-native-video',
+    label: 'react-native-video',
+    role: 'video player',
+  },
+  {
+    name: 'react-native-audio-api',
+    label: 'react-native-audio-api',
+    role: 'Web Audio engine',
+  },
+  {
+    name: 'react-native-sound',
+    label: 'react-native-sound',
+    role: 'sound effects',
+  },
 ];
 
 /**
@@ -51,21 +83,75 @@ const WEB = [
   {
     id: 'rnWeb',
     title: 'Expo web and React Native Web',
-    external: ['react', 'react/*', 'react-dom', 'react-dom/*', 'react-native', 'react-native/*', 'react-native-web',
-      'react-native-web/*', 'expo', 'expo-modules-core', 'expo-asset', 'expo-constants', 'expo-file-system', '@expo/*',
-      'react-native-nitro-modules'],
+    external: [
+      'react',
+      'react/*',
+      'react-dom',
+      'react-dom/*',
+      'react-native',
+      'react-native/*',
+      'react-native-web',
+      'react-native-web/*',
+      'expo',
+      'expo-modules-core',
+      'expo-asset',
+      'expo-constants',
+      'expo-file-system',
+      '@expo/*',
+      'react-native-nitro-modules',
+    ],
     reactNative: true,
     packages: [
-      { name: R, label: 'RNAP', use: `export * from '${R}';`,
-        later: [{ name: 'hls.js', when: 'HLS outside Safari (the app adds it)' }] },
-      { name: '@rntp/player', label: 'RNTP 5', use: `export * from '@rntp/player';`,
-        later: [{ name: 'shaka-player', file: 'dist/shaka-player.compiled.js', when: 'HLS / DASH outside Safari' }] },
-      { name: 'react-native-track-player', version: '4', label: 'RNTP 4', use: `export * from 'react-native-track-player';`,
-        later: [{ name: 'shaka-player', file: 'dist/shaka-player.ui.js', when: 'playing anything', required: true }] },
-      { name: 'expo-audio', label: 'expo-audio', use: `export * from 'expo-audio';` },
+      {
+        name: R,
+        label: 'RNAP',
+        use: `export * from '${R}';`,
+        later: [
+          { name: 'hls.js', when: 'HLS outside Safari (the app adds it)' },
+        ],
+      },
+      {
+        name: '@rntp/player',
+        label: 'RNTP 5',
+        use: `export * from '@rntp/player';`,
+        later: [
+          {
+            name: 'shaka-player',
+            file: 'dist/shaka-player.compiled.js',
+            when: 'HLS / DASH outside Safari',
+          },
+        ],
+      },
+      {
+        name: 'react-native-track-player',
+        version: '4',
+        label: 'RNTP 4',
+        use: `export * from 'react-native-track-player';`,
+        later: [
+          {
+            name: 'shaka-player',
+            file: 'dist/shaka-player.ui.js',
+            when: 'playing anything',
+            required: true,
+          },
+        ],
+      },
+      {
+        name: 'expo-audio',
+        label: 'expo-audio',
+        use: `export * from 'expo-audio';`,
+      },
       { name: 'expo-av', label: 'expo-av', use: `export * from 'expo-av';` },
-      { name: 'react-native-video', label: 'react-native-video', use: `export * from 'react-native-video';` },
-      { name: 'react-native-audio-api', label: 'react-native-audio-api', use: `export * from 'react-native-audio-api';` },
+      {
+        name: 'react-native-video',
+        label: 'react-native-video',
+        use: `export * from 'react-native-video';`,
+      },
+      {
+        name: 'react-native-audio-api',
+        label: 'react-native-audio-api',
+        use: `export * from 'react-native-audio-api';`,
+      },
     ],
   },
   {
@@ -74,11 +160,31 @@ const WEB = [
     external: ['react', 'react/*', 'react-dom', 'react-dom/*'],
     packages: [
       { name: R, label: 'RNAP /react', use: `export * from '${R}/react';` },
-      { name: 'use-sound', label: 'use-sound (howler)', use: `export { default } from 'use-sound';` },
-      { name: 'react-h5-audio-player', label: 'react-h5-audio-player', use: `export { default } from 'react-h5-audio-player';` },
-      { name: 'react-audio-player', label: 'react-audio-player', use: `export { default } from 'react-audio-player';` },
-      { name: 'react-player', label: 'react-player', use: `export { default } from 'react-player';` },
-      { name: '@vidstack/react', label: 'Vidstack', use: `export { MediaPlayer, MediaProvider } from '@vidstack/react';` },
+      {
+        name: 'use-sound',
+        label: 'use-sound (howler)',
+        use: `export { default } from 'use-sound';`,
+      },
+      {
+        name: 'react-h5-audio-player',
+        label: 'react-h5-audio-player',
+        use: `export { default } from 'react-h5-audio-player';`,
+      },
+      {
+        name: 'react-audio-player',
+        label: 'react-audio-player',
+        use: `export { default } from 'react-audio-player';`,
+      },
+      {
+        name: 'react-player',
+        label: 'react-player',
+        use: `export { default } from 'react-player';`,
+      },
+      {
+        name: '@vidstack/react',
+        label: 'Vidstack',
+        use: `export { MediaPlayer, MediaProvider } from '@vidstack/react';`,
+      },
     ],
   },
   {
@@ -87,25 +193,54 @@ const WEB = [
     external: [],
     packages: [
       { name: R, label: 'RNAP /web', use: `export * from '${R}/web';` },
-      { name: 'howler', label: 'howler.js', use: `export { Howl, Howler } from 'howler';` },
-      { name: 'amplitudejs', label: 'Amplitude.js', use: `export { default } from 'amplitudejs';` },
+      {
+        name: 'howler',
+        label: 'howler.js',
+        use: `export { Howl, Howler } from 'howler';`,
+      },
+      {
+        name: 'amplitudejs',
+        label: 'Amplitude.js',
+        use: `export { default } from 'amplitudejs';`,
+      },
       { name: 'plyr', label: 'Plyr', use: `export { default } from 'plyr';` },
-      { name: 'icecast-metadata-player', label: 'icecast-metadata-player', use: `export { default } from 'icecast-metadata-player';` },
+      {
+        name: 'icecast-metadata-player',
+        label: 'icecast-metadata-player',
+        use: `export { default } from 'icecast-metadata-player';`,
+      },
     ],
   },
 ];
 
 /** Provided by every RN app (or by the package's own peer framework): not counted. */
 const EXTERNAL = [
-  'react', 'react/*', 'react-native', 'react-native/*', 'react-native-web',
-  '@react-native/*', 'expo', 'expo-modules-core', 'expo-asset', 'expo-constants',
-  'expo-file-system', '@expo/*', 'react-native-nitro-modules',
-  'react-native-worklets', 'react-native-windows', 'shaka-player', 'shaka-player/*',
+  'react',
+  'react/*',
+  'react-native',
+  'react-native/*',
+  'react-native-web',
+  '@react-native/*',
+  'expo',
+  'expo-modules-core',
+  'expo-asset',
+  'expo-constants',
+  'expo-file-system',
+  '@expo/*',
+  'react-native-nitro-modules',
+  'react-native-worklets',
+  'react-native-windows',
+  'shaka-player',
+  'shaka-player/*',
 ];
 
 const NATIVE_EXT = /\.(swift|m|mm|h|hpp|c|cc|cpp|kt|java)$/;
 const sh = (cmd, args, opts = {}) =>
-  execFileSync(cmd, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], ...opts });
+  execFileSync(cmd, args, {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    ...opts,
+  });
 
 function walk(dir, out = []) {
   if (!fs.existsSync(dir)) return out;
@@ -119,10 +254,13 @@ function walk(dir, out = []) {
 
 /**
  * RNAP's opt-in parts: Google Cast (`cast`), the Sound API (`sound`), CarPlay
- * and Android Auto (`car`), and the Siri templates an app compiles only with
- * `siri`. Reported apart from what every app compiles.
+ * and Android Auto (`car`), video (`video`), and the Siri templates an app
+ * compiles only with `siri`. Reported apart from what every app compiles.
  */
-const OPT_IN_NATIVE = /[\\/](ios[\\/](Cast|CarPlay|Sound|AppIntents|IntentsExtension)|android[\\/]src[\\/](cast|castcar|car|sound))[\\/]/;
+const OPT_IN_NATIVE =
+  /[\\/](ios[\\/](Cast|CarPlay|Sound|AppIntents|IntentsExtension)|android[\\/]src[\\/](cast|castcar|car|sound))[\\/]/;
+/** RNAP's video module (react-native-video's own `ios/Video` is all of it). */
+const RNAP_VIDEO_NATIVE = /[\\/](ios[\\/]Video|android[\\/]src[\\/]video)[\\/]/;
 
 function countLines(files) {
   let bytes = 0;
@@ -136,14 +274,26 @@ function countLines(files) {
 }
 
 /** Native sources that compile into an app (tests, examples and builds excluded), and RNAP's opt-in ones apart. */
-function nativeFootprint(pkgDir) {
-  const files = [...walk(path.join(pkgDir, 'ios')), ...walk(path.join(pkgDir, 'apple')),
-    ...walk(path.join(pkgDir, 'android')), ...walk(path.join(pkgDir, 'cpp')),
-    ...walk(path.join(pkgDir, 'common')), ...walk(path.join(pkgDir, 'nitrogen'))]
+function nativeFootprint(pkgDir, name) {
+  const files = [
+    ...walk(path.join(pkgDir, 'ios')),
+    ...walk(path.join(pkgDir, 'apple')),
+    ...walk(path.join(pkgDir, 'android')),
+    ...walk(path.join(pkgDir, 'cpp')),
+    ...walk(path.join(pkgDir, 'common')),
+    ...walk(path.join(pkgDir, 'nitrogen')),
+  ]
     .filter((f) => NATIVE_EXT.test(f))
-    .filter((f) => !/[\\/](test|tests|androidTest|Tests|example|build|\.build)[\\/]/.test(f));
-  const optIn = files.filter((f) => OPT_IN_NATIVE.test(f));
-  const always = files.filter((f) => !OPT_IN_NATIVE.test(f));
+    .filter(
+      (f) =>
+        !/[\\/](test|tests|androidTest|Tests|example|build|\.build)[\\/]/.test(
+          f
+        )
+    );
+  const isOptIn = (f) =>
+    OPT_IN_NATIVE.test(f) || (name === R && RNAP_VIDEO_NATIVE.test(f));
+  const optIn = files.filter(isOptIn);
+  const always = files.filter((f) => !isOptIn(f));
   return optIn.length > 0
     ? { ...countLines(always), optIn: countLines(optIn) }
     : countLines(always);
@@ -161,11 +311,16 @@ function androidDependencies(pkgDir, { optIn = false } = {}) {
       castDepth = 1;
       continue;
     }
-    if (castDepth > 0) castDepth += (line.match(/\{/g) ?? []).length - (line.match(/\}/g) ?? []).length;
+    if (castDepth > 0)
+      castDepth +=
+        (line.match(/\{/g) ?? []).length - (line.match(/\}/g) ?? []).length;
     const m = /^\s*(implementation|api)\s*\(?\s*["']([^"'$]+)/.exec(line);
-    if (!m || (castDepth > 0) !== optIn) continue;
+    if (!m || castDepth > 0 !== optIn) continue;
     const coord = m[2].split(':').slice(0, 2).join(':');
-    if (/^com\.facebook\.react|^org\.jetbrains\.kotlin:kotlin-stdlib/.test(coord)) continue;
+    if (
+      /^com\.facebook\.react|^org\.jetbrains\.kotlin:kotlin-stdlib/.test(coord)
+    )
+      continue;
     deps.add(coord);
   }
   return [...deps].sort();
@@ -174,11 +329,19 @@ function androidDependencies(pkgDir, { optIn = false } = {}) {
 /** Vendored binaries (xcframeworks, .so, .a) a package downloads or ships. */
 function vendoredBinaries(pkgDir) {
   const podspecs = walk(pkgDir).filter((f) => f.endsWith('.podspec'));
-  return podspecs.some((f) => /vendored_frameworks|vendored_libraries/.test(fs.readFileSync(f, 'utf8')));
+  return podspecs.some((f) =>
+    /vendored_frameworks|vendored_libraries/.test(fs.readFileSync(f, 'utf8'))
+  );
 }
 
 /** Minified + gzipped size of the JS an app bundles (compiled entry, peers external). */
-async function jsCost(esbuild, entryDir, pkgName, nodePaths, fromSource = false) {
+async function jsCost(
+  esbuild,
+  entryDir,
+  pkgName,
+  nodePaths,
+  fromSource = false
+) {
   const result = await esbuild.build({
     stdin: { contents: `export * from '${pkgName}';`, resolveDir: entryDir },
     bundle: true,
@@ -189,11 +352,30 @@ async function jsCost(esbuild, entryDir, pkgName, nodePaths, fromSource = false)
     // Compiled output first (what most apps resolve); TypeScript source as a
     // fallback for packages whose compiled output does not bundle on its own
     // (type-only re-exports left in JS).
-    mainFields: fromSource ? ['react-native', 'module', 'main'] : ['module', 'main'],
+    mainFields: fromSource
+      ? ['react-native', 'module', 'main']
+      : ['module', 'main'],
     conditions: ['import', 'default'],
-    resolveExtensions: ['.native.js', '.ios.js', '.js', '.mjs', '.cjs', '.native.ts', '.ios.ts', '.ts', '.tsx', '.json'],
+    resolveExtensions: [
+      '.native.js',
+      '.ios.js',
+      '.js',
+      '.mjs',
+      '.cjs',
+      '.native.ts',
+      '.ios.ts',
+      '.ts',
+      '.tsx',
+      '.json',
+    ],
     external: EXTERNAL,
-    loader: { '.js': 'jsx', '.png': 'empty', '.jpg': 'empty', '.ttf': 'empty', '.wasm': 'empty' },
+    loader: {
+      '.js': 'jsx',
+      '.png': 'empty',
+      '.jpg': 'empty',
+      '.ttf': 'empty',
+      '.wasm': 'empty',
+    },
     nodePaths,
     logLevel: 'silent',
   });
@@ -225,25 +407,55 @@ async function webCost(esbuild, work, contents, { external, reactNative }) {
     ...(reactNative
       ? {
           mainFields: ['browser', 'module', 'main'],
-          resolveExtensions: ['.web.tsx', '.web.ts', '.web.js', '.web.mjs', '.tsx', '.ts', '.js', '.mjs', '.json'],
+          resolveExtensions: [
+            '.web.tsx',
+            '.web.ts',
+            '.web.js',
+            '.web.mjs',
+            '.tsx',
+            '.ts',
+            '.js',
+            '.mjs',
+            '.json',
+          ],
         }
       : {}),
     conditions: ['browser', 'import', 'default'],
-    define: { 'process.env.NODE_ENV': '"production"', __DEV__: 'false' },
+    define: { 'process.env.NODE_ENV': '"production"', '__DEV__': 'false' },
     external,
-    loader: { '.js': 'jsx', '.png': 'empty', '.jpg': 'empty', '.css': 'empty', '.ttf': 'empty', '.wasm': 'empty' },
+    loader: {
+      '.js': 'jsx',
+      '.png': 'empty',
+      '.jpg': 'empty',
+      '.css': 'empty',
+      '.ttf': 'empty',
+      '.wasm': 'empty',
+    },
     logLevel: 'silent',
   });
   const gzip = (bytes) => zlib.gzipSync(bytes, { level: 9 }).length;
-  const files = new Map(result.outputFiles.map((f) => [path.relative(process.cwd(), f.path), f.contents]));
+  const files = new Map(
+    result.outputFiles.map((f) => [
+      path.relative(process.cwd(), f.path),
+      f.contents,
+    ])
+  );
   const outputs = result.metafile.outputs;
   const initial = new Set();
   const visit = (file) => {
     if (initial.has(file)) return;
     initial.add(file);
-    for (const i of outputs[file].imports) if (i.kind === 'import-statement' && outputs[i.path]) visit(i.path);
+    for (const i of outputs[file].imports)
+      if (i.kind === 'import-statement' && outputs[i.path]) visit(i.path);
   };
-  visit(Object.keys(outputs).find((file) => outputs[file].entryPoint));
+  // Every chunk loaded by `import()` is an entry point too: start from the page's.
+  visit(
+    Object.keys(outputs).find(
+      (file) =>
+        outputs[file].entryPoint &&
+        path.resolve(outputs[file].entryPoint) === entry
+    )
+  );
   const cost = { initialMin: 0, initialGzip: 0, totalGzip: 0, chunks: 0 };
   for (const [file, code] of files) {
     if (!file.endsWith('.js')) continue;
@@ -259,53 +471,103 @@ async function webCost(esbuild, work, contents, { external, reactNative }) {
 
 async function main() {
   const work = fs.mkdtempSync(path.join(os.tmpdir(), 'rnap-size-'));
-  fs.writeFileSync(path.join(work, 'package.json'), '{"name":"size","private":true}');
+  fs.writeFileSync(
+    path.join(work, 'package.json'),
+    '{"name":"size","private":true}'
+  );
   const webOnly = WEB.flatMap((c) => c.packages)
     .filter((p) => p.name !== R && !PACKAGES.some((q) => q.name === p.name))
     .map((p) => (p.version ? `${p.name}@${p.version}` : p.name));
-  const runtimeExtras = [...new Set(WEB.flatMap((c) => c.packages.flatMap((p) => (p.later ?? []).map((l) => l.name))))];
-  const specs = [...PACKAGES.map((p) => (p.version ? `${p.name}@${p.version}` : p.name)), ...new Set(webOnly), ...runtimeExtras];
+  const runtimeExtras = [
+    ...new Set(
+      WEB.flatMap((c) =>
+        c.packages.flatMap((p) => (p.later ?? []).map((l) => l.name))
+      )
+    ),
+  ];
+  const specs = [
+    ...PACKAGES.map((p) => (p.version ? `${p.name}@${p.version}` : p.name)),
+    ...new Set(webOnly),
+    ...runtimeExtras,
+  ];
   console.log(`installing ${specs.length} packages into ${work} …`);
-  sh('npm', ['install', '--ignore-scripts', '--legacy-peer-deps', '--omit=peer', '--no-audit',
-    '--no-fund', 'esbuild@0.25', ...specs], { cwd: work });
-  const { default: esbuild } = await import(path.join(work, 'node_modules/esbuild/lib/main.js'));
+  sh(
+    'npm',
+    [
+      'install',
+      '--ignore-scripts',
+      '--legacy-peer-deps',
+      '--omit=peer',
+      '--no-audit',
+      '--no-fund',
+      'esbuild@0.25',
+      ...specs,
+    ],
+    { cwd: work }
+  );
+  const { default: esbuild } = await import(
+    path.join(work, 'node_modules/esbuild/lib/main.js')
+  );
   const nodePaths = [path.join(work, 'node_modules')];
 
   // RNAP: pack this checkout exactly as it would be published.
   console.log('packing react-native-anything-player …');
-  if (!fs.existsSync(path.join(ROOT, 'lib/module/index.js'))) sh('yarn', ['prepare'], { cwd: ROOT });
+  if (!fs.existsSync(path.join(ROOT, 'lib/module/index.js')))
+    sh('yarn', ['prepare'], { cwd: ROOT });
   // `npm pack` may still print the `prepare` build log before its JSON.
-  const packOutput = sh('npm', ['pack', '--json', '--ignore-scripts', '--pack-destination', work], { cwd: ROOT });
+  const packOutput = sh(
+    'npm',
+    ['pack', '--json', '--ignore-scripts', '--pack-destination', work],
+    { cwd: ROOT }
+  );
   const packed = JSON.parse(packOutput.slice(packOutput.search(/^\[/m)))[0];
   const rnapDir = path.join(work, 'rnap');
   fs.mkdirSync(rnapDir);
   sh('tar', ['xzf', path.join(work, packed.filename), '-C', rnapDir]);
-  fs.symlinkSync(path.join(rnapDir, 'package'), path.join(work, 'node_modules/react-native-anything-player'));
+  fs.symlinkSync(
+    path.join(rnapDir, 'package'),
+    path.join(work, 'node_modules/react-native-anything-player')
+  );
 
   const rows = [];
-  const all = [{ name: 'react-native-anything-player', label: 'RNAP', role: 'player (this repo)', local: packed }, ...PACKAGES];
+  const all = [
+    {
+      name: 'react-native-anything-player',
+      label: 'RNAP',
+      role: 'player (this repo)',
+      local: packed,
+    },
+    ...PACKAGES,
+  ];
   for (const pkg of all) {
     const dir = path.join(work, 'node_modules', pkg.name);
-    const manifest = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8'));
+    const manifest = JSON.parse(
+      fs.readFileSync(path.join(dir, 'package.json'), 'utf8')
+    );
     let tarball;
     let unpacked;
     if (pkg.local) {
       tarball = pkg.local.size;
       unpacked = pkg.local.unpackedSize;
     } else {
-      const meta = JSON.parse(sh('npm', ['view', `${pkg.name}@${manifest.version}`, 'dist', '--json']));
+      const meta = JSON.parse(
+        sh('npm', ['view', `${pkg.name}@${manifest.version}`, 'dist', '--json'])
+      );
       unpacked = meta.unpackedSize;
       tarball = (await (await fetch(meta.tarball)).arrayBuffer()).byteLength;
     }
     const peers = Object.keys(manifest.peerDependencies ?? {})
-      .filter((p) => !(manifest.peerDependenciesMeta?.[p]?.optional))
+      .filter((p) => !manifest.peerDependenciesMeta?.[p]?.optional)
       .filter((p) => !['react', 'react-native'].includes(p));
     let js = null;
     try {
       js = await jsCost(esbuild, work, pkg.name, nodePaths).catch(() =>
-        jsCost(esbuild, work, pkg.name, nodePaths, true));
+        jsCost(esbuild, work, pkg.name, nodePaths, true)
+      );
     } catch (error) {
-      console.warn(`  ${pkg.name}: JS bundle failed:\n    ${(error.errors ?? []).map((e) => e.text).join('\n    ')}`);
+      console.warn(
+        `  ${pkg.name}: JS bundle failed:\n    ${(error.errors ?? []).map((e) => e.text).join('\n    ')}`
+      );
     }
     const row = {
       name: pkg.name,
@@ -319,23 +581,32 @@ async function main() {
       jsGzipBytes: js?.gzip ?? null,
       runtimeDependencies: Object.keys(manifest.dependencies ?? {}),
       requiredPeers: peers,
-      native: nativeFootprint(dir),
+      native: nativeFootprint(dir, pkg.name),
       androidDependencies: androidDependencies(dir),
       optInAndroidDependencies: androidDependencies(dir, { optIn: true }),
       vendoredBinaries: vendoredBinaries(dir),
     };
     rows.push(row);
-    console.log(`  ${row.label.padEnd(26)} ${row.version.padEnd(9)} tgz ${(tarball / 1024).toFixed(0).padStart(5)} KB` +
-      `  unpacked ${(unpacked / 1024).toFixed(0).padStart(6)} KB  js ${js ? (js.gzip / 1024).toFixed(1) : '-'} KB gz` +
-      `  native ${row.native.lines} loc  android deps ${row.androidDependencies.length}`);
+    console.log(
+      `  ${row.label.padEnd(26)} ${row.version.padEnd(9)} tgz ${(tarball / 1024).toFixed(0).padStart(5)} KB` +
+        `  unpacked ${(unpacked / 1024).toFixed(0).padStart(6)} KB  js ${js ? (js.gzip / 1024).toFixed(1) : '-'} KB gz` +
+        `  native ${row.native.lines} loc  android deps ${row.androidDependencies.length}`
+    );
   }
 
   // What a package fetches later on its own (hls.js, shaka-player): its own size, gzipped.
   const extraSize = (name, file) => {
     const dir = path.join(work, 'node_modules', name);
-    const manifest = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8'));
-    const main = file ?? (name === 'hls.js' ? 'dist/hls.min.js' : manifest.main);
-    return { version: manifest.version, gzip: zlib.gzipSync(fs.readFileSync(path.join(dir, main)), { level: 9 }).length };
+    const manifest = JSON.parse(
+      fs.readFileSync(path.join(dir, 'package.json'), 'utf8')
+    );
+    const main =
+      file ?? (name === 'hls.js' ? 'dist/hls.min.js' : manifest.main);
+    return {
+      version: manifest.version,
+      gzip: zlib.gzipSync(fs.readFileSync(path.join(dir, main)), { level: 9 })
+        .length,
+    };
   };
 
   const web = [];
@@ -343,11 +614,22 @@ async function main() {
     console.log(`web: ${category.title}`);
     const packages = [];
     for (const pkg of category.packages) {
-      const manifest = JSON.parse(fs.readFileSync(path.join(work, 'node_modules', pkg.name, 'package.json'), 'utf8'));
+      const manifest = JSON.parse(
+        fs.readFileSync(
+          path.join(work, 'node_modules', pkg.name, 'package.json'),
+          'utf8'
+        )
+      );
       const cost = await webCost(esbuild, work, pkg.use, category);
       const later = (pkg.later ?? []).map((l) => {
         const extra = extraSize(l.name, l.file);
-        return { name: l.name, version: extra.version, gzipBytes: extra.gzip, when: l.when, required: l.required === true };
+        return {
+          name: l.name,
+          version: extra.version,
+          gzipBytes: extra.gzip,
+          when: l.when,
+          required: l.required === true,
+        };
       });
       packages.push({
         name: pkg.name,
@@ -359,20 +641,34 @@ async function main() {
         totalGzipBytes: cost.totalGzip,
         later,
       });
-      console.log(`  ${pkg.label.padEnd(26)} ${manifest.version.padEnd(9)} on load ${(cost.initialGzip / 1024).toFixed(1).padStart(6)} KB gz` +
-        `  with every feature ${(cost.totalGzip / 1024).toFixed(1).padStart(6)} KB gz` +
-        later.map((l) => `  + ${l.name} ${(l.gzipBytes / 1024).toFixed(0)} KB (${l.when})`).join(''));
+      console.log(
+        `  ${pkg.label.padEnd(26)} ${manifest.version.padEnd(9)} on load ${(cost.initialGzip / 1024).toFixed(1).padStart(6)} KB gz` +
+          `  with every feature ${(cost.totalGzip / 1024).toFixed(1).padStart(6)} KB gz` +
+          later
+            .map(
+              (l) =>
+                `  + ${l.name} ${(l.gzipBytes / 1024).toFixed(0)} KB (${l.when})`
+            )
+            .join('')
+      );
     }
     web.push({ id: category.id, title: category.title, packages });
   }
 
   fs.mkdirSync(path.dirname(OUT), { recursive: true });
-  fs.writeFileSync(OUT, JSON.stringify({
-    measuredAt: new Date().toISOString().slice(0, 10),
-    method: 'benchmarks/size/measure.mjs',
-    packages: rows,
-    web,
-  }, null, 2) + '\n');
+  fs.writeFileSync(
+    OUT,
+    JSON.stringify(
+      {
+        measuredAt: new Date().toISOString().slice(0, 10),
+        method: 'benchmarks/size/measure.mjs',
+        packages: rows,
+        web,
+      },
+      null,
+      2
+    ) + '\n'
+  );
   console.log(`wrote ${path.relative(ROOT, OUT)}`);
   fs.rmSync(work, { recursive: true, force: true });
 }

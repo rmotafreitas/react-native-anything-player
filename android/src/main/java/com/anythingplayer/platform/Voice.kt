@@ -161,7 +161,7 @@ internal object Voice {
    */
   fun load(controller: PlayerController, entry: CatalogEntry, request: SearchRequest, autoplay: Boolean, startSeconds: Double?, completion: LoadCompletion?) {
     val (descriptor, fields) = parseSource(entry.source.toReadableMap())
-    controller.load(descriptor, fields, autoplay, startSeconds, completion)
+    controller.load(descriptor, fields, autoplay, startSeconds, completion = completion)
     store().let { s -> writes.execute { s.played(entry.id) } }
     AnythingPlayerRuntime.activate(controller)
     controller.emitEvent(

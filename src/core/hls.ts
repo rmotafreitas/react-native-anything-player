@@ -41,6 +41,58 @@ export interface HlsLike {
   on(event: string, listener: (event: string, data: any) => void): void;
   /** Seconds behind the live edge (hls.js 1.x), when it knows. */
   readonly latency?: number;
+  /** The variants (video): height, bitrate, codecs. */
+  readonly levels?: ReadonlyArray<HlsLevel>;
+  /** The variant playing, or `-1` for automatic; setting it switches now (flushing the buffer). */
+  currentLevel?: number;
+  /** Setting it switches at the next fragment, without interrupting playback (`-1`: automatic). */
+  nextLevel?: number;
+  /** Setting it picks the variant for the next loads, keeping the buffer (`-1`: automatic). */
+  loadLevel?: number;
+  /** The highest variant automatic switching may pick (`-1`: no cap). */
+  autoLevelCapping?: number;
+  /** Bits per second, hls.js's estimate. */
+  readonly bandwidthEstimate?: number;
+  /** The audio renditions (`#EXT-X-MEDIA:TYPE=AUDIO`) of the variant's group. */
+  readonly audioTracks?: ReadonlyArray<HlsMediaTrack>;
+  /** The subtitle renditions (`#EXT-X-MEDIA:TYPE=SUBTITLES`). */
+  readonly subtitleTracks?: ReadonlyArray<HlsMediaTrack>;
+  /** The audio rendition playing; setting it switches. */
+  audioTrack?: number;
+  /** The subtitle rendition loaded (`-1`: none). */
+  subtitleTrack?: number;
+  /** `false`: the cues load into a hidden text track (RNAP's overlay draws them). */
+  subtitleDisplay?: boolean;
+}
+
+/** An audio or subtitle rendition, as hls.js describes it. */
+export interface HlsMediaTrack {
+  /** `NAME`. */
+  readonly name?: string;
+  /** `LANGUAGE`. */
+  readonly lang?: string;
+  /** `DEFAULT=YES`. */
+  readonly default?: boolean;
+  /** `FORCED=YES` (subtitles). */
+  readonly forced?: boolean;
+  /** `CHARACTERISTICS` (`public.accessibility.describes-video`, …). */
+  readonly characteristics?: string;
+}
+
+/** A variant, as hls.js describes it. */
+export interface HlsLevel {
+  /** The picture's height, pixels (none for audio only). */
+  readonly height?: number;
+  /** The picture's width, pixels. */
+  readonly width?: number;
+  /** Bits per second (`BANDWIDTH`). */
+  readonly bitrate?: number;
+  /** The playlist's `NAME`, when it has one. */
+  readonly name?: string;
+  /** The video codec (`avc1…`), none for audio only. */
+  readonly videoCodec?: string;
+  /** The audio codec (`mp4a…`). */
+  readonly audioCodec?: string;
 }
 
 /** The slice of the hls.js class that RNAP uses: `import Hls from 'hls.js'`. */
@@ -59,6 +111,14 @@ export interface HlsConstructor {
     readonly FRAG_PARSING_METADATA: string;
     /** An error, fatal or not. */
     readonly ERROR: string;
+    /** The variant playing changed (video). */
+    readonly LEVEL_SWITCHED?: string;
+    /** A fragment arrived: a fresh bandwidth estimate (video). */
+    readonly FRAG_LOADED?: string;
+    /** The audio renditions are known (video). */
+    readonly AUDIO_TRACKS_UPDATED?: string;
+    /** The subtitle renditions are known (video). */
+    readonly SUBTITLE_TRACKS_UPDATED?: string;
   };
   /** The values of an error's `type`. */
   readonly ErrorTypes: {

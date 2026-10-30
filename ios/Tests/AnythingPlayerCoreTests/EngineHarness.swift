@@ -13,7 +13,8 @@ final class FakeClock: EngineClock {
 
 /// Records every driver call and simulates a playhead.
 final class FakeDriver: EngineDriver {
-  enum Motion { case flowing, frozen, trickle }
+  /// `loaded`: the whole file is buffered: the playhead advances, the buffer stays where it is.
+  enum Motion { case flowing, frozen, trickle, loaded }
 
   let clock: FakeClock
   var commands: [String] = []
@@ -25,13 +26,16 @@ final class FakeDriver: EngineDriver {
   private var anchorTime: Int64 = 0
   private var anchorPosition: Double = 0
   private var anchorBuffered: Double = 0
+  /// The item an `open(swap: true)` is preparing, and where it starts.
+  private(set) var swapGeneration: Int?
+  private var swapStart: Double = 0
 
   init(clock: FakeClock) { self.clock = clock }
 
-  func setMotion(_ next: Motion) {
+  func setMotion(_ next: Motion, buffered: Double? = nil) {
     let current = sample()
     anchorPosition = current.position
-    anchorBuffered = current.bufferedPosition
+    anchorBuffered = buffered ?? current.bufferedPosition
     anchorTime = clock.monotonicMs
     motion = next
     if next == .flowing { anchorBuffered = max(anchorBuffered, anchorPosition + 10) }
@@ -55,12 +59,24 @@ final class FakeDriver: EngineDriver {
     case .trickle:
       return PlaybackSample(
         position: anchorPosition, bufferedPosition: anchorBuffered + elapsed * 0.5)
+    case .loaded:
+      return PlaybackSample(position: anchorPosition + elapsed, bufferedPosition: anchorBuffered)
     }
   }
 
   func open(_ request: OpenRequest) {
     let start = request.startPosition.map { String(format: "%.1f", $0) } ?? "-"
-    commands.append("open(gen=\(request.generation),start=\(start),play=\(request.playWhenReady))")
+    let rendition = request.rendition.map { ",r=\($0)" } ?? ""
+    let swap = request.swap ? ",swap" : ""
+    commands.append(
+      "open(gen=\(request.generation),start=\(start),play=\(request.playWhenReady)\(rendition)\(swap))")
+    if request.swap {
+      // Prepared behind the current item: its playhead is not this one's.
+      swapGeneration = request.generation
+      swapStart = request.startPosition ?? 0
+      return
+    }
+    swapGeneration = nil
     anchorPosition = request.startPosition ?? 0
     anchorBuffered = anchorPosition
     anchorTime = clock.monotonicMs
@@ -80,9 +96,34 @@ final class FakeDriver: EngineDriver {
     }
   }
   func pause() { commands.append("pause") }
-  func seek(to seconds: Double) {
-    commands.append("seek(\(String(format: "%.1f", seconds)))")
+  func seek(to seconds: Double) { seek(to: seconds, exact: false) }
+  func seek(to seconds: Double, exact: Bool) {
+    commands.append("seek(\(String(format: "%.1f", seconds))\(exact ? ",exact" : ""))")
     setPosition(seconds)
+  }
+  func setVideoEnabled(_ enabled: Bool) { commands.append("video(\(enabled ? "on" : "off"))") }
+  func setQuality(_ c: QualityConstraints) {
+    let height = c.maxHeight.map { "\($0)" } ?? "-"
+    let bitrate = c.maxBitrate.map { "\($0)" } ?? "-"
+    commands.append(
+      "quality(maxH=\(height),maxBps=\(bitrate),pin=\(c.pinned ?? "-"),audioOnly=\(c.audioOnly))")
+  }
+  func setLoop(_ loop: Bool) { commands.append("loop(\(loop))") }
+  func selectTracks(audio: String?, text: String?) {
+    commands.append("tracks(audio=\(audio ?? "-"),text=\(text ?? "-"))")
+  }
+  func cancelSwap(generation: Int) {
+    commands.append("cancelSwap(gen=\(generation))")
+    if swapGeneration == generation { swapGeneration = nil }
+  }
+
+  /// The swap's item shows its first frame: its playhead becomes the one.
+  func completeSwap() {
+    swapGeneration = nil
+    anchorPosition = swapStart
+    anchorBuffered = swapStart + 10
+    anchorTime = clock.monotonicMs
+    motion = .flowing
   }
   func releaseConnection() { commands.append("release") }
   func unload() { commands.append("unload") }
@@ -108,6 +149,8 @@ final class Recorder: EngineDelegate {
   var fades = 0
   var diagnostics: [DiagnosticEntry] = []
   var wakeupAt: Int64?
+  /// Source refreshes asked for, `loadId:reason`.
+  var refreshes: [String] = []
   /// Ordering invariant breaches (an event delivered before its status).
   var violations: [String] = []
 
@@ -142,6 +185,9 @@ final class Recorder: EngineDelegate {
   }
   func engine(diagnostic: DiagnosticEntry) { diagnostics.append(diagnostic) }
   func engine(wakeupAt: Int64?) { self.wakeupAt = wakeupAt }
+  func engine(refreshRequested loadId: Int, reason: RefreshReason) {
+    refreshes.append("\(loadId):\(reason.rawValue)")
+  }
 }
 
 /// Engine + fakes wired together, with a clock that fires wake-ups in order.

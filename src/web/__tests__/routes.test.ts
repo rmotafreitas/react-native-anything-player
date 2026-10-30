@@ -353,7 +353,7 @@ describe('RoutingDriver', () => {
     driver.open({} as never);
     expect(driver.sample()).toEqual({ position: 1, bufferedPosition: 2 });
     expect(local.play).toHaveBeenCalledTimes(1);
-    expect(local.seek).toHaveBeenCalledWith(3);
+    expect(local.seek).toHaveBeenCalledWith(3, false);
     expect(cast.play).not.toHaveBeenCalled();
 
     driver.unload();

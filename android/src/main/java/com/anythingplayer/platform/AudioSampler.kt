@@ -6,6 +6,7 @@ import androidx.annotation.OptIn
 import androidx.media3.common.C
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.common.audio.AudioProcessor
+import androidx.media3.exoplayer.Renderer
 import androidx.media3.exoplayer.RenderersFactory
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
@@ -68,27 +69,34 @@ internal class AudioSampler(context: Context) : TeeAudioProcessor.AudioBufferSin
    * video, text, image or camera-motion renderer is referenced, so R8 drops
    * their code (and the subtitle decoders) from the app.
    */
-  fun renderersFactory(context: Context): RenderersFactory {
+  /** The renderers: audio (through the sampler's tee) and metadata; a video player's also picture and text. */
+  fun renderersFactory(context: Context, video: Boolean = false): RenderersFactory {
     val tee = TeeAudioProcessor(this)
     val codecs = DefaultMediaCodecAdapterFactory(context)
-    return RenderersFactory { handler, _, audioListener, _, metadataOutput ->
+    return RenderersFactory { handler, videoListener, audioListener, textOutput, metadataOutput ->
       val sink =
         DefaultAudioSink.Builder(context)
           .setAudioProcessors(arrayOf<AudioProcessor>(tee))
           .build()
           .also { audioSink = it }
-      arrayOf(
-        MediaCodecAudioRenderer(
-          context,
-          codecs,
-          MediaCodecSelector.DEFAULT,
-          /* enableDecoderFallback= */ false,
-          handler,
-          audioListener,
-          sink,
-        ),
-        MetadataRenderer(metadataOutput, handler.looper),
-      )
+      // The platform's decoders first; the software ones (when built in) for
+      // what it cannot decode.
+      val audio: Array<Renderer> =
+        arrayOf(
+          MediaCodecAudioRenderer(
+            context,
+            codecs,
+            MediaCodecSelector.DEFAULT,
+            /* enableDecoderFallback= */ false,
+            handler,
+            audioListener,
+            sink,
+          ),
+          *DecoderExtensions.audio(handler, audioListener, sink).toTypedArray(),
+          MetadataRenderer(metadataOutput, handler.looper),
+        )
+      // The video module's renderers (none without it: audio apps stay slim).
+      if (video) VideoSupport.renderers(context, codecs, handler, videoListener, textOutput) + audio else audio
     }
   }
 

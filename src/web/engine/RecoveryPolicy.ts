@@ -1,3 +1,9 @@
+import type {
+  FallbackPolicy,
+  QualityPolicy,
+  VideoEngineOptions,
+} from './types';
+
 /**
  * Every recovery constant, in one place. Twins: `ios/Core/RecoveryPolicy.swift`,
  * `android/.../core/RecoveryPolicy.kt`; `docs/recovery.md` documents the
@@ -21,6 +27,18 @@ export const RecoveryPolicy = {
   SUSPECT_STALL_DEAD_MS: 1_500,
   /** A stall that trickles data but never recovers is re-opened after this. */
   STALL_MAX_MS: 20_000,
+  /**
+   * A stall this close to a file's end (seconds), with the rest buffered, is
+   * its end: nothing more will come (WebKitGTK can stop in the last frame
+   * without `ended`).
+   */
+  END_SLACK_S: 0.1,
+  /**
+   * A playhead that advances this far (seconds), at about the playback rate,
+   * while the platform still says buffering: it is playing (WebKitGTK plays
+   * at readyState 2 without a `playing` event).
+   */
+  PLAYHEAD_PROOF_S: 1.5,
   /** How long after a connectivity edge the link is treated as suspect. */
   NETWORK_SUSPECT_MS: 20_000,
   /** Reconnect backoff: base delay, doubled per attempt, capped, ±jitter. */
@@ -35,6 +53,38 @@ export const RecoveryPolicy = {
   PAUSED_STREAM_RELEASE_MS: 30_000,
   /** How often a fade (play, pause, stop, `fadeTo`, the sleep timer) updates the volume. */
   FADE_TICK_MS: 50,
+
+  // ── Video ──
+  /** A player without a view this long stops decoding the picture (a move between views keeps it). */
+  VIEW_DETACH_GRACE_MS: 1_000,
+  /** In the background, Picture in Picture may start (or the app return) this long after the event. */
+  PIP_GRACE_MS: 1_000,
+  /** A quality switch's new file must play within this, or the switch is dropped. */
+  SWAP_TIMEOUT_MS: 12_000,
+  /** A rendition that failed is not picked again for this long. */
+  FAILED_RENDITION_MS: 60_000,
+  /** How long a 401/403 waits for the app's new source before the backoff takes over. */
+  REFRESH_TIMEOUT_MS: 10_000,
+  /** A source with `expiresAt` asks for a new one this long ahead. */
+  REFRESH_AHEAD_MS: 60_000,
+  /** Automatic quality: a rendition fits a bandwidth this many times its bitrate. */
+  ABR_FIT_RATIO: 0.7,
+  /** A stall steps down when the bandwidth is under this × the current bitrate. */
+  ABR_STALL_RATIO: 1.2,
+  /** The bandwidth under the current bitrate for this long steps down. */
+  ABR_LOW_MS: 10_000,
+  /** The bandwidth above this × the next bitrate… */
+  ABR_UP_RATIO: 1.5,
+  /** …for this long steps up (and as long after any switch or stall). */
+  ABR_UP_MS: 30_000,
+  /** Two stalls in this window step down whatever the bandwidth. */
+  ABR_STALL_WINDOW_MS: 30_000,
+  /** Data Saver, Low Data Mode, `saveData`: the highest picture. */
+  DATA_SAVER_MAX_HEIGHT: 480,
+  /** Automatic start with no bandwidth reading: the lowest rendition at least this high. */
+  START_MIN_HEIGHT: 480,
+  /** Audio-only fallback without bandwidth readings: try the picture again after this long without a stall. */
+  FALLBACK_PROBE_MS: 60_000,
 } as const;
 
 /** App-configurable engine knobs (`PlayerOptions`): recovery and fades. */
@@ -51,6 +101,8 @@ export interface EngineOptions {
   fadeInMs: number;
   /** Fade-out before a pause or a stop, and the sleep timer's default (`0` = none). */
   fadeOutMs: number;
+  /** A video player's rules; `null` for an audio player. */
+  video: VideoEngineOptions | null;
 }
 
 export const DEFAULT_ENGINE_OPTIONS: EngineOptions = {
@@ -60,6 +112,37 @@ export const DEFAULT_ENGINE_OPTIONS: EngineOptions = {
   liveMaxDriftMs: 5_000,
   fadeInMs: 0,
   fadeOutMs: 0,
+  video: null,
+};
+
+/** The audio-only fallback's default thresholds. */
+export const DEFAULT_FALLBACK_POLICY: FallbackPolicy = {
+  dropBelowRatio: 1.2,
+  dropAfterMs: 10_000,
+  dropAfterStalls: 2,
+  stallWindowMs: 30_000,
+  returnAboveRatio: 1.5,
+  returnAfterMs: 30_000,
+};
+
+export const DEFAULT_QUALITY_POLICY: QualityPolicy = {
+  maxHeight: null,
+  maxBitrate: null,
+  cellularMaxHeight: null,
+  cellularMaxBitrate: null,
+  startQuality: 'auto',
+  followDataSaver: true,
+  capToView: true,
+};
+
+export const DEFAULT_VIDEO_OPTIONS: VideoEngineOptions = {
+  whenBackgrounded: 'pause',
+  ambient: false,
+  keepAwake: true,
+  focusWhenMuted: false,
+  fallback: null,
+  quality: DEFAULT_QUALITY_POLICY,
+  tracks: { languages: [], followSystem: true },
 };
 
 /** Deterministic exponential backoff with injectable jitter. */

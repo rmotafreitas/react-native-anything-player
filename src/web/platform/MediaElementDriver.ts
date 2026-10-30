@@ -19,16 +19,13 @@ import {
   type HlsConstructor,
 } from '../../core/hls';
 import type { EngineDriver } from '../engine/PlaybackEngine';
-import type {
-  StreamMetadata,
-  StreamTitleFormat,
-} from '../engine/StreamMetadata';
+import type { StreamTitleFormat } from '../engine/StreamMetadata';
 import {
   engineError,
   isNetworkSource,
-  type InterruptionReason,
   type OpenRequest,
   type PlaybackSample,
+  type QualityConstraints,
   type ReadyInfo,
   type SourceDescriptor,
 } from '../engine/types';
@@ -36,28 +33,49 @@ import {
   browser,
   type AbortControllerLike,
   type AudioElementLike,
+  type VideoElementLike,
 } from './dom';
-import { HLS_HINT, HLS_MISSING, isHlsType, isHlsUri } from './hlsFormats';
+import { HLS_MISSING, isHlsType, isHlsUri, needsHlsJs } from './hlsFormats';
+import { elementError } from './elementErrors';
 import type { HlsStream } from './HlsStream';
+import { MediaTracks } from './MediaTracks';
+import { TimedQueue } from './TimedQueue';
+import { OwnSeeks } from './OwnSeeks';
+import { ItemFacts, elementReadyInfo } from './ItemFacts';
+import { isDashUri, shakaNamespace, type ShakaLike } from '../../core/shaka';
+import type { DashStream } from './DashStream';
 import { MseStream, mediaSourceConstructor } from './MseStream';
+import type { RemuxStream } from './RemuxStream';
+import { protect, type ProtectedItem } from './protectedSource';
+import { requestLicense } from './licenseRequests';
+import type { RemuxFormat } from '../remux/Remuxer';
+import {
+  DASH_MISSING,
+  loadDashParts,
+  loadRemuxParts,
+  maySniff,
+  remuxFormatOf,
+  type DashParts,
+  type RemuxParts,
+} from './sourceParts';
+import type { MediaTrack } from '../../core/subtitles/tracks';
 
-export interface DriverObserver {
-  onReady(generation: number, info: ReadyInfo): void;
-  onPlaying(generation: number): void;
-  onBuffering(generation: number): void;
-  onEnded(generation: number): void;
-  onFailed(generation: number, error: PlayerError): void;
-  onPausedExternally(generation: number, reason: InterruptionReason): void;
-  onStreamMetadata(generation: number, metadata: StreamMetadata): void;
-  onDiscontinuity(generation: number, position: number): void;
-  onNote(
-    generation: number,
-    event: string,
-    details: Record<string, string>
-  ): void;
-  /** The element changed (a new one replaced a tapped one); the sampler re-attaches. */
-  onElementReplaced(element: AudioElementLike): void;
-}
+export type {
+  DriverObserver,
+  PlayAttempt,
+  ProgressReading,
+} from './driverObserver';
+import type {
+  DriverObserver,
+  PlayAttempt,
+  ProgressReading,
+} from './driverObserver';
+
+/** What the driver plays: sound alone, or a picture too. */
+export type MediaKind = 'audio' | 'video';
+
+/** How often a bandwidth estimate is read from the Network Information API. */
+const DOWNLINK_EVERY_MS = 2000;
 
 type HlsParts = typeof import('./HlsStream');
 
@@ -85,32 +103,24 @@ onHlsConfigured(() => {
   loadHlsParts().catch(() => undefined);
 });
 
-/** What a play() attempt came to: the module rejects `play` on `blocked`. */
-export type PlayAttempt = 'started' | 'blocked' | 'failed';
-
-/** Live progress for the module's synchronous `getProgress`. */
-export interface ProgressReading {
-  position: number;
-  duration: number | null;
-  buffered: number;
-  liveOffset: number | null;
-  isPlaying: boolean;
-  rate: number;
-}
-
 // MediaError codes.
-const MEDIA_ERR_ABORTED = 1;
-const MEDIA_ERR_NETWORK = 2;
-const MEDIA_ERR_DECODE = 3;
-const MEDIA_ERR_SRC_NOT_SUPPORTED = 4;
+const ENCRYPTED = engineError(
+  'DRM_UNSUPPORTED',
+  'The source is encrypted (DRM): give its key systems and license servers in `drm`.',
+  false
+);
 
-type Timed = { time: number; fire: () => void };
+const MEDIA_ERR_ABORTED = 1;
+const MEDIA_ERR_SRC_NOT_SUPPORTED = 4;
 
 /** A source whose bytes the page itself holds (a picked file). */
 const LOCAL_URI = /^(blob|data):/i;
 
-/** What `canPlayType` answers for HLS in browsers that play it natively (Safari, Android). */
-const HLS_MIME = 'application/vnd.apple.mpegurl';
+/** A network source that may be a live stream (not HLS, not marked a file): read through MSE. */
+function mayStream(source: SourceDescriptor): boolean {
+  if (!isNetworkSource(source) || source.liveHint === false) return false;
+  return !isHlsUri(source.uri);
+}
 
 export class MediaElementDriver implements EngineDriver {
   private _element: AudioElementLike;
@@ -118,6 +128,15 @@ export class MediaElementDriver implements EngineDriver {
   private listeners: AbortControllerLike | null = null;
   private stream: MseStream | null = null;
   private hls: HlsStream | null = null;
+  /** A DASH source's Shaka player, and whether it is still loading. */
+  private dash: DashStream | null = null;
+  private dashPending = false;
+  private remux: RemuxStream | null = null;
+  private remuxPending = false;
+  private drm: ProtectedItem | null = null;
+  private drmPending = false;
+  /** Why remuxing this source fell back to the element (CORS); it is not tried again. */
+  private remuxFallback: string | null = null;
   /** The HLS part is loading (the module, then hls.js): `play()` waits for it. */
   private hlsPending = false;
   /** Items torn down so far: a loading HLS part knows whether its item is gone. */
@@ -134,11 +153,18 @@ export class MediaElementDriver implements EngineDriver {
   /** The engine allows reconnecting (`OpenRequest.allowReconnect`): a dropped stream may be spliced. */
   private allowReconnect = true;
   private flowed = false;
+  /** The current item's metadata loaded (the browser took its container and codecs). */
+  private metadataLoaded = false;
   private playRequested = false;
   private expectingPause = false;
   private pendingStart: number | null = null;
-  private timed: Timed[] = [];
-  private timedTimer: number | null = null;
+  /** What the engine was told about the item, and a start that waits for a longer duration. */
+  private readonly facts = new ItemFacts();
+  private readonly timed = new TimedQueue(() => ({
+    position: this.position(),
+    paused: this._element.paused,
+    rate: this._element.playbackRate,
+  }));
   /** The element is routed through Web Audio (visualizer): only same-origin audio may play on it. */
   tapped = false;
   /** Set by every play(); the module awaits it to report autoplay refusals. */
@@ -147,10 +173,28 @@ export class MediaElementDriver implements EngineDriver {
   private playToken = 0;
   private volume = 1;
   private rate = 1;
+  private loop = false;
+  private quality: QualityConstraints | null = null;
+  private variantId: string | null = null;
+  private downlinkAt = 0;
+  /** Video: the current item's own tracks, and the engine's picks among them. */
+  private tracks: MediaTracks | null = null;
+  private chosenTracks: { audio: string | null; text: string | null } | null =
+    null;
+  /** The source's tracks so far: a quality switch's new file reports them again. */
+  sourceTracks: MediaTrack[] = [];
+  /** RNAP's own seeks: the user's controls are told from them. */
+  private readonly ownSeeks = new OwnSeeks();
+
+  /** The browser's own controls are on the picture: what the element does unasked is the user. */
+  private get userControlled(): boolean {
+    return this.videoElement?.controls === true;
+  }
 
   constructor(
     private readonly observer: DriverObserver,
-    private readonly titleFormat: StreamTitleFormat
+    private readonly titleFormat: StreamTitleFormat,
+    readonly kind: MediaKind = 'audio'
   ) {
     this._element = this.createElement();
   }
@@ -159,27 +203,61 @@ export class MediaElementDriver implements EngineDriver {
     return this._element;
   }
 
+  /** The `<video>` of a video driver (`null` for audio). */
+  get videoElement(): VideoElementLike | null {
+    return this.kind === 'video' ? (this._element as VideoElementLike) : null;
+  }
+
   /**
    * Whether the current item plays from bytes the page holds (a MediaSource
    * fed by RNAP or hls.js, or a picked file's `blob:` URL): same-origin to Web
    * Audio, and out of a Remote Playback receiver's reach.
    */
   get isStreamed(): boolean {
+    const loading = this.hlsPending || this.dashPending || this.remuxPending;
+    return this.fed || loading || LOCAL_URI.test(this.source?.uri ?? '');
+  }
+
+  /** hls.js, Shaka, the remuxer or an MSE stream feeds the element. */
+  private get fed(): boolean {
     return (
       this.stream != null ||
       this.hls != null ||
-      this.hlsPending ||
-      LOCAL_URI.test(this.source?.uri ?? '')
+      this.dash != null ||
+      this.remux != null
     );
   }
 
   /** Whether the current item is live (read through MSE, or an HLS playlist without an end). */
   private get isLive(): boolean {
-    return this.stream != null || this.hls?.live === true;
+    return (
+      this.stream != null ||
+      this.hls?.live === true ||
+      this.dash?.live === true ||
+      this.remux?.live === true
+    );
   }
 
   private createElement(): AudioElementLike {
-    const element = browser().document!.createElement('audio');
+    const document = browser().document!;
+    if (this.kind === 'video') {
+      const video = document.createElement('video');
+      video.preload = 'auto';
+      video.playsInline = true;
+      // iPhone Safari before `playsInline` was a property.
+      video.setAttribute('playsinline', '');
+      video.setAttribute('webkit-playsinline', '');
+      video.loop = this.loop;
+      Object.assign(video.style, {
+        width: '100%',
+        height: '100%',
+        display: 'block',
+        objectFit: 'contain',
+        backgroundColor: 'black',
+      });
+      return video;
+    }
+    const element = document.createElement('audio');
     element.preload = 'auto';
     return element;
   }
@@ -198,24 +276,37 @@ export class MediaElementDriver implements EngineDriver {
       this.sourcePlayed = false;
       this.corsProven = false;
       this.nativeHlsFailed = false;
+      this.remuxFallback = null;
     }
     this.source = request.source;
     this.allowReconnect = request.allowReconnect;
     this.flowed = false;
     this.pendingStart = request.startPosition;
-    const media = mediaSourceConstructor();
-    const streamable =
-      media != null &&
-      isNetworkSource(request.source) &&
-      request.source.liveHint !== false &&
-      !isHlsUri(request.source.uri);
-    if (streamable) {
-      this.attach();
-      this.startStream(request.source, media);
+    this.variantId = null;
+    if (request.source.drm && !isDashUri(request.source.uri)) {
+      // The keys first: the element gets the source once they are attached.
+      this.drmPending = true;
+      this.drm = protect(this._element, request, this.observer, () => {
+        this.drmPending = false;
+        this.route(request.source);
+        if (this.playRequested) this.play();
+      });
     } else {
-      this.playPlain(request.source);
+      this.route(request.source);
     }
     if (request.playWhenReady) this.play();
+  }
+
+  /** Plays a source through MSE (live audio, for ICY) or on the element. */
+  private route(source: SourceDescriptor): void {
+    const media = mediaSourceConstructor();
+    // ICY over MSE is audio's: a video plays on the element (or hls.js).
+    if (this.kind === 'audio' && media != null && mayStream(source)) {
+      this.attach();
+      this.startStream(source, media);
+    } else {
+      this.playPlain(source);
+    }
   }
 
   play(): void {
@@ -224,7 +315,8 @@ export class MediaElementDriver implements EngineDriver {
     // hls.js is still loading: the element has no source to play yet. The
     // request is kept and runs when the stream starts (see loadHls), so the
     // play() is not lost and the element is not asked twice.
-    if (this.hlsPending) return;
+    const pending = this.hlsPending || this.dashPending || this.remuxPending;
+    if (pending || this.drmPending) return;
     const generation = this.generation;
     this.playToken += 1;
     const token = this.playToken;
@@ -257,13 +349,44 @@ export class MediaElementDriver implements EngineDriver {
     this._element.pause();
   }
 
-  seek(seconds: number): void {
+  seek(seconds: number, exact = false): void {
+    this.facts.dropStart();
     if (this._element.readyState === 0) {
       this.pendingStart = seconds;
       return;
     }
-    this._element.currentTime = seconds;
-    this.pumpTimed();
+    const video = this.videoElement;
+    // Already there (the user's own seek, reported back): nothing to do.
+    if (Math.abs(this._element.currentTime - seconds) < 0.01) {
+      this.timed.pump();
+      return;
+    }
+    // A scrub lands on the nearest keyframe (fast); `exact` on the frame.
+    this.ownSeeks.mark(seconds);
+    if (!exact && video?.fastSeek) video.fastSeek(seconds);
+    else this._element.currentTime = seconds;
+    this.timed.pump();
+  }
+
+  setLoop(loop: boolean): void {
+    this.loop = loop;
+    const video = this.videoElement;
+    if (video) video.loop = loop;
+  }
+
+  setVideoEnabled(): void {
+    // A browser decodes what the element plays: audio-only variants save the data.
+  }
+
+  setQuality(constraints: QualityConstraints): void {
+    this.quality = constraints;
+    this.hls?.setQuality(constraints);
+    this.dash?.setQuality(constraints);
+  }
+
+  selectTracks(audio: string | null, text: string | null): void {
+    this.chosenTracks = { audio, text };
+    this.tracks?.select(audio, text);
   }
 
   releaseConnection(): void {
@@ -286,7 +409,19 @@ export class MediaElementDriver implements EngineDriver {
 
   setRate(rate: number): void {
     this.rate = rate;
-    this._element.playbackRate = rate;
+    this.applyRate();
+  }
+
+  /**
+   * The rate, as the default too: every load (a new `src`, a MediaSource
+   * attached by hls.js, Shaka or the remuxer) resets `playbackRate` to
+   * `defaultPlaybackRate`.
+   */
+  private applyRate(): void {
+    const element = this._element;
+    if (element.defaultPlaybackRate !== this.rate)
+      element.defaultPlaybackRate = this.rate;
+    if (element.playbackRate !== this.rate) element.playbackRate = this.rate;
   }
 
   switchOutput(): void {
@@ -335,20 +470,35 @@ export class MediaElementDriver implements EngineDriver {
       this._element.addEventListener(type, handler, {
         signal: listeners.signal,
       });
+    this.applyRate();
     on('loadedmetadata', () => this.onLoadedMetadata(generation));
+    // The element learns more as it reads (a fragmented MP4's total, a
+    // playlist that ended): the engine's duration and seek range follow.
+    // Seek ranges can appear without a new duration.
+    for (const type of ['durationchange', 'canplay', 'progress'])
+      on(type, () => this.onDurationChange(generation));
     on('playing', () => {
+      // Something reset the default since (a library's own load): the
+      // rate asked for is the one that plays.
+      if (this._element.defaultPlaybackRate !== this.rate) this.applyRate();
       this.flowed = true;
       this.sourcePlayed = true;
       this.observer.onPlaying(generation);
-      this.pumpTimed();
+      this.timed.pump();
     });
     on('waiting', () => this.observer.onBuffering(generation));
+    if (this.kind === 'video') this.attachVideo(generation, on);
     on('ended', () => this.observer.onEnded(generation));
+    // Encrypted, and no `drm` to decrypt it: it would wait for a key forever.
+    on('encrypted', () => {
+      if (this.source?.drm == null && !this.dash)
+        this.observer.onFailed(generation, ENCRYPTED);
+    });
     on('error', () => this.onError(generation));
     on('pause', () => {
       const expected = this.expectingPause;
       this.expectingPause = false;
-      this.clearTimedTimer();
+      this.timed.stop();
       // Only after audio flowed: loading a new src pauses the element too.
       if (
         !expected &&
@@ -357,11 +507,79 @@ export class MediaElementDriver implements EngineDriver {
         !this._element.ended
       ) {
         this.playRequested = false;
-        this.observer.onPausedExternally(generation, 'system');
+        // The browser's pause button: the user's pause, not the system's.
+        if (this.userControlled)
+          this.observer.onUserCommand?.(generation, 'pause', this.position());
+        else this.observer.onPausedExternally(generation, 'system');
       }
     });
-    on('timeupdate', () => this.pumpTimed());
-    on('seeked', () => this.pumpTimed());
+    on('play', () => {
+      // The browser's play button (RNAP's own play() asked first).
+      if (this.userControlled && !this.playRequested)
+        this.observer.onUserCommand?.(generation, 'play', this.position());
+    });
+    on('seeking', () => {
+      if (this.userControlled && !this.ownSeeks.isOwn(this.position()))
+        this.observer.onUserCommand?.(generation, 'seek', this.position());
+    });
+    on('timeupdate', () => this.timed.pump());
+    on('seeked', () => this.timed.pump());
+  }
+
+  /** The picture's size, the first frame, and a coarse bandwidth for files. */
+  private attachVideo(
+    generation: number,
+    on: (type: string, handler: () => void) => void
+  ): void {
+    const video = this._element as VideoElementLike;
+    const info = () => {
+      if (video.videoWidth > 0 && video.videoHeight > 0)
+        this.observer.onVideoInfo?.(generation, {
+          width: video.videoWidth,
+          height: video.videoHeight,
+          hdr: false,
+          variantId: this.variantId,
+        });
+    };
+    on('loadedmetadata', info);
+    on('resize', info);
+    on('loadeddata', () => {
+      const frame = () => {
+        if (generation === this.generation)
+          this.observer.onFirstFrame?.(generation);
+      };
+      if (video.requestVideoFrameCallback)
+        video.requestVideoFrameCallback(frame);
+      else frame();
+    });
+    on('progress', () => this.readDownlink(generation));
+    // The source's own tracks: the element's lists, or hls.js's once it runs.
+    this.sourceTracks = [];
+    const tracks = new MediaTracks(video, {
+      onTracks: (list) => {
+        if (generation !== this.generation) return;
+        this.sourceTracks = list;
+        this.observer.onTracks?.(generation, list);
+      },
+      onCues: (cues) => {
+        if (generation === this.generation)
+          this.observer.onSourceCues?.(generation, cues);
+      },
+    });
+    this.tracks = tracks;
+    if (this.chosenTracks)
+      tracks.select(this.chosenTracks.audio, this.chosenTracks.text);
+  }
+
+  /** Chromium's Network Information estimate, for files (hls.js has its own). */
+  private readDownlink(generation: number): void {
+    if (this.hls != null || this.dash != null) return;
+    const now = Date.now();
+    if (now - this.downlinkAt < DOWNLINK_EVERY_MS) return;
+    this.downlinkAt = now;
+    const mbps = browser().navigator?.connection?.downlink;
+    if (mbps != null && Number.isFinite(mbps) && mbps > 0)
+      this.observer.onBandwidth?.(generation, mbps * 1_000_000);
   }
 
   private liveOffset(): number | null {
@@ -374,7 +592,12 @@ export class MediaElementDriver implements EngineDriver {
     const hls = isHlsUri(source.uri) || isHlsType(contentType);
     return (
       hls &&
-      (this.nativeHlsFailed || this._element.canPlayType(HLS_MIME) === '')
+      needsHlsJs(
+        this._element,
+        this.kind === 'video',
+        this.nativeHlsFailed,
+        hlsConstructor()?.isSupported() === true
+      )
     );
   }
 
@@ -386,6 +609,25 @@ export class MediaElementDriver implements EngineDriver {
     source: SourceDescriptor,
     contentType: string | null = null
   ): void {
+    if (isDashUri(source.uri)) {
+      this.attach();
+      if (this._element.src !== '') {
+        this._element.removeAttribute('src');
+        this._element.load();
+      }
+      this.startDash(source);
+      return;
+    }
+    const remux =
+      this.remuxFallback == null && mediaSourceConstructor()
+        ? remuxFormatOf(source.uri, this._element)
+        : null;
+    if (remux) {
+      this.attach();
+      this.clearSource();
+      this.startRemux(source, remux);
+      return;
+    }
     const hls = this.needsHls(source, contentType);
     this.nativeHls = !hls && (isHlsUri(source.uri) || isHlsType(contentType));
     // hls.js feeds the element from a MediaSource: the audio is same-origin.
@@ -395,7 +637,7 @@ export class MediaElementDriver implements EngineDriver {
       this._element.pause();
       this._element = this.createElement();
       this._element.volume = this.volume;
-      this._element.playbackRate = this.rate;
+      this.applyRate();
       this.tapped = false;
       this.observer.onElementReplaced(this._element);
     }
@@ -437,6 +679,209 @@ export class MediaElementDriver implements EngineDriver {
     // Loading the element anew dropped the play() that was pending.
     if (this.playRequested) this.play();
     return true;
+  }
+
+  private clearSource(): void {
+    if (this._element.src === '') return;
+    this._element.removeAttribute('src');
+    this._element.load();
+  }
+
+  /**
+   * The element could not open a source (an MKV, an IPTV channel without an
+   * extension): before anything played, RNAP tries remuxing it, the
+   * container told by its first bytes.
+   */
+  private retryWithRemux(generation: number): boolean {
+    const source = this.source;
+    if (this.remux || this.remuxPending || this.remuxFallback != null)
+      return false;
+    // hls.js or Shaka took the source: it is no container to sniff.
+    if (this.hls || this.dash) return false;
+    if (this.sourcePlayed || !source || !mediaSourceConstructor()) return false;
+    if (!maySniff(source.uri)) return false;
+    if (!isNetworkSource(source) && !LOCAL_URI.test(source.uri)) return false;
+    this.remuxFallback = 'tried';
+    this.listeners?.abort();
+    this.clearSource();
+    this.observer.onNote(generation, 'remux', {
+      reason: 'the element could not open the source',
+    });
+    this.attach();
+    this.startRemux(source, null);
+    return true;
+  }
+
+  /** Matroska, WebM, MPEG-TS: remuxed to MP4 in the page (loaded on first use). */
+  private startRemux(
+    source: SourceDescriptor,
+    format: RemuxFormat | null
+  ): void {
+    const generation = this.generation;
+    const item = this.itemSerial;
+    const media = mediaSourceConstructor()!;
+    this.remuxPending = true;
+    loadRemuxParts().then(
+      (parts) => {
+        if (generation !== this.generation || item !== this.itemSerial) return;
+        this.remuxPending = false;
+        if (!parts) {
+          this.failHls(
+            generation,
+            'The remuxer did not load. Check the connection and try again.',
+            true
+          );
+          return;
+        }
+        this.startRemuxStream(source, generation, media, format, parts);
+        // Asked to play while the remuxer loaded.
+        if (this.playRequested) this.play();
+      },
+      () => undefined
+    );
+  }
+
+  private startRemuxStream(
+    source: SourceDescriptor,
+    generation: number,
+    media: NonNullable<ReturnType<typeof mediaSourceConstructor>>,
+    format: RemuxFormat | null,
+    parts: RemuxParts
+  ): void {
+    const live = () => generation === this.generation && this.remux === remux;
+    const remux: RemuxStream = new parts.RemuxStream(
+      this._element,
+      source,
+      media,
+      format,
+      this.kind === 'video',
+      {
+        onFailure: (error) => {
+          if (live()) this.observer.onFailed(generation, error);
+        },
+        onFallback: (reason) => {
+          if (!live()) return;
+          this.observer.onNote(generation, 'plain playback', { reason });
+          remux.close();
+          this.remux = null;
+          this.remuxFallback = reason;
+          this.listeners?.abort();
+          this.clearSource();
+          this.playPlain(source);
+          if (this.playRequested) this.play();
+        },
+        onNote: (event, details) => {
+          if (live()) this.observer.onNote(generation, event, details);
+        },
+        onTracks: () => {
+          if (live()) this.tracks?.useHls(remux);
+        },
+        onWarning: (error) => {
+          if (live()) this.observer.onWarning?.(generation, error);
+        },
+      }
+    );
+    this.remux = remux;
+    remux.start();
+  }
+
+  /** DASH: no browser plays it itself, Shaka Player does (registered by the app). */
+  private startDash(source: SourceDescriptor): void {
+    const generation = this.generation;
+    const shaka = shakaNamespace();
+    if (!shaka?.Player.isBrowserSupported()) {
+      const message = shaka
+        ? 'Shaka Player is not supported in this browser (it needs Media Source Extensions).'
+        : DASH_MISSING;
+      this.failHls(generation, message, false);
+      return;
+    }
+    this.dashPending = true;
+    const item = this.itemSerial;
+    loadDashParts().then(
+      (parts) => {
+        if (
+          generation !== this.generation ||
+          item !== this.itemSerial ||
+          source !== this.source
+        )
+          return;
+        if (!parts) {
+          this.dashPending = false;
+          this.failHls(
+            generation,
+            'The DASH glue code did not load. Check the connection and try again.',
+            true
+          );
+          return;
+        }
+        this.startDashStream(source, generation, shaka, parts);
+      },
+      () => undefined
+    );
+  }
+
+  private startDashStream(
+    source: SourceDescriptor,
+    generation: number,
+    shaka: ShakaLike,
+    parts: DashParts
+  ): void {
+    const live = () => generation === this.generation && this.dash === dash;
+    const dash: DashStream = new parts.DashStream(
+      this._element,
+      source,
+      shaka,
+      {
+        onFailure: (error) => {
+          if (!live()) return;
+          this.dashPending = false;
+          this.observer.onFailed(generation, error);
+        },
+        onNote: (event, details) => {
+          if (live()) this.observer.onNote(generation, event, details);
+        },
+        onVariants: (variants) => {
+          if (live()) this.observer.onVariants?.(generation, variants);
+        },
+        onVariantSwitched: (id) => {
+          if (!live()) return;
+          this.variantId = id;
+          const video = this.videoElement;
+          if (video && video.videoWidth > 0)
+            this.observer.onVideoInfo?.(generation, {
+              width: video.videoWidth,
+              height: video.videoHeight,
+              hdr: false,
+              variantId: id,
+            });
+        },
+        onBandwidth: (bps) => {
+          if (live()) this.observer.onBandwidth?.(generation, bps);
+        },
+        onTracks: () => {
+          if (live()) this.tracks?.useHls(dash);
+        },
+        requestLicense: (r) =>
+          requestLicense(
+            (event) => this.observer.onLicenseRequest?.(generation, event),
+            r
+          ),
+        onLoaded: () => {
+          if (!live()) return;
+          this.dashPending = false;
+          // Asked to play while Shaka loaded the manifest.
+          if (this.playRequested) this.play();
+        },
+      }
+    );
+    this.dash = dash;
+    this.observer.onNote(generation, 'shaka', { reason: 'DASH' });
+    if (this.quality) dash.setQuality(this.quality);
+    // Shaka starts where it was asked: the element's metadata needs no seek.
+    const start = this.pendingStart;
+    this.pendingStart = null;
+    dash.start(start).catch(() => undefined);
   }
 
   private startHls(source: SourceDescriptor): void {
@@ -519,23 +964,56 @@ export class MediaElementDriver implements EngineDriver {
     parts: HlsParts
   ): void {
     const live = () => generation === this.generation && this.hls === hls;
-    const hls: HlsStream = new parts.HlsStream(this._element, source, ctor, {
-      onMetadata: (metadata, time) => {
-        if (live())
-          this.schedule(time, () =>
-            this.observer.onStreamMetadata(generation, metadata)
-          );
+    // hls.js starts where it was asked (its first request is that segment):
+    // the element's metadata needs no seek.
+    const start = this.pendingStart;
+    this.pendingStart = null;
+    if (start != null && start > 0) this.ownSeeks.mark(start);
+    const hls: HlsStream = new parts.HlsStream(
+      this._element,
+      source,
+      ctor,
+      {
+        onMetadata: (metadata, time) => {
+          if (live())
+            this.timed.schedule(time, () =>
+              this.observer.onStreamMetadata(generation, metadata)
+            );
+        },
+        onFailure: (error) => {
+          if (live()) this.observer.onFailed(generation, error);
+        },
+        onNote: (event, details) => {
+          if (live()) this.observer.onNote(generation, event, details);
+        },
+        onVariants: (variants) => {
+          if (live()) this.observer.onVariants?.(generation, variants);
+        },
+        onVariantSwitched: (id) => {
+          if (!live()) return;
+          this.variantId = id;
+          const video = this.videoElement;
+          if (video && video.videoWidth > 0)
+            this.observer.onVideoInfo?.(generation, {
+              width: video.videoWidth,
+              height: video.videoHeight,
+              hdr: false,
+              variantId: id,
+            });
+        },
+        onBandwidth: (bps) => {
+          if (live()) this.observer.onBandwidth?.(generation, bps);
+        },
+        onTracks: () => {
+          if (live()) this.tracks?.useHls(hls);
+        },
       },
-      onFailure: (error) => {
-        if (live()) this.observer.onFailed(generation, error);
-      },
-      onNote: (event, details) => {
-        if (live()) this.observer.onNote(generation, event, details);
-      },
-    });
+      start
+    );
     this.hls = hls;
     this.observer.onNote(generation, 'hls.js', { reason: 'no native HLS' });
     hls.start();
+    if (this.quality) hls.setQuality(this.quality);
   }
 
   /** Reports an HLS failure from a microtask: not from inside open(). */
@@ -570,7 +1048,7 @@ export class MediaElementDriver implements EngineDriver {
         },
         onTimedMetadata: (metadata, time) => {
           if (live())
-            this.schedule(time, () =>
+            this.timed.schedule(time, () =>
               this.observer.onStreamMetadata(generation, metadata)
             );
         },
@@ -579,7 +1057,7 @@ export class MediaElementDriver implements EngineDriver {
           this.observer.onNote(generation, 'connection spliced', {
             at: time.toFixed(2),
           });
-          this.schedule(time, () =>
+          this.timed.schedule(time, () =>
             this.observer.onDiscontinuity(generation, time)
           );
         },
@@ -610,38 +1088,51 @@ export class MediaElementDriver implements EngineDriver {
   }
 
   private onLoadedMetadata(generation: number): void {
-    const element = this._element;
-    // An HLS playlist says whether it is live (the element's duration alone
-    // cannot, before the first segments); everything else is the element's.
-    const info = this.hls?.readyInfo() ?? this.elementReadyInfo();
-    if (
-      info.duration != null &&
-      this.pendingStart != null &&
-      this.pendingStart > 0
-    ) {
-      element.currentTime = Math.min(this.pendingStart, info.duration);
-    }
+    this.applyRate();
+    this.metadataLoaded = true;
+    const manifest = this.manifestReadyInfo();
+    const info =
+      manifest ?? elementReadyInfo(this._element, this.stream != null);
+    const start = this.facts.ready(info, this.pendingStart, manifest == null);
     this.pendingStart = null;
+    if (start != null) this.seekElement(start);
     this.observer.onReady(generation, info);
   }
 
-  private elementReadyInfo(): ReadyInfo {
-    const element = this._element;
-    const duration = element.duration;
-    const finite = !this.stream && Number.isFinite(duration) && duration > 0;
-    return finite
-      ? { duration, isLive: false, seekable: element.seekable.length > 0 }
-      : { duration: null, isLive: true, seekable: false };
+  /** The element knows more about the item: the engine is told what changed. */
+  private onDurationChange(generation: number): void {
+    if (!this.metadataLoaded) return;
+    const info =
+      this.manifestReadyInfo() ??
+      elementReadyInfo(this._element, this.stream != null);
+    const { news, seek } = this.facts.changed(info);
+    if (seek != null) this.seekElement(seek);
+    if (news) this.observer.onReady(generation, info);
+  }
+
+  private seekElement(position: number): void {
+    this.ownSeeks.mark(position);
+    this._element.currentTime = position;
+  }
+
+  /** An HLS playlist or a DASH manifest says whether it is live (the element's duration alone cannot, before the first segments). */
+  private manifestReadyInfo(): ReadyInfo | null {
+    return (
+      this.hls?.readyInfo() ??
+      this.dash?.readyInfo() ??
+      this.remux?.readyInfo() ??
+      null
+    );
   }
 
   private onError(generation: number): void {
     const error = this._element.error;
     if (!error || error.code === MEDIA_ERR_ABORTED) return;
     // hls.js already reported the failure that stopped the element.
-    if (this.hls?.failed) return;
+    if (this.hls?.failed || this.dash?.failed || this.remux?.failed) return;
     if (
       error.code === MEDIA_ERR_SRC_NOT_SUPPORTED &&
-      this.retryWithHls(generation)
+      (this.retryWithHls(generation) || this.retryWithRemux(generation))
     )
       return;
     this.observer.onFailed(
@@ -651,67 +1142,40 @@ export class MediaElementDriver implements EngineDriver {
   }
 
   private mapError(code: number, message: string): PlayerError {
-    const details = {
-      platformDomain: 'MediaError',
-      platformCode: code,
-      cause: message || undefined,
-    };
-    const navigator = browser().navigator;
-    if (navigator && !navigator.onLine) {
-      return engineError(
-        'NETWORK_UNAVAILABLE',
-        'The device is offline.',
-        true,
-        details
-      );
-    }
-    if (code === MEDIA_ERR_NETWORK) {
-      return engineError(
-        'NETWORK_ERROR',
-        'A network error interrupted the download.',
-        true,
-        details
-      );
-    }
-    if (code === MEDIA_ERR_DECODE) {
-      return engineError(
-        'DECODER_ERROR',
-        'The audio could not be decoded.',
-        this.flowed,
-        details
-      );
-    }
-    // MEDIA_ERR_SRC_NOT_SUPPORTED: browsers also report a refused or missing
-    // resource this way. A source that played before is a server failing.
-    if (this.sourcePlayed) {
-      return engineError(
-        'NETWORK_ERROR',
-        'The server stopped serving the source.',
-        true,
-        details
-      );
-    }
-    return engineError(
-      'UNSUPPORTED_FORMAT',
-      'The browser could not open the source (unsupported format, or the server refused it).' +
-        (this.nativeHls ? HLS_HINT : ''),
-      false,
-      details
-    );
+    return elementError(code, message, {
+      offline: browser().navigator?.onLine === false,
+      flowed: this.flowed,
+      sourcePlayed: this.sourcePlayed,
+      nativeHls: this.nativeHls,
+      remuxFallback: this.remuxFallback,
+      mseOpened: this.metadataLoaded && this.fed,
+    });
   }
 
   private teardownItem(): void {
     this.listeners?.abort();
     this.listeners = null;
+    this.tracks?.close();
+    this.tracks = null;
     this.stream?.close();
     this.stream = null;
     this.hls?.close();
     this.hls = null;
     this.hlsPending = false;
+    this.dash?.close();
+    this.dash = null;
+    this.dashPending = false;
+    this.remux?.close();
+    this.remux = null;
+    this.remuxPending = false;
+    this.drm?.close();
+    this.drm = null;
+    this.drmPending = false;
     this.itemSerial += 1;
     this.nativeHls = false;
-    this.timed = [];
-    this.clearTimedTimer();
+    this.metadataLoaded = false;
+    this.facts.reset();
+    this.timed.clear();
     this.playRequested = false;
     this.expectingPause = false;
   }
@@ -734,34 +1198,5 @@ export class MediaElementDriver implements EngineDriver {
         return ranges.end(i);
     }
     return position;
-  }
-
-  // ── Timed delivery (metadata and splices, when heard) ──
-
-  private schedule(time: number, fire: () => void): void {
-    this.timed.push({ time, fire });
-    this.timed.sort((a, b) => a.time - b.time);
-    this.pumpTimed();
-  }
-
-  private pumpTimed(): void {
-    this.clearTimedTimer();
-    const now = this.position();
-    while (this.timed.length > 0 && this.timed[0]!.time <= now)
-      this.timed.shift()!.fire();
-    const next = this.timed[0];
-    if (!next || this._element.paused) return;
-    const rate = this._element.playbackRate || 1;
-    // Strictly when heard (never early). timeupdate fires every ~250 ms; a
-    // timer lands it on time, re-armed if the audio clock is still short.
-    this.timedTimer = browser().setTimeout(
-      () => this.pumpTimed(),
-      Math.max(10, ((next.time - now) / rate) * 1000)
-    );
-  }
-
-  private clearTimedTimer(): void {
-    if (this.timedTimer !== null) browser().clearTimeout(this.timedTimer);
-    this.timedTimer = null;
   }
 }

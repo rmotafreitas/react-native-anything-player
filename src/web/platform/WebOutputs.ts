@@ -24,10 +24,18 @@ function pickerUnavailable(message: string): PlayerError {
   });
 }
 
-function unsupportedSource(uri: string): PlayerError {
+/** A Cast receiver fetches the source itself, and gets no DRM keys. */
+function castsTo(source: SourceDescriptor): boolean {
+  return source.drm == null && castableUrl(source.uri) != null;
+}
+
+function unsupportedSource(source: SourceDescriptor): PlayerError {
   return new PlayerError({
     code: 'CAST_UNSUPPORTED_SOURCE',
-    message: `A Cast receiver cannot reach ${uri.split(':')[0]}: sources; the player stays on this device.`,
+    message:
+      source.drm == null
+        ? `A Cast receiver cannot reach ${source.uri.split(':')[0]}: sources; the player stays on this device.`
+        : 'A Cast receiver cannot decrypt the source (DRM); the player stays on this device.',
     recoverable: false,
     platform: 'web',
   });
@@ -135,12 +143,12 @@ export class WebOutputs implements CastServiceDelegate, RuntimeListener {
     source: SourceDescriptor | null,
     loadId: number
   ): boolean {
-    if (!source || castableUrl(source.uri)) return true;
+    if (!source || castsTo(source)) return true;
     const again =
       this.refused?.controller === controller && this.refused.loadId === loadId;
     if (!again) {
       this.refused = { controller, loadId };
-      controller.engineError(unsupportedSource(source.uri), false);
+      controller.engineError(unsupportedSource(source), false);
     }
     return false;
   }
@@ -174,7 +182,7 @@ export class WebOutputs implements CastServiceDelegate, RuntimeListener {
   ): void {
     const device = this.device;
     if (!device) return;
-    const reachable = castableUrl(source.uri) != null;
+    const reachable = castsTo(source);
     if (controller === this.casting) {
       if (reachable) return;
       // The receiver cannot take it: the player returns to this device first.

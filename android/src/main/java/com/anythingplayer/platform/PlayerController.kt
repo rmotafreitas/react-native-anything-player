@@ -12,6 +12,7 @@ import com.anythingplayer.core.AudioRouteKind
 import com.anythingplayer.core.DiagnosticEntry
 import com.anythingplayer.core.EngineClock
 import com.anythingplayer.core.EngineDelegate
+import com.anythingplayer.core.EngineStats
 import com.anythingplayer.core.ErrorCode
 import com.anythingplayer.core.FocusResult
 import com.anythingplayer.core.InterruptionReason
@@ -20,10 +21,14 @@ import com.anythingplayer.core.PlaybackEngine
 import com.anythingplayer.core.PlayerError
 import com.anythingplayer.core.ReadyInfo
 import com.anythingplayer.core.SourceDescriptor
+import com.anythingplayer.core.RefreshReason
 import com.anythingplayer.core.Status
 import com.anythingplayer.core.StreamMetadata
 import com.anythingplayer.core.TrackClock
 import com.anythingplayer.core.PlaybackState
+import com.anythingplayer.core.MediaTrack
+import com.anythingplayer.core.VideoInfo
+import com.anythingplayer.core.VideoVariant
 
 /**
  * Where events go: the TurboModule's `onPlayerEvent` emitter. The runtime holds
@@ -32,6 +37,11 @@ import com.anythingplayer.core.PlaybackState
  */
 internal fun interface EventSink {
   fun emit(event: WritableMap)
+}
+
+/** The activity React Native runs in (dialogs and Picture in Picture need one). */
+internal fun interface ActivitySource {
+  fun current(): android.app.Activity?
 }
 
 /** Settles a `load()`; called on the main thread once the engine decided. */
@@ -67,8 +77,23 @@ internal class PlayerController(
 ) : EngineDelegate, DriverObserver, CastTarget {
   private val handler = Handler(Looper.getMainLooper())
   private val appContext = context.applicationContext
-  private val localDriver = ExoPlayerDriver(context, options.speech, options.titleFormat, this)
-  private val driver = RoutingDriver(localDriver) { runtime.newRemoteOutput(this) }
+  /** `audioSample` windows: on, and how many points (applied to every ExoPlayer, also a quality switch's). */
+  private var sampling = false
+  private var samplingPoints = 0
+  /** A video player's picture side (`null`: an audio player). */
+  val picture: VideoPicture? =
+    if (options.engine.video == null) null
+    else VideoSupport.create(appContext, this) { observer ->
+      ExoPlayerDriver(appContext, options.speech, options.titleFormat, observer, video = true).also {
+        if (sampling) configureSampler(it)
+      }
+    }
+  private val audioDriver: ExoPlayerDriver? =
+    if (picture == null) ExoPlayerDriver(context, options.speech, options.titleFormat, this) else null
+  /** The ExoPlayer the audio (and the picture) plays from now. */
+  private val localDriver: ExoPlayerDriver
+    get() = picture?.primary ?: audioDriver!!
+  private val driver = RoutingDriver(picture?.output ?: audioDriver!!) { runtime.newRemoteOutput(this) }
   val engine = PlaybackEngine(driver, AndroidClock, options.engine)
 
   private var eventSeq = 0L
@@ -117,6 +142,9 @@ internal class PlayerController(
 
   init {
     engine.delegate = this
+    // JS reads the status right after creating the player, before the engine
+    // published one: a video player's starts with its `video` part.
+    statusSnapshot = engine.status to 0L
   }
 
   val status: Status
@@ -124,13 +152,24 @@ internal class PlayerController(
 
   // ── Commands (main thread) ──
 
-  fun load(source: SourceDescriptor, fields: NowPlayingFields, autoplay: Boolean?, start: Double?, completion: LoadCompletion? = null) {
+  fun load(
+    source: SourceDescriptor,
+    fields: NowPlayingFields,
+    autoplay: Boolean?,
+    start: Double?,
+    parts: VideoLoadParts? = null,
+    completion: LoadCompletion? = null,
+  ) {
     runtime.beforeLoad(this, source.isNetwork)
     sourceFields = fields
     overrides = NowPlayingFields()
     trackClock = null
     streamMetadata = null
+    lastBandwidth = null
+    picture?.load(parts ?: VideoLoadParts())
     engine.load(source, autoplay, start)
+    // The app's subtitle files are tracks from the start (their cues follow).
+    if (picture != null && parts != null && parts.subtitles.isNotEmpty()) engine.setAppTracks(parts.subtitles)
     // `load` settles synchronously only when it supersedes; this load is pending.
     if (completion != null) pendingLoads[engine.loadId] = completion
     runtime.onNowPlayingChanged(this)
@@ -156,14 +195,16 @@ internal class PlayerController(
     if (released) return
     released = true
     stopTitleReader()
-    localDriver.sampler.enabled = false
-    localDriver.sampler.onWindow = null
+    drivers.forEach {
+      it.sampler.enabled = false
+      it.sampler.onWindow = null
+    }
     handler.removeCallbacks(wakeup)
     progressTicking = false
     handler.removeCallbacks(progressTick)
     engine.release()
     driver.destroyRemote()
-    localDriver.destroy()
+    picture?.destroy() ?: audioDriver?.destroy()
     pendingLoads.clear()
   }
 
@@ -177,6 +218,9 @@ internal class PlayerController(
   fun progressMap(): WritableMap = progressToMap(progressSnapshot, AndroidClock.monotonicMs, AndroidClock.wallMs)
 
   fun progress(): ProgressSnapshot = progressSnapshot
+
+  /** The output's reading now (main thread): the subtitles and the controls follow it. */
+  fun currentProgress(): ProgressReading = driver.progress()
 
   fun metadataMap(): WritableMap =
     Arguments.createMap().apply {
@@ -203,6 +247,12 @@ internal class PlayerController(
     )
   }
 
+  /** What a Cast receiver gets besides the source: a video player's subtitle files as WebVTT. */
+  fun castMedia(): CastMedia {
+    val video = status.video ?: return CastMedia()
+    return CastMedia(true, picture?.castSubtitles(video).orEmpty(), video.textTrack)
+  }
+
   /** A player event with a payload of its own (`searchPlay`), ordered like every other. */
   fun emitEvent(type: String, payload: WritableMap) = emit(type, payload)
 
@@ -227,12 +277,23 @@ internal class PlayerController(
    * sequence: a sample is a stream, never a state to order.
    */
   fun setAudioSampling(enabled: Boolean, points: Int) {
-    val sampler = localDriver.sampler
-    sampler.points = points
+    sampling = enabled
+    samplingPoints = points
+    drivers.forEach { configureSampler(it) }
+  }
+
+  /** Every ExoPlayer: the audio player's one, or a video player's two. */
+  private val drivers: List<ExoPlayerDriver>
+    get() = picture?.drivers ?: listOfNotNull(audioDriver)
+
+  private fun configureSampler(source: ExoPlayerDriver) {
+    val sampler = source.sampler
+    sampler.points = samplingPoints
     sampler.onWindow =
-      if (!enabled) null
+      if (!sampling) null
       else { window ->
-        if (!released) {
+        // A quality switch's ExoPlayer plays muted until it takes over: only the one heard counts.
+        if (!released && source === localDriver) {
           val waveform = Arguments.createArray()
           window.waveform.forEach { waveform.pushDouble(it.toDouble()) }
           runtime.emit(
@@ -248,7 +309,7 @@ internal class PlayerController(
           )
         }
       }
-    sampler.enabled = enabled
+    sampler.enabled = sampling
   }
 
   private fun emit(type: String, payload: WritableMap) {
@@ -275,13 +336,15 @@ internal class PlayerController(
     // The song advances with the audio, not the wall clock.
     trackClock?.setRunning(status.state == PlaybackState.PLAYING, AndroidClock.monotonicMs)
     updateProgressTicks(status.state)
+    picture?.statusChanged(status)
     runtime.onStatusChanged(this)
   }
 
   // ── Cast ──
 
+  /** A Cast receiver fetches the source itself, and gets no DRM keys. */
   override val castableSource: Boolean?
-    get() = engine.source?.isNetwork
+    get() = engine.source?.let { it.isNetwork && it.drm == null }
 
   override fun handoff(route: AudioRoute, outputId: String, resume: Boolean) = engine.handoff(route, outputId, resume)
 
@@ -289,7 +352,11 @@ internal class PlayerController(
     engineError(
       PlayerError(
         ErrorCode.CAST_UNSUPPORTED_SOURCE,
-        "A Cast receiver can only play http(s) sources; local files, content:// URIs and bundled assets stay on this device.",
+        if (engine.source?.drm != null) {
+          "A Cast receiver cannot decrypt the source (DRM); it stays on this device."
+        } else {
+          "A Cast receiver can only play http(s) sources; local files, content:// URIs and bundled assets stay on this device."
+        },
         false,
       ),
       fatal = false,
@@ -391,6 +458,34 @@ internal class PlayerController(
     }
   }
 
+  override fun engineRequestsSourceRefresh(loadId: Int, reason: RefreshReason) {
+    emit(
+      "refreshRequest",
+      Arguments.createMap().apply {
+        putInt("loadId", loadId)
+        putString("reason", reason.wire)
+      },
+    )
+  }
+
+  /** `getStats()`: the engine's counters (any thread). */
+  fun statsMap(): WritableMap {
+    val stats = statsSnapshot
+    return Arguments.createMap().apply {
+      stats.startupMs?.let { putDouble("startupMs", it.toDouble()) } ?: putNull("startupMs")
+      putInt("rebufferCount", stats.rebufferCount)
+      putDouble("rebufferMs", stats.rebufferMs.toDouble())
+      putInt("qualitySwitches", stats.qualitySwitches)
+      putInt("audioOnlySwitches", stats.audioOnlySwitches)
+      droppedSnapshot?.let { putInt("droppedFrames", it) } ?: putNull("droppedFrames")
+      lastBandwidth?.let { putDouble("bandwidth", it) } ?: putNull("bandwidth")
+    }
+  }
+
+  /** The last bandwidth estimate and dropped frames, for `getStats()` (read from the JS thread). */
+  @Volatile private var lastBandwidth: Double? = null
+  @Volatile private var droppedSnapshot: Int? = null
+
   override fun engineWakeupAt(at: Long?) {
     handler.removeCallbacks(wakeup)
     if (!released && at != null) {
@@ -398,7 +493,12 @@ internal class PlayerController(
     }
     // Every engine entry ends here: refresh the progress snapshot JS reads.
     progressSnapshot = ProgressSnapshot(driver.progress(), AndroidClock.monotonicMs, AndroidClock.wallMs)
+    statsSnapshot = engine.stats
+    if (picture != null) droppedSnapshot = localDriver.droppedFrames
   }
+
+  /** The engine's counters as of its last entry (read from the JS thread). */
+  @Volatile private var statsSnapshot = EngineStats()
 
   // ── DriverObserver (main thread) ──
 
@@ -433,4 +533,50 @@ internal class PlayerController(
   }
 
   override fun isOffline(): Boolean = runtime.networkState == com.anythingplayer.core.NetworkState.OFFLINE
+
+  override fun onWarning(generation: Int, error: PlayerError) {
+    if (engine.accepts(generation)) engineError(error, fatal = false)
+  }
+
+  override fun onLicenseRequest(generation: Int, ask: LicenseAsk) {
+    if (!engine.accepts(generation)) return LicenseRequests.cancel(ask.requestId, "The source was replaced.")
+    emit(
+      "licenseRequest",
+      Arguments.createMap().apply {
+        putInt("requestId", ask.requestId)
+        putString("keySystem", ask.keySystem)
+        putString("challenge", android.util.Base64.encodeToString(ask.challenge, android.util.Base64.NO_WRAP))
+        putNull("contentId")
+        ask.licenseUrl?.let { putString("licenseUrl", it) } ?: putNull("licenseUrl")
+        putMap("headers", Arguments.createMap().apply { ask.headers.forEach { (k, v) -> putString(k, v) } })
+      },
+    )
+  }
+
+  // ── DriverObserver: video (main thread) ──
+
+  override fun onVideoInfo(generation: Int, info: VideoInfo) {
+    engine.onVideoInfo(generation, info)
+    picture?.pictureChanged()
+  }
+
+  override fun onFirstFrame(generation: Int) = engine.onFirstFrame(generation)
+
+  override fun onTracks(generation: Int, tracks: List<MediaTrack>, variants: List<VideoVariant>) {
+    engine.onTracks(generation, tracks)
+    engine.onVariants(generation, variants)
+  }
+
+  override fun onSourceCues(generation: Int, cues: List<OverlayCue>) {
+    if (engine.accepts(generation)) picture?.sourceCues(cues)
+  }
+
+  override fun onBandwidth(generation: Int, bitsPerSecond: Double) {
+    if (bitsPerSecond > 0 && bitsPerSecond.isFinite()) lastBandwidth = bitsPerSecond
+    engine.onBandwidth(generation, bitsPerSecond)
+  }
+
+  override fun onPositionJump(generation: Int) {
+    if (engine.accepts(generation)) picture?.positionJumped()
+  }
 }

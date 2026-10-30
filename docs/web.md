@@ -13,9 +13,9 @@ npx expo install react-dom react-native-web @expo/metro-runtime
 npx expo start --web
 ```
 
-### React (react-dom: Vite, Next.js, Create React App)
+### React DOM
 
-Import `react-native-anything-player/react`: the `Player`, the same hooks as on React Native, and `<button>` versions of `<RoutePicker />` and `<CastButton />` (they take `className` and `style`). No React Native import, so `react-native` does not need to be installed.
+For Vite, Next.js and other React DOM apps, import `react-native-anything-player/react`: the `Player`, the same hooks as on React Native, and `<button>` versions of `<RoutePicker />` and `<CastButton />` (they take `className` and `style`). No React Native import, so `react-native` does not need to be installed.
 
 ```tsx
 import { useEffect, useState } from 'react';
@@ -69,7 +69,14 @@ esm.sh serves packages from npm, so the snippet works once RNAP is published the
 
 ### What a page loads
 
-About 30 KB of JavaScript (minified and gzipped) on page load, the same for all three entries. Three parts load only when they are needed, as separate files with bundlers that split code (Vite, webpack, Next.js, esbuild with `splitting`, Metro on Expo web): Google Cast's driver, after `configureCast()` has loaded the Cast SDK; the hls.js glue (the driver and its ID3 reader), as soon as hls.js is registered with `configureHls()` (or found on `window.Hls`), so it is ready before a source plays; and the MP4 repackaging, the first time a browser needs it (Firefox). Together they are about 8 KB. [Comparison & benchmarks](comparison.md#react-and-plain-web-pages) puts this next to the other web audio libraries.
+About 56–57 KB of JavaScript (minified and gzipped) on page load, about the same for all three entries. About 25 KB of it is video (the engine's video rules and the stage), loaded whether a page plays video or not. The rest loads only when it is needed, as separate files with bundlers that split code (Vite, webpack, Next.js, esbuild with `splitting`, Metro on Expo web):
+
+- Google Cast's driver, after `configureCast()` has loaded the Cast SDK;
+- the hls.js glue (the driver and its ID3 reader), as soon as hls.js is registered with `configureHls()` (or found on `window.Hls`), so it is ready before a source plays; the Shaka glue for DASH;
+- the MP4 repackaging and the Matroska, WebM and MPEG-TS remuxer, the first time a browser needs them;
+- DRM, for a protected source; the subtitle parsers, with the first subtitle file.
+
+Together they are about 38 KB. [Comparison & benchmarks](comparison.md#react-and-plain-web-pages) puts this next to the other web audio libraries.
 
 ## How a stream is played
 
@@ -152,6 +159,35 @@ RNAP uses hls.js for a source whose path ends in `.m3u8`, or whose response says
 - **Live offset.** `liveOffset` is hls.js's latency to the live edge.
 - **Teardown.** The hls.js instance is destroyed on `stop()`, `reset()`, the next `load()` and `release()`.
 
+## DASH
+
+No browser plays DASH (`.mpd`) itself. A [video player](video.md) plays it with [Shaka Player](https://github.com/shaka-project/shaka-player) (4.x or 5.x), which RNAP does not bundle either: install it and register it once at startup.
+
+```sh
+npm install shaka-player
+```
+
+```ts
+import shaka from 'shaka-player';
+import { configureShaka } from 'react-native-anything-player'; // or '…/web'
+
+configureShaka(shaka);
+```
+
+With Shaka loaded by a `<script>` (it then sits on `window.shaka`), the call is optional. Without it, a DASH load fails with `UNSUPPORTED_FORMAT` and a message that says to install Shaka and call `configureShaka`. RNAP's DASH code is loaded on first use, so a page that never plays DASH does not carry it.
+
+What hls.js does for HLS, Shaka does for DASH, under the same rules: Shaka's ABR picks the picture under RNAP's [caps](video.md#quality) and `selectQuality` pins one; the manifest's audio languages and text tracks are the [source's tracks](subtitles.md#tracks-in-the-file), drawn by RNAP's overlay; the source's `headers` go on every request; a critical Shaka error is a failure the engine recovers from with a new Shaka instance under its [backoff](recovery.md) (an HTTP 404/410 is `SOURCE_NOT_FOUND`).
+
+## Matroska, WebM and MPEG-TS
+
+A `.mkv`, `.webm` or `.ts` file, or a live MPEG-TS channel, plays on video and audio players through RNAP's remuxer: the file is read with `fetch()` (range requests, for seeking) and its frames go into fragmented MP4 for Media Source Extensions, with nothing decoded. The details are in [Video](video.md#matroska-webm-and-mpeg-ts).
+
+- **When.** Matroska is always remuxed: a browser that plays it itself hides its audio tracks and subtitles. WebM and MPEG-TS are remuxed only where the browser does not play them (`canPlayType`); no browser plays MPEG-TS. A source with no extension that the element cannot open is sniffed and remuxed if it is either container.
+- **Seeking.** It uses a Matroska file's Cues (read from where its SeekHead says), or for MPEG-TS a guess by the bitrate corrected after the landing. A server without range requests is read again from the start.
+- **Duration.** It comes from a Matroska file's Info, or from an MPEG-TS file's last timestamps (one range request to its tail). A stream without a length is live.
+- **Tracks.** The file's audio tracks and its SubRip, ASS and WebVTT subtitles are the source's tracks. A picked audio track is remuxed from where the picture is, which needs `SourceBuffer.changeType` when its codec differs.
+- **Code size.** The remuxer and its glue load on first use, so a page that never plays these files does not carry them.
+
 ## Local files
 
 A file the user picked or dropped plays by passing it straight to `load()`:
@@ -189,7 +225,7 @@ player.play().catch((error) => {
 
 ## Sound effects
 
-`Sound` plays short effects through Web Audio, with no build step and no Player: `import { Sound } from 'react-native-anything-player/sound'` (or from `/web` or `/react`). The audio context starts on the first tap, click or key press, and `play()` before one throws `AUTOPLAY_BLOCKED`. The [Sound guide](sound.md) has the API.
+`Sound` plays short effects through Web Audio, with no build step and no Player: `import { Sound } from 'react-native-anything-player/sound'` (only from there: `/web` and `/react` do not export it). The audio context starts on the first tap, click or key press, and `play()` before one throws `AUTOPLAY_BLOCKED`. The [Sound guide](sound.md) has the API.
 
 ## Lock screen and media keys
 
@@ -217,7 +253,7 @@ The engine is the same, so are the rules in [Recovery policy](recovery.md): stal
 | Audio focus | one app at a time | none: other tabs and apps play alongside |
 | `audio.contentType`, `audio.mixWithOthers`, `android.*` | honoured | ignored |
 | Volume on iOS Safari | honoured | fixed by the system (`setVolume` has no effect; `setMuted` works) |
-| Visualizer | every source | streams read through `fetch()` (Web Audio cannot read a cross-origin `<audio>` without CORS); each player has its own audio context, closed on `release()` (browsers limit them), and a browser that refuses another one just reports no sampling |
+| Visualizer | every source, except HLS on iOS ([why](visualizer.md)) | streams read through `fetch()` (Web Audio cannot read a cross-origin `<audio>` without CORS); each player has its own audio context, closed on `release()` (browsers limit them), and a browser that refuses another one just reports no sampling |
 
 ## Expo Go
 

@@ -112,7 +112,7 @@ A watch controls what the phone plays; RNAP needs nothing extra for it:
 - **Apple Watch**: the Now Playing app shows the iPhone's Now Playing info (title, artist, artwork, progress) with play/pause and, when enabled in `mediaSession.commands`, next/previous and skips.
 - **Wear OS**: the media controls show the phone's Media3 session, with the same commands.
 
-Both follow from the media sessions above and still have to be checked on hardware (see [Testing](testing.md#system-behaviour-manual-scripted-with-adb-simctl)). Playing audio on the watch itself would need a watch app, which is outside a React Native library.
+Both follow from the media sessions above and still have to be checked on hardware (see [Testing](testing.md#system-behaviour-manual)). Playing audio on the watch itself would need a watch app, which is outside a React Native library.
 
 ## iOS media services reset
 

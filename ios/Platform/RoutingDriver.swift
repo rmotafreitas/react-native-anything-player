@@ -6,6 +6,8 @@ protocol RemoteOutputDriver: EngineDriver {
   var observer: DriverObserver? { get set }
   /// What the receiver shows for the item it opens (title, artist, artwork).
   var describe: (() -> NowPlayingInfo)? { get set }
+  /// A video player's extras for the receiver (its subtitle files).
+  var media: (() -> CastMedia)? { get set }
   func progress() -> ProgressReading
   /// Stops listening to the receiver. Does not stop its media (`unload` does).
   func destroy()
@@ -18,7 +20,7 @@ protocol RemoteOutputDriver: EngineDriver {
 final class RoutingDriver: EngineDriver {
   static let localOutput = "local"
 
-  let local: AVPlayerDriver
+  let local: LocalOutput
   /// Builds the driver for a remote output id (`cast:<device>`); `nil` when
   /// remote outputs are not compiled in.
   var makeRemote: ((String) -> RemoteOutputDriver?)?
@@ -28,6 +30,9 @@ final class RoutingDriver: EngineDriver {
   var describe: (() -> NowPlayingInfo)? {
     didSet { remote?.describe = describe }
   }
+  var media: (() -> CastMedia)? {
+    didSet { remote?.media = media }
+  }
   private(set) var outputId = RoutingDriver.localOutput
   private var remote: RemoteOutputDriver?
   private var volume = 1.0
@@ -36,7 +41,7 @@ final class RoutingDriver: EngineDriver {
   /// told up front, and the source rarely says.
   private var knownLive: (uri: String, live: Bool)?
 
-  init(local: AVPlayerDriver) {
+  init(local: LocalOutput) {
     self.local = local
   }
 
@@ -76,6 +81,12 @@ final class RoutingDriver: EngineDriver {
   func play() { current.play() }
   func pause() { current.pause() }
   func seek(to seconds: Double) { current.seek(to: seconds) }
+  func seek(to seconds: Double, exact: Bool) { current.seek(to: seconds, exact: exact) }
+  func setVideoEnabled(_ enabled: Bool) { current.setVideoEnabled(enabled) }
+  func setQuality(_ constraints: QualityConstraints) { current.setQuality(constraints) }
+  func setLoop(_ loop: Bool) { current.setLoop(loop) }
+  func cancelSwap(generation: Int) { current.cancelSwap(generation: generation) }
+  func selectTracks(audio: String?, text: String?) { current.selectTracks(audio: audio, text: text) }
   func releaseConnection() { current.releaseConnection() }
   func unload() { current.unload() }
 
@@ -98,6 +109,7 @@ final class RoutingDriver: EngineDriver {
     if isRemote, let next = makeRemote?(outputId) {
       next.observer = observer
       next.describe = describe
+      next.media = media
       remote = next
     }
     current.setVolume(volume)

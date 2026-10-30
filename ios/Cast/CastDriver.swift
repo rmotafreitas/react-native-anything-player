@@ -20,7 +20,10 @@ import GoogleCast
 class CastDriver: NSObject, RemoteOutputDriver {
   weak var observer: DriverObserver?
   var describe: (() -> NowPlayingInfo)?
+  var media: (() -> CastMedia)?
   let outputId: String
+  /// The receiver's text track ids of the app's files (`sub:<n>` → 1, 2…).
+  private var castTracks: [String: Int] = [:]
 
   private var client: GCKRemoteMediaClient?
   private var generation = 0
@@ -76,9 +79,14 @@ class CastDriver: NSObject, RemoteOutputDriver {
     guard let client else {
       return failSoon(gen, castError("No Cast session.", nil))
     }
+    let extra = media?() ?? CastMedia()
     let builder = GCKMediaLoadRequestDataBuilder()
-    builder.mediaInformation = mediaInformation(url, request.source)
+    builder.mediaInformation = mediaInformation(url, request.source, extra)
     builder.autoplay = NSNumber(value: request.playWhenReady)
+    if !castTracks.isEmpty {
+      // The track the engine shows is on from the start.
+      builder.activeTrackIDs = extra.textTrack.flatMap { castTracks[$0] }.map { [NSNumber(value: $0)] } ?? []
+    }
     if let start = request.startPosition, start > 0, !isLive { builder.startTime = start }
     guard let pending = CastObjC.call(client, "loadMediaWithLoadRequestData:", builder.build()) as? GCKRequest
     else {
@@ -122,8 +130,15 @@ class CastDriver: NSObject, RemoteOutputDriver {
 
   func setRate(_ rate: Double) {
     self.rate = Float(rate)
-    if loaded && !isLive { client?.setPlaybackRate(self.rate) }
+    if receiverRate != self.rate {
+      observer?.driverNote(generation: generation, event: "cast rate ignored", details: ["rate": "\(rate)"])
+    }
+    if loaded && !isLive { client?.setPlaybackRate(receiverRate) }
   }
+
+  /// What the receiver plays at: the rate asked for within 0.5x–2x (what
+  /// receivers play), else 1x, as on Android and the web.
+  private var receiverRate: Float { !isLive && (0.5...2).contains(rate) ? rate : 1 }
 
   /// Not a routing driver: the engine never switches a receiver's output.
   func switchOutput(_ outputId: String) {}
@@ -139,7 +154,7 @@ class CastDriver: NSObject, RemoteOutputDriver {
     reading.buffered = reading.position
     reading.duration = duration
     reading.isPlaying = reportedPlaying
-    reading.rate = Double(rate)
+    reading.rate = Double(receiverRate)
     return reading
   }
 
@@ -162,7 +177,7 @@ class CastDriver: NSObject, RemoteOutputDriver {
   /// The last reported position, advanced while the receiver plays.
   private var estimatedPosition: Double {
     guard reportedPlaying else { return reportedPosition }
-    return reportedPosition + Double(SystemClock.shared.monotonicMs - reportedAt) / 1000 * Double(rate)
+    return reportedPosition + Double(SystemClock.shared.monotonicMs - reportedAt) / 1000 * Double(receiverRate)
   }
 
   private func report(position: Double, playing: Bool) {
@@ -190,13 +205,17 @@ class CastDriver: NSObject, RemoteOutputDriver {
     report(position: estimatedPosition, playing: false)
   }
 
-  private func mediaInformation(_ url: URL, _ source: SourceDescriptor) -> GCKMediaInformation {
+  private func mediaInformation(_ url: URL, _ source: SourceDescriptor, _ extra: CastMedia) -> GCKMediaInformation {
     let info = describe?() ?? NowPlayingInfo()
-    let metadata = GCKMediaMetadata(metadataType: .musicTrack)
-    let fields = [
-      (info.title, kGCKMetadataKeyTitle), (info.artist, kGCKMetadataKeyArtist),
-      (info.album, kGCKMetadataKeyAlbumTitle),
-    ]
+    // A video: the receiver's movie layout (a title and a subtitle line).
+    let metadata = GCKMediaMetadata(metadataType: extra.video ? .movie : .musicTrack)
+    let fields =
+      extra.video
+      ? [(info.title, kGCKMetadataKeyTitle), (info.artist ?? info.album, kGCKMetadataKeySubtitle)]
+      : [
+        (info.title, kGCKMetadataKeyTitle), (info.artist, kGCKMetadataKeyArtist),
+        (info.album, kGCKMetadataKeyAlbumTitle),
+      ]
     for case let (value?, key) in fields {
       CastObjC.send(metadata, "setString:forKey:", value, key)
     }
@@ -208,9 +227,46 @@ class CastDriver: NSObject, RemoteOutputDriver {
     let builder = GCKMediaInformationBuilder(contentURL: url)
     builder.contentID = source.uri
     builder.streamType = isLive ? .live : .buffered
-    if url.pathExtension.lowercased() == "m3u8" { builder.contentType = "application/x-mpegurl" }
+    if let type = Self.contentType(url, video: extra.video) { builder.contentType = type }
     builder.metadata = metadata
+    // The app's subtitle files, as WebVTT the receiver fetches from a data: URL.
+    castTracks = [:]
+    if !extra.subtitles.isEmpty {
+      var tracks: [GCKMediaTrack] = []
+      for (i, file) in extra.subtitles.enumerated() {
+        // The SDK's initializer is failable: a track it refuses is left out.
+        guard
+          let track = GCKMediaTrack(
+            identifier: i + 1, contentIdentifier: CastMedia.dataURL(file.vtt), contentType: "text/vtt", type: .text,
+            textSubtype: file.captions ? .captions : .subtitles, name: file.label ?? file.language,
+            languageCode: file.language, customData: nil)
+        else { continue }
+        castTracks[file.id] = i + 1
+        tracks.append(track)
+      }
+      builder.mediaTracks = tracks
+    }
     return builder.build()
+  }
+
+  /// What the receiver needs to pick a decoder (`nil`: let it sniff, an audio stream's way).
+  static func contentType(_ url: URL, video: Bool) -> String? {
+    switch url.pathExtension.lowercased() {
+    case "m3u8": return "application/x-mpegurl"
+    case "mpd": return "application/dash+xml"
+    case "webm" where video: return "video/webm"
+    case "ts" where video, "m2ts" where video: return "video/mp2t"
+    case "mkv" where video: return "video/x-matroska"
+    case "mov" where video: return "video/quicktime"
+    default: return video ? "video/mp4" : nil
+    }
+  }
+
+  /// The text track to show: one of the app's files the receiver was given, or none.
+  func selectTracks(audio: String?, text: String?) {
+    guard loaded, let client, !castTracks.isEmpty else { return }
+    let ids = text.flatMap { castTracks[$0] }.map { [NSNumber(value: $0)] } ?? []
+    CastObjC.send(client, "setActiveTrackIDs:", ids as NSArray)
   }
 
   private func castError(_ message: String, _ error: NSError?) -> PlayerError {
@@ -251,7 +307,7 @@ class CastDriver: NSObject, RemoteOutputDriver {
       let finite = reported.isFinite && reported > 0
       isLive = isLive || status.mediaInformation?.streamType == .live || !finite
       duration = isLive ? nil : reported
-      if !isLive && rate != 1 { client?.setPlaybackRate(rate) }
+      if receiverRate != 1 { client?.setPlaybackRate(receiverRate) }
       observer?.driverReady(generation: gen, info: ReadyInfo(duration: duration, isLive: isLive, seekable: !isLive))
     }
     guard state != lastPlayerState else { return }
