@@ -22,7 +22,7 @@ It works on iOS, Android, Expo web, React Native Web, React DOM and plain pages.
 | React DOM (Vite, Next.js) | `react-native-anything-player/react` | `react-native-anything-player/react` |
 | Plain pages | `react-native-anything-player/web` | none: `player.attachTo(element)` |
 
-The player and the view are separate. Unmounting `<VideoView>` does not stop the player: the sound goes on (what the background does is [`whenBackgrounded`](#in-the-background)), and mounting a view for the same player elsewhere shows it there, without a gap. One view shows the picture at a time: the last one mounted.
+The player and the view are separate. Unmounting `<VideoView>` does not stop the player: the sound goes on (what the background does is [`whenBackgrounded`](#in-the-background)), and mounting a view for the same player elsewhere shows it there, without a gap. One view shows the picture at a time: the last one mounted. When it goes, the view mounted before it, if one is still there, gets the picture back.
 
 ## Sources
 
@@ -219,9 +219,11 @@ Adaptive sources (HLS) are switched by the platform's own player (AVPlayer, ExoP
 | Always | none | `maxResolution`, `maxBitrate` |
 | Where automatic starts | the network decides | `startQuality: 'lowest' \| 'highest' \| <height>` |
 
-Picture in Picture keeps the cap the view had: no switch, and no rebuffer, on the way in or back.
+A cap only steers what loads next: what is already buffered plays on, so a resize or a network change never stalls the picture. Picture in Picture keeps the cap the view had: no switch, and no rebuffer, on the way in or back.
 
-`player.selectQuality(id)` pins one of `status.video.qualities` (on HLS, AVPlayer can only take it as a ceiling); `selectQuality('auto')` hands it back.
+Safari plays HLS itself, and a page cannot cap or pin Safari's own HLS: there the browser picks the quality, and `status.video.qualities` stays empty. Everywhere else on the web, HLS goes through hls.js (once registered) and DASH through Shaka, and every cap applies.
+
+`player.selectQuality(id)` pins one of `status.video.qualities` (on HLS, AVPlayer can only take it as a ceiling); `selectQuality('auto')` hands it back. On the web the pick plays from the next segment, without a gap.
 
 ### Renditions
 

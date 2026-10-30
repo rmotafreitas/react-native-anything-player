@@ -163,6 +163,33 @@ A `Player` with a picture ([guide](video.md), [subtitles](subtitles.md)).
 12. A build option (`videoDecoders` in the Expo plugin, `npx rnap add video-decoders`), used only for what the device cannot decode. The sound decoders were tried on the emulator; the VP9 and AV1 pictures render wrongly on emulators and are not yet tried on a device †.
 13. The picture plays without the sound, but no error says why yet.
 
+### Audio features on a video player
+
+A video `Player` is the same player with a picture: the engine's rules hold for it too. What differs from an audio player:
+
+| | iOS | Android | Chromium | Firefox | Safari | iPhone, iPad |
+|---|---|---|---|---|---|---|
+| Rate (0.25–4), volume, mute, loop | ✓ † | ✓ | ✓ | ✓ | ✓ | ◐ ¹ † |
+| Sleep timer, fades | ✓ † | ✓ | ◐ ² | ◐ ² | ◐ ² | ◐ ¹ ² † |
+| Recovery (stalls, reconnects, give-up), refresh of expiring URLs | ✓ † | ✓ | ✓ | ✓ | ✓ | ✓ † |
+| Lock screen, notification, media keys | ✓ ³ † | ✓ ³ | ✓ ³ | ✓ ³ | ✓ ³ | ✓ ³ † |
+| Audio focus, calls, ducking | ✓ ⁴ † | ✓ ⁴ | – | – | – | – |
+| Background playback | ◐ ⁵ † | ◐ ⁵ | ◐ ⁶ | ◐ ⁶ | ◐ ⁶ | ◐ ⁶ † |
+| HLS / ID3 timed metadata | ✓ † | ✓ | ✓ ⁷ | ✓ ⁷ | ✓ | ✓ † |
+| ICY titles of an internet radio stream | – ⁸ | ✓ | – ⁸ | – ⁸ | – ⁸ | – ⁸ |
+| Visualizer (`audioSample`) | ◐ ⁹ † | ✓ | – ¹⁰ | – ¹⁰ | – ¹⁰ | – ¹⁰ |
+
+1. The system fixes the volume: `setVolume` and fades have no effect; the sleep timer pauses without a fade.
+2. In a hidden tab the browser runs timers less often: fades move in larger steps and the sleep timer can fire late.
+3. On demand: play, pause and ±10 s skips; live: play and pause. A muted or `ambient` player shows none (`focusWhenMuted`).
+4. A muted video takes no focus, so it never pauses other apps' audio (`focusWhenMuted`).
+5. `whenBackgrounded`: `pause` (the default), `audio` (the sound goes on, the picture stops) or `pip`.
+6. `whenBackgrounded` defaults to `audio` on the web: a hidden tab plays on while it lives.
+7. Through hls.js.
+8. A video player reads no ICY titles: play radio with an audio `Player`, which has them everywhere.
+9. Files; not streams or HLS.
+10. A `<video>` is never routed through Web Audio.
+
 ## Sound effects
 
 `Sound` ([guide](sound.md)): short effects decoded into memory, played with low latency, many at once.
@@ -249,4 +276,4 @@ See [Cars & watches](cars-and-watches.md).
 | `npx rnap add` / `remove` (build modules) | ✓ | ✓ | – (a page downloads Cast, HLS and the MP4 remuxer only when it uses them) |
 | TypeScript types | ✓ | ✓ | ✓ |
 | Zero runtime JS dependencies | ✓ | ✓ | ✓ (hls.js is optional and yours to add) |
-| Size in a release build | not measured yet | about 1.2 MB of a release APK, with R8 ([measured](comparison.md#added-to-a-release-apk)) | about 55 KB of JS on page load ([measured](comparison.md#react-and-plain-web-pages)) |
+| Size in a release build | not measured yet | about 1.2 MB of a release APK, with R8 ([measured](comparison.md#added-to-a-release-apk)) | about 56 KB of JS on page load ([measured](comparison.md#react-and-plain-web-pages)) |

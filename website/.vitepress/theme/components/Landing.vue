@@ -103,7 +103,7 @@ const outage = [
 const APK_PLAYERS = ['react-native-anything-player', '@rntp/player', 'react-native-video', 'react-native-audio-pro'];
 
 const stats = [
-  { value: '181', label: 'engine scenarios, run on Swift, Kotlin and TypeScript' },
+  { value: '185', label: 'engine scenarios, run on Swift, Kotlin and TypeScript' },
   { value: '3 s', label: 'to detect a dead socket and re-open' },
   { value: '~10 µs', label: 'getProgress() over JSI (iOS p50)' },
   { value: '1', label: 'connection per stream, counted server-side' },
@@ -286,7 +286,7 @@ const stats = [
         <li>Any web page</li>
         <li>Electron, Tauri</li>
       </ul>
-      <p class="sub">In the browser, by engine: Chromium, Firefox and Safari are tested on every change.</p>
+      <p class="sub">In the browser, by engine: Chromium, Firefox and WebKit (Safari's engine) are tested on every change.</p>
       <ul class="platforms">
         <li>Chromium (Chrome, Edge)</li>
         <li>Firefox</li>

@@ -9,7 +9,7 @@ RNAP's goal is to be the audio library React Native developers pick first: **lig
 - **Radio.** ICY metadata timed to when it is *heard*, charset repair, one connection per stream, paused-stream release, song progress on the lock screen, and a visualizer for iOS live streams (no one else has one).
 - **Everywhere.** One engine and one API on iOS, Android, Expo web, React Native Web, React (Vite, Next.js) and plain web pages, with AirPlay, Google Cast, the voice assistants, CarPlay and Android Auto ([feature matrix](features.md)). Desktop apps built on a web view (Electron, Tauri) run the web engine ([Desktop](desktop.md)).
 - **More than streams.** A sleep timer and fades run by the engine, and a [Sound API](sound.md) for short effects (a pool of voices per clip, volume, rate and pan), both from the same package.
-- **Lean.** Media3 and MediaRouter on Android, with Google Cast, Siri, the Sound API and cars opt-in ([`npx rnap add`](cli.md#modules)); no framework requirement, zero runtime JS dependencies, about 55 KB of JS on a web page (25 KB of it video).
+- **Lean.** Media3 and MediaRouter on Android, with Google Cast, Siri, the Sound API and cars opt-in ([`npx rnap add`](cli.md#modules)); no framework requirement, zero runtime JS dependencies, about 56 KB of JS on a web page (25 KB of it video).
 
 ## Gaps, in priority order
 
