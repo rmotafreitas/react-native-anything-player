@@ -429,14 +429,7 @@ internal class ExoPlayerDriver(
     created.addListener(listener)
     created.volume = volume
     created.setPlaybackSpeed(rate)
-    if (video) setUpVideo(created)
-    player = created
-    return created
-  }
-
-  private fun setUpVideo(created: ExoPlayer) {
-    surface?.let { created.setVideoSurface(it) }
-    created.repeatMode = if (looping) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
+    // Every player's bandwidth: the engine steps renditions by it (a sound's too).
     created.addAnalyticsListener(
       object : AnalyticsListener {
         override fun onBandwidthEstimate(
@@ -448,7 +441,18 @@ internal class ExoPlayerDriver(
           val gen = currentGeneration(created) ?: return
           if (bitrateEstimate > 0) report { observer.onBandwidth(gen, bitrateEstimate.toDouble()) }
         }
+      },
+    )
+    if (video) setUpVideo(created)
+    player = created
+    return created
+  }
 
+  private fun setUpVideo(created: ExoPlayer) {
+    surface?.let { created.setVideoSurface(it) }
+    created.repeatMode = if (looping) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
+    created.addAnalyticsListener(
+      object : AnalyticsListener {
         // An adaptive source moved to another variant: the quality playing now.
         override fun onVideoInputFormatChanged(
           eventTime: AnalyticsListener.EventTime,

@@ -79,6 +79,12 @@ export const RecoveryPolicy = {
   ABR_UP_MS: 30_000,
   /** Two stalls in this window step down whatever the bandwidth. */
   ABR_STALL_WINDOW_MS: 30_000,
+  /**
+   * An audio player that measures nothing it can trust (no bandwidth
+   * reading, or a live stream, which arrives at its own rate) steps up one
+   * rendition after this long without a stall.
+   */
+  ABR_QUIET_UP_MS: 120_000,
   /** Data Saver, Low Data Mode, `saveData`: the highest picture. */
   DATA_SAVER_MAX_HEIGHT: 480,
   /** Automatic start with no bandwidth reading: the lowest rendition at least this high. */

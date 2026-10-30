@@ -2648,7 +2648,13 @@ extension PlaybackEngine {
   private func startLevel() -> Int? {
     let order = allowedOrder()
     guard let first = order.first, let last = order.last else { return nil }
-    switch options.video?.quality.startQuality ?? .auto {
+    // An audio player starts at the highest (a sound's bitrates are small)
+    // unless a file's bandwidth says otherwise; a live one cannot say.
+    guard let video = options.video else {
+      if let bandwidth, !isLive { return fitting(order, bandwidth) ?? first }
+      return last
+    }
+    switch video.quality.startQuality {
     case .lowest: return first
     case .highest: return last
     case .height(let value): return tallestUpTo(order, value)
@@ -2726,7 +2732,6 @@ extension PlaybackEngine {
         playWhenReady: true, allowReconnect: options.reconnect, swap: true, rendition: target))
   }
 
-  /// A switch that failed or timed out: its file sits out a while.
   /// A switch that failed or timed out: its file sits out a while, and the
   /// app hears it (non-fatal: the current file plays on). `cause`: the new
   /// file's own failure, if it had one.
@@ -2805,7 +2810,11 @@ extension PlaybackEngine {
   }
 
   /// The bandwidth reading of this load, if it had one.
-  private var currentBandwidth: Double? { bandwidthAt != nil ? bandwidth : nil }
+  private var currentBandwidth: Double? {
+    // A live sound arrives at its own bitrate: its reading is no headroom.
+    if options.video == nil && isLive { return nil }
+    return bandwidthAt != nil ? bandwidth : nil
+  }
 
   /// The engine picks among the renditions itself (none pinned, the picture on).
   private var automaticRenditions: Bool {
@@ -2819,8 +2828,14 @@ extension PlaybackEngine {
     // The engine's pick, whether or not its switch has landed yet.
     guard !order.isEmpty, let level = abrLevel ?? currentRendition else { return }
     let position = order.firstIndex(of: level) ?? 0
-    let next =
-      stalled ? stallStep(order, position, t) : bandwidthStep(order, position, t)
+    let next: Int
+    if stalled {
+      next = stallStep(order, position, t)
+    } else if options.video == nil && currentBandwidth == nil {
+      next = quietStep(order, position, t)
+    } else {
+      next = bandwidthStep(order, position, t)
+    }
     if next == position && order[position] == abrLevel { return }
     abrLevel = order[next]
     abrLowSince = nil
@@ -2844,6 +2859,15 @@ extension PlaybackEngine {
   }
 
   /// Sustained low bandwidth steps down; sustained headroom steps up.
+  /// An audio player that measures nothing it can trust steps up one after
+  /// a quiet while (no stall since the last switch).
+  private func quietStep(_ order: [Int], _ position: Int, _ t: Int64) -> Int {
+    let quiet = RecoveryPolicy.abrQuietUpMs
+    guard position < order.count - 1 else { return position }
+    if let last = lastSwitchAt, t - last < quiet { return position }
+    return stallsWithin(t, quiet) == 0 ? position + 1 : position
+  }
+
   private func bandwidthStep(_ order: [Int], _ position: Int, _ t: Int64) -> Int {
     if position > 0, let low = abrLowSince, t - low >= RecoveryPolicy.abrLowMs { return position - 1 }
     if position < order.count - 1 && canStepUp(t) { return position + 1 }

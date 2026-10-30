@@ -269,6 +269,19 @@ describe('a quality switch', () => {
     fresh.startPlaying();
     expect(driver.element).toBe(fresh);
     expect(driver.tapped).toBe(false);
+    // The hidden one's new element was never the controller's (council C2).
+    expect(rec.of('onElementReplaced')).toEqual([]);
+  });
+
+  it('switches in place while the element plays on AirPlay: a local one would take the sound off it (council C3)', () => {
+    const video = playing();
+    (
+      video as unknown as { webkitCurrentPlaybackTargetIsWireless: boolean }
+    ).webkitCurrentPlaybackTargetIsWireless = true;
+    driver.open(swap(2, HD, 10));
+    expect(world.videos).toHaveLength(1);
+    expect(video.src).toBe(HD);
+    expect(driver.element).toBe(video);
   });
 
   it('hears nothing from the element it left', () => {

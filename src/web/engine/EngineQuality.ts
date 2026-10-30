@@ -497,7 +497,13 @@ export abstract class EngineQuality extends EngineFades {
   protected startLevel(): number | null {
     const order = this.allowedOrder();
     if (order.length === 0) return null;
-    const start = this.options.video?.quality.startQuality ?? 'auto';
+    // An audio player starts at the highest (a sound's bitrates are small)
+    // unless a file's bandwidth says otherwise; a live one cannot say.
+    if (this.options.video == null)
+      return this.bandwidth != null && !this.isLive
+        ? (this.fitting(order, this.bandwidth) ?? order[0]!)
+        : order.at(-1)!;
+    const start = this.options.video.quality.startQuality;
     if (start === 'lowest') return order[0]!;
     if (start === 'highest') return order.at(-1)!;
     if (typeof start === 'number') return this.tallestUpTo(order, start);
@@ -697,6 +703,8 @@ export abstract class EngineQuality extends EngineFades {
 
   /** The bandwidth reading of this load, if it had one. */
   protected get currentBandwidth(): number | null {
+    // A live sound arrives at its own bitrate: its reading is no headroom.
+    if (this.options.video == null && this.isLive) return null;
     return this.bandwidthAt != null ? this.bandwidth : null;
   }
 
@@ -717,9 +725,11 @@ export abstract class EngineQuality extends EngineFades {
     const level = this.abrLevel ?? this.currentRendition;
     if (order.length === 0 || level == null) return;
     const position = Math.max(0, order.indexOf(level));
-    const next = stalled
-      ? this.stallStep(order, position, t)
-      : this.bandwidthStep(order, position, t);
+    let next: number;
+    if (stalled) next = this.stallStep(order, position, t);
+    else if (this.options.video == null && this.currentBandwidth == null)
+      next = this.quietStep(order, position, t);
+    else next = this.bandwidthStep(order, position, t);
     if (next === position && order[position] === this.abrLevel) return;
     this.abrLevel = order[next]!;
     this.abrLowSince = null;
@@ -755,6 +765,17 @@ export abstract class EngineQuality extends EngineFades {
       return position - 1;
     if (position < order.length - 1 && this.canStepUp(t)) return position + 1;
     return position;
+  }
+
+  /**
+   * An audio player that measures nothing it can trust steps up one after
+   * a quiet while (no stall since the last switch).
+   */
+  protected quietStep(order: number[], position: number, t: number): number {
+    const quiet = RecoveryPolicy.ABR_QUIET_UP_MS;
+    if (position >= order.length - 1 || t - this.lastSwitchAt < quiet)
+      return position;
+    return this.stallsWithin(t, quiet) === 0 ? position + 1 : position;
   }
 
   protected canStepUp(t: number): boolean {

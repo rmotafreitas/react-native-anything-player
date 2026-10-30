@@ -321,6 +321,19 @@ describe('a file', () => {
     ]);
   });
 
+  it('estimates a sound’s bandwidth too: an audio player steps renditions by it (council C1)', () => {
+    const audio = new MediaElementDriver(rec.observer, 'artist-title', 'audio');
+    audio.open(
+      open('https://cdn.example/song.m4a', {}, 1, { liveHint: false })
+    );
+    Object.assign(world.navigator.connection, { downlink: 3 });
+    (audio.element as unknown as { dispatch(type: string): void }).dispatch(
+      'progress'
+    );
+    expect(rec.of('onBandwidth')).toEqual([[1, 3_000_000]]);
+    audio.destroy();
+  });
+
   it('has no bandwidth to report when the browser does not know one', () => {
     const video = world.video();
     driver.open(open(MP4));

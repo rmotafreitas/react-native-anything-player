@@ -2640,7 +2640,10 @@ class PlaybackEngine(
   private fun startLevel(): Int? {
     val order = allowedOrder()
     if (order.isEmpty()) return null
-    return when (val start = options.video?.quality?.startQuality ?: StartQuality.Auto) {
+    // An audio player starts at the highest (a sound's bitrates are small)
+    // unless a file's bandwidth says otherwise; a live one cannot say.
+    val video = options.video ?: return bandwidth?.takeIf { !isLive }?.let { fitting(order, it) ?: order.first() } ?: order.last()
+    return when (val start = video.quality.startQuality) {
       StartQuality.Lowest -> order.first()
       StartQuality.Highest -> order.last()
       is StartQuality.Height -> tallestUpTo(order, start.value)
@@ -2723,7 +2726,6 @@ class PlaybackEngine(
     )
   }
 
-  /** A switch that failed or timed out: its file sits out a while. */
   /**
    * A switch that failed or timed out: its file sits out a while, and the
    * app hears it (non-fatal: the current file plays on). `cause`: the new
@@ -2791,7 +2793,8 @@ class PlaybackEngine(
 
   /** The bandwidth reading of this load, if it had one. */
   private val currentBandwidth: Double?
-    get() = if (bandwidthAt != null) bandwidth else null
+    // A live sound arrives at its own bitrate: its reading is no headroom.
+    get() = if (options.video == null && isLive) null else if (bandwidthAt != null) bandwidth else null
 
   /** The engine picks among the renditions itself (none pinned, the picture on). */
   private val automaticRenditions: Boolean
@@ -2805,7 +2808,12 @@ class PlaybackEngine(
     val level = abrLevel ?: currentRendition
     if (order.isEmpty() || level == null) return
     val position = max(0, order.indexOf(level))
-    val next = if (stalled) stallStep(order, position, t) else bandwidthStep(order, position, t)
+    val next =
+      when {
+        stalled -> stallStep(order, position, t)
+        options.video == null && currentBandwidth == null -> quietStep(order, position, t)
+        else -> bandwidthStep(order, position, t)
+      }
     if (next == position && order[position] == abrLevel) return
     abrLevel = order[next]
     abrLowSince = null
@@ -2827,6 +2835,18 @@ class PlaybackEngine(
   }
 
   /** Sustained low bandwidth steps down; sustained headroom steps up. */
+  /**
+   * An audio player that measures nothing it can trust steps up one after
+   * a quiet while (no stall since the last switch).
+   */
+  private fun quietStep(order: List<Int>, position: Int, t: Long): Int {
+    val quiet = RecoveryPolicy.ABR_QUIET_UP_MS
+    if (position >= order.size - 1) return position
+    val last = lastSwitchAt
+    if (last != null && t - last < quiet) return position
+    return if (stallsWithin(t, quiet) == 0) position + 1 else position
+  }
+
   private fun bandwidthStep(order: List<Int>, position: Int, t: Long): Int {
     val low = abrLowSince
     if (position > 0 && low != null && t - low >= RecoveryPolicy.ABR_LOW_MS) return position - 1

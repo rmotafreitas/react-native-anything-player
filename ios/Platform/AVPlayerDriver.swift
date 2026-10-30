@@ -631,6 +631,18 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
         }
       },
     ]
+    // A sound's bandwidth too (a video's comes with its own access-log
+    // observer): the engine steps renditions by it.
+    if !video {
+      itemNotifications.append(
+        center.addObserver(forName: .AVPlayerItemNewAccessLogEntry, object: item, queue: .main) {
+          [weak self] _ in
+          guard let self, self.isCurrent(item, gen), let event = item.accessLog()?.events.last else { return }
+          let observed = event.observedBitrate
+          guard observed.isFinite && observed > 0 else { return }
+          self.observer?.driverAccessLog(generation: gen, bitsPerSecond: observed, droppedFrames: nil)
+        })
+    }
   }
 
   /// Reports the splices whose audio is playing (called on each progress tick).

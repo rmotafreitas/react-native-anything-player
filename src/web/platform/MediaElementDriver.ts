@@ -488,6 +488,8 @@ export class MediaElementDriver implements EngineDriver {
     });
     on('waiting', () => this.observer.onBuffering(generation));
     if (this.kind === 'video') this.attachVideo(generation, on);
+    // A sound's bandwidth too: the engine steps renditions by it.
+    else on('progress', () => this.readDownlink(generation));
     on('ended', () => this.observer.onEnded(generation));
     // Encrypted, and no `drm` to decrypt it: it would wait for a key forever.
     on('encrypted', () => {

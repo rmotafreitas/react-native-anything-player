@@ -339,7 +339,9 @@ final class PlayerController: EngineDelegate, DriverObserver {
       d.tap.onWindow = emitWindow
       d.streamVisualizer.points = points
       d.streamVisualizer.onWindow = emitWindow
-      d.setSampling(enabled)
+      // Only the one heard: a switch's muted windows would mix in (SwapDriver
+      // turns it on once it takes over).
+      d.setSampling(enabled && d === driver)
     }
   }
 

@@ -103,6 +103,13 @@ object RecoveryPolicy {
   /** Two stalls in this window step down whatever the bandwidth. */
   const val ABR_STALL_WINDOW_MS = 30_000L
 
+  /**
+   * An audio player that measures nothing it can trust (no bandwidth
+   * reading, or a live stream, which arrives at its own rate) steps up one
+   * rendition after this long without a stall.
+   */
+  const val ABR_QUIET_UP_MS = 120_000L
+
   /** Data Saver, Low Data Mode, `saveData`: the highest picture. */
   const val DATA_SAVER_MAX_HEIGHT = 480
 

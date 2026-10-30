@@ -13,7 +13,6 @@ import com.anythingplayer.core.StreamMetadata
 import com.anythingplayer.core.VideoInfo
 import com.anythingplayer.core.VideoVariant
 
-/** Shows one driver's picture and hides the other's. */
 /** Where the players show: a video's picture, nothing for a sound. */
 internal interface SwapStage {
   fun show(current: ExoPlayerDriver, hidden: ExoPlayerDriver?)

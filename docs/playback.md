@@ -166,7 +166,7 @@ await player.load(
 await player.selectQuality('192k'); // switches without a gap, and holds for the next loads
 ```
 
-`status.qualities` lists them, `status.quality` is the one playing and `status.selectedQuality` the pick (`null`: automatic). Automatic starts at the lowest and steps up after 30 s of headroom, down on stalls; the background never changes it. A pick holds across loads by `id` (give each episode's files the same ids), and a switch that fails is a non-fatal `QUALITY_SWITCH_FAILED` error while the current file plays on. An HLS or DASH source's own variants are left to the platform on an audio player.
+`status.qualities` lists them, `status.quality` is the one playing and `status.selectedQuality` the pick (`null`: automatic). Automatic starts at the highest (a sound's bitrates are small), or for a file at what the last bandwidth reading fits; it steps down on stalls and on a bandwidth that stays too low, and up after 30 s of headroom. Where nothing measures headroom (a live stream arrives at its own bitrate; Safari and Firefox read no bandwidth for a file), it tries one step up after two minutes without a stall. The background never changes it. A pick holds across loads by `id` (give each episode's files the same ids), and a switch that fails is a non-fatal `QUALITY_SWITCH_FAILED` error while the current file plays on. An HLS or DASH source's own variants are left to the platform on an audio player.
 
 ## Several players
 
