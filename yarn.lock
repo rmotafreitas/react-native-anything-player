@@ -6904,10 +6904,17 @@ __metadata:
   languageName: node
   linkType: hard
 
-"deepmerge@npm:^4.3.0, deepmerge@npm:^4.3.1":
+"deepmerge@npm:4.3.1":
   version: 4.3.1
   resolution: "deepmerge@npm:4.3.1"
   checksum: 10c0/e53481aaf1aa2c4082b5342be6b6d8ad9dfe387bc92ce197a66dea08bd4265904a087e75e464f14d1347cf2ac8afe1e4c16b266e0561cc5df29382d3c5f80044
+  languageName: node
+  linkType: hard
+
+"deepmerge@patch:deepmerge@npm%3A4.3.1#./.yarn/patches/deepmerge-security.patch::locator=react-native-anything-player%40workspace%3A.":
+  version: 4.3.1
+  resolution: "deepmerge@patch:deepmerge@npm%3A4.3.1#./.yarn/patches/deepmerge-security.patch::version=4.3.1&hash=aedaa8&locator=react-native-anything-player%40workspace%3A."
+  checksum: 10c0/ff39864867a5cea7300b308384fa86572f44b77d60189cc1889a959c84a8af184b804ec939efcb5c475f24856667c2c93322a183b6a5120dd1bdee04a249ce6c
   languageName: node
   linkType: hard
 
@@ -13933,9 +13940,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"vite@npm:6.4.4":
-  version: 6.4.4
-  resolution: "vite@npm:6.4.4"
+"vite@npm:6.4.5":
+  version: 6.4.5
+  resolution: "vite@npm:6.4.5"
   dependencies:
     esbuild: "npm:^0.25.0"
     fdir: "npm:^6.4.4"
@@ -13984,7 +13991,7 @@ __metadata:
       optional: true
   bin:
     vite: bin/vite.js
-  checksum: 10c0/47cdacbf7b370c7962326238bd0d206c9d56d72e1e7b14f9fb0edca369d3dfa8d0fd7f16eb3c0d448959eb7c6969ff33a126039be06f216b232c47e63c49ba9b
+  checksum: 10c0/e9bb246caa72197d2cac0ad05cf2c7c2f71d0affa45ce981e555176b26028db5769b98fc919ca7ff368499ae95c534710e56c4e4adfd8d57ea4b41c396ccd7b0
   languageName: node
   linkType: hard
 
