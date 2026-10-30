@@ -100,6 +100,11 @@ The `package.json` file contains various scripts for common tasks:
 
 The repo ships the [`grilling`](https://github.com/mattpocock/skills/tree/main/skills/productivity/grilling) skill (MIT, by Matt Pocock) for coding agents. It interviews you about a plan, one round of questions at a time, before any code is written. The single copy lives in `.agents/skills/grilling/`, which Codex and OpenCode read; `.claude/skills/grilling` is a symlink to it for Claude Code (OpenCode reads that path too), so T3 Code picks it up through whichever of those it drives. Ask an agent to "grill me" about a change, or invoke it by name (`/grilling` in Claude Code, `$grilling` in Codex).
 
+It also ships two review skills from [t3dotgg/tstack](https://github.com/t3dotgg/tstack) (MIT, by Theo Browne), laid out the same way:
+
+- `sol-loop`: reviews a change with GPT Sol in a loop (3 rounds by default) until it approves, keeping the fixes minimal. Say "sol loop".
+- `council`: asks three strong models from different providers (for example Claude Opus, GPT Sol and Gemini Pro) to review a change, scores each round out of 10, and puts the scores in the pull request description. Say "council".
+
 ### Sending a pull request
 
 > **Working on your first pull request?** You can learn how from this _free_ series: [How to Contribute to an Open Source Project on GitHub](https://app.egghead.io/playlists/how-to-contribute-to-an-open-source-project-on-github).
