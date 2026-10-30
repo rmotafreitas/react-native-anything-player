@@ -2709,6 +2709,8 @@ class PlaybackEngine(
     val flowing = state == PlaybackState.PLAYING || state == PlaybackState.BUFFERING
     // A Cast receiver (or an output like Safari's AirPlay) plays one item: it re-opens in place.
     if (flowing && open && playWhenReady && !remote && !driver.swapsInPlace) return startSwap(target, cause)
+    // A switch in place counts as one (the next quiet step up waits again).
+    if (target != currentRendition) lastSwitchAt = now
     currentRendition = target
     // Stopped, ended, failed or reconnecting: the next open uses it.
     val reopens = state == PlaybackState.LOADING || (open && (flowing || state == PlaybackState.PAUSED))

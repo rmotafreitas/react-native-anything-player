@@ -505,6 +505,27 @@
     ]
   },
   {
+    "name": "renditions: a step up re-opened in place counts as a switch: the next one waits another quiet window",
+    "steps": [
+      { "call": "load", "uri": "https://cdn.example/ep1", "autoplay": true, "renditions": [{ "id": "64k", "uri": "https://cdn.example/ep1-64.m4a", "bitrate": 64000 }, { "id": "192k", "uri": "https://cdn.example/ep1-192.m4a", "bitrate": 192000 }, { "id": "320k", "uri": "https://cdn.example/ep1-320.m4a", "bitrate": 320000 }] },
+      { "native": "ready", "duration": 600, "seekable": true },
+      { "native": "playing" },
+      { "native": "bandwidth", "bps": 200000 },
+      { "driver": "inPlace", "value": true },
+      { "call": "load", "uri": "https://cdn.example/ep2", "autoplay": true, "renditions": [{ "id": "64k", "uri": "https://cdn.example/ep2-64.m4a", "bitrate": 64000 }, { "id": "192k", "uri": "https://cdn.example/ep2-192.m4a", "bitrate": 192000 }, { "id": "320k", "uri": "https://cdn.example/ep2-320.m4a", "bitrate": 320000 }] },
+      { "native": "ready", "duration": 600, "seekable": true },
+      { "native": "playing" },
+      { "advance": 120000 },
+      { "expect": { "quality": "192k", "commands": ["open(gen=1,start=-,play=true,r=2)", "open(gen=2,start=-,play=true,r=0)", "open(gen=3,start=120.0,play=true,r=1)"] } },
+      { "native": "ready", "duration": 600, "seekable": true },
+      { "native": "playing" },
+      { "advance": 119000 },
+      { "expect": { "quality": "192k", "commands": [] } },
+      { "advance": 1000 },
+      { "expect": { "quality": "320k" } }
+    ]
+  },
+  {
     "name": "renditions: an id the source lacks is refused before anything changes; selectQuality switches an audio player behind the sound",
     "steps": [
       { "call": "load", "uri": "https://cdn.example/ep1", "autoplay": true, "renditions": [{ "id": "64k", "uri": "https://cdn.example/ep1-64.m4a", "bitrate": 64000 }, { "id": "192k", "uri": "https://cdn.example/ep1-192.m4a", "bitrate": 192000 }, { "id": "320k", "uri": "https://cdn.example/ep1-320.m4a", "bitrate": 320000, "audioOnly": true }] },

@@ -581,6 +581,8 @@ export abstract class EngineQuality extends EngineFades {
     const inPlace = this.remote || this.driver.swapsInPlace === true;
     if (flowing && open && this._playWhenReady && !inPlace)
       return this.startSwap(target, cause);
+    // A switch in place counts as one (the next quiet step up waits again).
+    if (target !== this.currentRendition) this.lastSwitchAt = this.now;
     this.currentRendition = target;
     // Stopped, ended, failed or reconnecting: the next open uses it.
     const reopens =
