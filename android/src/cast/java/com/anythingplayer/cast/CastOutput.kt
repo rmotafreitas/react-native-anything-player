@@ -137,8 +137,15 @@ internal class CastOutput(
   /** The receiver plays at the rate asked for, where it can (a live stream plays at 1x). */
   private fun applyRate() {
     if (mapper.ready?.isLive == true) return
+    val target = receiverRate()
+    if (target != rate) Log.d(TAG, "Cast receivers play at 0.5x–2x; rate $rate ignored")
+    hub.player?.setPlaybackSpeed(target.toFloat())
+  }
+
+  /** What the receiver plays at: the rate asked for within 0.5x–2x, else 1x, as on iOS and the web. */
+  private fun receiverRate(): Double {
     val supported = RemoteCastPlayer.MIN_SPEED_SUPPORTED.toDouble()..RemoteCastPlayer.MAX_SPEED_SUPPORTED.toDouble()
-    if (rate in supported) hub.player?.setPlaybackSpeed(rate.toFloat()) else Log.d(TAG, "Cast receivers play at 0.5x–2x; rate $rate ignored")
+    return if (mapper.ready?.isLive != true && rate in supported) rate else 1.0
   }
 
   /** The output id (`cast:<device>`) is the routing driver's concern; the session is the app's. */
@@ -152,7 +159,7 @@ internal class CastOutput(
 
   override fun progress(): ProgressReading {
     if (owns) readPosition()
-    return ProgressReading(lastPositionMs / 1000.0, lastPositionMs / 1000.0, mapper.ready?.duration, null, mapper.playing, rate)
+    return ProgressReading(lastPositionMs / 1000.0, lastPositionMs / 1000.0, mapper.ready?.duration, null, mapper.playing, receiverRate())
   }
 
   override fun destroy() {

@@ -130,8 +130,15 @@ class CastDriver: NSObject, RemoteOutputDriver {
 
   func setRate(_ rate: Double) {
     self.rate = Float(rate)
-    if loaded && !isLive { client?.setPlaybackRate(self.rate) }
+    if receiverRate != self.rate {
+      observer?.driverNote(generation: generation, event: "cast rate ignored", details: ["rate": "\(rate)"])
+    }
+    if loaded && !isLive { client?.setPlaybackRate(receiverRate) }
   }
+
+  /// What the receiver plays at: the rate asked for within 0.5x–2x (what
+  /// receivers play), else 1x, as on Android and the web.
+  private var receiverRate: Float { !isLive && (0.5...2).contains(rate) ? rate : 1 }
 
   /// Not a routing driver: the engine never switches a receiver's output.
   func switchOutput(_ outputId: String) {}
@@ -147,7 +154,7 @@ class CastDriver: NSObject, RemoteOutputDriver {
     reading.buffered = reading.position
     reading.duration = duration
     reading.isPlaying = reportedPlaying
-    reading.rate = Double(rate)
+    reading.rate = Double(receiverRate)
     return reading
   }
 
@@ -170,7 +177,7 @@ class CastDriver: NSObject, RemoteOutputDriver {
   /// The last reported position, advanced while the receiver plays.
   private var estimatedPosition: Double {
     guard reportedPlaying else { return reportedPosition }
-    return reportedPosition + Double(SystemClock.shared.monotonicMs - reportedAt) / 1000 * Double(rate)
+    return reportedPosition + Double(SystemClock.shared.monotonicMs - reportedAt) / 1000 * Double(receiverRate)
   }
 
   private func report(position: Double, playing: Bool) {
@@ -300,7 +307,7 @@ class CastDriver: NSObject, RemoteOutputDriver {
       let finite = reported.isFinite && reported > 0
       isLive = isLive || status.mediaInformation?.streamType == .live || !finite
       duration = isLive ? nil : reported
-      if !isLive && rate != 1 { client?.setPlaybackRate(rate) }
+      if receiverRate != 1 { client?.setPlaybackRate(receiverRate) }
       observer?.driverReady(generation: gen, info: ReadyInfo(duration: duration, isLive: isLive, seekable: !isLive))
     }
     guard state != lastPlayerState else { return }
