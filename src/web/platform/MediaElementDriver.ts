@@ -488,8 +488,8 @@ export class MediaElementDriver implements EngineDriver {
     });
     on('waiting', () => this.observer.onBuffering(generation));
     if (this.kind === 'video') this.attachVideo(generation, on);
-    // A sound's bandwidth too: the engine steps renditions by it.
-    else on('progress', () => this.readDownlink(generation));
+    // Every player's bandwidth: the engine steps renditions by it.
+    on('progress', () => this.readDownlink(generation));
     on('ended', () => this.observer.onEnded(generation));
     // Encrypted, and no `drm` to decrypt it: it would wait for a key forever.
     on('encrypted', () => {
@@ -554,7 +554,6 @@ export class MediaElementDriver implements EngineDriver {
         video.requestVideoFrameCallback(frame);
       else frame();
     });
-    on('progress', () => this.readDownlink(generation));
     // The source's own tracks: the element's lists, or hls.js's once it runs.
     this.sourceTracks = [];
     const tracks = new MediaTracks(video, {
