@@ -143,12 +143,16 @@ class LiveSwapAligner(private val startedAt: Long) {
           val step = PROBE_STEP * old.rate
           // Settled at the start rate (within a quarter of the probe's step), so the probe is the only change in sight.
           if (probe != null || speed == null || abs(speed - last) > SEEN_FRACTION * step) return Step.Steer(last)
-          val to =
+          // A full step from the start rate (toward the old one, else toward the
+          // gap; the other way if the limits leave no room), so it stands out.
+          val direction =
             when {
-              last - old.rate >= step -> last - step
-              old.rate - last >= step -> last + step
-              else -> clamp(old.rate + if (behind >= 0) step else -step)
+              last - old.rate >= step -> -1
+              old.rate - last >= step -> 1
+              behind >= 0 -> 1
+              else -> -1
             }
+          val to = clamp(last + direction * step).takeIf { abs(it - last) >= step - EPSILON } ?: clamp(last - direction * step)
           asked.add(now to to)
           probe = Triple(now, last, to)
           return Step.Steer(to)

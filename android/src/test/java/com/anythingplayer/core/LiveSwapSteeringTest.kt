@@ -1,6 +1,7 @@
 package com.anythingplayer.core
 
 import kotlin.math.abs
+import kotlin.random.Random
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -22,14 +23,17 @@ class LiveSwapSteeringTest {
     var startsAt = Double.MAX_VALUE
     var appliedRate = oldRate
     val pending = ArrayDeque<Pair<Double, Double>>() // (applies at, rate)
+    // The driver's 40 ms tick lands a few ms early or late.
+    val jitter = Random(42)
     var t = 0.0
     while (t < 40.0) {
       val oldPos = 25.0 + oldRate * t
       val step =
         aligner.step(
           (t * 1000).toLong(),
-          LiveSwapAligner.Reading(oldPos, 30.0 + t, true, 0, oldRate),
-          LiveSwapAligner.Reading(newPos, 30.0 + shift + t, playing && t >= startsAt),
+          // ExoPlayer reports whole milliseconds.
+          LiveSwapAligner.Reading(ms(oldPos), ms(30.0 + t), true, 0, oldRate),
+          LiveSwapAligner.Reading(ms(newPos), ms(30.0 + shift + t), playing && t >= startsAt),
         )
       when (step) {
         LiveSwapAligner.Step.Measure, LiveSwapAligner.Step.Hold -> {
@@ -50,12 +54,15 @@ class LiveSwapSteeringTest {
         }
         is LiveSwapAligner.Step.Fallback -> return Outcome("fallback", Double.NaN, t)
       }
-      t += 0.04
+      val dt = 0.04 + jitter.nextDouble(-0.005, 0.005)
+      t += dt
       while (pending.isNotEmpty() && pending.first().first <= t) appliedRate = pending.removeFirst().second
-      if (playing && t >= startsAt) newPos += appliedRate * 0.04
+      if (playing && t >= startsAt) newPos += appliedRate * dt
     }
     return Outcome("timeout", Double.NaN, t)
   }
+
+  private fun ms(seconds: Double) = Math.round(seconds * 1000) / 1000.0
 
   @Test
   fun realisticDevicesLineUp() {
@@ -68,6 +75,17 @@ class LiveSwapSteeringTest {
             assertTrue("$label: ${o.step} at ${o.at}", o.step == "play")
             assertTrue("$label: off by ${o.error}", abs(o.error) <= 0.08)
           }
+  }
+
+  @Test
+  fun aStartRateJustShortOfAStepFromTheOldOneLinesUp() {
+    // The start rate lands just short of a probe step from the old one (the
+    // probe's size itself: live-align.json); it still lines up.
+    for (delay in listOf(0.0, 0.25, 0.75)) {
+      val o = run(0.99, 0.494901, delay, latencyS = 0.0)
+      assertTrue("delay=$delay: ${o.step} at ${o.at}", o.step == "play")
+      assertTrue("delay=$delay: off by ${o.error}", abs(o.error) <= 0.08)
+    }
   }
 
   @Test
