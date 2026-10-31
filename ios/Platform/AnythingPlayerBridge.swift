@@ -225,10 +225,10 @@ public final class AnythingPlayerBridge: NSObject {
   }
 
   @objc public func status(_ id: String) -> NSDictionary {
-    if let controller = runtime.player(id) { return controller.statusDictionary() as NSDictionary }
+    let (controller, slot) = runtime.lookup(id)
+    if let controller { return controller.statusDictionary() as NSDictionary }
     // Not built yet: a video player's first status still says it is one.
     var initial = Status()
-    let slot = runtime.creatingSlot(id)
     if let options = slot?.options, options.engine.video != nil {
       initial.video = VideoStatus(
         width: nil, height: nil, hdr: false, firstFrame: false, audioOnly: nil, pictureInPicture: false)

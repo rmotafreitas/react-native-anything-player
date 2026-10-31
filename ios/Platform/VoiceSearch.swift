@@ -163,7 +163,8 @@ final class VoiceSearch {
   /// (created natively when it does not exist yet).
   private func voicePlayer(_ playerId: String?, completion: @escaping (PlayerController?) -> Void) {
     if let playerId { return completion(runtime.player(playerId)) }
-    if let active = runtime.active { return completion(active) }
+    // Not one JS let go of (its release is queued).
+    if let active = runtime.active, runtime.isCurrent(active), !active.isReleased { return completion(active) }
     let id = catalog.playerId
     if let existing = runtime.player(id) { return completion(existing) }
     if let slot = runtime.claim(id) {

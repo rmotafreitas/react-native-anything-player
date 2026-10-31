@@ -120,9 +120,6 @@ final class AnythingPlayerRuntime: AudioSessionListener, RemoteCommandTarget {
     }
   }
 
-  /// Any thread: the slot of a creation main has not run yet.
-  func creatingSlot(_ id: String) -> PlayerSlot? { lock.sync { creating[id] } }
-
   /// JS's thread, synchronously: JS let go of `id`. It leaves the registry
   /// (or the queued creation is marked) at once, so a `claim` with it from
   /// now on makes a new player and the getters stop answering for this one;
@@ -149,32 +146,50 @@ final class AnythingPlayerRuntime: AudioSessionListener, RemoteCommandTarget {
   }
 
   enum CommandTarget {
-    /// Whatever has the id when the command runs on main.
+    /// The player as the command arrived: registered, or still being built.
+    case player(PlayerController)
+    case slot(PlayerSlot)
+    /// Nothing had the id (a native creation main runs later): whatever has it then.
     case current
-    /// A player JS let go of, whose release is still queued behind its commands.
-    case letGo(PlayerSlot)
     /// JS let go of an id that had no player.
     case gone
   }
 
-  /// The method queue, as a command arrives: the player it is for. While a
-  /// release of `id` is pending, the commands JS sent before it are the
-  /// let-go player's (the queue keeps JS's order).
+  /// The method queue, as a command arrives: the player it is for, fixed
+  /// now. While a release of `id` is pending, the commands JS sent before it
+  /// are the let-go player's (the queue keeps JS's order).
   func target(_ id: String) -> CommandTarget {
     lock.sync {
-      guard let queue = detached[id], let first = queue.first else { return CommandTarget.current }
-      if let slot = first { return CommandTarget.letGo(slot) }
-      return CommandTarget.gone
+      if let queue = detached[id], let first = queue.first {
+        if let slot = first { return CommandTarget.slot(slot) }
+        return CommandTarget.gone
+      }
+      if let controller = registry[id] { return CommandTarget.player(controller) }
+      if let slot = creating[id] { return CommandTarget.slot(slot) }
+      return CommandTarget.current
     }
   }
 
   /// Main thread: the controller a command resolves to (not one released already).
   func resolve(_ target: CommandTarget, _ id: String) -> PlayerController? {
+    let controller: PlayerController?
     switch target {
-    case .current: return player(id)
-    case .letGo(let slot): return lock.sync { slot.controller }.flatMap { $0.isReleased ? nil : $0 }
-    case .gone: return nil
+    case .player(let player): controller = player
+    case .slot(let slot): controller = lock.sync { slot.controller }
+    case .current: controller = player(id)
+    case .gone: controller = nil
     }
+    return controller.flatMap { $0.isReleased ? nil : $0 }
+  }
+
+  /// Any thread, one look: the registered player, else the slot of the one being built.
+  func lookup(_ id: String) -> (PlayerController?, PlayerSlot?) {
+    lock.sync { (registry[id], registry[id] == nil ? creating[id] : nil) }
+  }
+
+  /// Main thread: whether `controller` is still the one registered with its id.
+  func isCurrent(_ controller: PlayerController) -> Bool {
+    lock.sync { registry[controller.id] === controller }
   }
 
   /// The method queue, for `releasePlayer`: what JS let go of with `id`
@@ -222,10 +237,16 @@ final class AnythingPlayerRuntime: AudioSessionListener, RemoteCommandTarget {
     }
     let controller = PlayerController(
       id: id, options: options, detachable: detachable, runtime: self, instance: instance)
+    // Published in one step with the slot it leaves, under the lock `letGo`
+    // takes: a let-go in between would find neither.
     let letGo = lock.sync { () -> Bool in
       slot?.controller = controller
       if let slot, creating[id] === slot { creating.removeValue(forKey: id) }
-      return slot?.letGo ?? false
+      if slot?.letGo == true { return true }
+      registry[id] = controller
+      order.removeAll { $0 == id }
+      order.append(id)
+      return false
     }
     // JS let go of it before main built it: silent, never registered; its
     // `releasePlayer` releases it.
@@ -236,7 +257,8 @@ final class AnythingPlayerRuntime: AudioSessionListener, RemoteCommandTarget {
     #if RNAP_CAST
     controller.routing.makeRemote = { outputId in CastDriver(outputId: outputId) }
     #endif
-    register(controller)
+    // Answer the system controls from the start (see `publishNowPlaying`).
+    refresh()
     controller.engine.networkChanged(networkState, interfaceChanged: false)
     controller.engine.routeChanged(localRoute)
     if controller.picture != nil {
@@ -280,16 +302,6 @@ final class AnythingPlayerRuntime: AudioSessionListener, RemoteCommandTarget {
   }
 
   /// Main thread.
-  func register(_ controller: PlayerController) {
-    lock.sync {
-      registry[controller.id] = controller
-      order.removeAll { $0 == controller.id }
-      order.append(controller.id)
-    }
-    // Answer the system controls from the start (see `publishNowPlaying`).
-    refresh()
-  }
-
   /// Main thread.
   func unregister(_ controller: PlayerController) {
     lock.sync {
