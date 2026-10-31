@@ -651,3 +651,33 @@ test("catalog: bundled in the format native stores, by setCatalog's own checks",
   );
   assert.throws(() => catalogSeed([]), /items/);
 });
+
+test('catalog: one format version in the seed and both native stores', () => {
+  const fs = require('node:fs');
+  const read = (file) =>
+    fs.readFileSync(new URL(`../../${file}`, import.meta.url), 'utf8');
+  const kotlin = /const val VERSION = (\d+)/.exec(
+    read('android/src/main/java/com/anythingplayer/platform/CatalogStore.kt')
+  )[1];
+  const swift = /static let schemaVersion = (\d+)/.exec(
+    read('ios/Platform/CatalogStore.swift')
+  )[1];
+  const { catalogSeed } = require('../../lib/plugin/catalogSeed.cjs');
+  const seed = catalogSeed({ items: [] });
+  assert.equal(String(seed.version), kotlin);
+  assert.equal(String(seed.version), swift);
+  assert.equal(helpers.EMPTY_CATALOG_SEED.version, seed.version);
+});
+
+test('catalog: the id tells one bundled catalog from another, and only that', () => {
+  const { catalogSeed } = require('../../lib/plugin/catalogSeed.cjs');
+  const item = (title) => ({ id: 'a', title, source: 'https://x/a' });
+  const a = catalogSeed({ items: [item('A')] });
+  assert.match(a.seed, /^[0-9a-f]{8}$/);
+  assert.equal(catalogSeed({ items: [item('A')] }).seed, a.seed);
+  assert.notEqual(catalogSeed({ items: [item('B')] }).seed, a.seed);
+  assert.throws(
+    () => catalogSeed({ items: [{ id: 'a', title: 'A', source: 5 }] }),
+    /must be URLs/
+  );
+});

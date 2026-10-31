@@ -86,6 +86,12 @@ internal class CatalogStore(private val file: File, private val seed: () -> Stri
   private var browse: JSONObject? = null
   private var recentIds: List<String> = emptyList()
   private var revision = 0L
+  /**
+   * The bundled catalog's id (`seed`) while the catalog in use is the bundled
+   * one, saved with it when what played is remembered: an app update that
+   * bundles another one replaces it, until the app calls `setCatalog`.
+   */
+  private var seedId: String? = null
 
   @Synchronized
   fun snapshot(): CatalogSnapshot {
@@ -103,13 +109,14 @@ internal class CatalogStore(private val file: File, private val seed: () -> Stri
     val limit = parseBrowse(newBrowse).recentLimit
     val recent = recentIds.filter { played -> entries.any { it.id == played } }.take(limit)
     // Saved first: a failed write rejects setCatalog and keeps the previous catalog.
-    write(Persisted(id, newPlayerOptions, last, entries, newBrowse, recent))
+    write(Persisted(id, newPlayerOptions, last, entries, newBrowse, recent, seed = null))
     items = entries
     playerId = id
     playerOptions = newPlayerOptions
     lastPlayedId = last
     browse = newBrowse
     recentIds = recent
+    seedId = null
     revision += 1
   }
 
@@ -118,7 +125,7 @@ internal class CatalogStore(private val file: File, private val seed: () -> Stri
   fun setFavorites(ids: List<String>) {
     ensureLoaded()
     val updated = JSONObject(browse?.toString() ?: "{}").put("favorites", JSONArray(ids.distinct().filter { id -> items.any { it.id == id } }))
-    write(Persisted(playerId, playerOptions, lastPlayedId, items, updated, recentIds))
+    write(Persisted(playerId, playerOptions, lastPlayedId, items, updated, recentIds, seedId))
     browse = updated
     revision += 1
   }
@@ -135,28 +142,51 @@ internal class CatalogStore(private val file: File, private val seed: () -> Stri
     recentIds = recent
     revision += 1
     // Best effort: losing "what played last" only changes an empty request.
-    runCatching { write(Persisted(playerId, playerOptions, id, items, browse, recent)) }
+    runCatching { write(Persisted(playerId, playerOptions, id, items, browse, recent, seedId)) }
   }
 
   private fun ensureLoaded() {
     if (loaded) return
     loaded = true
-    val text = if (file.exists()) file.readText() else seed() ?: return
-    try {
-      val root = JSONObject(text)
-      if (root.optInt("version", 0) > VERSION) return
-      playerId = root.optNonEmpty("playerId") ?: DEFAULT_PLAYER_ID
-      playerOptions = root.optJSONObject("playerOptions")
-      lastPlayedId = root.optNonEmpty("lastPlayedId")
-      browse = root.optJSONObject("browse")
-      recentIds = root.optJSONArray("recentIds")?.let { array -> (0 until array.length()).mapNotNull { array.optString(it).takeIf { s -> s.isNotEmpty() } } } ?: emptyList()
-      val array = root.optJSONArray("items") ?: JSONArray()
-      items = (0 until array.length()).mapNotNull { index -> array.optJSONObject(index)?.let { runCatching { CatalogEntry(it) }.getOrNull() } }
-    } catch (_: JSONException) {
-      // A damaged file is an empty catalog; the next setCatalog rewrites it.
-      items = emptyList()
+    val stored = if (file.exists()) parse(file.readText()) else null
+    if (stored != null && stored.optNonEmpty("seed") == null) return apply(stored)
+    // Nothing the app set: the bundled catalog, the newest one if an update brought another.
+    val bundled = seed()?.let { parse(it) }
+    if (bundled == null || (stored != null && bundled.optNonEmpty("seed") == stored.optNonEmpty("seed"))) return stored?.let { apply(it) } ?: Unit
+    apply(bundled)
+    seedId = bundled.optNonEmpty("seed") ?: "bundled"
+    if (stored == null) return
+    // What played and the favorites stay, for the items still there.
+    val ids = items.map { it.id }.toSet()
+    lastPlayedId = stored.optNonEmpty("lastPlayedId")?.takeIf { it in ids }
+    recentIds = strings(stored.optJSONArray("recentIds")).filter { it in ids }
+    stored.optJSONObject("browse")?.optJSONArray("favorites")?.let { favorites ->
+      browse = JSONObject(browse?.toString() ?: "{}").put("favorites", JSONArray(strings(favorites).filter { it in ids }))
     }
   }
+
+  /** A catalog file's root, or `null` when it is damaged or from a newer library version. */
+  private fun parse(text: String): JSONObject? =
+    try {
+      JSONObject(text).takeIf { it.optInt("version", 0) <= VERSION }
+    } catch (_: JSONException) {
+      // A damaged file is an empty catalog; the next setCatalog rewrites it.
+      null
+    }
+
+  private fun apply(root: JSONObject) {
+    playerId = root.optNonEmpty("playerId") ?: DEFAULT_PLAYER_ID
+    playerOptions = root.optJSONObject("playerOptions")
+    lastPlayedId = root.optNonEmpty("lastPlayedId")
+    browse = root.optJSONObject("browse")
+    recentIds = strings(root.optJSONArray("recentIds"))
+    val array = root.optJSONArray("items") ?: JSONArray()
+    items = (0 until array.length()).mapNotNull { index -> array.optJSONObject(index)?.let { runCatching { CatalogEntry(it) }.getOrNull() } }
+    seedId = root.optNonEmpty("seed")
+  }
+
+  private fun strings(array: JSONArray?): List<String> =
+    array?.let { (0 until it.length()).mapNotNull { index -> it.optString(index).takeIf { s -> s.isNotEmpty() } } } ?: emptyList()
 
   /** What goes to disk, as one value (the file is always written whole). */
   private class Persisted(
@@ -166,6 +196,8 @@ internal class CatalogStore(private val file: File, private val seed: () -> Stri
     val items: List<CatalogEntry>,
     val browse: JSONObject?,
     val recentIds: List<String>,
+    /** The bundled catalog's id, while it is the one in use. */
+    val seed: String?,
   )
 
   private fun write(state: Persisted) {
@@ -177,6 +209,7 @@ internal class CatalogStore(private val file: File, private val seed: () -> Stri
         .put("lastPlayedId", state.lastPlayedId ?: JSONObject.NULL)
         .put("browse", state.browse ?: JSONObject.NULL)
         .put("recentIds", JSONArray(state.recentIds))
+        .put("seed", state.seed ?: JSONObject.NULL)
         .put("items", JSONArray().also { array -> state.items.forEach { array.put(it.json) } })
     file.parentFile?.mkdirs()
     val temp = File(file.parentFile, "${file.name}.tmp")

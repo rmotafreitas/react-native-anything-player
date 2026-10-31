@@ -43,9 +43,9 @@ The catalog exists once the app has called `setCatalog`. On a fresh install, bef
 }
 ```
 
-**Expo**: `["react-native-anything-player", { "catalog": "./catalog.json" }]`. The prebuild checks it with `setCatalog`'s own rules (sources and artwork are URLs here: a JSON file has no `require()`) and fails on what `setCatalog` would reject. **Bare**: write the same file's stored form, `require('react-native-anything-player/lib/plugin/catalogSeed.cjs').catalogSeed(json)`, to `android/app/src/main/assets/rnap/catalog-seed.json`, and add it to the iOS app target as `rnap-catalog-seed.json`.
+**Expo**: `["react-native-anything-player", { "catalog": "./catalog.json" }]`. The prebuild checks it with `setCatalog`'s own rules (sources and artwork are URLs here: a JSON file has no `require()`) and fails on what `setCatalog` would reject. **Bare**: write the same file's stored form, `require('react-native-anything-player/plugin/catalogSeed').catalogSeed(json)`, to `android/app/src/main/assets/rnap/catalog-seed.json`, and add it to the iOS app target as `rnap-catalog-seed.json`.
 
-The bundled catalog is used only while the app has stored none: the first `setCatalog` replaces it for good.
+The bundled catalog is used until the app calls `setCatalog`, which replaces it for good. Until then, an app update that bundles a different one replaces the one in use (what played and the favorites stay, for the items still there), and removing the option leaves none.
 
 An item can also have a `group` (`"Jazz"`, or `"Podcasts/Daily"`), which files it in the browse tree that [cars and watches](cars-and-watches.md) show; `setCatalog`'s `browse` option and `setFavorites(ids)` add "Recently played" and "Favorites" folders. `searchCatalog({ query, group })` and `playFromSearch({ query, group })` search one group (and its subgroups) only. A pick in the car plays like a voice request and emits `searchPlay` with `origin: 'browse'`.
 

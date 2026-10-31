@@ -14,8 +14,22 @@ const BUILD_HOST: PlayerHost = {
   onForeground() {},
   isForeground: () => false,
   onForegroundChange: () => () => {},
-  resolveAsset: () => null,
+  resolveAsset: () => {
+    throw new TypeError(
+      'Sources and artwork in a bundled catalog must be URLs: a JSON file has no require().'
+    );
+  },
 };
+
+/** A hash of `text`, as 8 hex digits: tells one bundled catalog from another. */
+function contentId(text: string): string {
+  // Polynomial, modulo the largest prime below 2^32 (exact in a double).
+  const PRIME = 4_294_967_291;
+  let hash = 0;
+  for (let i = 0; i < text.length; i++)
+    hash = (hash * 31 + text.charCodeAt(i)) % PRIME;
+  return hash.toString(16).padStart(8, '0');
+}
 
 /** The catalog file's format version, as native writes it (`CatalogStore`). */
 const CATALOG_FILE_VERSION = 1;
@@ -42,13 +56,19 @@ export function catalogSeed(
     installHost(BUILD_HOST);
   }
   const { items, options } = serializeCatalog(input.items, input);
-  return {
-    version: CATALOG_FILE_VERSION,
+  const content = {
     playerId: options.playerId,
     playerOptions: options.playerOptions ?? null,
-    lastPlayedId: null,
     browse: options.browse ?? null,
-    recentIds: [],
     items,
+  };
+  return {
+    version: CATALOG_FILE_VERSION,
+    ...content,
+    lastPlayedId: null,
+    recentIds: [],
+    // Native keeps it with the catalog while the bundled one is in use: an
+    // app update that bundles another one replaces it (until setCatalog).
+    seed: contentId(JSON.stringify(content)),
   };
 }

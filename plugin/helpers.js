@@ -61,6 +61,9 @@ function resolveCatalog(catalog) {
   return catalog == null || catalog === false ? null : catalog;
 }
 
+/** What a bundled catalog becomes once the `catalog` option is gone: none. */
+const EMPTY_CATALOG_SEED = { version: 1, items: [], seed: 'none' };
+
 /** The `catalog` option as the plugin applies it: a non-empty path, or an error. */
 function checkCatalog(catalog) {
   if (typeof catalog !== 'string' || catalog.trim() === '')
@@ -315,6 +318,7 @@ function injectHandleIntent(source) {
 
 module.exports = {
   DEFAULT_RECEIVER_ID,
+  EMPTY_CATALOG_SEED,
   addCarPlayScene,
   checkCatalog,
   addPlayFromSearchFilter,

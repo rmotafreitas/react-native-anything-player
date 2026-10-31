@@ -50,6 +50,40 @@ class CatalogStoreTest {
     assertEquals(emptyList<String>(), CatalogStore(file()).snapshot().items.map { it.id })
   }
 
+  private fun bundle(id: String, vararg items: JSONObject) =
+    JSONObject()
+      .put("version", CatalogStore.VERSION)
+      .put("playerId", "radio")
+      .put("seed", id)
+      .put("items", org.json.JSONArray().also { array -> items.forEach { array.put(it) } })
+      .toString()
+
+  @Test
+  fun `an update that bundles another catalog replaces the bundled one in use, keeping what played`() {
+    val first = bundle("aaaa", item("jazz", "Jazz FM"), item("news", "World News"))
+    CatalogStore(file()) { first }.played("news")
+    assertEquals(true, file().exists())
+
+    // Restarted on the same bundle: the stored copy, with what played.
+    assertEquals("news", CatalogStore(file()) { first }.snapshot().lastPlayedId)
+
+    // An update bundles another one: it wins; what played stays while its item does.
+    val second = bundle("bbbb", item("news", "World News"), item("rock", "Rock FM"))
+    val updated = CatalogStore(file()) { second }.snapshot()
+    assertEquals(listOf("news", "rock"), updated.items.map { it.id })
+    assertEquals("news", updated.lastPlayedId)
+    CatalogStore(file()) { second }.played("rock")
+    assertEquals(null, CatalogStore(file()) { bundle("cccc", item("jazz", "Jazz FM")) }.snapshot().lastPlayedId)
+
+    // The option removed: an empty bundled catalog empties the copy of the old one.
+    val none = "{\"version\":1,\"items\":[],\"seed\":\"none\"}"
+    assertEquals(emptyList<String>(), CatalogStore(file()) { none }.snapshot().items.map { it.id })
+
+    // What the app sets is never replaced by a bundled one.
+    CatalogStore(file()) { first }.replace(listOf(item("mine", "Mine")), "main", null)
+    assertEquals(listOf("mine"), CatalogStore(file()) { second }.snapshot().items.map { it.id })
+  }
+
   @Test
   fun `a catalog survives a restart with its player and last played item`() {
     val store = CatalogStore(file())

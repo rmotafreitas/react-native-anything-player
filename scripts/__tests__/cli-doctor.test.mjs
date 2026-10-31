@@ -188,6 +188,27 @@ test('the catalog option is a JSON file with items', (t) => {
   assert.deepEqual(check('./broken.json'), ['error']);
   assert.deepEqual(check('./list.json'), ['error']);
   assert.deepEqual(check(true), ['error']);
+  // With the library installed, setCatalog's own rules, as the prebuild applies them.
+  const installed = path.join(root, 'node_modules', LIBRARY);
+  fs.writeFileSync(
+    path.join(installed, 'package.json'),
+    JSON.stringify({
+      name: LIBRARY,
+      version: '0.1.0',
+      exports: { './plugin/catalogSeed': './lib/plugin/catalogSeed.cjs' },
+    })
+  );
+  fs.mkdirSync(path.join(installed, 'lib/plugin'), { recursive: true });
+  fs.copyFileSync(
+    path.join(repoRoot, 'lib/plugin/catalogSeed.cjs'),
+    path.join(installed, 'lib/plugin/catalogSeed.cjs')
+  );
+  fs.writeFileSync(
+    path.join(root, 'untitled.json'),
+    '{"items":[{"id":"a","title":"","source":"https://x/a"}]}'
+  );
+  assert.deepEqual(check('./catalog.json'), []);
+  assert.deepEqual(check('./untitled.json'), ['error']);
 });
 
 test('deliberate plugin choices are info, not errors', (t) => {

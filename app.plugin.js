@@ -278,8 +278,15 @@ function withCatalogSeed(config, file) {
         `react-native-anything-player: catalog: cannot read ${full}: ${error.message}`
       );
     }
+    let catalogSeed;
     try {
-      const { catalogSeed } = require('./lib/plugin/catalogSeed.cjs');
+      ({ catalogSeed } = require('./lib/plugin/catalogSeed.cjs'));
+    } catch (error) {
+      throw new Error(
+        `react-native-anything-player: lib/plugin/catalogSeed.cjs is missing: build the package (yarn prepare). ${error.message}`
+      );
+    }
+    try {
       return JSON.stringify(catalogSeed(input));
     } catch (error) {
       throw new Error(
@@ -323,11 +330,40 @@ function withCatalogSeed(config, file) {
   });
 }
 
+/**
+ * No `catalog` (any more): a bundled one a prebuild before wrote becomes an
+ * empty one, which native reads as none (and lets go of a stored copy of the
+ * old one). Overwritten, not deleted: the Xcode project still lists it.
+ */
+function withoutCatalogSeed(config) {
+  const empty = JSON.stringify(helpers.EMPTY_CATALOG_SEED);
+  const overwrite = (file) => {
+    if (fs.existsSync(file)) fs.writeFileSync(file, empty);
+  };
+  config = withDangerousMod(config, [
+    'android',
+    (cfg) => {
+      overwrite(path.join(cfg.modRequest.platformProjectRoot, ...SEED_ANDROID));
+      return cfg;
+    },
+  ]);
+  return withDangerousMod(config, [
+    'ios',
+    (cfg) => {
+      const { platformProjectRoot, projectName } = cfg.modRequest;
+      overwrite(path.join(platformProjectRoot, projectName, SEED_IOS));
+      return cfg;
+    },
+  ]);
+}
+
 /** @param {object} [options] see the header */
 function withAnythingPlayer(config, options = {}) {
   const resolved = helpers.resolveOptions(options);
   config = withAndroid(withIos(config, resolved), resolved);
-  return resolved.catalog ? withCatalogSeed(config, resolved.catalog) : config;
+  return resolved.catalog
+    ? withCatalogSeed(config, resolved.catalog)
+    : withoutCatalogSeed(config);
 }
 
 module.exports = createRunOncePlugin(withAnythingPlayer, pkg.name, pkg.version);

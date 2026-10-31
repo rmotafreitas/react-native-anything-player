@@ -22,6 +22,13 @@ final class CatalogStore {
   /// Changes with everything the browse tree is built from.
   private(set) var revision = 0
   private var loaded = false
+  /// The bundled catalog's id (`seed`) while the catalog in use is the
+  /// bundled one, saved with it: an app update that bundles another one
+  /// replaces it, until the app calls `set`.
+  private var seedId: String?
+  /// The stored file exists but cannot be read now (before the first unlock):
+  /// this run neither falls back to the bundled catalog nor overwrites it.
+  private var unreadable = false
   private let writes = DispatchQueue(label: "anythingplayer.catalog", qos: .utility)
 
   private static var fileURL: URL? {
@@ -40,6 +47,7 @@ final class CatalogStore {
     let ids = Set(items.compactMap { $0["id"] as? String })
     recentIds = Array(recentIds.filter { ids.contains($0) }.prefix(limit))
     if let last = lastPlayedId, !ids.contains(last) { lastPlayedId = nil }
+    seedId = nil
     revision += 1
     save()
   }
@@ -152,21 +160,55 @@ final class CatalogStore {
   private func loadIfNeeded() {
     guard !loaded else { return }
     loaded = true
-    guard let data = Self.fileURL.flatMap({ try? Data(contentsOf: $0) }) ?? Self.seed(),
-      let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
-      root["version"] as? Int == Self.schemaVersion
-    else { return }
+    var stored: [String: Any]?
+    if let url = Self.fileURL, FileManager.default.fileExists(atPath: url.path) {
+      guard let data = try? Data(contentsOf: url) else {
+        unreadable = true
+        return
+      }
+      stored = Self.parse(data)
+    }
+    if let stored, (stored["seed"] as? String).map({ $0.isEmpty }) ?? true { return apply(stored) }
+    // Nothing the app set: the bundled catalog, the newest one if an update brought another.
+    guard let bundled = Self.seed().flatMap(Self.parse),
+      stored == nil || (bundled["seed"] as? String) != (stored?["seed"] as? String)
+    else {
+      if let stored { apply(stored) }
+      return
+    }
+    apply(bundled)
+    seedId = bundled["seed"] as? String ?? "bundled"
+    guard let stored else { return }
+    // What played and the favorites stay, for the items still there.
+    let ids = Set(items.compactMap { $0["id"] as? String })
+    lastPlayedId = (stored["lastPlayedId"] as? String).flatMap { ids.contains($0) ? $0 : nil }
+    recentIds = (stored["recentIds"] as? [String] ?? []).filter { ids.contains($0) }
+    if let favorites = (stored["browse"] as? [String: Any])?["favorites"] as? [String] {
+      browse["favorites"] = favorites.filter { ids.contains($0) }
+    }
+  }
+
+  /// A catalog file's root, or nil when it is damaged or from another format version.
+  private static func parse(_ data: Data) -> [String: Any]? {
+    guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+      root["version"] as? Int == schemaVersion
+    else { return nil }
+    return root
+  }
+
+  private func apply(_ root: [String: Any]) {
     items = root["items"] as? [[String: Any]] ?? []
     playerId = root["playerId"] as? String ?? "default"
     playerOptions = root["playerOptions"] as? [String: Any] ?? [:]
     lastPlayedId = root["lastPlayedId"] as? String
     browse = root["browse"] as? [String: Any] ?? [:]
     recentIds = root["recentIds"] as? [String] ?? []
+    seedId = root["seed"] as? String
   }
 
   /// The catalog the app bundles (the Expo plugin's `catalog` option), used
-  /// until the app stores its own: a fresh install answers Siri and CarPlay
-  /// before it was ever opened.
+  /// until the app stores its own: on a fresh install, CarPlay (and Siri where
+  /// it matches without the app's vocabulary) before the app was ever opened.
   private static func seed() -> Data? {
     Bundle.main.url(forResource: "rnap-catalog-seed", withExtension: "json").flatMap { try? Data(contentsOf: $0) }
   }
@@ -175,8 +217,9 @@ final class CatalogStore {
     let root: [String: Any] = [
       "version": Self.schemaVersion, "playerId": playerId, "playerOptions": playerOptions,
       "items": items, "lastPlayedId": lastPlayedId ?? NSNull(), "browse": browse,
-      "recentIds": recentIds,
+      "recentIds": recentIds, "seed": seedId ?? NSNull(),
     ]
+    guard !unreadable else { return }
     guard let url = Self.fileURL, JSONSerialization.isValidJSONObject(root),
       let data = try? JSONSerialization.data(withJSONObject: root)
     else { return }

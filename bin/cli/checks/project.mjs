@@ -2,6 +2,7 @@
 // config plugin (listed, and its options valid).
 
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 import { compareVersions, versionParts } from '../project.mjs';
 import { expoOptions, moduleStates } from '../modules.mjs';
@@ -234,6 +235,28 @@ function checkCatalogOption(ctx, value, findings) {
         'expo-plugin-options',
         'error',
         `Plugin option \`catalog\`: ${value} needs an \`items\` array.`,
+        fix
+      )
+    );
+    return;
+  }
+  // The prebuild's own check, with the app's installed version of the library.
+  let catalogSeed;
+  try {
+    ({ catalogSeed } = createRequire(path.join(ctx.cwd, 'package.json'))(
+      'react-native-anything-player/plugin/catalogSeed'
+    ));
+  } catch {
+    return; // A version without it, or not installed: the prebuild says.
+  }
+  try {
+    catalogSeed(input);
+  } catch (error) {
+    findings.push(
+      finding(
+        'expo-plugin-options',
+        'error',
+        `Plugin option \`catalog\`: ${value}: ${error.message} The prebuild would fail.`,
         fix
       )
     );
