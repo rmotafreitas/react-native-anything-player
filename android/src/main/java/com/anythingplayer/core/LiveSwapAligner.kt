@@ -113,7 +113,7 @@ class LiveSwapAligner(private val startedAt: Long) {
   private fun steer(now: Long, old: Reading, new: Reading, behind: Double): Step {
     val clamp = { r: Double -> r.coerceIn(old.rate * MIN_RATE, old.rate * MAX_RATE) }
     if (!new.playing) {
-      // Starting it: the first rate is heard once it moves (its start time is not a rate delay).
+      // Starting it: its first rate is kept until it is seen moving at it.
       trail.clear()
       probe = null
       val rate = asked.lastOrNull()?.second ?: clamp(old.rate + behind / HORIZON_S)
@@ -157,14 +157,15 @@ class LiveSwapAligner(private val startedAt: Long) {
           probe = Triple(now, last, to)
           return Step.Steer(to)
         }
-    // Lined up, with only the old rate on its way and seen heard: it takes over.
+    // Lined up, with only the old rate on its way and seen heard (closer to it
+    // than to a step off, so a device's noisy position reads do not matter): it takes over.
     val heard = asked.lastOrNull { it.first <= now - d }?.second
     if (
       abs(behind) <= TOLERANCE_S &&
       heard == old.rate &&
       asked.all { it.first <= now - d || it.second == old.rate } &&
       speed != null &&
-      abs(speed - old.rate) <= SEEN_FRACTION * RATE_STEP * old.rate
+      abs(speed - old.rate) <= RATE_STEP * old.rate / 2
     )
       return Step.Play
     val gap = behind - onTheWay(now, d, old.rate)
