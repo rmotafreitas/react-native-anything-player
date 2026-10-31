@@ -186,9 +186,9 @@ test('video: the build flags, and Picture in Picture unless turned off', () => {
   assert.deepEqual(helpers.applyInfoPlist({}, noPip).UIBackgroundModes, []);
 });
 
-test("video: the main activity supports Picture in Picture and handles its resizes, keeping what it had", () => {
+test('video: the main activity supports Picture in Picture and handles its resizes, keeping what it had', () => {
   const activity = {
-    $: {
+    '$': {
       'android:name': '.MainActivity',
       'android:configChanges': 'keyboard|orientation|screenSize|uiMode',
     },
@@ -262,10 +262,7 @@ test('MainActivity: the imports keep their own lines when an import follows pack
     'package com.example.app\nimport expo.modules.splashscreen.SplashScreenManager\n'
   );
   const out = helpers.injectHandleIntent(tight);
-  assert.match(
-    out,
-    /\nimport com\.anythingplayer\.AnythingPlayer\n/
-  );
+  assert.match(out, /\nimport com\.anythingplayer\.AnythingPlayer\n/);
   assert.match(
     out,
     /\nimport expo\.modules\.splashscreen\.SplashScreenManager\n/
@@ -558,6 +555,29 @@ test("car: a prebuild again starts from the manifest without CarPlay's scene", (
     owned
   );
   assert.equal(helpers.removeCarPlayScene({}), undefined);
+  // The app's own CarPlay scene stays, with multiple scenes.
+  const own = {
+    UISceneClassName: 'CPTemplateApplicationScene',
+    UISceneConfigurationName: 'App CarPlay',
+    UISceneDelegateClassName: 'AppCarPlayDelegate',
+  };
+  const withOwn = helpers.addCarPlayScene({
+    UIApplicationSceneManifest: {
+      ...owned,
+      UISceneConfigurations: {
+        ...owned.UISceneConfigurations,
+        CPTemplateApplicationSceneSessionRoleApplication: [own],
+      },
+    },
+  });
+  const kept = helpers.removeCarPlayScene({
+    UIApplicationSceneManifest: withOwn,
+  });
+  assert.equal(kept.UIApplicationSupportsMultipleScenes, true);
+  assert.deepEqual(
+    kept.UISceneConfigurations.CPTemplateApplicationSceneSessionRoleApplication,
+    [own]
+  );
   // CarPlay's scene alone: no manifest left.
   assert.equal(
     helpers.removeCarPlayScene({
