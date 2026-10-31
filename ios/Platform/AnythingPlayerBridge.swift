@@ -11,8 +11,8 @@ import Foundation
 public final class AnythingPlayerBridge: NSObject {
   private let lock = NSLock()
   private var owned = Set<String>()
-  /// `invalidate()` ran: this JS is gone.
-  private var invalidated = false
+  /// This JS instance, for the runtime's let-go queues.
+  private let owner = AnythingPlayerRuntime.shared.newOwner()
   private static let counterLock = NSLock()
   private static var counter = 0
 
@@ -65,18 +65,8 @@ public final class AnythingPlayerBridge: NSObject {
   /// id at once, so a `createPlayer` with it from now on makes a new one and
   /// the getters answer for that one (#90). Whether the id had a player.
   @objc public func willReleasePlayer(_ id: String) -> Bool {
-    let gone = lock.sync { () -> Bool in
-      _ = owned.remove(id)
-      return invalidated
-    }
-    let had = runtime.letGo(id, owner: self)
-    // After this JS's teardown no releasePlayer drains it: released now.
-    if gone {
-      let runtime = self.runtime
-      let (slot, _) = runtime.takeRelease(id, owner: self, letGoIfNone: false)
-      DispatchQueue.main.async { runtime.release(slot) }
-    }
-    return had
+    lock.sync { _ = owned.remove(id) }
+    return runtime.letGo(id, owner: owner)
   }
 
   /// Releases what `willReleasePlayer` let go of (after the commands JS sent
@@ -85,8 +75,7 @@ public final class AnythingPlayerBridge: NSObject {
     _ id: String, resolve: @escaping (Any?) -> Void, reject: @escaping (String, String, NSError?) -> Void
   ) {
     let runtime = self.runtime
-    // `invalidate()` runs on this same serial method queue: the flag holds until takeRelease.
-    let (slot, wasLetGo) = runtime.takeRelease(id, owner: self, letGoIfNone: !lock.sync { invalidated })
+    let (slot, wasLetGo) = runtime.takeRelease(id, owner: owner)
     if !wasLetGo { lock.sync { _ = owned.remove(id) } }
     DispatchQueue.main.async {
       runtime.release(slot)
@@ -105,7 +94,7 @@ public final class AnythingPlayerBridge: NSObject {
     // `quality`: an id, `'auto'` for automatic; absent: keep the pick.
     let qualityGiven = options["quality"] != nil
     let quality = (options["quality"] as? String).flatMap { $0 == "auto" ? nil : $0 }
-    let target = runtime.target(id, owner: self)
+    let target = runtime.target(id, owner: owner)
     DispatchQueue.main.async { [weak self] in
       guard let controller = self?.runtime.resolve(target, id) else {
         return Self.reject(reject, PlayerError.code(.playerReleased, "The player was released.", recoverable: false))
@@ -133,7 +122,7 @@ public final class AnythingPlayerBridge: NSObject {
     _ name: String, id: String, value: NSNumber?,
     resolve: @escaping (Any?) -> Void, reject: @escaping (String, String, NSError?) -> Void
   ) {
-    let target = runtime.target(id, owner: self)
+    let target = runtime.target(id, owner: owner)
     DispatchQueue.main.async { [weak self] in
       guard let controller = self?.runtime.resolve(target, id) else {
         return Self.reject(reject, PlayerError.code(.playerReleased, "The player was released.", recoverable: false))
@@ -165,7 +154,7 @@ public final class AnythingPlayerBridge: NSObject {
     _ id: String, volume: Double, seconds: Double,
     resolve: @escaping (Any?) -> Void, reject: @escaping (String, String, NSError?) -> Void
   ) {
-    let target = runtime.target(id, owner: self)
+    let target = runtime.target(id, owner: owner)
     DispatchQueue.main.async { [weak self] in
       guard let controller = self?.runtime.resolve(target, id) else {
         return Self.reject(reject, PlayerError.code(.playerReleased, "The player was released.", recoverable: false))
@@ -208,7 +197,7 @@ public final class AnythingPlayerBridge: NSObject {
     _ id: String, resolve: @escaping (Any?) -> Void, reject: @escaping (String, String, NSError?) -> Void,
     _ block: @escaping (PlaybackEngine) throws -> Void
   ) {
-    let target = runtime.target(id, owner: self)
+    let target = runtime.target(id, owner: owner)
     DispatchQueue.main.async { [weak self] in
       guard let controller = self?.runtime.resolve(target, id) else {
         return Self.reject(reject, PlayerError.code(.playerReleased, "The player was released.", recoverable: false))
@@ -229,7 +218,7 @@ public final class AnythingPlayerBridge: NSObject {
     resolve: @escaping (Any?) -> Void, reject: @escaping (String, String, NSError?) -> Void
   ) {
     let fields = NowPlayingFields(metadata)
-    let target = runtime.target(id, owner: self)
+    let target = runtime.target(id, owner: owner)
     DispatchQueue.main.async { [weak self] in
       guard let controller = self?.runtime.resolve(target, id) else {
         return Self.reject(reject, PlayerError.code(.playerReleased, "The player was released.", recoverable: false))
@@ -418,7 +407,7 @@ public final class AnythingPlayerBridge: NSObject {
       return resolve(nil)
     }
     let refreshed = (command["source"] as? NSDictionary).map { SourceDescriptor.parse($0).0 }
-    let target = runtime.target(id, owner: self)
+    let target = runtime.target(id, owner: owner)
     DispatchQueue.main.async { [weak self] in
       guard let controller = self?.runtime.resolve(target, id) else {
         return Self.reject(reject, PlayerError.code(.playerReleased, "The player was released.", recoverable: false))
@@ -522,7 +511,6 @@ public final class AnythingPlayerBridge: NSObject {
   /// app-chosen id are detached (they keep playing; the next JS attaches);
   /// the others can no longer be controlled and are released.
   @objc public func invalidate() {
-    lock.sync { invalidated = true }
     runtime.detachEvents(owner: self)
     let ids = lock.sync { () -> [String] in
       let ids = Array(owned)
@@ -532,7 +520,7 @@ public final class AnythingPlayerBridge: NSObject {
     let runtime = self.runtime
     DispatchQueue.main.async {
       // Let go of by this JS, whose releasePlayer will not come now.
-      runtime.releaseDetached(owner: self)
+      runtime.releaseDetached(owner: owner)
       runtime.voice.handlerEnabled = false
       for id in ids {
         if let controller = runtime.player(id), !controller.detachable {

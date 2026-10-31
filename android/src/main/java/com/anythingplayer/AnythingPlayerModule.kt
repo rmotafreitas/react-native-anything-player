@@ -48,6 +48,8 @@ class AnythingPlayerModule(reactContext: ReactApplicationContext) : NativeAnythi
    * the ones without an app id are released; the others keep playing.
    */
   private val owned = mutableSetOf<String>()
+  /** This JS instance, for the runtime's let-go queues. */
+  private val owner = AnythingPlayerRuntime.newOwner()
   private val sinkLock = Any()
   private var invalidated = false
   /**
@@ -175,20 +177,16 @@ class AnythingPlayerModule(reactContext: ReactApplicationContext) : NativeAnythi
   /** JS's thread, synchronously: a `createPlayer` with this id from now on makes a new player (#90). */
   override fun willReleasePlayer(playerId: String): Boolean {
     synchronized(owned) { owned.remove(playerId) }
-    val had = AnythingPlayerRuntime.detach(this, playerId)
-    // After this JS's teardown no releasePlayer drains it: released now.
-    if (synchronized(sinkLock) { invalidated }) AnythingPlayerRuntime.release(this, playerId) {}
-    return had
+    return AnythingPlayerRuntime.detach(owner, playerId)
   }
 
   override fun releasePlayer(playerId: String, promise: Promise) {
     synchronized(owned) { owned.remove(playerId) }
-    val gone = synchronized(sinkLock) { invalidated }
-    AnythingPlayerRuntime.release(this, playerId, letGoIfNone = !gone) { promise.resolve(null) }
+    AnythingPlayerRuntime.release(owner, playerId) { promise.resolve(null) }
   }
 
   private fun command(playerId: String, promise: Promise, block: (PlayerController) -> Unit) {
-    val target = AnythingPlayerRuntime.target(this, playerId)
+    val target = AnythingPlayerRuntime.target(owner, playerId)
     main.post {
       val controller = target?.takeUnless { it.isReleased }
       if (controller == null) {
@@ -218,7 +216,7 @@ class AnythingPlayerModule(reactContext: ReactApplicationContext) : NativeAnythi
     // `quality`: an id, `'auto'` for automatic; absent: keep the pick.
     val qualityGiven = options.hasKey("quality")
     val quality = options.optString("quality")?.takeIf { it != "auto" }
-    val target = AnythingPlayerRuntime.target(this, playerId)
+    val target = AnythingPlayerRuntime.target(owner, playerId)
     main.post {
       val controller = target?.takeUnless { it.isReleased }
       if (controller == null) {
@@ -248,7 +246,7 @@ class AnythingPlayerModule(reactContext: ReactApplicationContext) : NativeAnythi
   override fun setRate(playerId: String, rate: Double, promise: Promise) = command(playerId, promise) { it.engine.setRate(rate) }
 
   override fun fadeTo(playerId: String, volume: Double, seconds: Double, promise: Promise) {
-    val target = AnythingPlayerRuntime.target(this, playerId)
+    val target = AnythingPlayerRuntime.target(owner, playerId)
     main.post {
       val controller = target?.takeUnless { it.isReleased }
       if (controller == null) {
@@ -440,7 +438,7 @@ class AnythingPlayerModule(reactContext: ReactApplicationContext) : NativeAnythi
     val ids = synchronized(owned) { owned.toList().also { owned.clear() } }
     main.post {
       // Let go of by JS, whose releasePlayer will not come now.
-      AnythingPlayerRuntime.releaseDetached(this)
+      AnythingPlayerRuntime.releaseDetached(owner)
       ids.forEach { id ->
         // A player with an app id keeps playing: the next JS instance attaches to it.
         AnythingPlayerRuntime.players[id]?.takeIf { !it.appId }?.let {
