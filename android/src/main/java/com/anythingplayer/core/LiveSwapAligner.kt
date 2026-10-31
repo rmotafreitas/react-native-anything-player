@@ -21,16 +21,25 @@ import kotlin.math.abs
  * the gap closes, and takes over already playing once lined up, so how long a
  * device takes to start a player never matters. If either player moves to
  * another connection meanwhile (a dropped one replaced), its timeline no
- * longer maps and the switch takes over unaligned. Pure: the driver reads
+ * longer maps (or one is queued: its connection has ended) and the switch
+ * takes over unaligned. Pure: the driver reads
  * both players and acts on each [Step]. Specified by
  * `conformance/quality/live-align.json`.
  */
 class LiveSwapAligner(private val startedAt: Long) {
   /**
    * A player's reading: playhead and buffered edge, seconds in its own
-   * timeline, whether it plays, and which connection the edge belongs to.
+   * timeline; whether it plays, and at what rate; which connection the
+   * timeline belongs to, and whether a replacement is already queued behind it.
    */
-  data class Reading(val position: Double, val edge: Double, val playing: Boolean = true, val connection: Int = 0)
+  data class Reading(
+    val position: Double,
+    val edge: Double,
+    val playing: Boolean = true,
+    val connection: Int = 0,
+    val rate: Double = 1.0,
+    val continuing: Boolean = false,
+  )
 
   sealed class Step {
     /** The new connection's burst is still arriving: keep it paused. */
@@ -70,6 +79,7 @@ class LiveSwapAligner(private val startedAt: Long) {
   fun step(now: Long, old: Reading, new: Reading): Step {
     if (!old.playing) return Step.Fallback("old player not playing")
     if (now - startedAt >= BUDGET_MS) return Step.Fallback("budget")
+    if (old.continuing || new.continuing) return Step.Fallback("connection ending")
     if (oldConnection.let { it != null && it != old.connection } || newConnection.let { it != null && it != new.connection })
       return Step.Fallback("connection replaced")
     oldConnection = old.connection
@@ -79,7 +89,8 @@ class LiveSwapAligner(private val startedAt: Long) {
     return when {
       new.playing && abs(behind) <= TOLERANCE_S -> Step.Play
       !new.playing && behind < -STEER_WINDOW_S -> Step.Hold
-      else -> Step.Steer((1 + behind / HORIZON_S).coerceIn(MIN_RATE, MAX_RATE))
+      // Around the old player's own rate: the gap closes in about HORIZON_S.
+      else -> Step.Steer((old.rate + behind / HORIZON_S).coerceIn(MIN_RATE, MAX_RATE))
     }
   }
 
@@ -108,7 +119,7 @@ class LiveSwapAligner(private val startedAt: Long) {
   }
 
   companion object {
-    /** The new connection plays (muted) at 1 + behind / this: it would close the gap in this long, seconds. */
+    /** The new connection plays (muted) at the old one's rate + behind / this: it would close the gap in this long, seconds. */
     const val HORIZON_S = 1.0
     /** The rates it is steered within (Media3's Sonic handles these cleanly). */
     const val MIN_RATE = 0.5

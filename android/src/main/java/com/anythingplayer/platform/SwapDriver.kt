@@ -203,8 +203,8 @@ internal class SwapDriver(
     val step =
       aligner.step(
         now,
-        LiveSwapAligner.Reading(old.position, old.buffered, old.isPlaying, old.connection),
-        LiveSwapAligner.Reading(new.position, new.buffered, new.isPlaying, new.connection),
+        LiveSwapAligner.Reading(old.position, old.buffered, old.isPlaying, old.connection, old.rate, old.continuing),
+        LiveSwapAligner.Reading(new.position, new.buffered, new.isPlaying, new.connection, new.rate, new.continuing),
       )
     when (step) {
       LiveSwapAligner.Step.Measure, LiveSwapAligner.Step.Hold -> {

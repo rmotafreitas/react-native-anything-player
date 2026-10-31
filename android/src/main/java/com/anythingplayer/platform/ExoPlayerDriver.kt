@@ -117,8 +117,10 @@ internal data class ProgressReading(
   val liveOffset: Double?,
   val isPlaying: Boolean,
   val rate: Double,
-  /** Which connection the buffered edge belongs to: a replaced one (a live continuation) counts up. */
+  /** Which connection the position and edge belong to: counts up whenever one replaces another. */
   val connection: Int = 0,
+  /** A replacement connection is already queued behind this one (it ended or is ending). */
+  val continuing: Boolean = false,
 )
 
 private const val MEDIA_ID_PREFIX = "anythingplayer:"
@@ -192,6 +194,8 @@ internal class ExoPlayerDriver(
     OkHttpDataSource.Factory(HttpConnections.client).setUserAgent(Util.getUserAgent(context, "RNAP"))
   }
   private var continuationCount = 0
+  /** Counts the connections whose timeline readings follow (see [ProgressReading.connection]). */
+  private var connectionEpoch = 0
   private val continuationTimes = ArrayDeque<Long>()
   /**
    * A fresh connection playback moved onto before any of its audio could
@@ -276,6 +280,7 @@ internal class ExoPlayerDriver(
         // connection's audio plays on, else (an outage outlasted the buffer:
         // nothing of it has arrived yet) once playback resumes.
         val p = player ?: return
+        if (reason == Player.DISCONTINUITY_REASON_AUTO_TRANSITION || reason == Player.DISCONTINUITY_REASON_INTERNAL) connectionEpoch++
         val gen = currentGeneration(p) ?: return
         if (video) report { observer.onPositionJump(gen) }
         if (reason != Player.DISCONTINUITY_REASON_AUTO_TRANSITION && reason != Player.DISCONTINUITY_REASON_INTERNAL) return
@@ -576,6 +581,7 @@ internal class ExoPlayerDriver(
   // ── EngineDriver ──
 
   override fun open(request: OpenRequest) {
+    connectionEpoch++
     val p = ensurePlayer()
     // Close the previous item's sockets now, even a read blocked on a dead one.
     cancelCallsExcept(emptySet())
@@ -789,7 +795,8 @@ internal class ExoPlayerDriver(
       offset,
       p.isPlaying,
       rate.toDouble(),
-      continuationCount,
+      connectionEpoch,
+      p.mediaItemCount - p.currentMediaItemIndex > 1,
     )
   }
 

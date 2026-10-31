@@ -15,6 +15,8 @@ class LiveSwapAlignerTest {
       list.getDouble(1),
       if (list.length() > 2) list.getBoolean(2) else true,
       if (list.length() > 3) list.getInt(3) else 0,
+      if (list.length() > 4) list.getDouble(4) else 1.0,
+      if (list.length() > 5) list.getBoolean(5) else false,
     )
 
   private fun name(step: LiveSwapAligner.Step) =

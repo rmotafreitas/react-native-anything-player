@@ -374,6 +374,219 @@
   ]
  },
  {
+  "name": "the old player plays at 0.75x: steered around its rate, not 1x, and lined up",
+  "readings": [
+   {
+    "t": 0,
+    "old": [
+     25.0,
+     30.0,
+     true,
+     0,
+     0.75
+    ],
+    "new": [
+     0,
+     20.0,
+     false
+    ]
+   },
+   {
+    "t": 250,
+    "old": [
+     25.1875,
+     30.25,
+     true,
+     0,
+     0.75
+    ],
+    "new": [
+     0,
+     20.25,
+     false
+    ]
+   },
+   {
+    "t": 500,
+    "old": [
+     25.375,
+     30.5,
+     true,
+     0,
+     0.75
+    ],
+    "new": [
+     0,
+     20.5,
+     false
+    ]
+   },
+   {
+    "t": 750,
+    "old": [
+     25.5625,
+     30.75,
+     true,
+     0,
+     0.75
+    ],
+    "new": [
+     0,
+     20.75,
+     false
+    ]
+   },
+   {
+    "t": 1000,
+    "old": [
+     25.75,
+     31.0,
+     true,
+     0,
+     0.75
+    ],
+    "new": [
+     0,
+     21.0,
+     false
+    ]
+   },
+   {
+    "t": 1250,
+    "old": [
+     25.9375,
+     31.25,
+     true,
+     0,
+     0.75
+    ],
+    "new": [
+     0,
+     21.25,
+     false
+    ]
+   },
+   {
+    "t": 1500,
+    "old": [
+     26.125,
+     31.5,
+     true,
+     0,
+     0.75
+    ],
+    "new": [
+     0,
+     21.5,
+     false
+    ]
+   },
+   {
+    "t": 1750,
+    "old": [
+     26.3125,
+     31.75,
+     true,
+     0,
+     0.75
+    ],
+    "new": [
+     0,
+     21.75,
+     false
+    ]
+   },
+   {
+    "t": 2000,
+    "old": [
+     26.5,
+     32.0,
+     true,
+     0,
+     0.75
+    ],
+    "new": [
+     0,
+     22.0,
+     false
+    ]
+   },
+   {
+    "t": 2250,
+    "old": [
+     26.6875,
+     32.25,
+     true,
+     0,
+     0.75
+    ],
+    "new": [
+     0,
+     22.25,
+     false
+    ]
+   },
+   {
+    "t": 2500,
+    "old": [
+     26.875,
+     32.5,
+     true,
+     0,
+     0.75
+    ],
+    "new": [
+     0,
+     22.5,
+     false
+    ]
+   },
+   {
+    "t": 4000,
+    "old": [
+     27.5,
+     34.0,
+     true,
+     0,
+     0.75
+    ],
+    "new": [
+     17.3,
+     24.0
+    ]
+   },
+   {
+    "t": 4100,
+    "old": [
+     27.52,
+     34.1,
+     true,
+     0,
+     0.75
+    ],
+    "new": [
+     17.49,
+     24.1
+    ]
+   }
+  ],
+  "expect": [
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "steer:4.00",
+   "steer:0.95",
+   "play"
+  ]
+ },
+ {
   "name": "a low bitrate's edge arrives in steps: its peak (edge less the time elapsed) gives the shift, once a later step confirms it",
   "readings": [
    {
@@ -2669,6 +2882,30 @@
   ],
   "expect": [
    "measure",
+   "fallback"
+  ]
+ },
+ {
+  "name": "a player's connection has ended with a replacement queued: falls back",
+  "readings": [
+   {
+    "t": 0,
+    "old": [
+     25,
+     30,
+     true,
+     0,
+     1.0,
+     true
+    ],
+    "new": [
+     0,
+     20,
+     false
+    ]
+   }
+  ],
+  "expect": [
    "fallback"
   ]
  },
