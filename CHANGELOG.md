@@ -9,11 +9,20 @@ open release pull request.
 
 ## [1.3.1](https://github.com/rmotafreitas/react-native-anything-player/compare/v1.3.0...v1.3.1) (2026-10-30)
 
+Quality switching for audio players. This release adds features, so by Semantic Versioning it should have been 1.4.0: the release tool missed the commits that added them. Nothing is removed or renamed, so upgrading is safe.
+
+### Added
+
+- **Audio renditions.** An audio `Player` takes `renditions`, separate files of one sound (e.g. MP3 at 320 and 192 kbps and AAC+ at 64 kbps), and switches between them with no gap, as video does. On iOS and Android this needs no video module; the second player is made only at the first switch. On the web, AirPlay and the visualizer follow the file that is playing. See [Qualities](docs/playback.md#qualities).
+- **Automatic quality for audio players.** Every player now reports its bandwidth. An audio player starts at the highest quality (a file starts at what the last reading fits), and two stalls within 30 s step it down. A live stream steps up again after 120 s without a stall; a step up that stalls again waits twice as long next time.
+- **A quality pick that holds.** `selectQuality(id)` and the new `load(source, { quality })` are kept for the next loads, matched by id; `'auto'` clears the pick. `Rendition.id` gives stable ids (default `r<index>`). JavaScript refuses an unknown or duplicate id, and `'auto'`, before anything changes.
+- **A failed switch is reported**: a non-fatal `error` with the new `QUALITY_SWITCH_FAILED` code and the new file's own failure in `cause`. The current file plays on. See [Errors](docs/errors.md).
 
 ### Fixed
 
-* a quality switch re-opened in place counts as a switch ([708fb09](https://github.com/rmotafreitas/react-native-anything-player/commit/708fb0911714360d38927129075301524c5f552e))
-* switches re-open in place on AirPlay; quiet steps up wait from the load and back off ([faa2998](https://github.com/rmotafreitas/react-native-anything-player/commit/faa29983b89e9cc8864b9e2776f60a78c28c95d0))
+- `selectQuality('auto')` lets go of a kept pick even when the current source has nothing to pick from.
+- On Safari with AirPlay (as on Cast), a quality switch re-opens the item in place instead of moving to an element the receiver isn't playing.
+- The background, listen-only mode and the audio fallback never lower an audio player's quality.
 
 ## [1.3.0](https://github.com/rmotafreitas/react-native-anything-player/compare/v1.2.1...v1.3.0) (2026-10-30)
 

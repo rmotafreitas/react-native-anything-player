@@ -6,14 +6,15 @@ import { verifySecurityPatch } from "./check-security-patches.mjs";
 
 const patched = new Map([
   ["GHSA-vfj7-8cjw-p6xm", ["braces", "3.0.3"]],
-  ["GHSA-86w9-cpqp-85rv", ["node-forge", "1.4.0"]],
   ["GHSA-mrhx-c7xc-m3w5", ["zod", "3.25.76"]],
   ["GHSA-gcqx-w48m-w2h4", ["deepmerge", "4.3.1"]],
+  ["GHSA-3g3m-2fjr-6pw4", ["glob", "13.0.6"]],
+  ["GHSA-g3hv-75wg-m249", ["minimatch", "10.2.6"]],
 ]);
 const require = createRequire(path.join(process.cwd(), "package.json"));
 for (const [name, version] of patched.values()) {
   assert.equal(require(name + "/package.json").version, version);
-  verifySecurityPatch(name);
+  await verifySecurityPatch(name);
 }
 const result = spawnSync("npm", ["audit", "--json"], { encoding: "utf8", timeout: 120000 });
 assert.ok(!result.error && [0, 1].includes(result.status), "npm audit must complete");

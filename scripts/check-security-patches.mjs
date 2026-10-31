@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
-import { constants, generateKeyPairSync, privateEncrypt } from "node:crypto";
+import fs, { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-export function verifySecurityPatch(name, cwd = process.cwd()) {
+export async function verifySecurityPatch(name, cwd = process.cwd()) {
   const require = createRequire(path.join(cwd, "package.json"));
   const library = require(name);
   if (name === "braces") {
@@ -32,24 +33,34 @@ export function verifySecurityPatch(name, cwd = process.cwd()) {
       assert.ok(library.sprintf("%.999999999" + specifier, 1.25).length < 120);
     }
     assert.equal(library.sprintf("%.0g", 1.25), "1");
-  } else if (name === "node-forge") {
-    const { publicKey, privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
-    const key = library.pki.publicKeyFromPem(publicKey.export({ type: "pkcs1", format: "pem" }));
-    const digest = library.md.sha256.create().update("security regression").digest().getBytes();
-    const asn1 = library.asn1;
-    const node = (type, value, constructed = false) => asn1.create(asn1.Class.UNIVERSAL, type, constructed, value);
-    const oid = node(asn1.Type.OID, asn1.oidToDer(library.pki.oids.sha256).getBytes());
-    const nil = node(asn1.Type.NULL, "");
-    const sign = algorithm => {
-      const info = node(asn1.Type.SEQUENCE, [node(asn1.Type.SEQUENCE, algorithm, true), node(asn1.Type.OCTETSTRING, digest)], true);
-      const der = Buffer.from(asn1.toDer(info).getBytes(), "binary");
-      const encoded = Buffer.concat([Buffer.from([0, 1]), Buffer.alloc(256 - der.length - 3, 255), Buffer.from([0]), der]);
-      return privateEncrypt({ key: privateKey, padding: constants.RSA_NO_PADDING }, encoded).toString("binary");
-    };
-    for (const valid of [[oid], [oid, nil]]) assert.equal(key.verify(digest, sign(valid)), true);
-    for (const invalid of [[oid, nil, nil], [oid, nil, node(asn1.Type.OCTETSTRING, "garbage")]]) {
-      assert.throws(() => key.verify(digest, sign(invalid)), /DigestInfo/);
+  } else if (name === "glob") {
+    // GHSA-3g3m-2fjr-6pw4: an aborted walk rejected but kept reading
+    // directories. Fixed upstream in 14.0.2; the Expo CLI's 13.0.6 is patched
+    // to stop, and its entry is the unminified build that the patch covers.
+    const root = mkdtempSync(path.join(tmpdir(), "rnap-glob-"));
+    try {
+      for (const dir of ["a/x", "a/y", "b/x", "b/y", "c/x"]) mkdirSync(path.join(root, dir), { recursive: true });
+      assert.equal((await library.glob("**", { cwd: root })).length, 9);
+      const controller = new AbortController();
+      let reads = 0;
+      const readdir = (...args) => {
+        if (++reads === 2) controller.abort();
+        return fs.readdir(...args);
+      };
+      await assert.rejects(library.glob("**", { cwd: root, signal: controller.signal, fs: { ...fs, readdir } }));
+      const atRejection = reads;
+      await new Promise(resolve => setTimeout(resolve, 50));
+      assert.equal(reads, atRejection);
+    } finally {
+      rmSync(root, { recursive: true });
     }
+  } else if (name === "minimatch") {
+    // GHSA-g3hv-75wg-m249: each "**/.." doubled the patterns without bound,
+    // then every pair was compared. Fixed upstream in 11.0.1; the Expo CLI's
+    // 10.2.6 is patched to stop at braceExpandMax.
+    const pattern = "**/../x/y/".repeat(10) + "z";
+    assert.ok(new library.Minimatch(pattern, { optimizationLevel: 2, braceExpandMax: 64 }).set.length <= 64);
+    assert.equal(library.minimatch("a/x/y/z", "**/x/y/z", { optimizationLevel: 2 }), true);
   } else if (name === "zod") {
     // GHSA-mrhx-c7xc-m3w5: an oversized array/set built one issue per bad
     // element before its size bound was reported. Fixed upstream in 4.6.6;
@@ -84,7 +95,7 @@ export function verifySecurityPatch(name, cwd = process.cwd()) {
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   for (const name of process.argv.slice(2)) {
-    verifySecurityPatch(name);
+    await verifySecurityPatch(name);
     console.log(name + ": security patch regression passed");
   }
 }

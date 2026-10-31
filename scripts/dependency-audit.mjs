@@ -3,11 +3,6 @@ import { spawnSync } from "node:child_process";
 // Unpatched build-tool advisories reviewed against the actual resolved paths.
 // Do not broaden these to package-wide exclusions: an added runtime path must fail.
 const exceptions = {
-  "GHSA-86w9-cpqp-85rv": {
-    name: "node-forge", version: "1.4.0",
-    paths: [".>expo>@expo/cli>node-forge"],
-    reason: "Installed RSA DigestAlgorithm validation backport passes the malformed-signature regression",
-  },
   "GHSA-vfj7-8cjw-p6xm": {
     name: "braces", version: "3.0.3",
     paths: [".>expo>@expo/cli>@expo/metro-file-map>micromatch>braces"],
