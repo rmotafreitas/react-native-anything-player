@@ -18,6 +18,8 @@ export interface StoredItem {
   keywords: string[];
   kind: string;
   source: Record<string, unknown>;
+  /** The quality to start at: a rendition id, or `'auto'`. */
+  quality?: string;
 }
 
 /** How long the app's search handler may take to answer. */

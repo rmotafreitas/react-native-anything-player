@@ -1,0 +1,22 @@
+[
+  { "name": "the same file", "a": { "uri": "https://r.example/320" }, "b": { "uri": "https://r.example/320" }, "same": true },
+  { "name": "another file", "a": { "uri": "https://r.example/320" }, "b": { "uri": "https://r.example/64" }, "same": false },
+  {
+    "name": "the same renditions in another order, whatever the uri",
+    "a": { "uri": "https://r.example/320", "renditions": ["https://r.example/320", "https://r.example/64"] },
+    "b": { "uri": "https://r.example/64", "renditions": ["https://r.example/64", "https://r.example/320"] },
+    "same": true
+  },
+  {
+    "name": "one rendition more",
+    "a": { "uri": "https://r.example/320", "renditions": ["https://r.example/320"] },
+    "b": { "uri": "https://r.example/320", "renditions": ["https://r.example/320", "https://r.example/64"] },
+    "same": false
+  },
+  {
+    "name": "renditions against one file",
+    "a": { "uri": "https://r.example/320", "renditions": ["https://r.example/320"] },
+    "b": { "uri": "https://r.example/320" },
+    "same": false
+  }
+]

@@ -978,6 +978,13 @@ export interface CatalogItem {
    * listed under a "More" folder. See the Cars & watches guide.
    */
   group?: string;
+  /**
+   * The quality a voice request or a car pick starts at: an id from the
+   * source's `renditions`, or `'auto'` (as `load(source, { quality })`). A
+   * player that native code creates (no JavaScript running) has no pick of its
+   * own; omit it to keep the player's current pick.
+   */
+  quality?: string;
 }
 
 /** Payload of the `searchPlay` event. */

@@ -166,7 +166,7 @@ export function normalizeSource(input: SourceInput): Record<string, unknown> {
  * renditions lack is refused (an adaptive source's variants are only known
  * once it loads).
  */
-function checkQuality(quality: unknown, renditions: unknown): void {
+export function checkQuality(quality: unknown, renditions: unknown): void {
   if (typeof quality !== 'string' || quality === '') {
     throw new PlayerError({
       code: 'INVALID_ARGUMENT',
