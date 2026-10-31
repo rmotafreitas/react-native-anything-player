@@ -67,6 +67,11 @@ class IcyMetadataReaderTest {
       while (next.get() < bodies.size) {
         val socket: Socket = try { server.accept() } catch (_: Exception) { return@Thread }
         accepted.add(socket)
+        // Accepted as tearDown closed the server: its sweep may have run already.
+        if (server.isClosed) {
+          runCatching { socket.close() }
+          return@Thread
+        }
         Thread { answer(socket, bodies, next, headers) }.apply { isDaemon = true }.start()
       }
     }.apply { isDaemon = true }.start()
