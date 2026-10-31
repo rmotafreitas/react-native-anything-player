@@ -72,9 +72,12 @@ internal data class CatalogSnapshot(
  * (also by the media service with no JS in the process); written atomically
  * (a temp file, then a rename) so a kill mid-write keeps the previous catalog.
  * A file from a newer library version is read as empty and left alone until
- * the app sets a catalog again. Twin: `CatalogStore.swift`.
+ * the app sets a catalog again. Until the app has stored one, [seed] is the
+ * catalog the app bundles (the Expo plugin's `catalog` option): a fresh
+ * install answers voice requests and cars before it was ever opened. Twin:
+ * `CatalogStore.swift`.
  */
-internal class CatalogStore(private val file: File) {
+internal class CatalogStore(private val file: File, private val seed: () -> String? = { null }) {
   private var loaded = false
   private var playerId = DEFAULT_PLAYER_ID
   private var playerOptions: JSONObject? = null
@@ -83,6 +86,16 @@ internal class CatalogStore(private val file: File) {
   private var browse: JSONObject? = null
   private var recentIds: List<String> = emptyList()
   private var revision = 0L
+  /**
+   * The bundled catalog's id (`seed`) while the catalog in use is the bundled
+   * one, saved with it when what played is remembered: an app update that
+   * bundles another one replaces it, until the app calls `setCatalog`.
+   */
+  private var seedId: String? = null
+  /** `setFavorites` ran since the last `setCatalog`: an updated bundled catalog keeps them. */
+  private var favoritesSet = false
+  /** The stored file is a newer library's: nothing overwrites it until `replace`. */
+  private var newerFile = false
 
   @Synchronized
   fun snapshot(): CatalogSnapshot {
@@ -100,13 +113,16 @@ internal class CatalogStore(private val file: File) {
     val limit = parseBrowse(newBrowse).recentLimit
     val recent = recentIds.filter { played -> entries.any { it.id == played } }.take(limit)
     // Saved first: a failed write rejects setCatalog and keeps the previous catalog.
-    write(Persisted(id, newPlayerOptions, last, entries, newBrowse, recent))
+    write(Persisted(id, newPlayerOptions, last, entries, newBrowse, recent, seed = null, favoritesSet = false))
     items = entries
     playerId = id
     playerOptions = newPlayerOptions
     lastPlayedId = last
     browse = newBrowse
     recentIds = recent
+    seedId = null
+    favoritesSet = false
+    newerFile = false
     revision += 1
   }
 
@@ -115,8 +131,9 @@ internal class CatalogStore(private val file: File) {
   fun setFavorites(ids: List<String>) {
     ensureLoaded()
     val updated = JSONObject(browse?.toString() ?: "{}").put("favorites", JSONArray(ids.distinct().filter { id -> items.any { it.id == id } }))
-    write(Persisted(playerId, playerOptions, lastPlayedId, items, updated, recentIds))
+    if (!newerFile) write(Persisted(playerId, playerOptions, lastPlayedId, items, updated, recentIds, seedId, favoritesSet = true))
     browse = updated
+    favoritesSet = true
     revision += 1
   }
 
@@ -132,28 +149,64 @@ internal class CatalogStore(private val file: File) {
     recentIds = recent
     revision += 1
     // Best effort: losing "what played last" only changes an empty request.
-    runCatching { write(Persisted(playerId, playerOptions, id, items, browse, recent)) }
+    if (!newerFile) runCatching { write(Persisted(playerId, playerOptions, id, items, browse, recent, seedId, favoritesSet)) }
   }
 
   private fun ensureLoaded() {
     if (loaded) return
     loaded = true
-    if (!file.exists()) return
-    try {
-      val root = JSONObject(file.readText())
-      if (root.optInt("version", 0) > VERSION) return
-      playerId = root.optNonEmpty("playerId") ?: DEFAULT_PLAYER_ID
-      playerOptions = root.optJSONObject("playerOptions")
-      lastPlayedId = root.optNonEmpty("lastPlayedId")
-      browse = root.optJSONObject("browse")
-      recentIds = root.optJSONArray("recentIds")?.let { array -> (0 until array.length()).mapNotNull { array.optString(it).takeIf { s -> s.isNotEmpty() } } } ?: emptyList()
-      val array = root.optJSONArray("items") ?: JSONArray()
-      items = (0 until array.length()).mapNotNull { index -> array.optJSONObject(index)?.let { runCatching { CatalogEntry(it) }.getOrNull() } }
-    } catch (_: JSONException) {
-      // A damaged file is an empty catalog; the next setCatalog rewrites it.
-      items = emptyList()
+    val text = if (file.exists()) file.readText() else null
+    // A newer library's file: read as empty and left alone until the app sets a catalog.
+    if (text != null && newer(text)) {
+      newerFile = true
+      return
+    }
+    // A damaged one is nothing to keep: as if there were none.
+    val stored = text?.let { parse(it) }
+    if (stored != null && stored.optNonEmpty("seed") == null) return apply(stored)
+    // Nothing the app set: the bundled catalog, the newest one if an update brought another.
+    val bundled = seed()?.let { parse(it) }
+    val bundledId = bundled?.optNonEmpty("seed") ?: "bundled"
+    if (bundled == null || (stored != null && bundledId == stored.optNonEmpty("seed"))) return stored?.let { apply(it) } ?: Unit
+    apply(bundled)
+    seedId = bundledId
+    if (stored == null) return
+    // What played, and the favorites the user set, stay for the items still there.
+    val ids = items.map { it.id }.toSet()
+    lastPlayedId = stored.optNonEmpty("lastPlayedId")?.takeIf { it in ids }
+    recentIds = strings(stored.optJSONArray("recentIds")).filter { it in ids }
+    if (stored.optBoolean("favoritesSet")) {
+      favoritesSet = true
+      val favorites = strings(stored.optJSONObject("browse")?.optJSONArray("favorites")).filter { it in ids }
+      browse = JSONObject(browse?.toString() ?: "{}").put("favorites", JSONArray(favorites))
     }
   }
+
+  private fun newer(text: String): Boolean = runCatching { JSONObject(text).optInt("version", 0) > VERSION }.getOrDefault(false)
+
+  /** A catalog file's root, or `null` when it is damaged or from a newer library version. */
+  private fun parse(text: String): JSONObject? =
+    try {
+      JSONObject(text).takeIf { it.optInt("version", 0) <= VERSION }
+    } catch (_: JSONException) {
+      // A damaged file is an empty catalog; the next setCatalog rewrites it.
+      null
+    }
+
+  private fun apply(root: JSONObject) {
+    playerId = root.optNonEmpty("playerId") ?: DEFAULT_PLAYER_ID
+    playerOptions = root.optJSONObject("playerOptions")
+    lastPlayedId = root.optNonEmpty("lastPlayedId")
+    browse = root.optJSONObject("browse")
+    recentIds = strings(root.optJSONArray("recentIds"))
+    val array = root.optJSONArray("items") ?: JSONArray()
+    items = (0 until array.length()).mapNotNull { index -> array.optJSONObject(index)?.let { runCatching { CatalogEntry(it) }.getOrNull() } }
+    seedId = root.optNonEmpty("seed")
+    favoritesSet = root.optBoolean("favoritesSet")
+  }
+
+  private fun strings(array: JSONArray?): List<String> =
+    array?.let { (0 until it.length()).mapNotNull { index -> it.optString(index).takeIf { s -> s.isNotEmpty() } } } ?: emptyList()
 
   /** What goes to disk, as one value (the file is always written whole). */
   private class Persisted(
@@ -163,6 +216,9 @@ internal class CatalogStore(private val file: File) {
     val items: List<CatalogEntry>,
     val browse: JSONObject?,
     val recentIds: List<String>,
+    /** The bundled catalog's id, while it is the one in use. */
+    val seed: String?,
+    val favoritesSet: Boolean,
   )
 
   private fun write(state: Persisted) {
@@ -174,6 +230,8 @@ internal class CatalogStore(private val file: File) {
         .put("lastPlayedId", state.lastPlayedId ?: JSONObject.NULL)
         .put("browse", state.browse ?: JSONObject.NULL)
         .put("recentIds", JSONArray(state.recentIds))
+        .put("seed", state.seed ?: JSONObject.NULL)
+        .put("favoritesSet", state.favoritesSet)
         .put("items", JSONArray().also { array -> state.items.forEach { array.put(it.json) } })
     file.parentFile?.mkdirs()
     val temp = File(file.parentFile, "${file.name}.tmp")

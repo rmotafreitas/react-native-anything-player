@@ -39,6 +39,7 @@
       "types": "./lib/typescript/src/video/index.d.ts",
       "default": "./lib/module/video/index.js"
     },
+    "./plugin/catalogSeed": "./lib/plugin/catalogSeed.cjs",
     "./app.plugin.js": "./app.plugin.js",
     "./package.json": "./package.json"
   },

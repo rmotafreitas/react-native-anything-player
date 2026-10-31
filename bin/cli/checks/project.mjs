@@ -1,6 +1,9 @@
 // Project-level checks: versions, the New Architecture switch, and the Expo
 // config plugin (listed, and its options valid).
 
+import fs from 'node:fs';
+import { createRequire } from 'node:module';
+import path from 'node:path';
 import { compareVersions, versionParts } from '../project.mjs';
 import { expoOptions, moduleStates } from '../modules.mjs';
 import { finding } from '../findings.mjs';
@@ -193,6 +196,73 @@ function isPlainObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
+/** `catalog`: the path of a JSON file, from the project root, that the build bundles. */
+function checkCatalogOption(ctx, value, findings) {
+  const fix = {
+    file: 'app.json',
+    change:
+      'set `catalog` to the path of a JSON file with `{ items, playerId?, playerOptions?, browse? }` (docs/voice.md)',
+  };
+  if (value === false || value == null) return;
+  if (typeof value !== 'string' || value.trim() === '') {
+    findings.push(
+      finding(
+        'expo-plugin-options',
+        'error',
+        'Plugin option `catalog` must be the path of a JSON file.',
+        fix
+      )
+    );
+    return;
+  }
+  let input;
+  try {
+    input = JSON.parse(fs.readFileSync(path.resolve(ctx.cwd, value), 'utf8'));
+  } catch (error) {
+    findings.push(
+      finding(
+        'expo-plugin-options',
+        'error',
+        `Plugin option \`catalog\`: ${value} cannot be read as JSON (${error.message}); the build would fail.`,
+        fix
+      )
+    );
+    return;
+  }
+  if (!input || typeof input !== 'object' || !Array.isArray(input.items)) {
+    findings.push(
+      finding(
+        'expo-plugin-options',
+        'error',
+        `Plugin option \`catalog\`: ${value} needs an \`items\` array.`,
+        fix
+      )
+    );
+    return;
+  }
+  // The prebuild's own check, with the app's installed version of the library.
+  let catalogSeed;
+  try {
+    ({ catalogSeed } = createRequire(path.join(ctx.cwd, 'package.json'))(
+      'react-native-anything-player/plugin/catalogSeed'
+    ));
+  } catch {
+    return; // A version without it, or not installed: the prebuild says.
+  }
+  try {
+    catalogSeed(input);
+  } catch (error) {
+    findings.push(
+      finding(
+        'expo-plugin-options',
+        'error',
+        `Plugin option \`catalog\`: ${value}: ${error.message} The prebuild would fail.`,
+        fix
+      )
+    );
+  }
+}
+
 function checkOptions(ctx, findings) {
   if (ctx.jsConfigFile) return;
   const raw = ctx.expo.rawOptions;
@@ -216,6 +286,10 @@ function checkOptions(ctx, findings) {
   }
 
   for (const [key, value] of Object.entries(raw)) {
+    if (key === 'catalog') {
+      checkCatalogOption(ctx, value, findings);
+      continue;
+    }
     if (!KNOWN_OPTIONS.has(key)) {
       findings.push(
         finding(

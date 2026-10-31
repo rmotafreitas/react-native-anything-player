@@ -79,7 +79,7 @@ Three more switches were measured and left out, because they would save little o
 | `android/gradle.properties` | `rnapDecodersDir=/path` | take the software decoders from a folder instead of RNAP's GitHub release |
 | `pod install` | `RNAP_VIDEO=1` (or `"rnap.video": "true"` in `ios/Podfile.properties.json`) | build video in on iOS (DASH needs nothing: RNAP rewrites CMAF DASH as HLS for AVPlayer) |
 | Expo config plugin | `["react-native-anything-player", { "backgroundAudio": false }]` | do not add the iOS `audio` background mode, unless `video` has Picture in Picture on: that needs the mode, so the plugin still adds it |
-| Expo config plugin | `cast`, `siri`, `assistant`, `sound`, `car`, `video`, `videoDecoders` | Google Cast, Siri (extension and shortcuts), Google Assistant / Gemini, the Sound API, CarPlay and Android Auto, video with Picture in Picture, Android's software decoders: see [Getting started](getting-started.md#expo) |
+| Expo config plugin | `cast`, `siri`, `assistant`, `sound`, `car`, `video`, `videoDecoders`, `catalog` | Google Cast, Siri (extension and shortcuts), Google Assistant / Gemini, the Sound API, CarPlay and Android Auto, video with Picture in Picture, Android's software decoders, a catalog bundled for a fresh install: see [Getting started](getting-started.md#expo) |
 
 The recovery timings that are *not* configurable are fixed on purpose; [recovery.md](recovery.md) explains each.
 

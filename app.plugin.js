@@ -28,6 +28,10 @@
 //   docs/cars-and-watches.md.
 // - `assistant` (default true): Google Assistant and Gemini requests to the
 //   main activity (`MEDIA_PLAY_FROM_SEARCH` → `AnythingPlayer.handleIntent`).
+// - `catalog` (a JSON file, from the project root): what the app passes to
+//   `setCatalog` (`{ items, playerId, playerOptions, browse }`), bundled as
+//   the catalog voice requests and cars use until the app sets its own (a
+//   fresh install that was never opened). See docs/voice.md.
 const fs = require('fs');
 const path = require('path');
 const {
@@ -247,10 +251,132 @@ function withAndroid(config, resolved) {
   });
 }
 
+const SEED_ANDROID = [
+  'app',
+  'src',
+  'main',
+  'assets',
+  'rnap',
+  'catalog-seed.json',
+];
+const SEED_IOS = 'rnap-catalog-seed.json';
+
+/**
+ * `catalog`: the file serialized by the library's own `setCatalog` code (so
+ * a bundled item is exactly what `setCatalog` would store), written where
+ * native reads it while it has no catalog of its own.
+ */
+function withCatalogSeed(config, file) {
+  helpers.checkCatalog(file);
+  const seed = (projectRoot) => {
+    const full = path.resolve(projectRoot, file);
+    let input;
+    try {
+      input = JSON.parse(fs.readFileSync(full, 'utf8'));
+    } catch (error) {
+      throw new Error(
+        `react-native-anything-player: catalog: cannot read ${full}: ${error.message}`
+      );
+    }
+    let catalogSeed;
+    try {
+      ({ catalogSeed } = require('./lib/plugin/catalogSeed.cjs'));
+    } catch (error) {
+      throw new Error(
+        `react-native-anything-player: lib/plugin/catalogSeed.cjs is missing: build the package (yarn prepare). ${error.message}`
+      );
+    }
+    try {
+      return JSON.stringify(catalogSeed(input));
+    } catch (error) {
+      throw new Error(
+        `react-native-anything-player: catalog (${file}): ${error.message}`
+      );
+    }
+  };
+  config = withDangerousMod(config, [
+    'android',
+    (cfg) => {
+      const out = path.join(
+        cfg.modRequest.platformProjectRoot,
+        ...SEED_ANDROID
+      );
+      fs.mkdirSync(path.dirname(out), { recursive: true });
+      fs.writeFileSync(out, seed(cfg.modRequest.projectRoot));
+      return cfg;
+    },
+  ]);
+  config = withDangerousMod(config, [
+    'ios',
+    (cfg) => {
+      const { platformProjectRoot, projectName, projectRoot } = cfg.modRequest;
+      fs.writeFileSync(
+        path.join(platformProjectRoot, projectName, SEED_IOS),
+        seed(projectRoot)
+      );
+      return cfg;
+    },
+  ]);
+  return withXcodeProject(config, (cfg) => {
+    const filepath = path.join(cfg.modRequest.projectName, SEED_IOS);
+    if (!cfg.modResults.hasFile(filepath))
+      IOSConfig.XcodeUtils.addResourceFileToGroup({
+        filepath,
+        groupName: cfg.modRequest.projectName,
+        project: cfg.modResults,
+        isBuildFile: true,
+      });
+    return cfg;
+  });
+}
+
+/**
+ * No `catalog` (any more): a bundled one a prebuild before wrote becomes an
+ * empty one, which native reads as none (and lets go of a stored copy of the
+ * old one). Overwritten, not deleted: the Xcode project still lists it.
+ */
+function withoutCatalogSeed(config) {
+  const empty = JSON.stringify(helpers.EMPTY_CATALOG_SEED);
+  // Only a file that is there: opened as it is (no separate check to race).
+  const overwrite = (file) => {
+    let fd;
+    try {
+      fd = fs.openSync(file, 'r+');
+    } catch (error) {
+      if (error.code === 'ENOENT') return;
+      throw error;
+    }
+    try {
+      fs.ftruncateSync(fd);
+      fs.writeSync(fd, empty, 0);
+    } finally {
+      fs.closeSync(fd);
+    }
+  };
+  config = withDangerousMod(config, [
+    'android',
+    (cfg) => {
+      overwrite(path.join(cfg.modRequest.platformProjectRoot, ...SEED_ANDROID));
+      return cfg;
+    },
+  ]);
+  return withDangerousMod(config, [
+    'ios',
+    (cfg) => {
+      const { platformProjectRoot, projectName } = cfg.modRequest;
+      overwrite(path.join(platformProjectRoot, projectName, SEED_IOS));
+      return cfg;
+    },
+  ]);
+}
+
 /** @param {object} [options] see the header */
 function withAnythingPlayer(config, options = {}) {
   const resolved = helpers.resolveOptions(options);
-  return withAndroid(withIos(config, resolved), resolved);
+  config = withAndroid(withIos(config, resolved), resolved);
+  return resolved.catalog
+    ? withCatalogSeed(config, resolved.catalog)
+    : withoutCatalogSeed(config);
 }
 
 module.exports = createRunOncePlugin(withAnythingPlayer, pkg.name, pkg.version);

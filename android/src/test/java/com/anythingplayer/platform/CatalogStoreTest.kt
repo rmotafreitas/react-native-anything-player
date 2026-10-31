@@ -23,6 +23,88 @@ class CatalogStoreTest {
     ).also { json -> extra.forEach { (key, value) -> json.put(key, value) } }
 
   @Test
+  fun `the bundled catalog answers until the app stores its own`() {
+    val seed =
+      JSONObject()
+        .put("version", CatalogStore.VERSION)
+        .put("playerId", "radio")
+        .put("items", org.json.JSONArray().put(item("jazz", "Jazz FM")))
+        .toString()
+    var reads = 0
+    val bundled = { reads++; seed }
+
+    val fresh = CatalogStore(file(), bundled).snapshot()
+    assertEquals("radio", fresh.playerId)
+    assertEquals(listOf("jazz"), fresh.items.map { it.id })
+    assertEquals(false, file().exists())
+
+    // What the app stores wins, also over a restart.
+    CatalogStore(file(), bundled).replace(listOf(item("news", "World News")), "main", null)
+    reads = 0
+    val stored = CatalogStore(file(), bundled).snapshot()
+    assertEquals(listOf("news"), stored.items.map { it.id })
+    assertEquals(0, reads)
+
+    // No bundled catalog, nothing stored: empty, as before.
+    file().delete()
+    assertEquals(emptyList<String>(), CatalogStore(file()).snapshot().items.map { it.id })
+  }
+
+  private fun bundle(id: String, vararg items: JSONObject) =
+    JSONObject()
+      .put("version", CatalogStore.VERSION)
+      .put("playerId", "radio")
+      .put("seed", id)
+      .put("items", org.json.JSONArray().also { array -> items.forEach { array.put(it) } })
+      .toString()
+
+  @Test
+  fun `an update that bundles another catalog replaces the bundled one in use, keeping what played`() {
+    val first = bundle("aaaa", item("jazz", "Jazz FM"), item("news", "World News"))
+    CatalogStore(file()) { first }.played("news")
+    assertEquals(true, file().exists())
+
+    // Restarted on the same bundle: the stored copy, with what played.
+    assertEquals("news", CatalogStore(file()) { first }.snapshot().lastPlayedId)
+
+    // An update bundles another one: it wins; what played stays while its item does.
+    val second = bundle("bbbb", item("news", "World News"), item("rock", "Rock FM"))
+    val updated = CatalogStore(file()) { second }.snapshot()
+    assertEquals(listOf("news", "rock"), updated.items.map { it.id })
+    assertEquals("news", updated.lastPlayedId)
+    CatalogStore(file()) { second }.played("rock")
+    assertEquals(null, CatalogStore(file()) { bundle("cccc", item("jazz", "Jazz FM")) }.snapshot().lastPlayedId)
+
+    // The option removed: an empty bundled catalog empties the copy of the old one.
+    val none = "{\"version\":1,\"items\":[],\"seed\":\"none\"}"
+    assertEquals(emptyList<String>(), CatalogStore(file()) { none }.snapshot().items.map { it.id })
+
+    // The bundle's own favorites, until the user sets some.
+    fun withFavorites(id: String, vararg favorites: String) =
+      JSONObject(bundle(id, item("news", "World News"), item("rock", "Rock FM")))
+        .put("browse", JSONObject().put("favorites", org.json.JSONArray(favorites.toList())))
+        .toString()
+    file().delete()
+    CatalogStore(file()) { withFavorites("f1", "news") }.played("news")
+    assertEquals(listOf("rock"), CatalogStore(file()) { withFavorites("f2", "rock") }.snapshot().browse.favorites)
+    CatalogStore(file()) { withFavorites("f2", "rock") }.setFavorites(listOf("news"))
+    assertEquals(listOf("news"), CatalogStore(file()) { withFavorites("f3", "rock") }.snapshot().browse.favorites)
+
+    // A newer library's file stays as it is: no bundled catalog over it.
+    val newer = "{\"version\":${CatalogStore.VERSION + 1},\"items\":[]}"
+    file().writeText(newer)
+    val left = CatalogStore(file()) { second }
+    assertEquals(emptyList<String>(), left.snapshot().items.map { it.id })
+    left.played("news")
+    left.setFavorites(listOf("news"))
+    assertEquals(newer, file().readText())
+
+    // What the app sets is never replaced by a bundled one.
+    CatalogStore(file()) { first }.replace(listOf(item("mine", "Mine")), "main", null)
+    assertEquals(listOf("mine"), CatalogStore(file()) { second }.snapshot().items.map { it.id })
+  }
+
+  @Test
   fun `a catalog survives a restart with its player and last played item`() {
     val store = CatalogStore(file())
     store.replace(

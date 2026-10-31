@@ -127,7 +127,7 @@ The doctor reports a `module-conflict` warning when the Expo plugin and a native
 | `expo-sdk` | error / warning | Expo SDK 54 or newer (the first with RN 0.80), and that `expo` is a dependency | Upgrade Expo |
 | `library-installed` | error / info | `react-native-anything-player` resolves, in `node_modules` or in a workspace | `npm install react-native-anything-player` |
 | `expo-plugin` | error | The plugin is in `expo.plugins` | Add it, then rebuild or `npx expo prebuild` |
-| `expo-plugin-options` | error / warning | The options are the ones the registry knows: `backgroundAudio`, `cast`, `siri`, `assistant`, `sound`, `car`, `video`, `videoDecoders`. Cast takes `receiverApplicationId` and `localNetworkUsageDescription`; Siri takes `usageDescription` and `appIntents` | Fix the plugin entry in app.json |
+| `expo-plugin-options` | error / warning | The options are the ones the registry knows: `backgroundAudio`, `cast`, `siri`, `assistant`, `sound`, `car`, `video`, `videoDecoders`, and `catalog` (a JSON file with an `items` array). Cast takes `receiverApplicationId` and `localNetworkUsageDescription`; Siri takes `usageDescription` and `appIntents` | Fix the plugin entry in app.json |
 | `expo-config-js` | info | app.config.js/ts cannot be evaluated. Expo checks then read app.json only | Verify by hand |
 | `new-arch-ios` | error | New Architecture is not switched off (`Podfile.properties.json`, `RCT_NEW_ARCH_ENABLED`, `newArchEnabled` in app.json) | Enable it, then `pod install` |
 | `new-arch-android` | error | `newArchEnabled=true` in `android/gradle.properties` | Enable it, then rebuild |

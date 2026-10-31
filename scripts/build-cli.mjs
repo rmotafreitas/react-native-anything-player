@@ -5,6 +5,7 @@
 // `yarn prepare`, then smoke-tests the bundle.
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
@@ -44,3 +45,25 @@ if (!reported.includes(version)) {
   throw new Error(`lib/cli/rnap.mjs reports "${reported}", expected ${version}`);
 }
 console.log(`wrote ${path.relative(ROOT, OUT)} (${(fs.statSync(OUT).size / 1024).toFixed(1)} KB)`);
+
+// The catalog an app bundles (the Expo plugin's `catalog` option), built at
+// prebuild in Node by the library's own setCatalog serialization.
+const SEED = path.join(ROOT, 'lib/plugin/catalogSeed.cjs');
+await build({
+  entryPoints: [path.join(ROOT, 'src/core/catalogSeed.ts')],
+  outfile: SEED,
+  bundle: true,
+  minify: true,
+  platform: 'node',
+  format: 'cjs',
+  target: 'node20',
+  legalComments: 'none',
+  logLevel: 'warning',
+});
+const seed = createRequire(import.meta.url)(SEED).catalogSeed({
+  items: [{ id: 'a', title: 'A', source: 'https://example.com/a.mp3' }],
+});
+if (seed.items?.[0]?.source?.uri !== 'https://example.com/a.mp3') {
+  throw new Error(`lib/plugin/catalogSeed.cjs serialized ${JSON.stringify(seed)}`);
+}
+console.log(`wrote ${path.relative(ROOT, SEED)} (${(fs.statSync(SEED).size / 1024).toFixed(1)} KB)`);

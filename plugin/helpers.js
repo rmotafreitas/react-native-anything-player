@@ -52,7 +52,25 @@ function resolveOptions(options = {}) {
         }
       : null,
     videoDecoders: options.videoDecoders === true,
+    catalog: resolveCatalog(options.catalog),
   };
+}
+
+/** `catalog`: the path of a JSON file, from the project root (the plugin checks it; `rnap doctor` reports it). */
+function resolveCatalog(catalog) {
+  return catalog == null || catalog === false ? null : catalog;
+}
+
+/** What a bundled catalog becomes once the `catalog` option is gone: none. */
+const EMPTY_CATALOG_SEED = { version: 1, items: [], seed: 'none' };
+
+/** The `catalog` option as the plugin applies it: a non-empty path, or an error. */
+function checkCatalog(catalog) {
+  if (typeof catalog !== 'string' || catalog.trim() === '')
+    throw new Error(
+      'react-native-anything-player: `catalog` must be the path of a JSON file (from the project root).'
+    );
+  return catalog;
 }
 
 /** `car`: true (CarPlay and Android Auto), or `{ ios, android }` to leave one out. */
@@ -300,7 +318,9 @@ function injectHandleIntent(source) {
 
 module.exports = {
   DEFAULT_RECEIVER_ID,
+  EMPTY_CATALOG_SEED,
   addCarPlayScene,
+  checkCatalog,
   addPlayFromSearchFilter,
   applyEntitlements,
   applyGradleProperties,
