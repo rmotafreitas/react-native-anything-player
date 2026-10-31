@@ -148,6 +148,25 @@ test("the video option's object takes pictureInPicture, a boolean", (t) => {
   assert.deepEqual(check({ pictureInPicture: 'yes' }), ['error']);
 });
 
+test("the car option's object takes ios and android, booleans", (t) => {
+  const root = expoGood(t);
+  const appJson = JSON.parse(
+    fs.readFileSync(path.join(root, 'app.json'), 'utf8')
+  );
+  const check = (car) => {
+    appJson.expo.plugins = [[LIBRARY, { car }]];
+    fs.writeFileSync(path.join(root, 'app.json'), JSON.stringify(appJson));
+    const result = runCli(['doctor', '--json', '--cwd', root], { cwd: root });
+    return byId(result.json, 'expo-plugin-options').map(
+      (item) => item.severity
+    );
+  };
+  assert.deepEqual(check(true), []);
+  assert.deepEqual(check({ ios: false }), []);
+  assert.deepEqual(check({ carplay: false }), ['warning']);
+  assert.deepEqual(check({ ios: 'no' }), ['error']);
+});
+
 test('deliberate plugin choices are info, not errors', (t) => {
   const root = expoPluginOptions(t);
   const result = runCli(['doctor', '--json', '--cwd', root], { cwd: root });

@@ -21,10 +21,11 @@
 //   the Intents extension that hands requests to the app, and (unless
 //   `appIntents` is false) the App Intents of Siri shortcuts, Spotlight and the
 //   Shortcuts app (iOS 16+), compiled by the app target. See docs/voice.md.
-// - `car` (true): CarPlay and Android Auto browsing of the catalog (Gradle
-//   property `rnapCar`, Podfile property `rnap.car`), the CarPlay audio
-//   entitlement and CarPlay's scene in the Info.plist. Needs Apple's CarPlay
-//   audio entitlement approval. See docs/cars-and-watches.md.
+// - `car` (true, or `{ ios, android }` to leave one out): CarPlay and Android
+//   Auto browsing of the catalog (Gradle property `rnapCar`, Podfile property
+//   `rnap.car`), the CarPlay audio entitlement and CarPlay's scene in the
+//   Info.plist. CarPlay needs Apple's CarPlay audio entitlement approval. See
+//   docs/cars-and-watches.md.
 // - `assistant` (default true): Google Assistant and Gemini requests to the
 //   main activity (`MEDIA_PLAY_FROM_SEARCH` → `AnythingPlayer.handleIntent`).
 const fs = require('fs');
@@ -35,11 +36,13 @@ const {
   withAndroidManifest,
   withDangerousMod,
   withEntitlementsPlist,
+  withFinalizedMod,
   withGradleProperties,
   withInfoPlist,
   withMainActivity,
   withPodfileProperties,
   withXcodeProject,
+  IOSConfig,
   WarningAggregator,
 } = require('expo/config-plugins');
 const pkg = require('./package.json');
@@ -48,6 +51,89 @@ const extension = require('./plugin/intentsExtension');
 const appIntents = require('./plugin/appIntents');
 
 const RECEIVER_META = 'com.anythingplayer.CAST_RECEIVER_ID';
+
+/**
+ * The app target's Info.plist, found as Expo's Info.plist provider finds it:
+ * the Xcode project's `INFOPLIST_FILE`, then the first one in `ios/` (an
+ * extension's, such as Siri's, is never picked over the app's).
+ */
+function appInfoPlistPath(projectRoot, platformProjectRoot) {
+  try {
+    const project = IOSConfig.XcodeUtils.getPbxproj(projectRoot);
+    const setting = IOSConfig.Target.getXCBuildConfigurationFromPbxproj(
+      project,
+      { buildConfiguration: 'Release' }
+    )?.buildSettings?.INFOPLIST_FILE;
+    if (setting) {
+      const file = path.join(
+        platformProjectRoot,
+        setting.replace(/"/g, '').replace('$(SRCROOT)', '')
+      );
+      if (fs.existsSync(file)) return file;
+    }
+  } catch {
+    // No Xcode project: the glob below.
+  }
+  try {
+    return IOSConfig.Paths.getInfoPlistPath(projectRoot) || null;
+  } catch {
+    return null; // No iOS project yet.
+  }
+}
+
+/** Edits the app's Info.plist on disk (outside the `withInfoPlist` chain). */
+function editInfoPlist({ projectRoot, platformProjectRoot }, edit) {
+  const file = appInfoPlistPath(projectRoot, platformProjectRoot);
+  if (!file) return;
+  // The plist library expo/config-plugins itself uses.
+  const plist = require(
+    require.resolve('@expo/plist', {
+      paths: [path.dirname(require.resolve('expo/config-plugins'))],
+    })
+  );
+  const before = plist.default.parse(fs.readFileSync(file, 'utf8'));
+  const after = edit(before);
+  if (after !== before) fs.writeFileSync(file, plist.default.build(after));
+}
+
+/**
+ * CarPlay's scene, outside the `withInfoPlist` chain so the plugin order does
+ * not matter: removed from a project prebuilt before (dangerous mods run
+ * first), added back after every other Info.plist edit (finalized mods last;
+ * another plugin's finalized mod listed after this one still runs later).
+ */
+function withCarPlayScene(config) {
+  config = withDangerousMod(config, [
+    'ios',
+    (cfg) => {
+      editInfoPlist(cfg.modRequest, (plist) => {
+        const manifest = helpers.removeCarPlayScene(plist);
+        if (manifest === plist.UIApplicationSceneManifest) return plist;
+        const out = { ...plist, UIApplicationSceneManifest: manifest };
+        if (manifest === undefined) delete out.UIApplicationSceneManifest;
+        return out;
+      });
+      return cfg;
+    },
+  ]);
+  return withFinalizedMod(config, [
+    'ios',
+    (cfg) => {
+      editInfoPlist(cfg.modRequest, (plist) => {
+        if (!helpers.hasWindowScene(plist))
+          WarningAggregator.addWarningIOS(
+            'react-native-anything-player',
+            "car: the Info.plist has no UIWindowSceneSessionRoleApplication scene, so CarPlay's scene would leave the phone without a window. Adopt the scene life cycle first (docs/cars-and-watches.md)."
+          );
+        return {
+          ...plist,
+          UIApplicationSceneManifest: helpers.addCarPlayScene(plist),
+        };
+      });
+      return cfg;
+    },
+  ]);
+}
 
 function withIos(config, resolved) {
   config = withInfoPlist(config, (cfg) => {
@@ -58,18 +144,8 @@ function withIos(config, resolved) {
     cfg.modResults = helpers.applyPodfileProperties(cfg.modResults, resolved);
     return cfg;
   });
-  if (resolved.car) {
-    // Runs after the app's own scene setup (mods run last-added first).
-    config = withInfoPlist(config, (cfg) => {
-      if (!helpers.hasWindowScene(cfg.modResults))
-        WarningAggregator.addWarningIOS(
-          'react-native-anything-player',
-          "car: the Info.plist has no UIWindowSceneSessionRoleApplication scene, so CarPlay's scene would leave the phone without a window. Adopt the scene life cycle first (docs/cars-and-watches.md)."
-        );
-      return cfg;
-    });
-  }
-  if (!resolved.siri && !resolved.car) return config;
+  if (resolved.car?.ios) config = withCarPlayScene(config);
+  if (!resolved.siri && !resolved.car?.ios) return config;
   config = withEntitlementsPlist(config, (cfg) => {
     cfg.modResults = helpers.applyEntitlements(cfg.modResults, resolved);
     return cfg;

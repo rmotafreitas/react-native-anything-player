@@ -186,6 +186,7 @@ const OBJECT_OPTIONS = {
   },
   siri: { usageDescription: 'string', appIntents: 'boolean' },
   video: { pictureInPicture: 'boolean' },
+  car: { ios: 'boolean', android: 'boolean' },
 };
 
 function isPlainObject(value) {
