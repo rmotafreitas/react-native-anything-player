@@ -25,9 +25,11 @@ import { WebRuntime } from './WebRuntime';
 import { sameMedia } from '../engine/types';
 import type { PlaybackState } from '../engine/types';
 
-/** States that keep a loaded source: a pick of it plays on instead of opening again. */
+/**
+ * States that keep an opened source: a pick of it plays on instead of opening
+ * again (one still loading has not proved it opens: it is opened again).
+ */
 const HOLDS_SOURCE: ReadonlySet<PlaybackState> = new Set<PlaybackState>([
-  'loading',
   'buffering',
   'playing',
   'paused',

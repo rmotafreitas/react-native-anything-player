@@ -127,6 +127,11 @@ describe('web catalog', () => {
     await module.setCatalog(CATALOG, { playerId: 'main' });
     await play({ query: 'jazz' });
     const opened = module.getStatus('main') as { loadId: number };
+    // Playing: nothing changes.
+    await play({ query: 'jazz' });
+    expect((module.getStatus('main') as { loadId: number }).loadId).toBe(
+      opened.loadId
+    );
     await module.pause('main');
     events = [];
     await play({ query: 'jazz' });

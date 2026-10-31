@@ -31,9 +31,12 @@ private const val ADHOC_CAPACITY = 8
 internal object Voice {
   private val main = Handler(Looper.getMainLooper())
 
-  /** States that keep a loaded source: a pick of it plays on instead of opening again. */
+  /**
+   * States that keep an opened source: a pick of it plays on instead of
+   * opening again (one still loading has not proved it opens: it is opened again).
+   */
   private val HOLDS_SOURCE =
-    setOf(PlaybackState.LOADING, PlaybackState.BUFFERING, PlaybackState.PLAYING, PlaybackState.PAUSED, PlaybackState.STOPPED, PlaybackState.RECONNECTING)
+    setOf(PlaybackState.BUFFERING, PlaybackState.PLAYING, PlaybackState.PAUSED, PlaybackState.STOPPED, PlaybackState.RECONNECTING)
   /** The catalog file is written off the main thread (the last-played mark is written on every request). */
   private val writes = Executors.newSingleThreadExecutor { Thread(it, "rnap-catalog") }
   private var store: CatalogStore? = null

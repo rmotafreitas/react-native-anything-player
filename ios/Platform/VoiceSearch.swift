@@ -34,8 +34,9 @@ final class VoiceSearch {
   private static let handlerTimeout: TimeInterval = 5.5
   /// How long Siri waits for audio before it is told the request failed.
   private static let siriStartTimeout: TimeInterval = 8
-  /// States that keep a loaded source: a pick of it plays on instead of opening again.
-  private static let holdsSource: Set<PlaybackState> = [.loading, .buffering, .playing, .paused, .stopped, .reconnecting]
+  /// States that keep an opened source: a pick of it plays on instead of
+  /// opening again (one still loading has not proved it opens: it is opened again).
+  private static let holdsSource: Set<PlaybackState> = [.buffering, .playing, .paused, .stopped, .reconnecting]
 
   init(runtime: AnythingPlayerRuntime) {
     self.runtime = runtime
@@ -195,7 +196,7 @@ final class VoiceSearch {
         // The item's `quality`: an id, `'auto'` for automatic; absent: keep the pick.
         let quality = (item["quality"] as? String).flatMap { $0 == "auto" ? nil : $0 }
         try controller.load(
-          descriptor, fields: fields, autoplay: true, start: nil, qualityGiven: item["quality"] != nil,
+          descriptor, fields: fields, autoplay: true, start: nil, qualityGiven: item["quality"] is String,
           quality: quality
         ) { result in
           completion(result.map { _ in () })
