@@ -48,6 +48,8 @@ class AnythingPlayerModule(reactContext: ReactApplicationContext) : NativeAnythi
    * the ones without an app id are released; the others keep playing.
    */
   private val owned = mutableSetOf<String>()
+  /** This JS instance, for the runtime's let-go queues. */
+  private val owner = AnythingPlayerRuntime.newOwner()
   private val sinkLock = Any()
   private var invalidated = false
   /**
@@ -172,21 +174,21 @@ class AnythingPlayerModule(reactContext: ReactApplicationContext) : NativeAnythi
     return obtained.controller.id
   }
 
+  /** JS's thread, synchronously: a `createPlayer` with this id from now on makes a new player (#90). */
+  override fun willReleasePlayer(playerId: String): Boolean {
+    synchronized(owned) { owned.remove(playerId) }
+    return AnythingPlayerRuntime.detach(owner, playerId)
+  }
+
   override fun releasePlayer(playerId: String, promise: Promise) {
     synchronized(owned) { owned.remove(playerId) }
-    main.post {
-      val controller = AnythingPlayerRuntime.players[playerId]
-      if (controller != null) {
-        controller.release()
-        AnythingPlayerRuntime.unregister(controller)
-      }
-      promise.resolve(null)
-    }
+    AnythingPlayerRuntime.release(owner, playerId) { promise.resolve(null) }
   }
 
   private fun command(playerId: String, promise: Promise, block: (PlayerController) -> Unit) {
+    val target = AnythingPlayerRuntime.target(owner, playerId)
     main.post {
-      val controller = AnythingPlayerRuntime.players[playerId]
+      val controller = target?.takeUnless { it.isReleased }
       if (controller == null) {
         reject(promise, PlayerError(ErrorCode.PLAYER_RELEASED, PLAYER_RELEASED_MESSAGE, false))
         return@post
@@ -214,8 +216,9 @@ class AnythingPlayerModule(reactContext: ReactApplicationContext) : NativeAnythi
     // `quality`: an id, `'auto'` for automatic; absent: keep the pick.
     val qualityGiven = options.hasKey("quality")
     val quality = options.optString("quality")?.takeIf { it != "auto" }
+    val target = AnythingPlayerRuntime.target(owner, playerId)
     main.post {
-      val controller = AnythingPlayerRuntime.players[playerId]
+      val controller = target?.takeUnless { it.isReleased }
       if (controller == null) {
         reject(promise, PlayerError(ErrorCode.PLAYER_RELEASED, PLAYER_RELEASED_MESSAGE, false))
         return@post
@@ -243,8 +246,9 @@ class AnythingPlayerModule(reactContext: ReactApplicationContext) : NativeAnythi
   override fun setRate(playerId: String, rate: Double, promise: Promise) = command(playerId, promise) { it.engine.setRate(rate) }
 
   override fun fadeTo(playerId: String, volume: Double, seconds: Double, promise: Promise) {
+    val target = AnythingPlayerRuntime.target(owner, playerId)
     main.post {
-      val controller = AnythingPlayerRuntime.players[playerId]
+      val controller = target?.takeUnless { it.isReleased }
       if (controller == null) {
         reject(promise, PlayerError(ErrorCode.PLAYER_RELEASED, PLAYER_RELEASED_MESSAGE, false))
         return@post
@@ -302,7 +306,9 @@ class AnythingPlayerModule(reactContext: ReactApplicationContext) : NativeAnythi
 
   override fun setAudioSampling(playerId: String, enabled: Boolean, points: Double): Boolean {
     val clamped = points.toInt().coerceIn(16, 4096)
-    main.post { AnythingPlayerRuntime.players[playerId]?.setAudioSampling(enabled, clamped) }
+    // Synchronous, on JS's thread: the registry is already what JS sees.
+    val target = AnythingPlayerRuntime.players[playerId]
+    main.post { target?.takeUnless { it.isReleased }?.setAudioSampling(enabled, clamped) }
     return true
   }
 
@@ -429,10 +435,14 @@ class AnythingPlayerModule(reactContext: ReactApplicationContext) : NativeAnythi
   /** JS reload / React host teardown: no JS can control these players any more. */
   override fun invalidate() {
     synchronized(sinkLock) { invalidated = true }
+    // At once, before anything this JS sent can still take a player: none of it does any more.
+    AnythingPlayerRuntime.retire(owner)
     AnythingPlayerRuntime.detachModule(sink, activities)
     main.post { Voice.jsDetached() }
     val ids = synchronized(owned) { owned.toList().also { owned.clear() } }
     main.post {
+      // Let go of by JS, whose releasePlayer will not come now.
+      AnythingPlayerRuntime.releaseDetached(owner)
       ids.forEach { id ->
         // A player with an app id keeps playing: the next JS instance attaches to it.
         AnythingPlayerRuntime.players[id]?.takeIf { !it.appId }?.let {

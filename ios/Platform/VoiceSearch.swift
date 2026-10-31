@@ -163,14 +163,17 @@ final class VoiceSearch {
   /// (created natively when it does not exist yet).
   private func voicePlayer(_ playerId: String?, completion: @escaping (PlayerController?) -> Void) {
     if let playerId { return completion(runtime.player(playerId)) }
-    if let active = runtime.active { return completion(active) }
+    // Not one JS let go of (its release is queued).
+    if let active = runtime.active, runtime.isCurrent(active), !active.isReleased { return completion(active) }
     let id = catalog.playerId
     if let existing = runtime.player(id) { return completion(existing) }
-    if runtime.claim(id) {
+    if let slot = runtime.claim(id) {
       var options = PlayerOptions(catalog.playerOptions as NSDictionary)
       // Voice playback is controlled from the lock screen.
       options.mediaSession = true
-      return completion(runtime.createPlayer(id: id, options: options, detachable: true))
+      let controller = runtime.createPlayer(id: id, options: options, detachable: true, slot: slot)
+      // JS attached to it and let go of it meanwhile: not one to play on.
+      return completion(runtime.isCurrent(controller) ? controller : nil)
     }
     // JS is creating it right now (its creation is queued on main): use it once it exists.
     DispatchQueue.main.async { [weak self] in completion(self?.runtime.player(id)) }

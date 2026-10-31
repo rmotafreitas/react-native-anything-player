@@ -56,6 +56,7 @@ The Expo example (`example-expo/`, bundle id `anythingplayer.expo.example`) runs
 | `progress-events` | `progressInterval: 250` on a live stream: ≥ 6 readings in 2 s, each fresh, finite `bufferedAhead`, none while paused |
 | `bench-sync-reads` | cost of the synchronous JSI reads (`getProgress()`, `refresh()`) while a stream plays; `getProgress` p50 < 100 µs, p99 < 5 ms |
 | `release-frees-resources` | `release()` closes the connection, rejects later commands, clears listeners |
+| `release-then-same-id` | `release()` and a `new Player({ id })` with the same id in one tick (a remount): a new player, which plays on after the release settles, over one connection |
 | `invalid-sources` | empty / unsupported URIs, `NO_SOURCE`, non-finite arguments |
 | `probe-stop-closes`, `probe-release-closes` | time from `stop()` / `release()` to the server seeing the socket closed |
 

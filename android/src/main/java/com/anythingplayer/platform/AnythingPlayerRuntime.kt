@@ -181,7 +181,8 @@ internal object AnythingPlayerRuntime : FocusListener {
   }
 
   fun register(controller: PlayerController) {
-    players[controller.id] = controller
+    // Let go of before main got here (created and released in one tick): only released.
+    if (players[controller.id] !== controller) return
     controller.engine.networkChanged(network.state, false)
     controller.engine.routeChanged(localRoute)
     if (controller.picture != null) {
@@ -199,9 +200,106 @@ internal object AnythingPlayerRuntime : FocusListener {
     }
   }
 
+  /**
+   * What JS let go of ([detach]) and has not released yet ([release]), by the
+   * JS instance (its module) and id, oldest first: the player, or `null` when
+   * the id had none. Per JS instance: a reload's old one tearing down must not
+   * take what the new one let go of. Guarded by [players]' lock, as [obtain] is.
+   */
+  private val detached = HashMap<Pair<Long, String>, ArrayDeque<PlayerController?>>()
+
+  /**
+   * JS instances torn down ([retire]): they let go of and release nothing
+   * more. It only grows (one per reload), on purpose: an owner taken out
+   * would look alive again.
+   */
+  private val deadOwners = HashSet<Long>()
+  private val owners = java.util.concurrent.atomic.AtomicLong()
+
+  /** A token for one JS instance (its module), for the let-go queues. */
+  fun newOwner(): Long = owners.incrementAndGet()
+
+  /**
+   * JS's thread, synchronously: JS let go of [id]. It leaves the registry at
+   * once, so an [obtain] with it from now on creates a new player instead of
+   * attaching to this one; the release comes with JS's `releasePlayer`, after
+   * the commands JS sent this player before (#90). Whether the id had one.
+   */
+  fun detach(owner: Long, id: String): Boolean {
+    synchronized(players) {
+      // A JS that is gone: a player with the id now is another JS's.
+      if (owner in deadOwners) return false
+      val controller = players.remove(id)
+      controller?.jsLetGo = true
+      detached.getOrPut(owner to id) { ArrayDeque() }.addLast(controller)
+      return controller != null
+    }
+  }
+
+  /**
+   * The native-modules thread, as a command arrives: the player it is for.
+   * While a release of [id] is pending, the commands JS sent before it are the
+   * let-go player's (the queue keeps JS's order); else the registered one.
+   */
+  fun target(owner: Long, id: String): PlayerController? {
+    synchronized(players) {
+      val pending = detached[owner to id] ?: return players[id]
+      return pending.first()
+    }
+  }
+
+  /**
+   * The native-modules thread: releases what JS let go of with [id] (the
+   * oldest [detach]; without one, the player registered with it) on main,
+   * then [then].
+   */
+  fun release(owner: Long, id: String, then: () -> Unit) {
+    val controller =
+      synchronized(players) {
+        val queue = detached[owner to id]
+        when {
+          queue != null -> queue.removeFirst().also { if (queue.isEmpty()) detached.remove(owner to id) }
+          // Its JS is gone: a player with the id now is another JS's.
+          owner in deadOwners -> null
+          else -> players.remove(id)
+        }
+      }
+    post {
+      if (controller != null) {
+        controller.release()
+        unregister(controller)
+      }
+      then()
+    }
+  }
+
+  /**
+   * Any thread, at once when a JS is torn down: [owner] lets go of and
+   * releases nothing more (what it let go of already is still taken, by
+   * [releaseDetached] or a release already on its way).
+   */
+  fun retire(owner: Long) {
+    synchronized(players) { deadOwners += owner }
+  }
+
+  /** A JS teardown: releases what that JS ([owner]) let go of but could not release any more. Main thread. */
+  fun releaseDetached(owner: Long) {
+    val left =
+      synchronized(players) {
+        deadOwners += owner
+        val mine = detached.keys.filter { it.first == owner }
+        mine.flatMap { detached.remove(it).orEmpty() }.filterNotNull()
+      }
+    left.forEach {
+      it.release()
+      unregister(it)
+    }
+  }
+
   /** Main thread. */
   fun unregister(controller: PlayerController) {
-    players.remove(controller.id)
+    // Only this player: another one may have its id by now.
+    players.remove(controller.id, controller)
     cast.released(controller)
     if (active === controller) active = players.values.lastOrNull { it.options.mediaSession && it.status.state != PlaybackState.IDLE }
     cast.activeChanged(active)

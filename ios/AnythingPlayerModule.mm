@@ -119,6 +119,11 @@ static void RNAPInstallIntentHandler(void)
   return [_bridge createPlayer:options];
 }
 
+- (NSNumber *)willReleasePlayer:(NSString *)playerId
+{
+  return @([_bridge willReleasePlayer:playerId]);
+}
+
 - (void)releasePlayer:(NSString *)playerId resolve:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRejectBlock)reject
 {
   [_bridge releasePlayer:playerId resolve:resolve reject:reject];

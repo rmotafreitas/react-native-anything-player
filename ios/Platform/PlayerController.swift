@@ -255,12 +255,18 @@ final class PlayerController: EngineDelegate, DriverObserver {
   /// The load whose source a Cast receiver cannot reach (reported once).
   private var uncastableLoadId = -1
   private var released = false
+  /// Main thread.
+  var isReleased: Bool { released }
+  /// This native player among all that ever had its id: on every status and
+  /// event, so a JS player drops what a released one with the same id sent.
+  let instance: Int
   /// Whether `audioSample` windows may still be emitted (guarded by `lock`):
   /// read on the tap's and the visualizer's queues, cleared by `release`.
   private var samplesWanted = false
 
-  init(id: String, options: PlayerOptions, detachable: Bool, runtime: AnythingPlayerRuntime) {
+  init(id: String, options: PlayerOptions, detachable: Bool, runtime: AnythingPlayerRuntime, instance: Int) {
     self.id = id
+    self.instance = instance
     self.options = options
     self.detachable = detachable
     self.runtime = runtime
@@ -327,7 +333,7 @@ final class PlayerController: EngineDelegate, DriverObserver {
       enabled
       ? { [weak self] window in
         guard let self, self.lock.sync({ self.samplesWanted }) else { return }
-        self.runtime.emit([
+        self.send([
           "playerId": self.id, "type": "audioSample",
           "waveform": window.waveform.map { Double($0) },
           "level": window.level, "duration": window.duration,
@@ -408,7 +414,9 @@ final class PlayerController: EngineDelegate, DriverObserver {
 
   func statusDictionary() -> [String: Any] {
     let (status, seq) = lock.sync { (snapshotStatus, snapshotSeq) }
-    return Serialization.status(status, seq: seq)
+    var dictionary = Serialization.status(status, seq: seq)
+    dictionary["instance"] = instance
+    return dictionary
   }
 
   func progressDictionary() -> [String: Any] {
@@ -510,6 +518,18 @@ final class PlayerController: EngineDelegate, DriverObserver {
     event["playerId"] = id
     event["type"] = type
     event["seq"] = eventSeq
+    send(event)
+  }
+
+  /// JS let go of this player (`willReleasePlayer`): its id may already
+  /// belong to a new one there, which must not get this one's events. Any thread.
+  func jsLetGo() { lock.sync { letGo = true } }
+  private var letGo = false
+
+  private func send(_ event: [String: Any]) {
+    guard !lock.sync({ letGo }) else { return }
+    var event = event
+    event["instance"] = instance
     runtime.emit(event)
   }
 
@@ -527,7 +547,7 @@ final class PlayerController: EngineDelegate, DriverObserver {
     var event = Serialization.status(status, seq: seq)
     event["playerId"] = id
     event["type"] = "status"
-    runtime.emit(event)
+    send(event)
     // The song advances with the audio, not the wall clock.
     trackClock?.setRunning(status.state == .playing, now: SystemClock.shared.monotonicMs)
     updateProgressTicks(status.state)

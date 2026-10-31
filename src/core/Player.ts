@@ -36,7 +36,11 @@ import type {
   Thumbnail,
 } from '../types';
 
-type NativeStatus = PlayerStatus & { seq: number };
+/**
+ * A native snapshot: `seq` orders one native player's, and `instance` (on
+ * iOS and Android) tells it apart from a released one that had the same id.
+ */
+type NativeStatus = PlayerStatus & { seq: number; instance?: number };
 type AnyListener = (...args: never[]) => void;
 
 /** Live players by native id. Holding them here is deliberate: a player keeps
@@ -199,6 +203,7 @@ function sourceUri(source: Source | null | undefined): string {
 
 /** Frees a player the app cannot use; nothing waits for it. */
 function releaseQuietly(id: string): void {
+  native().willReleasePlayer(id);
   native()
     .releasePlayer(id)
     .catch(() => undefined);
@@ -295,6 +300,8 @@ export class Player {
   /** Native player id (stable for the player's lifetime). */
   readonly id: string;
   private _status: NativeStatus;
+  /** The native player behind this one (see `NativeStatus`), when native says. */
+  private nativeInstance: number | undefined;
   private _metadata: MediaMetadata | null = null;
   private readonly listeners = new Map<PlayerEvent, Set<AnyListener>>();
   private released = false;
@@ -351,7 +358,10 @@ export class Player {
     // With an id native already knows, this attaches to that player.
     this.id = native().createPlayer(options as object);
     players.set(this.id, this);
-    this._status = native().getStatus(this.id) as NativeStatus;
+    const initial = native().getStatus(this.id) as NativeStatus;
+    this.nativeInstance = initial.instance;
+    delete initial.instance;
+    this._status = initial;
     if (wantsVideo(options) && this._status.video == null) {
       players.delete(this.id);
       releaseQuietly(this.id);
@@ -784,6 +794,9 @@ export class Player {
     this.released = true;
     this.subtitles.cancel();
     players.delete(this.id);
+    // Native lets go of the id now: a Player created with it next (a remount,
+    // in the same tick) is a new one, not this one being released.
+    native().willReleasePlayer(this.id);
     try {
       await native().releasePlayer(this.id);
     } finally {
@@ -873,6 +886,8 @@ export class Player {
       string,
       unknown
     >;
+    // Sent by a released native player that had this id (#90).
+    if (!this.fromOwnInstance(event.instance)) return;
     switch (event.type) {
       case 'status':
         this.apply(event as unknown as NativeStatus);
@@ -967,10 +982,17 @@ export class Player {
 
   // ── Internals ──
 
+  /** Whether a native snapshot or event comes from this player's native player. */
+  private fromOwnInstance(instance: unknown): boolean {
+    const own = this.nativeInstance;
+    return own == null || instance == null || instance === own;
+  }
+
   /** Applies a status snapshot unless an equal-or-newer one was already applied. */
   private apply(next: NativeStatus): void {
     if (!next || typeof next.seq !== 'number' || next.seq <= this._status.seq)
       return;
+    if (!this.fromOwnInstance(next.instance)) return;
     const previous = this._status;
     // Events carry routing fields; the public status is the snapshot alone.
     const snapshot = { ...next } as NativeStatus & {
@@ -979,6 +1001,7 @@ export class Player {
     };
     delete snapshot.playerId;
     delete snapshot.type;
+    delete snapshot.instance;
     this._status = snapshot;
     this.emit('status', this._status);
     if (previous.state !== this._status.state)

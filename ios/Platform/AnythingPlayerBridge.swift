@@ -11,6 +11,8 @@ import Foundation
 public final class AnythingPlayerBridge: NSObject {
   private let lock = NSLock()
   private var owned = Set<String>()
+  /// This JS instance, for the runtime's let-go queues.
+  private let owner = AnythingPlayerRuntime.shared.newOwner()
   private static let counterLock = NSLock()
   private static var counter = 0
 
@@ -28,8 +30,9 @@ public final class AnythingPlayerBridge: NSObject {
     let parsed = PlayerOptions(options)
     let id: String
     let detachable: Bool
+    let slot: PlayerSlot
     if let requested = options["id"] as? String, !requested.isEmpty {
-      guard runtime.claim(requested) else {
+      guard let claimed = runtime.claim(requested, options: parsed) else {
         lock.sync { _ = owned.insert(requested) }
         let runtime = self.runtime
         DispatchQueue.main.async { runtime.player(requested)?.note("attach", ["note": "options ignored"]) }
@@ -37,42 +40,45 @@ public final class AnythingPlayerBridge: NSObject {
       }
       id = requested
       detachable = true
+      slot = claimed
     } else {
       let n = Self.counterLock.sync { () -> Int in
         Self.counter += 1
         return Self.counter
       }
       id = "ios-\(n)-\(String(UInt64(Date().timeIntervalSince1970 * 1000), radix: 36))"
-      _ = runtime.claim(id)
+      guard let claimed = runtime.claim(id, options: parsed) else {
+        preconditionFailure("react-native-anything-player: the new id \(id) is taken")
+      }
+      slot = claimed
       detachable = false
     }
-    lock.sync {
-      _ = owned.insert(id)
-      // Until main has built it, JS reads this player's first status from here.
-      pending[id] = parsed
-    }
+    lock.sync { _ = owned.insert(id) }
     let runtime = self.runtime
-    DispatchQueue.main.async { [weak self] in
-      runtime.createPlayer(id: id, options: parsed, detachable: detachable)
-      self?.lock.sync { _ = self?.pending.removeValue(forKey: id) }
+    DispatchQueue.main.async {
+      runtime.createPlayer(id: id, options: parsed, detachable: detachable, slot: slot)
     }
     return id
   }
 
-  /// Players created on JS's side whose controller main has not built yet.
-  private var pending: [String: PlayerOptions] = [:]
+  /// JS's thread, synchronously, before `releasePlayer`: the player leaves the
+  /// id at once, so a `createPlayer` with it from now on makes a new one and
+  /// the getters answer for that one (#90). Whether the id had a player.
+  @objc public func willReleasePlayer(_ id: String) -> Bool {
+    lock.sync { _ = owned.remove(id) }
+    return runtime.letGo(id, owner: owner)
+  }
 
+  /// Releases what `willReleasePlayer` let go of (after the commands JS sent
+  /// it before: this queue keeps JS's order), or, without it, what has the id.
   @objc public func releasePlayer(
     _ id: String, resolve: @escaping (Any?) -> Void, reject: @escaping (String, String, NSError?) -> Void
   ) {
-    lock.sync { _ = owned.remove(id) }
     let runtime = self.runtime
-    runtime.willRelease(id)
+    let (slot, wasLetGo) = runtime.takeRelease(id, owner: owner)
+    if !wasLetGo { lock.sync { _ = owned.remove(id) } }
     DispatchQueue.main.async {
-      if let controller = runtime.player(id) {
-        controller.release()
-        runtime.unregister(controller)
-      }
+      runtime.release(slot)
       resolve(nil)
     }
   }
@@ -88,8 +94,9 @@ public final class AnythingPlayerBridge: NSObject {
     // `quality`: an id, `'auto'` for automatic; absent: keep the pick.
     let qualityGiven = options["quality"] != nil
     let quality = (options["quality"] as? String).flatMap { $0 == "auto" ? nil : $0 }
+    let target = runtime.target(id, owner: owner)
     DispatchQueue.main.async { [weak self] in
-      guard let controller = self?.runtime.player(id) else {
+      guard let controller = self?.runtime.resolve(target, id) else {
         return Self.reject(reject, PlayerError.code(.playerReleased, "The player was released.", recoverable: false))
       }
       do {
@@ -115,8 +122,9 @@ public final class AnythingPlayerBridge: NSObject {
     _ name: String, id: String, value: NSNumber?,
     resolve: @escaping (Any?) -> Void, reject: @escaping (String, String, NSError?) -> Void
   ) {
+    let target = runtime.target(id, owner: owner)
     DispatchQueue.main.async { [weak self] in
-      guard let controller = self?.runtime.player(id) else {
+      guard let controller = self?.runtime.resolve(target, id) else {
         return Self.reject(reject, PlayerError.code(.playerReleased, "The player was released.", recoverable: false))
       }
       let engine = controller.engine
@@ -146,8 +154,9 @@ public final class AnythingPlayerBridge: NSObject {
     _ id: String, volume: Double, seconds: Double,
     resolve: @escaping (Any?) -> Void, reject: @escaping (String, String, NSError?) -> Void
   ) {
+    let target = runtime.target(id, owner: owner)
     DispatchQueue.main.async { [weak self] in
-      guard let controller = self?.runtime.player(id) else {
+      guard let controller = self?.runtime.resolve(target, id) else {
         return Self.reject(reject, PlayerError.code(.playerReleased, "The player was released.", recoverable: false))
       }
       do {
@@ -188,8 +197,9 @@ public final class AnythingPlayerBridge: NSObject {
     _ id: String, resolve: @escaping (Any?) -> Void, reject: @escaping (String, String, NSError?) -> Void,
     _ block: @escaping (PlaybackEngine) throws -> Void
   ) {
+    let target = runtime.target(id, owner: owner)
     DispatchQueue.main.async { [weak self] in
-      guard let controller = self?.runtime.player(id) else {
+      guard let controller = self?.runtime.resolve(target, id) else {
         return Self.reject(reject, PlayerError.code(.playerReleased, "The player was released.", recoverable: false))
       }
       do {
@@ -208,8 +218,9 @@ public final class AnythingPlayerBridge: NSObject {
     resolve: @escaping (Any?) -> Void, reject: @escaping (String, String, NSError?) -> Void
   ) {
     let fields = NowPlayingFields(metadata)
+    let target = runtime.target(id, owner: owner)
     DispatchQueue.main.async { [weak self] in
-      guard let controller = self?.runtime.player(id) else {
+      guard let controller = self?.runtime.resolve(target, id) else {
         return Self.reject(reject, PlayerError.code(.playerReleased, "The player was released.", recoverable: false))
       }
       controller.updateNowPlaying(fields)
@@ -218,14 +229,17 @@ public final class AnythingPlayerBridge: NSObject {
   }
 
   @objc public func status(_ id: String) -> NSDictionary {
-    if let controller = runtime.player(id) { return controller.statusDictionary() as NSDictionary }
+    let (controller, slot) = runtime.lookup(id)
+    if let controller { return controller.statusDictionary() as NSDictionary }
     // Not built yet: a video player's first status still says it is one.
     var initial = Status()
-    if let options = lock.sync({ pending[id] }), options.engine.video != nil {
+    if let options = slot?.options, options.engine.video != nil {
       initial.video = VideoStatus(
         width: nil, height: nil, hdr: false, firstFrame: false, audioOnly: nil, pictureInPicture: false)
     }
-    return Serialization.status(initial, seq: 0) as NSDictionary
+    var dictionary = Serialization.status(initial, seq: 0)
+    if let slot { dictionary["instance"] = slot.instance }
+    return dictionary as NSDictionary
   }
 
   @objc public func progress(_ id: String) -> NSDictionary {
@@ -393,8 +407,9 @@ public final class AnythingPlayerBridge: NSObject {
       return resolve(nil)
     }
     let refreshed = (command["source"] as? NSDictionary).map { SourceDescriptor.parse($0).0 }
+    let target = runtime.target(id, owner: owner)
     DispatchQueue.main.async { [weak self] in
-      guard let controller = self?.runtime.player(id) else {
+      guard let controller = self?.runtime.resolve(target, id) else {
         return Self.reject(reject, PlayerError.code(.playerReleased, "The player was released.", recoverable: false))
       }
       let engine = controller.engine
@@ -496,6 +511,8 @@ public final class AnythingPlayerBridge: NSObject {
   /// app-chosen id are detached (they keep playing; the next JS attaches);
   /// the others can no longer be controlled and are released.
   @objc public func invalidate() {
+    // At once, before anything this JS sent can still take a player: none of it does any more.
+    self.runtime.retire(owner: self.owner)
     runtime.detachEvents(owner: self)
     let ids = lock.sync { () -> [String] in
       let ids = Array(owned)
@@ -503,7 +520,10 @@ public final class AnythingPlayerBridge: NSObject {
       return ids
     }
     let runtime = self.runtime
+    let owner = self.owner
     DispatchQueue.main.async {
+      // Let go of by this JS, whose releasePlayer will not come now.
+      runtime.releaseDetached(owner: owner)
       runtime.voice.handlerEnabled = false
       for id in ids {
         if let controller = runtime.player(id), !controller.detachable {

@@ -171,7 +171,7 @@ internal object Voice {
     if (given != null) {
       return runtime.players[given]?.takeIf { !it.isReleased } ?: throw PlayerError(ErrorCode.PLAYER_RELEASED, "The player was released.", false)
     }
-    runtime.active?.takeIf { !it.isReleased }?.let { return it }
+    runtime.active?.takeIf { !it.isReleased && !it.jsLetGo }?.let { return it }
     val snapshot = store().snapshot()
     runtime.players[snapshot.playerId]?.takeIf { !it.isReleased }?.let { return it }
     val options = snapshot.playerOptions?.let { parseOptions(it.toReadableMap()) } ?: PlayerOptions()
