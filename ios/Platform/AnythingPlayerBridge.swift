@@ -518,6 +518,7 @@ public final class AnythingPlayerBridge: NSObject {
       return ids
     }
     let runtime = self.runtime
+    let owner = self.owner
     DispatchQueue.main.async {
       // Let go of by this JS, whose releasePlayer will not come now.
       runtime.releaseDetached(owner: owner)
