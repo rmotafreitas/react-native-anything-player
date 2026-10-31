@@ -19,18 +19,24 @@ import org.junit.Test
 /** The metadata-only reader against a real socket speaking ICY. */
 class IcyMetadataReaderTest {
   /**
-   * On the IPv4 loopback only, where the reader connects: on all interfaces,
-   * other software that probes new local ports (seen: a dev tool on `[::1]`)
-   * would take a scripted answer and count as a reconnect.
+   * On the IPv4 loopback only, where the reader connects: fewer stray
+   * connections from software that probes new local ports (seen: a Node tool,
+   * on `[::1]` and `127.0.0.1`). The User-Agent check in [answer] is what keeps
+   * the ones that still come uncounted.
    */
   private val server = ServerSocket(0, 50, InetAddress.getByName("127.0.0.1"))
   private val connections = CopyOnWriteArrayList<Map<String, String>>()
+  /** Requests turned away (not the reader's), for the timeout message. */
+  private val turnedAway = CopyOnWriteArrayList<Map<String, String>>()
+  /** Every accepted socket: closed at the end, which ends a read still waiting on one. */
+  private val accepted = CopyOnWriteArrayList<Socket>()
   private var reader: IcyMetadataReader? = null
 
   @After
   fun tearDown() {
     reader?.stop()
     server.close()
+    accepted.forEach { runCatching { it.close() } }
   }
 
   private fun block(title: String): ByteArray {
@@ -60,6 +66,7 @@ class IcyMetadataReaderTest {
     Thread {
       while (next.get() < bodies.size) {
         val socket: Socket = try { server.accept() } catch (_: Exception) { return@Thread }
+        accepted.add(socket)
         Thread { answer(socket, bodies, next, headers) }.apply { isDaemon = true }.start()
       }
     }.apply { isDaemon = true }.start()
@@ -78,14 +85,21 @@ class IcyMetadataReaderTest {
       } catch (_: java.io.IOException) {
         return
       }
-      if (seen["user-agent"] != "RNAP-test") return
+      if (seen["user-agent"] != "RNAP-test") {
+        turnedAway.add(seen)
+        return
+      }
       val index = next.getAndIncrement()
       if (index >= bodies.size) return
       connections.add(seen)
-      it.getOutputStream().apply {
-        write("ICY 200 OK\r\n$headers\r\n".toByteArray())
-        write(bodies[index])
-        flush()
+      try {
+        it.getOutputStream().apply {
+          write("ICY 200 OK\r\n$headers\r\n".toByteArray())
+          write(bodies[index])
+          flush()
+        }
+      } catch (_: java.io.IOException) {
+        // The reader went away mid-answer (stopped at the end of a test).
       }
     }
   }
@@ -101,7 +115,7 @@ class IcyMetadataReaderTest {
     reader = IcyMetadataReader(source, "RNAP-test", StreamTitleFormat.ARTIST_TITLE) { delivered.add(it); done.countDown() }
     onStart(reader!!)
     val finished = done.await(10, TimeUnit.SECONDS)
-    assertTrue("timed out with ${delivered.size} of $expected", finished)
+    assertTrue("timed out with ${delivered.size} of $expected (turned away: $turnedAway)", finished)
     return delivered
   }
 
