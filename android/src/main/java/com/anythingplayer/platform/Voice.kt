@@ -293,7 +293,8 @@ internal object Voice {
         // The app's catalog came while its search handler was answering (it had
         // nothing): the catalog's match, then. Nothing waits again: a reload or a
         // catalog still to come ends the request.
-        val late = if (waited && stillWanted()) resolve(request) else null
+        // Not a teardown: jsDetached turns the handler off before it answers its questions with null.
+        val late = if (waited && handlerEnabled && stillWanted()) resolve(request) else null
         if (late == null) {
           Log.d(TAG, "assistant request \"${request.query}\" matched nothing")
           return@onSuccess
