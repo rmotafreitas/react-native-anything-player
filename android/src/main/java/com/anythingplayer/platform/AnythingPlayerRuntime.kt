@@ -239,11 +239,16 @@ internal object AnythingPlayerRuntime : FocusListener {
    * oldest [detach]; without one, the player registered with it) on main,
    * then [then].
    */
-  fun release(owner: Any, id: String, then: () -> Unit) {
+  fun release(owner: Any, id: String, letGoIfNone: Boolean = true, then: () -> Unit) {
     val controller =
       synchronized(players) {
         val queue = detached[owner to id]
-        if (queue != null) queue.removeFirst().also { if (queue.isEmpty()) detached.remove(owner to id) } else players.remove(id)
+        when {
+          queue != null -> queue.removeFirst().also { if (queue.isEmpty()) detached.remove(owner to id) }
+          // Its JS is gone: a player with the id now is another JS's.
+          !letGoIfNone -> null
+          else -> players.remove(id)
+        }
       }
     post {
       if (controller != null) {

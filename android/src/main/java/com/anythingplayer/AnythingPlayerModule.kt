@@ -175,12 +175,16 @@ class AnythingPlayerModule(reactContext: ReactApplicationContext) : NativeAnythi
   /** JS's thread, synchronously: a `createPlayer` with this id from now on makes a new player (#90). */
   override fun willReleasePlayer(playerId: String): Boolean {
     synchronized(owned) { owned.remove(playerId) }
-    return AnythingPlayerRuntime.detach(this, playerId)
+    val had = AnythingPlayerRuntime.detach(this, playerId)
+    // After this JS's teardown no releasePlayer drains it: released now.
+    if (synchronized(sinkLock) { invalidated }) AnythingPlayerRuntime.release(this, playerId) {}
+    return had
   }
 
   override fun releasePlayer(playerId: String, promise: Promise) {
     synchronized(owned) { owned.remove(playerId) }
-    AnythingPlayerRuntime.release(this, playerId) { promise.resolve(null) }
+    val gone = synchronized(sinkLock) { invalidated }
+    AnythingPlayerRuntime.release(this, playerId, letGoIfNone = !gone) { promise.resolve(null) }
   }
 
   private fun command(playerId: String, promise: Promise, block: (PlayerController) -> Unit) {

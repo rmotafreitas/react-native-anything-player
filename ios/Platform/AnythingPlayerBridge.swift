@@ -65,8 +65,18 @@ public final class AnythingPlayerBridge: NSObject {
   /// id at once, so a `createPlayer` with it from now on makes a new one and
   /// the getters answer for that one (#90). Whether the id had a player.
   @objc public func willReleasePlayer(_ id: String) -> Bool {
-    lock.sync { _ = owned.remove(id) }
-    return runtime.letGo(id, owner: self)
+    let gone = lock.sync { () -> Bool in
+      _ = owned.remove(id)
+      return invalidated
+    }
+    let had = runtime.letGo(id, owner: self)
+    // After this JS's teardown no releasePlayer drains it: released now.
+    if gone {
+      let runtime = self.runtime
+      let (slot, _) = runtime.takeRelease(id, owner: self, letGoIfNone: false)
+      DispatchQueue.main.async { runtime.release(slot) }
+    }
+    return had
   }
 
   /// Releases what `willReleasePlayer` let go of (after the commands JS sent
