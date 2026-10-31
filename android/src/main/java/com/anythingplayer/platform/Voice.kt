@@ -293,8 +293,10 @@ internal object Voice {
         // The app's catalog came while its search handler was answering (it had
         // nothing): the catalog's match, then. Nothing waits again: a reload or a
         // catalog still to come ends the request.
-        // Not a teardown: jsDetached turns the handler off before it answers its questions with null.
-        val late = if (waited && handlerEnabled && stillWanted()) resolve(request) else null
+        // Waited requests only. Not a teardown: by the time jsDetached answers the
+        // handler's questions with null, the handler is off and JS is detached.
+        if (waited && !stillWanted()) return@onSuccess // dropped, and logged so
+        val late = if (waited && handlerEnabled && AnythingPlayerRuntime.hasJs) resolve(request) else null
         if (late == null) {
           Log.d(TAG, "assistant request \"${request.query}\" matched nothing")
           return@onSuccess
