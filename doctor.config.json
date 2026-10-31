@@ -1,6 +1,6 @@
 {
   "projects": ["react-native-anything-player"],
   "ignore": {
-    "files": ["example/**", "example-expo/**", "website/**", "scripts/**"]
+    "files": ["lib/**", "example/**", "example-expo/**", "website/**", "scripts/**"]
   }
 }
