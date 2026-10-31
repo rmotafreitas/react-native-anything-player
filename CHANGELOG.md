@@ -7,6 +7,25 @@ and versions follow [Semantic Versioning](https://semver.org/): see
 change and how releases are made. Changes not released yet are listed in the
 open release pull request.
 
+## [1.4.0](https://github.com/rmotafreitas/react-native-anything-player/compare/v1.3.1...v1.4.0) (2026-10-31)
+
+
+### Added
+
+* **plugin:** car for one platform, CarPlay's scene in any plugin order ([a8278e3](https://github.com/rmotafreitas/react-native-anything-player/commit/a8278e31da5a327d024942f0b66de1d1889bc8fe))
+* **plugin:** car for one platform, CarPlay's scene in any plugin order ([2a2231a](https://github.com/rmotafreitas/react-native-anything-player/commit/2a2231adaa363d0fe835d73aa46f4ebf1c40cde8))
+* **voice:** a pick of what is loaded plays on; a catalog item's quality ([e7ca4b2](https://github.com/rmotafreitas/react-native-anything-player/commit/e7ca4b247c43f1a007eaaccb5d405eb0c5a27826))
+* **voice:** a pick of what is loaded plays on; a catalog item's quality ([5cd3526](https://github.com/rmotafreitas/react-native-anything-player/commit/5cd35266a0164b9195c71c2f8639e64945b6db94))
+
+
+### Fixed
+
+* **plugin:** CarPlay's scene goes to the app's Info.plist; the CLI reads a car object ([1ea60df](https://github.com/rmotafreitas/react-native-anything-player/commit/1ea60df5585661d429da9ee5a5e81669b76fd5a7))
+* **plugin:** keep multiple scenes for another CarPlay scene left in the manifest ([fc77fcd](https://github.com/rmotafreitas/react-native-anything-player/commit/fc77fcd0fa7bdd859763848da96aea6d1a67f4d2))
+* **voice:** a refused play-on reports nothing played, as on iOS; Siri's check only for what was already playing ([9176269](https://github.com/rmotafreitas/react-native-anything-player/commit/9176269502a6e4107fd6e90783d571e3b7817349))
+* **voice:** a resume refused audio focus is reported; Siri hears that an already-playing item started ([00afeb6](https://github.com/rmotafreitas/react-native-anything-player/commit/00afeb68cb73d50cf5abbdc43f9746c8cedb2e44))
+* **voice:** a source still loading is opened again; NSNull is no quality; docs and an already-playing test ([afbe334](https://github.com/rmotafreitas/react-native-anything-player/commit/afbe3343ff261bd9186462d9a90db5cf0a701c7a))
+
 ## [1.3.1](https://github.com/rmotafreitas/react-native-anything-player/compare/v1.3.0...v1.3.1) (2026-10-30)
 
 Quality switching for audio players. This release adds features, so by Semantic Versioning it should have been 1.4.0: the release tool missed the commits that added them. Nothing is removed or renamed, so upgrading is safe.
