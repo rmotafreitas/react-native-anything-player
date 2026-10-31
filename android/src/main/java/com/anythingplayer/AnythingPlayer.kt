@@ -27,11 +27,13 @@ import com.anythingplayer.platform.Voice
 object AnythingPlayer {
   /**
    * Plays what a `MEDIA_PLAY_FROM_SEARCH` intent asks for, from the catalog
-   * set with `setCatalog()`. It works before any JavaScript runs. An intent is
-   * acted on once — the same one handed over again after the activity was
-   * recreated is ignored.
+   * set with `setCatalog()`. It works before any JavaScript runs. With no
+   * catalog yet (a fresh install), it waits for the app's `setCatalog` or
+   * search handler (docs/voice.md). An intent is acted on once — the same one
+   * handed over again after the activity was recreated is ignored.
    *
-   * @return whether [intent] was a request to play something (acted on now).
+   * @return whether [intent] was a request to play something (acted on now,
+   *   or waiting for the app's catalog).
    */
   @JvmStatic
   fun handleIntent(activity: Activity, intent: Intent?): Boolean {

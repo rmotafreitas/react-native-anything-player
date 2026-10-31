@@ -406,6 +406,8 @@ class AnythingPlayerModule(reactContext: ReactApplicationContext) : NativeAnythi
 
   override fun setSearchHandlerEnabled(enabled: Boolean) {
     Voice.handlerEnabled = enabled
+    // A request that waited for the app can be asked now.
+    if (enabled) main.post { Voice.answerWaiting() }
   }
 
   override fun resolveSearchRequest(requestId: String, result: ReadableMap) {
