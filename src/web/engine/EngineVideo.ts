@@ -11,7 +11,7 @@
 
 import type { PlayerError } from '../../errors';
 import { selectTracks } from '../../core/subtitles/tracks';
-import { EngineQuality, notVideoPlayer } from './EngineQuality';
+import { EngineQuality, notVideoPlayer, swapDeadline } from './EngineQuality';
 import { RecoveryPolicy } from './RecoveryPolicy';
 import {
   engineError,
@@ -465,8 +465,7 @@ export abstract class EngineVideo extends EngineQuality {
     const ask = this.refreshAskAt;
     if (ask != null && ask <= t) this.expiryDue();
     const swap = this.pendingSwap;
-    if (swap != null && t - swap.startedAt >= RecoveryPolicy.SWAP_TIMEOUT_MS)
-      this.dropSwap(swap, 'timeout');
+    if (swap != null && t >= swapDeadline(swap)) this.dropSwap(swap, 'timeout');
   }
 
   protected videoWakeups(candidates: number[]): void {
@@ -478,8 +477,7 @@ export abstract class EngineVideo extends EngineQuality {
       candidates.push(this.pendingRefresh.deadline);
     if (this.refreshAskAt != null) candidates.push(this.refreshAskAt);
     const swap = this.pendingSwap;
-    if (swap != null)
-      candidates.push(swap.startedAt + RecoveryPolicy.SWAP_TIMEOUT_MS);
+    if (swap != null) candidates.push(swapDeadline(swap));
   }
 
   /** The app came back (`appForegrounded`). */

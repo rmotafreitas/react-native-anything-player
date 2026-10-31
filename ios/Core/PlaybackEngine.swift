@@ -328,6 +328,13 @@ final class PlaybackEngine {
     let startedAt: Int64
     /// What the new file reported when ready: the item's facts once it takes over.
     var info: ReadyInfo?
+    var readyAt: Int64?
+
+    /// The new file must play by then: `swapTimeoutMs` to be ready, `swapAlignMs` once ready.
+    var deadline: Int64 {
+      if let readyAt { return readyAt + RecoveryPolicy.swapAlignMs }
+      return startedAt + RecoveryPolicy.swapTimeoutMs
+    }
   }
 
   private struct PendingRefresh {
@@ -694,6 +701,8 @@ final class PlaybackEngine {
     if isSwapGeneration(gen) {
       // A quality switch's file: its facts wait for it to take over.
       pendingSwap?.info = info
+      // Live, the driver lines it up first: more time once ready.
+      if pendingSwap?.readyAt == nil && isLive { pendingSwap?.readyAt = now }
       return swapNote("ready")
     }
     guard accepts(gen) else { return logStale("ready", gen) }
@@ -2199,7 +2208,7 @@ extension PlaybackEngine {
     if let since = detachedSince, t - since >= RecoveryPolicy.viewDetachGraceMs { noViewDue() }
     if let refresh = pendingRefresh, refresh.deadline <= t { refreshTimedOut(refresh) }
     if let ask = refreshAskAt, ask <= t { expiryDue() }
-    if let swap = pendingSwap, t - swap.startedAt >= RecoveryPolicy.swapTimeoutMs {
+    if let swap = pendingSwap, t >= swap.deadline {
       dropSwap(swap, reason: "timeout")
     }
   }
@@ -2211,7 +2220,7 @@ extension PlaybackEngine {
     }
     if let refresh = pendingRefresh { candidates.append(refresh.deadline) }
     if let ask = refreshAskAt { candidates.append(ask) }
-    if let swap = pendingSwap { candidates.append(swap.startedAt + RecoveryPolicy.swapTimeoutMs) }
+    if let swap = pendingSwap { candidates.append(swap.deadline) }
   }
 
   /// The app came back (`appForegrounded`).

@@ -1,0 +1,3314 @@
+[
+ {
+  "name": "behind: measures until the burst is in, then starts playing muted faster (the steering itself: LiveSwapSteeringTest)",
+  "readings": [
+   {
+    "t": 0,
+    "old": [
+     25.0,
+     30.0
+    ],
+    "new": [
+     0,
+     20.0,
+     false
+    ]
+   },
+   {
+    "t": 250,
+    "old": [
+     25.25,
+     30.25
+    ],
+    "new": [
+     0,
+     20.25,
+     false
+    ]
+   },
+   {
+    "t": 500,
+    "old": [
+     25.5,
+     30.5
+    ],
+    "new": [
+     0,
+     20.5,
+     false
+    ]
+   },
+   {
+    "t": 750,
+    "old": [
+     25.75,
+     30.75
+    ],
+    "new": [
+     0,
+     20.75,
+     false
+    ]
+   },
+   {
+    "t": 1000,
+    "old": [
+     26.0,
+     31.0
+    ],
+    "new": [
+     0,
+     21.0,
+     false
+    ]
+   },
+   {
+    "t": 1250,
+    "old": [
+     26.25,
+     31.25
+    ],
+    "new": [
+     0,
+     21.25,
+     false
+    ]
+   },
+   {
+    "t": 1500,
+    "old": [
+     26.5,
+     31.5
+    ],
+    "new": [
+     0,
+     21.5,
+     false
+    ]
+   },
+   {
+    "t": 1750,
+    "old": [
+     26.75,
+     31.75
+    ],
+    "new": [
+     0,
+     21.75,
+     false
+    ]
+   },
+   {
+    "t": 2000,
+    "old": [
+     27.0,
+     32.0
+    ],
+    "new": [
+     0,
+     22.0,
+     false
+    ]
+   },
+   {
+    "t": 2250,
+    "old": [
+     27.25,
+     32.25
+    ],
+    "new": [
+     0,
+     22.25,
+     false
+    ]
+   },
+   {
+    "t": 2500,
+    "old": [
+     27.5,
+     32.5
+    ],
+    "new": [
+     0,
+     22.5,
+     false
+    ]
+   }
+  ],
+  "expect": [
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "steer:4.00"
+  ]
+ },
+ {
+  "name": "ahead: waits paused until about a second of the old player's playing ahead, then starts playing muted slower",
+  "readings": [
+   {
+    "t": 0,
+    "old": [
+     13.0,
+     30.0
+    ],
+    "new": [
+     0,
+     2.0,
+     false
+    ]
+   },
+   {
+    "t": 250,
+    "old": [
+     13.25,
+     30.25
+    ],
+    "new": [
+     0,
+     2.25,
+     false
+    ]
+   },
+   {
+    "t": 500,
+    "old": [
+     13.5,
+     30.5
+    ],
+    "new": [
+     0,
+     2.5,
+     false
+    ]
+   },
+   {
+    "t": 750,
+    "old": [
+     13.75,
+     30.75
+    ],
+    "new": [
+     0,
+     2.75,
+     false
+    ]
+   },
+   {
+    "t": 1000,
+    "old": [
+     14.0,
+     31.0
+    ],
+    "new": [
+     0,
+     3.0,
+     false
+    ]
+   },
+   {
+    "t": 1250,
+    "old": [
+     14.25,
+     31.25
+    ],
+    "new": [
+     0,
+     3.25,
+     false
+    ]
+   },
+   {
+    "t": 1500,
+    "old": [
+     14.5,
+     31.5
+    ],
+    "new": [
+     0,
+     3.5,
+     false
+    ]
+   },
+   {
+    "t": 1750,
+    "old": [
+     14.75,
+     31.75
+    ],
+    "new": [
+     0,
+     3.75,
+     false
+    ]
+   },
+   {
+    "t": 2000,
+    "old": [
+     15.0,
+     32.0
+    ],
+    "new": [
+     0,
+     4.0,
+     false
+    ]
+   },
+   {
+    "t": 2250,
+    "old": [
+     15.25,
+     32.25
+    ],
+    "new": [
+     0,
+     4.25,
+     false
+    ]
+   },
+   {
+    "t": 2500,
+    "old": [
+     15.5,
+     32.5
+    ],
+    "new": [
+     0,
+     4.5,
+     false
+    ]
+   },
+   {
+    "t": 8000,
+    "old": [
+     21.0,
+     38.0
+    ],
+    "new": [
+     0,
+     10.0,
+     false
+    ]
+   },
+   {
+    "t": 13000,
+    "old": [
+     26.0,
+     43.0
+    ],
+    "new": [
+     0,
+     15.0,
+     false
+    ]
+   },
+   {
+    "t": 14000,
+    "old": [
+     27.0,
+     44.0
+    ],
+    "new": [
+     0,
+     16.0,
+     false
+    ]
+   }
+  ],
+  "expect": [
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "hold",
+   "hold",
+   "hold",
+   "steer:0.50"
+  ]
+ },
+ {
+  "name": "the old player plays at 0.75x: its first rate is around (and within factors of) the old rate",
+  "readings": [
+   {
+    "t": 0,
+    "old": [
+     25.0,
+     30.0,
+     true,
+     0,
+     0.75
+    ],
+    "new": [
+     0,
+     20.0,
+     false
+    ]
+   },
+   {
+    "t": 250,
+    "old": [
+     25.1875,
+     30.25,
+     true,
+     0,
+     0.75
+    ],
+    "new": [
+     0,
+     20.25,
+     false
+    ]
+   },
+   {
+    "t": 500,
+    "old": [
+     25.375,
+     30.5,
+     true,
+     0,
+     0.75
+    ],
+    "new": [
+     0,
+     20.5,
+     false
+    ]
+   },
+   {
+    "t": 750,
+    "old": [
+     25.5625,
+     30.75,
+     true,
+     0,
+     0.75
+    ],
+    "new": [
+     0,
+     20.75,
+     false
+    ]
+   },
+   {
+    "t": 1000,
+    "old": [
+     25.75,
+     31.0,
+     true,
+     0,
+     0.75
+    ],
+    "new": [
+     0,
+     21.0,
+     false
+    ]
+   },
+   {
+    "t": 1250,
+    "old": [
+     25.9375,
+     31.25,
+     true,
+     0,
+     0.75
+    ],
+    "new": [
+     0,
+     21.25,
+     false
+    ]
+   },
+   {
+    "t": 1500,
+    "old": [
+     26.125,
+     31.5,
+     true,
+     0,
+     0.75
+    ],
+    "new": [
+     0,
+     21.5,
+     false
+    ]
+   },
+   {
+    "t": 1750,
+    "old": [
+     26.3125,
+     31.75,
+     true,
+     0,
+     0.75
+    ],
+    "new": [
+     0,
+     21.75,
+     false
+    ]
+   },
+   {
+    "t": 2000,
+    "old": [
+     26.5,
+     32.0,
+     true,
+     0,
+     0.75
+    ],
+    "new": [
+     0,
+     22.0,
+     false
+    ]
+   },
+   {
+    "t": 2250,
+    "old": [
+     26.6875,
+     32.25,
+     true,
+     0,
+     0.75
+    ],
+    "new": [
+     0,
+     22.25,
+     false
+    ]
+   },
+   {
+    "t": 2500,
+    "old": [
+     26.875,
+     32.5,
+     true,
+     0,
+     0.75
+    ],
+    "new": [
+     0,
+     22.5,
+     false
+    ]
+   }
+  ],
+  "expect": [
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "steer:3.00"
+  ]
+ },
+ {
+  "name": "a start rate just short of a step from the old one still probes a full step (positions in whole ms)",
+  "readings": [
+   {
+    "t": 0,
+    "old": [
+     25.0,
+     30.0,
+     true,
+     0,
+     0.99
+    ],
+    "new": [
+     0,
+     3.019901,
+     false
+    ]
+   },
+   {
+    "t": 250,
+    "old": [
+     25.247,
+     30.25,
+     true,
+     0,
+     0.99
+    ],
+    "new": [
+     0,
+     3.269901,
+     false
+    ]
+   },
+   {
+    "t": 500,
+    "old": [
+     25.495,
+     30.5,
+     true,
+     0,
+     0.99
+    ],
+    "new": [
+     0,
+     3.519901,
+     false
+    ]
+   },
+   {
+    "t": 750,
+    "old": [
+     25.742,
+     30.75,
+     true,
+     0,
+     0.99
+    ],
+    "new": [
+     0,
+     3.769901,
+     false
+    ]
+   },
+   {
+    "t": 1000,
+    "old": [
+     25.99,
+     31.0,
+     true,
+     0,
+     0.99
+    ],
+    "new": [
+     0,
+     4.019901,
+     false
+    ]
+   },
+   {
+    "t": 1250,
+    "old": [
+     26.238,
+     31.25,
+     true,
+     0,
+     0.99
+    ],
+    "new": [
+     0,
+     4.269901,
+     false
+    ]
+   },
+   {
+    "t": 1500,
+    "old": [
+     26.485,
+     31.5,
+     true,
+     0,
+     0.99
+    ],
+    "new": [
+     0,
+     4.519901,
+     false
+    ]
+   },
+   {
+    "t": 1750,
+    "old": [
+     26.733,
+     31.75,
+     true,
+     0,
+     0.99
+    ],
+    "new": [
+     0,
+     4.769901,
+     false
+    ]
+   },
+   {
+    "t": 2000,
+    "old": [
+     26.98,
+     32.0,
+     true,
+     0,
+     0.99
+    ],
+    "new": [
+     0,
+     5.019901,
+     false
+    ]
+   },
+   {
+    "t": 2250,
+    "old": [
+     27.227,
+     32.25,
+     true,
+     0,
+     0.99
+    ],
+    "new": [
+     0,
+     5.269901,
+     false
+    ]
+   },
+   {
+    "t": 2500,
+    "old": [
+     27.475,
+     32.5,
+     true,
+     0,
+     0.99
+    ],
+    "new": [
+     0,
+     5.519901,
+     false
+    ]
+   },
+   {
+    "t": 2540,
+    "old": [
+     27.515,
+     32.54,
+     true,
+     0,
+     0.99
+    ],
+    "new": [
+     0.0,
+     5.559901,
+     true
+    ]
+   },
+   {
+    "t": 2580,
+    "old": [
+     27.554,
+     32.58,
+     true,
+     0,
+     0.99
+    ],
+    "new": [
+     0.059,
+     5.599901,
+     true
+    ]
+   },
+   {
+    "t": 2620,
+    "old": [
+     27.594,
+     32.62,
+     true,
+     0,
+     0.99
+    ],
+    "new": [
+     0.119,
+     5.639901,
+     true
+    ]
+   },
+   {
+    "t": 2660,
+    "old": [
+     27.633,
+     32.66,
+     true,
+     0,
+     0.99
+    ],
+    "new": [
+     0.178,
+     5.679901,
+     true
+    ]
+   },
+   {
+    "t": 2700,
+    "old": [
+     27.673,
+     32.7,
+     true,
+     0,
+     0.99
+    ],
+    "new": [
+     0.238,
+     5.719901,
+     true
+    ]
+   },
+   {
+    "t": 2740,
+    "old": [
+     27.713,
+     32.74,
+     true,
+     0,
+     0.99
+    ],
+    "new": [
+     0.297,
+     5.759901,
+     true
+    ]
+   },
+   {
+    "t": 2780,
+    "old": [
+     27.752,
+     32.78,
+     true,
+     0,
+     0.99
+    ],
+    "new": [
+     0.356,
+     5.799901,
+     true
+    ]
+   },
+   {
+    "t": 2820,
+    "old": [
+     27.792,
+     32.82,
+     true,
+     0,
+     0.99
+    ],
+    "new": [
+     0.416,
+     5.839901,
+     true
+    ]
+   },
+   {
+    "t": 2840,
+    "old": [
+     27.832,
+     32.86,
+     true,
+     0,
+     0.99
+    ],
+    "new": [
+     0.445,
+     5.879901,
+     true
+    ]
+   }
+  ],
+  "expect": [
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "steer:1.48",
+   "steer:1.48",
+   "steer:1.48",
+   "steer:1.48",
+   "steer:1.48",
+   "steer:1.48",
+   "steer:1.48",
+   "steer:1.48",
+   "steer:1.48",
+   "steer:1.98"
+  ]
+ },
+ {
+  "name": "a low bitrate's edge arrives in steps: its peak (edge less the time elapsed) gives the shift, once a later step confirms it",
+  "readings": [
+   {
+    "t": 0,
+    "old": [
+     51.75,
+     77.3
+    ],
+    "new": [
+     0,
+     13.9,
+     false
+    ]
+   },
+   {
+    "t": 500,
+    "old": [
+     52.25,
+     77.8
+    ],
+    "new": [
+     0,
+     13.9,
+     false
+    ]
+   },
+   {
+    "t": 1000,
+    "old": [
+     52.75,
+     78.3
+    ],
+    "new": [
+     0,
+     13.9,
+     false
+    ]
+   },
+   {
+    "t": 1500,
+    "old": [
+     53.25,
+     78.8
+    ],
+    "new": [
+     0,
+     13.9,
+     false
+    ]
+   },
+   {
+    "t": 2000,
+    "old": [
+     53.75,
+     79.3
+    ],
+    "new": [
+     0,
+     18.4,
+     false
+    ]
+   },
+   {
+    "t": 2500,
+    "old": [
+     54.25,
+     79.8
+    ],
+    "new": [
+     0,
+     18.4,
+     false
+    ]
+   },
+   {
+    "t": 3000,
+    "old": [
+     54.75,
+     80.3
+    ],
+    "new": [
+     0,
+     18.4,
+     false
+    ]
+   },
+   {
+    "t": 3500,
+    "old": [
+     55.25,
+     80.8
+    ],
+    "new": [
+     0,
+     18.4,
+     false
+    ]
+   },
+   {
+    "t": 4000,
+    "old": [
+     55.75,
+     81.3
+    ],
+    "new": [
+     0,
+     18.4,
+     false
+    ]
+   },
+   {
+    "t": 4500,
+    "old": [
+     56.25,
+     81.8
+    ],
+    "new": [
+     0,
+     18.4,
+     false
+    ]
+   },
+   {
+    "t": 5000,
+    "old": [
+     56.75,
+     82.3
+    ],
+    "new": [
+     0,
+     18.4,
+     false
+    ]
+   },
+   {
+    "t": 5500,
+    "old": [
+     57.25,
+     82.8
+    ],
+    "new": [
+     0,
+     18.4,
+     false
+    ]
+   },
+   {
+    "t": 6000,
+    "old": [
+     57.75,
+     83.3
+    ],
+    "new": [
+     0,
+     18.4,
+     false
+    ]
+   },
+   {
+    "t": 6500,
+    "old": [
+     58.25,
+     83.8
+    ],
+    "new": [
+     0,
+     18.4,
+     false
+    ]
+   },
+   {
+    "t": 6600,
+    "old": [
+     58.35,
+     83.89999999999999
+    ],
+    "new": [
+     0,
+     22.4,
+     false
+    ]
+   },
+   {
+    "t": 9150,
+    "old": [
+     60.9,
+     86.45
+    ],
+    "new": [
+     0,
+     22.4,
+     false
+    ]
+   }
+  ],
+  "expect": [
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "hold",
+   "steer:1.00"
+  ]
+ },
+ {
+  "name": "the first step after the burst lands late: no shift until a later step confirms the peak",
+  "readings": [
+   {
+    "t": 0,
+    "old": [
+     51.75,
+     77.3
+    ],
+    "new": [
+     0,
+     13.9,
+     false
+    ]
+   },
+   {
+    "t": 500,
+    "old": [
+     52.25,
+     77.8
+    ],
+    "new": [
+     0,
+     13.9,
+     false
+    ]
+   },
+   {
+    "t": 1000,
+    "old": [
+     52.75,
+     78.3
+    ],
+    "new": [
+     0,
+     13.9,
+     false
+    ]
+   },
+   {
+    "t": 1500,
+    "old": [
+     53.25,
+     78.8
+    ],
+    "new": [
+     0,
+     13.9,
+     false
+    ]
+   },
+   {
+    "t": 2000,
+    "old": [
+     53.75,
+     79.3
+    ],
+    "new": [
+     0,
+     13.9,
+     false
+    ]
+   },
+   {
+    "t": 2500,
+    "old": [
+     54.25,
+     79.8
+    ],
+    "new": [
+     0,
+     13.9,
+     false
+    ]
+   },
+   {
+    "t": 3000,
+    "old": [
+     54.75,
+     80.3
+    ],
+    "new": [
+     0,
+     18.4,
+     false
+    ]
+   },
+   {
+    "t": 3500,
+    "old": [
+     55.25,
+     80.8
+    ],
+    "new": [
+     0,
+     18.4,
+     false
+    ]
+   },
+   {
+    "t": 4000,
+    "old": [
+     55.75,
+     81.3
+    ],
+    "new": [
+     0,
+     18.4,
+     false
+    ]
+   },
+   {
+    "t": 4500,
+    "old": [
+     56.25,
+     81.8
+    ],
+    "new": [
+     0,
+     18.4,
+     false
+    ]
+   },
+   {
+    "t": 5000,
+    "old": [
+     56.75,
+     82.3
+    ],
+    "new": [
+     0,
+     18.4,
+     false
+    ]
+   },
+   {
+    "t": 5500,
+    "old": [
+     57.25,
+     82.8
+    ],
+    "new": [
+     0,
+     18.4,
+     false
+    ]
+   },
+   {
+    "t": 6000,
+    "old": [
+     57.75,
+     83.3
+    ],
+    "new": [
+     0,
+     18.4,
+     false
+    ]
+   },
+   {
+    "t": 6500,
+    "old": [
+     58.25,
+     83.8
+    ],
+    "new": [
+     0,
+     18.4,
+     false
+    ]
+   },
+   {
+    "t": 7000,
+    "old": [
+     58.75,
+     84.3
+    ],
+    "new": [
+     0,
+     18.4,
+     false
+    ]
+   },
+   {
+    "t": 7500,
+    "old": [
+     59.25,
+     84.8
+    ],
+    "new": [
+     0,
+     18.4,
+     false
+    ]
+   },
+   {
+    "t": 7600,
+    "old": [
+     59.35,
+     84.89999999999999
+    ],
+    "new": [
+     0,
+     22.9,
+     false
+    ]
+   },
+   {
+    "t": 10150,
+    "old": [
+     61.9,
+     87.45
+    ],
+    "new": [
+     0,
+     22.9,
+     false
+    ]
+   }
+  ],
+  "expect": [
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "hold",
+   "steer:1.00"
+  ]
+ },
+ {
+  "name": "a slow burst (small rises every tick) keeps measuring until it is in",
+  "readings": [
+   {
+    "t": 0,
+    "old": [
+     25.0,
+     30.0
+    ],
+    "new": [
+     0,
+     0.0,
+     false
+    ]
+   },
+   {
+    "t": 250,
+    "old": [
+     25.25,
+     30.25
+    ],
+    "new": [
+     0,
+     0.5,
+     false
+    ]
+   },
+   {
+    "t": 500,
+    "old": [
+     25.5,
+     30.5
+    ],
+    "new": [
+     0,
+     1.0,
+     false
+    ]
+   },
+   {
+    "t": 750,
+    "old": [
+     25.75,
+     30.75
+    ],
+    "new": [
+     0,
+     1.5,
+     false
+    ]
+   },
+   {
+    "t": 1000,
+    "old": [
+     26.0,
+     31.0
+    ],
+    "new": [
+     0,
+     2.0,
+     false
+    ]
+   },
+   {
+    "t": 1250,
+    "old": [
+     26.25,
+     31.25
+    ],
+    "new": [
+     0,
+     2.5,
+     false
+    ]
+   },
+   {
+    "t": 1500,
+    "old": [
+     26.5,
+     31.5
+    ],
+    "new": [
+     0,
+     3.0,
+     false
+    ]
+   },
+   {
+    "t": 1750,
+    "old": [
+     26.75,
+     31.75
+    ],
+    "new": [
+     0,
+     3.5,
+     false
+    ]
+   },
+   {
+    "t": 2000,
+    "old": [
+     27.0,
+     32.0
+    ],
+    "new": [
+     0,
+     4.0,
+     false
+    ]
+   },
+   {
+    "t": 2250,
+    "old": [
+     27.25,
+     32.25
+    ],
+    "new": [
+     0,
+     4.5,
+     false
+    ]
+   },
+   {
+    "t": 2500,
+    "old": [
+     27.5,
+     32.5
+    ],
+    "new": [
+     0,
+     5.0,
+     false
+    ]
+   },
+   {
+    "t": 2750,
+    "old": [
+     27.75,
+     32.75
+    ],
+    "new": [
+     0,
+     5.5,
+     false
+    ]
+   },
+   {
+    "t": 3000,
+    "old": [
+     28.0,
+     33.0
+    ],
+    "new": [
+     0,
+     6.0,
+     false
+    ]
+   },
+   {
+    "t": 3250,
+    "old": [
+     28.25,
+     33.25
+    ],
+    "new": [
+     0,
+     6.5,
+     false
+    ]
+   },
+   {
+    "t": 3500,
+    "old": [
+     28.5,
+     33.5
+    ],
+    "new": [
+     0,
+     7.0,
+     false
+    ]
+   },
+   {
+    "t": 3750,
+    "old": [
+     28.75,
+     33.75
+    ],
+    "new": [
+     0,
+     7.5,
+     false
+    ]
+   },
+   {
+    "t": 4000,
+    "old": [
+     29.0,
+     34.0
+    ],
+    "new": [
+     0,
+     8.0,
+     false
+    ]
+   },
+   {
+    "t": 4250,
+    "old": [
+     29.25,
+     34.25
+    ],
+    "new": [
+     0,
+     8.5,
+     false
+    ]
+   },
+   {
+    "t": 4500,
+    "old": [
+     29.5,
+     34.5
+    ],
+    "new": [
+     0,
+     9.0,
+     false
+    ]
+   },
+   {
+    "t": 4750,
+    "old": [
+     29.75,
+     34.75
+    ],
+    "new": [
+     0,
+     9.5,
+     false
+    ]
+   },
+   {
+    "t": 5000,
+    "old": [
+     30.0,
+     35.0
+    ],
+    "new": [
+     0,
+     10.0,
+     false
+    ]
+   },
+   {
+    "t": 5250,
+    "old": [
+     30.25,
+     35.25
+    ],
+    "new": [
+     0,
+     10.5,
+     false
+    ]
+   },
+   {
+    "t": 5500,
+    "old": [
+     30.5,
+     35.5
+    ],
+    "new": [
+     0,
+     11.0,
+     false
+    ]
+   },
+   {
+    "t": 5750,
+    "old": [
+     30.75,
+     35.75
+    ],
+    "new": [
+     0,
+     11.5,
+     false
+    ]
+   },
+   {
+    "t": 6000,
+    "old": [
+     31.0,
+     36.0
+    ],
+    "new": [
+     0,
+     12.0,
+     false
+    ]
+   },
+   {
+    "t": 6500,
+    "old": [
+     31.5,
+     36.5
+    ],
+    "new": [
+     0,
+     12.5,
+     false
+    ]
+   },
+   {
+    "t": 7000,
+    "old": [
+     32.0,
+     37.0
+    ],
+    "new": [
+     0,
+     13.0,
+     false
+    ]
+   },
+   {
+    "t": 7500,
+    "old": [
+     32.5,
+     37.5
+    ],
+    "new": [
+     0,
+     13.5,
+     false
+    ]
+   },
+   {
+    "t": 8000,
+    "old": [
+     33.0,
+     38.0
+    ],
+    "new": [
+     0,
+     14.0,
+     false
+    ]
+   },
+   {
+    "t": 8500,
+    "old": [
+     33.5,
+     38.5
+    ],
+    "new": [
+     0,
+     14.5,
+     false
+    ]
+   }
+  ],
+  "expect": [
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "steer:4.00"
+  ]
+ },
+ {
+  "name": "the old edge steps too (a 64 kbps player switching up), first step at 0.3 s: measured once it steps",
+  "readings": [
+   {
+    "t": 0,
+    "old": [
+     25.0,
+     39.7
+    ],
+    "new": [
+     0,
+     6.0,
+     false
+    ]
+   },
+   {
+    "t": 100,
+    "old": [
+     25.1,
+     39.7
+    ],
+    "new": [
+     0,
+     6.1,
+     false
+    ]
+   },
+   {
+    "t": 200,
+    "old": [
+     25.2,
+     39.7
+    ],
+    "new": [
+     0,
+     6.2,
+     false
+    ]
+   },
+   {
+    "t": 300,
+    "old": [
+     25.3,
+     44.3
+    ],
+    "new": [
+     0,
+     6.3,
+     false
+    ]
+   },
+   {
+    "t": 400,
+    "old": [
+     25.4,
+     44.3
+    ],
+    "new": [
+     0,
+     6.4,
+     false
+    ]
+   },
+   {
+    "t": 500,
+    "old": [
+     25.5,
+     44.3
+    ],
+    "new": [
+     0,
+     6.5,
+     false
+    ]
+   },
+   {
+    "t": 600,
+    "old": [
+     25.6,
+     44.3
+    ],
+    "new": [
+     0,
+     6.6,
+     false
+    ]
+   },
+   {
+    "t": 700,
+    "old": [
+     25.7,
+     44.3
+    ],
+    "new": [
+     0,
+     6.7,
+     false
+    ]
+   },
+   {
+    "t": 800,
+    "old": [
+     25.8,
+     44.3
+    ],
+    "new": [
+     0,
+     6.8,
+     false
+    ]
+   },
+   {
+    "t": 900,
+    "old": [
+     25.9,
+     44.3
+    ],
+    "new": [
+     0,
+     6.9,
+     false
+    ]
+   },
+   {
+    "t": 1000,
+    "old": [
+     26.0,
+     44.3
+    ],
+    "new": [
+     0,
+     7.0,
+     false
+    ]
+   },
+   {
+    "t": 1100,
+    "old": [
+     26.1,
+     44.3
+    ],
+    "new": [
+     0,
+     7.1,
+     false
+    ]
+   },
+   {
+    "t": 1200,
+    "old": [
+     26.2,
+     44.3
+    ],
+    "new": [
+     0,
+     7.2,
+     false
+    ]
+   },
+   {
+    "t": 1300,
+    "old": [
+     26.3,
+     44.3
+    ],
+    "new": [
+     0,
+     7.3,
+     false
+    ]
+   },
+   {
+    "t": 1400,
+    "old": [
+     26.4,
+     44.3
+    ],
+    "new": [
+     0,
+     7.4,
+     false
+    ]
+   },
+   {
+    "t": 1500,
+    "old": [
+     26.5,
+     44.3
+    ],
+    "new": [
+     0,
+     7.5,
+     false
+    ]
+   },
+   {
+    "t": 1600,
+    "old": [
+     26.6,
+     44.3
+    ],
+    "new": [
+     0,
+     7.6,
+     false
+    ]
+   },
+   {
+    "t": 1700,
+    "old": [
+     26.7,
+     44.3
+    ],
+    "new": [
+     0,
+     7.7,
+     false
+    ]
+   },
+   {
+    "t": 1800,
+    "old": [
+     26.8,
+     44.3
+    ],
+    "new": [
+     0,
+     7.8,
+     false
+    ]
+   },
+   {
+    "t": 1900,
+    "old": [
+     26.9,
+     44.3
+    ],
+    "new": [
+     0,
+     7.9,
+     false
+    ]
+   },
+   {
+    "t": 2000,
+    "old": [
+     27.0,
+     44.3
+    ],
+    "new": [
+     0,
+     8.0,
+     false
+    ]
+   },
+   {
+    "t": 2100,
+    "old": [
+     27.1,
+     44.3
+    ],
+    "new": [
+     0,
+     8.1,
+     false
+    ]
+   },
+   {
+    "t": 2200,
+    "old": [
+     27.2,
+     44.3
+    ],
+    "new": [
+     0,
+     8.2,
+     false
+    ]
+   },
+   {
+    "t": 2300,
+    "old": [
+     27.3,
+     44.3
+    ],
+    "new": [
+     0,
+     8.3,
+     false
+    ]
+   },
+   {
+    "t": 2400,
+    "old": [
+     27.4,
+     44.3
+    ],
+    "new": [
+     0,
+     8.4,
+     false
+    ]
+   },
+   {
+    "t": 2500,
+    "old": [
+     27.5,
+     44.3
+    ],
+    "new": [
+     0,
+     8.5,
+     false
+    ]
+   },
+   {
+    "t": 12800,
+    "old": [
+     37.8,
+     53.5
+    ],
+    "new": [
+     0,
+     18.8,
+     false
+    ]
+   }
+  ],
+  "expect": [
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "hold",
+   "steer:0.80"
+  ]
+ },
+ {
+  "name": "the old edge steps too (a 64 kbps player switching up), first step at 2.0 s: measured once it steps",
+  "readings": [
+   {
+    "t": 0,
+    "old": [
+     25.0,
+     41.4
+    ],
+    "new": [
+     0,
+     6.0,
+     false
+    ]
+   },
+   {
+    "t": 100,
+    "old": [
+     25.1,
+     41.4
+    ],
+    "new": [
+     0,
+     6.1,
+     false
+    ]
+   },
+   {
+    "t": 200,
+    "old": [
+     25.2,
+     41.4
+    ],
+    "new": [
+     0,
+     6.2,
+     false
+    ]
+   },
+   {
+    "t": 300,
+    "old": [
+     25.3,
+     41.4
+    ],
+    "new": [
+     0,
+     6.3,
+     false
+    ]
+   },
+   {
+    "t": 400,
+    "old": [
+     25.4,
+     41.4
+    ],
+    "new": [
+     0,
+     6.4,
+     false
+    ]
+   },
+   {
+    "t": 500,
+    "old": [
+     25.5,
+     41.4
+    ],
+    "new": [
+     0,
+     6.5,
+     false
+    ]
+   },
+   {
+    "t": 600,
+    "old": [
+     25.6,
+     41.4
+    ],
+    "new": [
+     0,
+     6.6,
+     false
+    ]
+   },
+   {
+    "t": 700,
+    "old": [
+     25.7,
+     41.4
+    ],
+    "new": [
+     0,
+     6.7,
+     false
+    ]
+   },
+   {
+    "t": 800,
+    "old": [
+     25.8,
+     41.4
+    ],
+    "new": [
+     0,
+     6.8,
+     false
+    ]
+   },
+   {
+    "t": 900,
+    "old": [
+     25.9,
+     41.4
+    ],
+    "new": [
+     0,
+     6.9,
+     false
+    ]
+   },
+   {
+    "t": 1000,
+    "old": [
+     26.0,
+     41.4
+    ],
+    "new": [
+     0,
+     7.0,
+     false
+    ]
+   },
+   {
+    "t": 1100,
+    "old": [
+     26.1,
+     41.4
+    ],
+    "new": [
+     0,
+     7.1,
+     false
+    ]
+   },
+   {
+    "t": 1200,
+    "old": [
+     26.2,
+     41.4
+    ],
+    "new": [
+     0,
+     7.2,
+     false
+    ]
+   },
+   {
+    "t": 1300,
+    "old": [
+     26.3,
+     41.4
+    ],
+    "new": [
+     0,
+     7.3,
+     false
+    ]
+   },
+   {
+    "t": 1400,
+    "old": [
+     26.4,
+     41.4
+    ],
+    "new": [
+     0,
+     7.4,
+     false
+    ]
+   },
+   {
+    "t": 1500,
+    "old": [
+     26.5,
+     41.4
+    ],
+    "new": [
+     0,
+     7.5,
+     false
+    ]
+   },
+   {
+    "t": 1600,
+    "old": [
+     26.6,
+     41.4
+    ],
+    "new": [
+     0,
+     7.6,
+     false
+    ]
+   },
+   {
+    "t": 1700,
+    "old": [
+     26.7,
+     41.4
+    ],
+    "new": [
+     0,
+     7.7,
+     false
+    ]
+   },
+   {
+    "t": 1800,
+    "old": [
+     26.8,
+     41.4
+    ],
+    "new": [
+     0,
+     7.8,
+     false
+    ]
+   },
+   {
+    "t": 1900,
+    "old": [
+     26.9,
+     41.4
+    ],
+    "new": [
+     0,
+     7.9,
+     false
+    ]
+   },
+   {
+    "t": 2000,
+    "old": [
+     27.0,
+     46.0
+    ],
+    "new": [
+     0,
+     8.0,
+     false
+    ]
+   },
+   {
+    "t": 2100,
+    "old": [
+     27.1,
+     46.0
+    ],
+    "new": [
+     0,
+     8.1,
+     false
+    ]
+   },
+   {
+    "t": 2200,
+    "old": [
+     27.2,
+     46.0
+    ],
+    "new": [
+     0,
+     8.2,
+     false
+    ]
+   },
+   {
+    "t": 2300,
+    "old": [
+     27.3,
+     46.0
+    ],
+    "new": [
+     0,
+     8.3,
+     false
+    ]
+   },
+   {
+    "t": 2400,
+    "old": [
+     27.4,
+     46.0
+    ],
+    "new": [
+     0,
+     8.4,
+     false
+    ]
+   },
+   {
+    "t": 2500,
+    "old": [
+     27.5,
+     46.0
+    ],
+    "new": [
+     0,
+     8.5,
+     false
+    ]
+   },
+   {
+    "t": 12800,
+    "old": [
+     37.8,
+     55.2
+    ],
+    "new": [
+     0,
+     18.8,
+     false
+    ]
+   }
+  ],
+  "expect": [
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "hold",
+   "steer:0.80"
+  ]
+ },
+ {
+  "name": "the old edge steps too (a 64 kbps player switching up), first step at 4.0 s: measured once it steps",
+  "readings": [
+   {
+    "t": 0,
+    "old": [
+     25.0,
+     43.4
+    ],
+    "new": [
+     0,
+     6.0,
+     false
+    ]
+   },
+   {
+    "t": 100,
+    "old": [
+     25.1,
+     43.4
+    ],
+    "new": [
+     0,
+     6.1,
+     false
+    ]
+   },
+   {
+    "t": 200,
+    "old": [
+     25.2,
+     43.4
+    ],
+    "new": [
+     0,
+     6.2,
+     false
+    ]
+   },
+   {
+    "t": 300,
+    "old": [
+     25.3,
+     43.4
+    ],
+    "new": [
+     0,
+     6.3,
+     false
+    ]
+   },
+   {
+    "t": 400,
+    "old": [
+     25.4,
+     43.4
+    ],
+    "new": [
+     0,
+     6.4,
+     false
+    ]
+   },
+   {
+    "t": 500,
+    "old": [
+     25.5,
+     43.4
+    ],
+    "new": [
+     0,
+     6.5,
+     false
+    ]
+   },
+   {
+    "t": 600,
+    "old": [
+     25.6,
+     43.4
+    ],
+    "new": [
+     0,
+     6.6,
+     false
+    ]
+   },
+   {
+    "t": 700,
+    "old": [
+     25.7,
+     43.4
+    ],
+    "new": [
+     0,
+     6.7,
+     false
+    ]
+   },
+   {
+    "t": 800,
+    "old": [
+     25.8,
+     43.4
+    ],
+    "new": [
+     0,
+     6.8,
+     false
+    ]
+   },
+   {
+    "t": 900,
+    "old": [
+     25.9,
+     43.4
+    ],
+    "new": [
+     0,
+     6.9,
+     false
+    ]
+   },
+   {
+    "t": 1000,
+    "old": [
+     26.0,
+     43.4
+    ],
+    "new": [
+     0,
+     7.0,
+     false
+    ]
+   },
+   {
+    "t": 1100,
+    "old": [
+     26.1,
+     43.4
+    ],
+    "new": [
+     0,
+     7.1,
+     false
+    ]
+   },
+   {
+    "t": 1200,
+    "old": [
+     26.2,
+     43.4
+    ],
+    "new": [
+     0,
+     7.2,
+     false
+    ]
+   },
+   {
+    "t": 1300,
+    "old": [
+     26.3,
+     43.4
+    ],
+    "new": [
+     0,
+     7.3,
+     false
+    ]
+   },
+   {
+    "t": 1400,
+    "old": [
+     26.4,
+     43.4
+    ],
+    "new": [
+     0,
+     7.4,
+     false
+    ]
+   },
+   {
+    "t": 1500,
+    "old": [
+     26.5,
+     43.4
+    ],
+    "new": [
+     0,
+     7.5,
+     false
+    ]
+   },
+   {
+    "t": 1600,
+    "old": [
+     26.6,
+     43.4
+    ],
+    "new": [
+     0,
+     7.6,
+     false
+    ]
+   },
+   {
+    "t": 1700,
+    "old": [
+     26.7,
+     43.4
+    ],
+    "new": [
+     0,
+     7.7,
+     false
+    ]
+   },
+   {
+    "t": 1800,
+    "old": [
+     26.8,
+     43.4
+    ],
+    "new": [
+     0,
+     7.8,
+     false
+    ]
+   },
+   {
+    "t": 1900,
+    "old": [
+     26.9,
+     43.4
+    ],
+    "new": [
+     0,
+     7.9,
+     false
+    ]
+   },
+   {
+    "t": 2000,
+    "old": [
+     27.0,
+     43.4
+    ],
+    "new": [
+     0,
+     8.0,
+     false
+    ]
+   },
+   {
+    "t": 2100,
+    "old": [
+     27.1,
+     43.4
+    ],
+    "new": [
+     0,
+     8.1,
+     false
+    ]
+   },
+   {
+    "t": 2200,
+    "old": [
+     27.2,
+     43.4
+    ],
+    "new": [
+     0,
+     8.2,
+     false
+    ]
+   },
+   {
+    "t": 2300,
+    "old": [
+     27.3,
+     43.4
+    ],
+    "new": [
+     0,
+     8.3,
+     false
+    ]
+   },
+   {
+    "t": 2400,
+    "old": [
+     27.4,
+     43.4
+    ],
+    "new": [
+     0,
+     8.4,
+     false
+    ]
+   },
+   {
+    "t": 2500,
+    "old": [
+     27.5,
+     43.4
+    ],
+    "new": [
+     0,
+     8.5,
+     false
+    ]
+   },
+   {
+    "t": 2600,
+    "old": [
+     27.6,
+     43.4
+    ],
+    "new": [
+     0,
+     8.6,
+     false
+    ]
+   },
+   {
+    "t": 2700,
+    "old": [
+     27.7,
+     43.4
+    ],
+    "new": [
+     0,
+     8.7,
+     false
+    ]
+   },
+   {
+    "t": 2800,
+    "old": [
+     27.8,
+     43.4
+    ],
+    "new": [
+     0,
+     8.8,
+     false
+    ]
+   },
+   {
+    "t": 2900,
+    "old": [
+     27.9,
+     43.4
+    ],
+    "new": [
+     0,
+     8.9,
+     false
+    ]
+   },
+   {
+    "t": 3000,
+    "old": [
+     28.0,
+     43.4
+    ],
+    "new": [
+     0,
+     9.0,
+     false
+    ]
+   },
+   {
+    "t": 3100,
+    "old": [
+     28.1,
+     43.4
+    ],
+    "new": [
+     0,
+     9.1,
+     false
+    ]
+   },
+   {
+    "t": 3200,
+    "old": [
+     28.2,
+     43.4
+    ],
+    "new": [
+     0,
+     9.2,
+     false
+    ]
+   },
+   {
+    "t": 3300,
+    "old": [
+     28.3,
+     43.4
+    ],
+    "new": [
+     0,
+     9.3,
+     false
+    ]
+   },
+   {
+    "t": 3400,
+    "old": [
+     28.4,
+     43.4
+    ],
+    "new": [
+     0,
+     9.4,
+     false
+    ]
+   },
+   {
+    "t": 3500,
+    "old": [
+     28.5,
+     43.4
+    ],
+    "new": [
+     0,
+     9.5,
+     false
+    ]
+   },
+   {
+    "t": 3600,
+    "old": [
+     28.6,
+     43.4
+    ],
+    "new": [
+     0,
+     9.6,
+     false
+    ]
+   },
+   {
+    "t": 3700,
+    "old": [
+     28.7,
+     43.4
+    ],
+    "new": [
+     0,
+     9.7,
+     false
+    ]
+   },
+   {
+    "t": 3800,
+    "old": [
+     28.8,
+     43.4
+    ],
+    "new": [
+     0,
+     9.8,
+     false
+    ]
+   },
+   {
+    "t": 3900,
+    "old": [
+     28.9,
+     43.4
+    ],
+    "new": [
+     0,
+     9.9,
+     false
+    ]
+   },
+   {
+    "t": 4000,
+    "old": [
+     29.0,
+     48.0
+    ],
+    "new": [
+     0,
+     10.0,
+     false
+    ]
+   },
+   {
+    "t": 12800,
+    "old": [
+     37.8,
+     52.6
+    ],
+    "new": [
+     0,
+     18.8,
+     false
+    ]
+   }
+  ],
+  "expect": [
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "hold",
+   "steer:0.80"
+  ]
+ },
+ {
+  "name": "the burst is still arriving: keeps measuring",
+  "readings": [
+   {
+    "t": 0,
+    "old": [
+     25,
+     30
+    ],
+    "new": [
+     0,
+     0,
+     false
+    ]
+   },
+   {
+    "t": 1000,
+    "old": [
+     26,
+     31
+    ],
+    "new": [
+     0,
+     8,
+     false
+    ]
+   },
+   {
+    "t": 2000,
+    "old": [
+     27,
+     32
+    ],
+    "new": [
+     0,
+     16,
+     false
+    ]
+   },
+   {
+    "t": 3000,
+    "old": [
+     28,
+     33
+    ],
+    "new": [
+     0,
+     18,
+     false
+    ]
+   }
+  ],
+  "expect": [
+   "measure",
+   "measure",
+   "measure",
+   "measure"
+  ]
+ },
+ {
+  "name": "the old player stalls: falls back",
+  "readings": [
+   {
+    "t": 0,
+    "old": [
+     25,
+     30,
+     false
+    ],
+    "new": [
+     0,
+     20,
+     false
+    ]
+   }
+  ],
+  "expect": [
+   "fallback"
+  ]
+ },
+ {
+  "name": "a player's connection is replaced (a dropped one reconnected): its timeline no longer maps, falls back",
+  "readings": [
+   {
+    "t": 0,
+    "old": [
+     25,
+     30,
+     true,
+     0
+    ],
+    "new": [
+     0,
+     20,
+     false
+    ]
+   },
+   {
+    "t": 500,
+    "old": [
+     25.5,
+     30.5,
+     true,
+     1
+    ],
+    "new": [
+     0,
+     20.5,
+     false
+    ]
+   }
+  ],
+  "expect": [
+   "measure",
+   "fallback"
+  ]
+ },
+ {
+  "name": "a player's connection has ended with a replacement queued: falls back",
+  "readings": [
+   {
+    "t": 0,
+    "old": [
+     25,
+     30,
+     true,
+     0,
+     1.0,
+     true
+    ],
+    "new": [
+     0,
+     20,
+     false
+    ]
+   }
+  ],
+  "expect": [
+   "fallback"
+  ]
+ },
+ {
+  "name": "once measured, a replacement queued behind the old connection does not stop it (its timeline holds until the switch)",
+  "readings": [
+   {
+    "t": 0,
+    "old": [
+     25.0,
+     30.0
+    ],
+    "new": [
+     0,
+     20.0,
+     false
+    ]
+   },
+   {
+    "t": 250,
+    "old": [
+     25.25,
+     30.25
+    ],
+    "new": [
+     0,
+     20.25,
+     false
+    ]
+   },
+   {
+    "t": 500,
+    "old": [
+     25.5,
+     30.5
+    ],
+    "new": [
+     0,
+     20.5,
+     false
+    ]
+   },
+   {
+    "t": 750,
+    "old": [
+     25.75,
+     30.75
+    ],
+    "new": [
+     0,
+     20.75,
+     false
+    ]
+   },
+   {
+    "t": 1000,
+    "old": [
+     26.0,
+     31.0
+    ],
+    "new": [
+     0,
+     21.0,
+     false
+    ]
+   },
+   {
+    "t": 1250,
+    "old": [
+     26.25,
+     31.25
+    ],
+    "new": [
+     0,
+     21.25,
+     false
+    ]
+   },
+   {
+    "t": 1500,
+    "old": [
+     26.5,
+     31.5
+    ],
+    "new": [
+     0,
+     21.5,
+     false
+    ]
+   },
+   {
+    "t": 1750,
+    "old": [
+     26.75,
+     31.75
+    ],
+    "new": [
+     0,
+     21.75,
+     false
+    ]
+   },
+   {
+    "t": 2000,
+    "old": [
+     27.0,
+     32.0
+    ],
+    "new": [
+     0,
+     22.0,
+     false
+    ]
+   },
+   {
+    "t": 2250,
+    "old": [
+     27.25,
+     32.25
+    ],
+    "new": [
+     0,
+     22.25,
+     false
+    ]
+   },
+   {
+    "t": 2500,
+    "old": [
+     27.5,
+     32.5
+    ],
+    "new": [
+     0,
+     22.5,
+     false
+    ]
+   },
+   {
+    "t": 2750,
+    "old": [
+     27.75,
+     32.75,
+     true,
+     0,
+     1.0,
+     true
+    ],
+    "new": [
+     0,
+     22.75,
+     false
+    ]
+   }
+  ],
+  "expect": [
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "steer:4.00",
+   "steer:4.00"
+  ]
+ },
+ {
+  "name": "no settled burst within the budget: falls back",
+  "readings": [
+   {
+    "t": 0,
+    "old": [
+     25,
+     30
+    ],
+    "new": [
+     0,
+     0,
+     false
+    ]
+   },
+   {
+    "t": 25000,
+    "old": [
+     50,
+     55
+    ],
+    "new": [
+     0,
+     0,
+     false
+    ]
+   }
+  ],
+  "expect": [
+   "measure",
+   "fallback"
+  ]
+ }
+]

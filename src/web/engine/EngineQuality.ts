@@ -34,6 +34,14 @@ interface PendingSwap {
   startedAt: number;
   /** What the new file reported when ready: the item's facts once it takes over. */
   info: ReadyInfo | null;
+  readyAt?: number;
+}
+
+/** The new file must play by then: `SWAP_TIMEOUT_MS` to be ready, `SWAP_ALIGN_MS` once ready. */
+export function swapDeadline(swap: PendingSwap): number {
+  return swap.readyAt != null
+    ? swap.readyAt + RecoveryPolicy.SWAP_ALIGN_MS
+    : swap.startedAt + RecoveryPolicy.SWAP_TIMEOUT_MS;
 }
 
 /** A rendition's id: the app's, or `r<index>`. */
@@ -264,7 +272,11 @@ export abstract class EngineQuality extends EngineFades {
   }
 
   protected swapReady(info: ReadyInfo): void {
-    if (this.pendingSwap != null) this.pendingSwap.info = info;
+    if (this.pendingSwap != null) {
+      this.pendingSwap.info = info;
+      // Live, the driver lines it up first: more time once ready.
+      if (this.isLive) this.pendingSwap.readyAt ??= this.now;
+    }
     this.swapNote('ready');
   }
 

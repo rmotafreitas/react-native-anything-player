@@ -543,6 +543,38 @@
     ]
   },
   {
+    "name": "renditions: a file's switch still has 12 s in all, ready or not (only a live one lines up)",
+    "steps": [
+      { "call": "load", "uri": "https://cdn.example/ep1", "live": false, "autoplay": true, "renditions": [{ "id": "64k", "uri": "https://cdn.example/ep1-64.m4a", "bitrate": 64000 }, { "id": "320k", "uri": "https://cdn.example/ep1-320.m4a", "bitrate": 320000 }] },
+      { "native": "ready", "duration": 600, "seekable": true },
+      { "native": "playing" },
+      { "call": "selectQuality", "id": "64k" },
+      { "expect": { "orderedCommands": ["open(gen=1,", "open(gen=2,"] } },
+      { "advance": 1000 },
+      { "native": "ready", "gen": 2, "duration": 600, "seekable": true },
+      { "advance": 10000 },
+      { "expect": { "state": "playing", "gen": 1, "errors": [], "commands": [] } },
+      { "advance": 1000 },
+      { "expect": { "errors": ["QUALITY_SWITCH_FAILED:warning"], "commands": ["cancelSwap(gen=2)"] } }
+    ]
+  },
+  {
+    "name": "renditions: a live switch has 12 s to get its file ready, then 30 s to play it (it lines up with what is heard first)",
+    "steps": [
+      { "call": "load", "uri": "https://stream.example/", "live": true, "autoplay": true, "renditions": [{ "id": "64", "uri": "https://stream.example/64", "bitrate": 64000 }, { "id": "320", "uri": "https://stream.example/320", "bitrate": 320000 }] },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "call": "selectQuality", "id": "64" },
+      { "expect": { "commands": ["open(gen=1,start=-,play=true,r=1)", "open(gen=2,start=-,play=true,r=0,swap)"] } },
+      { "advance": 11000 },
+      { "native": "ready", "gen": 2, "live": true },
+      { "advance": 29000 },
+      { "expect": { "state": "playing", "gen": 1, "quality": "320", "errors": [], "commands": [] } },
+      { "advance": 1000 },
+      { "expect": { "quality": "320", "errors": ["QUALITY_SWITCH_FAILED:warning"], "commands": ["cancelSwap(gen=2)"] } }
+    ]
+  },
+  {
     "name": "video: a rendition that fails to switch to is dropped, sits out a minute, then is tried again",
     "options": { "video": true },
     "steps": [
