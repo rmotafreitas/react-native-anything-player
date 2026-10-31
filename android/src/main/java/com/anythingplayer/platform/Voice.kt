@@ -219,10 +219,7 @@ internal object Voice {
     resolveOrAsk(request) { entry ->
       if (entry == null) return@resolveOrAsk done(Result.success(null))
       // Asked late (a waiting request): the app's answer may come after the user chose.
-      if (!stillWanted()) {
-        Log.d(TAG, "request \"${request.query}\" dropped: something else is loaded")
-        return@resolveOrAsk done(Result.success(null))
-      }
+      if (!stillWanted()) return@resolveOrAsk done(Result.success(null))
       val controller =
         try {
           voicePlayer(playerId)
