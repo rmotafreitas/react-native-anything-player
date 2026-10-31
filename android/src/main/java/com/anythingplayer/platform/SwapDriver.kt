@@ -52,6 +52,8 @@ internal class SwapDriver(
     var aligner: LiveSwapAligner? = null
     /** The new file plays muted to catch up: its `playing` is not the takeover yet. */
     var aligning = false
+    /** Taken over without lining up: the audio jumps, which the engine is told. */
+    var unaligned = false
   }
 
   private val main = Handler(Looper.getMainLooper())
@@ -215,6 +217,7 @@ internal class SwapDriver(
       }
       LiveSwapAligner.Step.Play, is LiveSwapAligner.Step.Fallback -> {
         waiting.aligning = false
+        waiting.unaligned = step is LiveSwapAligner.Step.Fallback
         next.setRate(rate)
         // Already playing (it caught up): it takes over now; else its `playing` will.
         if (new.isPlaying) playing(waiting.generation) else next.play()
@@ -226,10 +229,13 @@ internal class SwapDriver(
 
   /** The switch's new file plays (and is lined up): it takes over, and the engine hears it. */
   private fun playing(generation: Int) {
+    val unaligned = pending?.unaligned == true
     takeOver()
     observer.onPlaying(generation)
     // The engine took the switch's generation: the new file's tracks are the ones now.
     current.mappedTracks?.let { observer.onTracks(generation, it.tracks, it.variants) }
+    // A live switch that could not be lined up repeats or skips: say where the new audio starts.
+    if (unaligned) observer.onDiscontinuity(generation, current.sample().position)
   }
 
   /** The new file plays: it is the picture and the sound now. */

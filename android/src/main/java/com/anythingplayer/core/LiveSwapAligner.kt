@@ -14,7 +14,8 @@ import kotlin.math.abs
  * with `k` the edges' difference. A player reports its edge in steps (a low
  * bitrate's every few seconds), always behind the true one: each edge less
  * the time elapsed peaks right after a step lands, so `k` is the difference of
- * those peaks, and the burst is in once the new one's peak stops rising.
+ * those peaks. The burst is in once the new one's edge has not risen notably
+ * for a while and a later step confirmed its peak (and the old one stepped too).
  * Behind, the new player catches up (muted, faster the further behind, up to
  * [MAX_CATCH_UP_RATE]: it slows as it closes in, so it never overshoots); ahead, it
  * holds (paused) until the old one gets there; then it takes over. Pure: the
@@ -45,7 +46,14 @@ class LiveSwapAligner(private val startedAt: Long) {
   /** Each player's highest edge less the time elapsed (see the class comment). */
   private var newTop: Double? = null
   private var oldTop: Double? = null
-  private var newTopRaisedAt = startedAt
+  /** The new edge's last notable rise (more than [RAISE_S] above the one before), and when. */
+  private var riseBase: Double? = null
+  private var raisedAt = startedAt
+  /** Steps the new edge took since its last notable rise, and the old edge's steps. */
+  private var newStepsSinceRise = 0
+  private var oldSteps = 0
+  private var lastNewEdge: Double? = null
+  private var lastOldEdge: Double? = null
   /** New position = old position + [shift], once measured. */
   var shift: Double? = null
     private set
@@ -66,11 +74,22 @@ class LiveSwapAligner(private val startedAt: Long) {
     val elapsed = (now - startedAt) / 1000.0
     val n = new.edge - elapsed
     val o = old.edge - elapsed
-    val top = newTop
-    if (top == null || n > top + RAISE_S) newTopRaisedAt = now
-    newTop = maxOf(top ?: n, n)
+    val base = riseBase
+    if (base == null || n > base + RAISE_S) {
+      riseBase = n
+      raisedAt = now
+      newStepsSinceRise = 0
+    } else if (lastNewEdge.let { it != null && new.edge > it }) {
+      newStepsSinceRise++
+    }
+    if (lastOldEdge.let { it != null && old.edge > it }) oldSteps++
+    lastNewEdge = new.edge
+    lastOldEdge = old.edge
+    newTop = maxOf(newTop ?: n, n)
     oldTop = maxOf(oldTop ?: o, o)
-    if (now - startedAt < MIN_MEASURE_MS || now - newTopRaisedAt < QUIET_MS) return Step.Measure
+    val settled =
+      now - startedAt >= MIN_MEASURE_MS && now - raisedAt >= QUIET_MS && newStepsSinceRise >= 1 && oldSteps >= 1
+    if (!settled) return Step.Measure
     shift = newTop!! - oldTop!!
     return step(now, old, new)
   }
@@ -84,7 +103,7 @@ class LiveSwapAligner(private val startedAt: Long) {
     const val TOLERANCE_S = 0.05
     /** Past this, the switch takes over unaligned (below RecoveryPolicy.SWAP_ALIGN_MS). */
     const val BUDGET_MS = 20_000L
-    /** The burst is in once the new peak has not risen by more than [RAISE_S] for [QUIET_MS]... */
+    /** The burst is in once the new edge has not risen by more than [RAISE_S] over the time for [QUIET_MS], a later step confirmed it... */
     const val RAISE_S = 0.5
     const val QUIET_MS = 2_500L
     /** ...and at least this long after the new file is ready. */
