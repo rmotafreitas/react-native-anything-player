@@ -44,6 +44,20 @@ describe('Player lifecycle', () => {
     await p.release();
   });
 
+  it('a release lets go of the id before a new Player with it, in the same tick', async () => {
+    const first = new Player({ id: 'remount' });
+    await first.play();
+    const released = first.release();
+    const second = new Player({ id: 'remount' });
+    await released;
+    const names = fake.calls.map((c) => c[0]);
+    expect(names.lastIndexOf('willReleasePlayer')).toBeLessThan(
+      names.lastIndexOf('createPlayer')
+    );
+    expect(second.status.state).toBe('idle');
+    await second.release();
+  });
+
   it('release frees the native player, clears listeners and rejects later commands', async () => {
     const before = _livePlayerCount();
     const p = new Player();

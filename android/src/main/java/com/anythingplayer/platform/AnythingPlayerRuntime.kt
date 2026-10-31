@@ -181,7 +181,8 @@ internal object AnythingPlayerRuntime : FocusListener {
   }
 
   fun register(controller: PlayerController) {
-    players[controller.id] = controller
+    // Let go of before main got here (created and released in one tick): only released.
+    if (players[controller.id] !== controller) return
     controller.engine.networkChanged(network.state, false)
     controller.engine.routeChanged(localRoute)
     if (controller.picture != null) {
@@ -199,9 +200,48 @@ internal object AnythingPlayerRuntime : FocusListener {
     }
   }
 
+  /**
+   * Players JS let go of ([detach]) that main has not released yet, by id,
+   * oldest first. Guarded by [players]' lock, as [obtain] is.
+   */
+  private val detached = HashMap<String, ArrayDeque<PlayerController>>()
+
+  /**
+   * JS's thread, synchronously: JS let go of [id]. It leaves the registry at
+   * once, so an [obtain] with it from now on creates a new player instead of
+   * attaching to this one (the release itself comes later, on main: #90).
+   */
+  fun detach(id: String): Boolean =
+    synchronized(players) {
+      val controller = players.remove(id) ?: return false
+      controller.jsLetGo = true
+      detached.getOrPut(id) { ArrayDeque() }.addLast(controller)
+      true
+    }
+
+  /**
+   * Any thread: releases the player JS let go of with [id] (the oldest
+   * [detach]ed one, else the one registered with it) on main, then [then].
+   */
+  fun release(id: String, then: () -> Unit) {
+    val controller =
+      synchronized(players) {
+        detached[id]?.let { queue -> queue.removeFirst().also { if (queue.isEmpty()) detached.remove(id) } }
+          ?: players.remove(id)
+      }
+    post {
+      if (controller != null) {
+        controller.release()
+        unregister(controller)
+      }
+      then()
+    }
+  }
+
   /** Main thread. */
   fun unregister(controller: PlayerController) {
-    players.remove(controller.id)
+    // Only this player: another one may have its id by now.
+    players.remove(controller.id, controller)
     cast.released(controller)
     if (active === controller) active = players.values.lastOrNull { it.options.mediaSession && it.status.state != PlaybackState.IDLE }
     cast.activeChanged(active)

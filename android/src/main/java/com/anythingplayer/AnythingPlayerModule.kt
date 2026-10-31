@@ -172,16 +172,15 @@ class AnythingPlayerModule(reactContext: ReactApplicationContext) : NativeAnythi
     return obtained.controller.id
   }
 
+  /** JS's thread, synchronously: a `createPlayer` with this id from now on makes a new player (#90). */
+  override fun willReleasePlayer(playerId: String): Boolean {
+    synchronized(owned) { owned.remove(playerId) }
+    return AnythingPlayerRuntime.detach(playerId)
+  }
+
   override fun releasePlayer(playerId: String, promise: Promise) {
     synchronized(owned) { owned.remove(playerId) }
-    main.post {
-      val controller = AnythingPlayerRuntime.players[playerId]
-      if (controller != null) {
-        controller.release()
-        AnythingPlayerRuntime.unregister(controller)
-      }
-      promise.resolve(null)
-    }
+    AnythingPlayerRuntime.release(playerId) { promise.resolve(null) }
   }
 
   private fun command(playerId: String, promise: Promise, block: (PlayerController) -> Unit) {

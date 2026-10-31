@@ -199,6 +199,7 @@ function sourceUri(source: Source | null | undefined): string {
 
 /** Frees a player the app cannot use; nothing waits for it. */
 function releaseQuietly(id: string): void {
+  native().willReleasePlayer(id);
   native()
     .releasePlayer(id)
     .catch(() => undefined);
@@ -784,6 +785,9 @@ export class Player {
     this.released = true;
     this.subtitles.cancel();
     players.delete(this.id);
+    // Native lets go of the id now: a Player created with it next (a remount,
+    // in the same tick) is a new one, not this one being released.
+    native().willReleasePlayer(this.id);
     try {
       await native().releasePlayer(this.id);
     } finally {

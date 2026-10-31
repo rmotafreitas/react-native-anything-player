@@ -122,12 +122,29 @@ final class AnythingPlayerRuntime: AudioSessionListener, RemoteCommandTarget {
     lock.sync { _ = releasing.insert(id) }
   }
 
+  /// JS's thread: JS let go of `id`, whose release main will run next. A
+  /// `claim` of it succeeds from now on, even while its creation is still
+  /// queued. Whether a player had the id (built or being built).
+  func letGo(_ id: String) -> Bool {
+    let (controller, pending) = lock.sync { () -> (PlayerController?, Bool) in
+      let controller = registry[id]
+      let pending = reserved.contains(id)
+      releasing.insert(id)
+      reserved.remove(id)
+      return (controller, pending)
+    }
+    controller?.jsLetGo()
+    return controller != nil || pending
+  }
+
   /// Main thread. Creates a claimed id's player: from JS, or natively for a
   /// voice request (`detachable`: it outlives JS).
   @discardableResult
-  func createPlayer(id: String, options: PlayerOptions, detachable: Bool) -> PlayerController {
+  func createPlayer(id: String, options: PlayerOptions, detachable: Bool, letGo: Bool = false) -> PlayerController {
     startIfNeeded()
     let controller = PlayerController(id: id, options: options, detachable: detachable, runtime: self)
+    // Released by JS before main built it: silent from the start.
+    if letGo { controller.jsLetGo() }
     #if RNAP_CAST
     controller.routing.makeRemote = { outputId in CastDriver(outputId: outputId) }
     #endif

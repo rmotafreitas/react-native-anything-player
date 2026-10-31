@@ -17,6 +17,13 @@ import {
  */
 export interface Spec extends TurboModule {
   createPlayer(options: CodegenTypes.UnsafeObject): string;
+  /**
+   * Before `releasePlayer`: native lets go of the id at once, so a
+   * `createPlayer` with it right after makes a new player, not this one.
+   * Returns a value so that it runs synchronously (a `void` TurboModule
+   * method is queued, like the promise ones): whether a player had the id.
+   */
+  willReleasePlayer(playerId: string): boolean;
   releasePlayer(playerId: string): Promise<void>;
 
   load(

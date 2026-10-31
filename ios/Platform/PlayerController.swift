@@ -327,7 +327,7 @@ final class PlayerController: EngineDelegate, DriverObserver {
       enabled
       ? { [weak self] window in
         guard let self, self.lock.sync({ self.samplesWanted }) else { return }
-        self.runtime.emit([
+        self.send([
           "playerId": self.id, "type": "audioSample",
           "waveform": window.waveform.map { Double($0) },
           "level": window.level, "duration": window.duration,
@@ -510,6 +510,16 @@ final class PlayerController: EngineDelegate, DriverObserver {
     event["playerId"] = id
     event["type"] = type
     event["seq"] = eventSeq
+    send(event)
+  }
+
+  /// JS let go of this player (`willReleasePlayer`): its id may already
+  /// belong to a new one there, which must not get this one's events. Any thread.
+  func jsLetGo() { lock.sync { letGo = true } }
+  private var letGo = false
+
+  private func send(_ event: [String: Any]) {
+    guard !lock.sync({ letGo }) else { return }
     runtime.emit(event)
   }
 
@@ -527,7 +537,7 @@ final class PlayerController: EngineDelegate, DriverObserver {
     var event = Serialization.status(status, seq: seq)
     event["playerId"] = id
     event["type"] = "status"
-    runtime.emit(event)
+    send(event)
     // The song advances with the audio, not the wall clock.
     trackClock?.setRunning(status.state == .playing, now: SystemClock.shared.monotonicMs)
     updateProgressTicks(status.state)

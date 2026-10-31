@@ -304,7 +304,7 @@ internal class PlayerController(
         if (!released && source === localDriver) {
           val waveform = Arguments.createArray()
           window.waveform.forEach { waveform.pushDouble(it.toDouble()) }
-          runtime.emit(
+          send(
             Arguments.createMap().apply {
               putString("playerId", id)
               putString("type", "audioSample")
@@ -326,7 +326,17 @@ internal class PlayerController(
     payload.putString("playerId", id)
     payload.putString("type", type)
     payload.putDouble("seq", eventSeq.toDouble())
-    runtime.emit(payload)
+    send(payload)
+  }
+
+  /**
+   * JS let go of this player ([AnythingPlayerRuntime.detach]): its id may
+   * already belong to a new one there, which must not get this one's events.
+   */
+  @Volatile var jsLetGo = false
+
+  private fun send(event: WritableMap) {
+    if (!jsLetGo) runtime.emit(event)
   }
 
   // ── EngineDelegate (main thread) ──
@@ -339,7 +349,7 @@ internal class PlayerController(
     val event = statusToMap(status, eventSeq)
     event.putString("playerId", id)
     event.putString("type", "status")
-    runtime.emit(event)
+    send(event)
     updateTitleReader(status)
     // The song advances with the audio, not the wall clock.
     trackClock?.setRunning(status.state == PlaybackState.PLAYING, AndroidClock.monotonicMs)

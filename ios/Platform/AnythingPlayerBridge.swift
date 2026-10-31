@@ -11,6 +11,11 @@ import Foundation
 public final class AnythingPlayerBridge: NSObject {
   private let lock = NSLock()
   private var owned = Set<String>()
+  /// Ids JS let go of (`willReleasePlayer`) whose `releasePlayer` has not come yet.
+  private var lettingGo: [String: Int] = [:]
+  /// Creations main has not run yet, by id, and those JS let go of meanwhile.
+  private var creating: [String: UUID] = [:]
+  private var letGoCreations = Set<UUID>()
   private static let counterLock = NSLock()
   private static var counter = 0
 
@@ -46,15 +51,24 @@ public final class AnythingPlayerBridge: NSObject {
       _ = runtime.claim(id)
       detachable = false
     }
+    let creation = UUID()
     lock.sync {
       _ = owned.insert(id)
       // Until main has built it, JS reads this player's first status from here.
       pending[id] = parsed
+      creating[id] = creation
     }
     let runtime = self.runtime
     DispatchQueue.main.async { [weak self] in
-      runtime.createPlayer(id: id, options: parsed, detachable: detachable)
-      self?.lock.sync { _ = self?.pending.removeValue(forKey: id) }
+      let letGo = self?.lock.sync { () -> Bool in
+        guard let self else { return false }
+        if self.creating[id] == creation {
+          self.creating.removeValue(forKey: id)
+          self.pending.removeValue(forKey: id)
+        }
+        return self.letGoCreations.remove(creation) != nil
+      } ?? false
+      runtime.createPlayer(id: id, options: parsed, detachable: detachable, letGo: letGo)
     }
     return id
   }
@@ -62,10 +76,43 @@ public final class AnythingPlayerBridge: NSObject {
   /// Players created on JS's side whose controller main has not built yet.
   private var pending: [String: PlayerOptions] = [:]
 
+  /// JS's thread, synchronously, before `releasePlayer`: a `createPlayer`
+  /// with this id from now on makes a new player (#90). The release is queued
+  /// on main from here, after this player's creation and before a new one's.
+  /// Whether a player had the id.
+  @objc public func willReleasePlayer(_ id: String) -> Bool {
+    lock.sync {
+      _ = owned.remove(id)
+      lettingGo[id, default: 0] += 1
+      if let creation = creating.removeValue(forKey: id) {
+        letGoCreations.insert(creation)
+        pending.removeValue(forKey: id)
+      }
+    }
+    let runtime = self.runtime
+    let known = runtime.letGo(id)
+    DispatchQueue.main.async {
+      if let controller = runtime.player(id) {
+        controller.release()
+        runtime.unregister(controller)
+      }
+    }
+    return known
+  }
+
   @objc public func releasePlayer(
     _ id: String, resolve: @escaping (Any?) -> Void, reject: @escaping (String, String, NSError?) -> Void
   ) {
-    lock.sync { _ = owned.remove(id) }
+    let queued = lock.sync { () -> Bool in
+      guard let count = lettingGo[id] else {
+        _ = owned.remove(id)
+        return false
+      }
+      lettingGo[id] = count > 1 ? count - 1 : nil
+      return true
+    }
+    // `willReleasePlayer` queued the release: answer once main ran it.
+    if queued { return DispatchQueue.main.async { resolve(nil) } }
     let runtime = self.runtime
     runtime.willRelease(id)
     DispatchQueue.main.async {

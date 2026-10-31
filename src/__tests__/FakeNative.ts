@@ -104,6 +104,11 @@ export class FakeNative {
     this.statuses.set(id, baseStatus());
     return id;
   };
+  /** Like native: the id is free at once (the player goes later). */
+  willReleasePlayer = (id: string) => {
+    this.calls.push(['willReleasePlayer', id]);
+    return this.statuses.delete(id);
+  };
   releasePlayer = (id: string) => {
     this.calls.push(['releasePlayer', id]);
     return Promise.resolve();

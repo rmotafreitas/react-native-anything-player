@@ -775,6 +775,43 @@ export const SCENARIOS: Scenario[] = [
     },
   },
   {
+    // A remount: release and a new player with the same id in one tick (#90).
+    name: 'release-then-same-id',
+    timeoutMs: 25_000,
+    run: async () => {
+      const first = new Player({ id: 'remount' });
+      await first.load(live(), { autoplay: true });
+      await waitFor(
+        first,
+        (s) => s.state === 'playing',
+        10_000,
+        'first playing'
+      );
+      const released = first.release();
+      const second = new Player({ id: 'remount' });
+      const state = () => second.status.state;
+      await released;
+      expect(
+        state() === 'idle',
+        `a new player, not the released one (${state()})`
+      );
+      await second.load(live(), { autoplay: true });
+      await waitFor(
+        second,
+        (s) => s.state === 'playing',
+        10_000,
+        'second playing'
+      );
+      await sleep(1_500);
+      expect(
+        state() === 'playing',
+        `still playing after the release settled (${state()})`
+      );
+      await expectConnections(1, 4_000, 'only the new player is connected');
+      await second.release();
+    },
+  },
+  {
     name: 'invalid-sources',
     timeoutMs: 10_000,
     run: () =>

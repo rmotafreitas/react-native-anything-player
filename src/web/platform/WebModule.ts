@@ -93,6 +93,11 @@ export class WebModule implements PlayerModule {
     return id;
   }
 
+  /** Nothing to do first: `releasePlayer` releases at once, on this thread. */
+  willReleasePlayer(playerId: string): boolean {
+    return this.runtime.players.has(playerId);
+  }
+
   async releasePlayer(playerId: string): Promise<void> {
     const controller = this.runtime.players.get(playerId);
     if (!controller) return;

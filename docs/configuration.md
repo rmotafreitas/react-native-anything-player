@@ -40,7 +40,7 @@ const player = new Player({
 
 `video` turns the player into a video player and takes its own options (`whenBackgrounded`, `ambient`, `quality`, `tracks`…): they are in [Video](video.md). Options are fixed for the player's lifetime, except `fade`, which `setFade()` replaces ([Sleep timer and fades](playback.md#sleep-timer-and-fades)). The audio-session configuration (iOS category/mode) follows the player that last requested playback.
 
-With an `id`, a player outlives the JavaScript that created it, and `new Player({ id })` attaches to the native player with that id (one Siri or Google Assistant started, or one that kept playing across a reload), keeping its options. See [Voice assistants](voice.md#playing-a-request).
+With an `id`, a player outlives the JavaScript that created it, and `new Player({ id })` attaches to the native player with that id (one Siri or Google Assistant started, or one that kept playing across a reload), keeping its options. A player released with `release()` is let go of at once: a `new Player({ id })` right after (a remount, even in the same tick) is a new player, never the one being released. See [Voice assistants](voice.md#playing-a-request).
 
 App-wide settings live outside `Player`: the voice catalog and its browse tree (`setCatalog`, `setFavorites`, [Voice assistants](voice.md), [Cars & watches](cars-and-watches.md)), Cast (`configureCast` on the web, [Casting & AirPlay](routes-and-casting.md)) hls.js and Shaka Player on the web (`configureHls`, `configureShaka`, [Web](web.md#hls)).
 
