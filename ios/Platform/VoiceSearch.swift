@@ -166,11 +166,11 @@ final class VoiceSearch {
     if let active = runtime.active { return completion(active) }
     let id = catalog.playerId
     if let existing = runtime.player(id) { return completion(existing) }
-    if runtime.claim(id) {
+    if let slot = runtime.claim(id) {
       var options = PlayerOptions(catalog.playerOptions as NSDictionary)
       // Voice playback is controlled from the lock screen.
       options.mediaSession = true
-      return completion(runtime.createPlayer(id: id, options: options, detachable: true))
+      return completion(runtime.createPlayer(id: id, options: options, detachable: true, slot: slot))
     }
     // JS is creating it right now (its creation is queued on main): use it once it exists.
     DispatchQueue.main.async { [weak self] in completion(self?.runtime.player(id)) }

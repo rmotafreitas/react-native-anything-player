@@ -787,9 +787,12 @@ export const SCENARIOS: Scenario[] = [
         10_000,
         'first playing'
       );
+      // A command sent just before the release is still the first one's.
+      const paused = first.pause();
       const released = first.release();
       const second = new Player({ id: 'remount' });
       const state = () => second.status.state;
+      await paused;
       await released;
       expect(
         state() === 'idle',

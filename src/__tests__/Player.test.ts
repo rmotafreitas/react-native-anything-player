@@ -47,14 +47,23 @@ describe('Player lifecycle', () => {
   it('a release lets go of the id before a new Player with it, in the same tick', async () => {
     const first = new Player({ id: 'remount' });
     await first.play();
+    fake.emitStatus('remount', { state: 'playing', seq: 5 });
+    const old = fake.statuses.get('remount')!;
     const released = first.release();
     const second = new Player({ id: 'remount' });
-    await released;
     const names = fake.calls.map((c) => c[0]);
     expect(names.lastIndexOf('willReleasePlayer')).toBeLessThan(
       names.lastIndexOf('createPlayer')
     );
     expect(second.status.state).toBe('idle');
+    expect(second.status).not.toHaveProperty('instance');
+    // What the released one sent before JS let go of it, delivered now.
+    fake.emit({ ...old, seq: 9, playerId: 'remount', type: 'status' });
+    expect(second.status.state).toBe('idle');
+    // The new one's own, with its lower seq, still count.
+    fake.emitStatus('remount', { state: 'loading', seq: 1 });
+    expect(second.status.state).toBe('loading');
+    await released;
     await second.release();
   });
 

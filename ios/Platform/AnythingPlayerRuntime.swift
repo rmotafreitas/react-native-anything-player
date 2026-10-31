@@ -28,9 +28,11 @@ final class AnythingPlayerRuntime: AudioSessionListener, RemoteCommandTarget {
   private var registry: [String: PlayerController] = [:]
   private var order: [String] = []
   /// Ids handed out whose controller is still being created on main.
-  private var reserved = Set<String>()
-  /// Ids JS released whose controller is still being released on main.
-  private var releasing = Set<String>()
+  private var creating: [String: PlayerSlot] = [:]
+  /// What JS let go of (`letGo`) and has not released yet (`takeRelease`), by
+  /// id, oldest first: the player's slot, or `nil` when the id had none.
+  private var detached: [String: [PlayerSlot?]] = [:]
+  private var instances = 0
   private var started = false
 
   private let sinkLock = NSLock()
@@ -105,46 +107,132 @@ final class AnythingPlayerRuntime: AudioSessionListener, RemoteCommandTarget {
 
   // MARK: - Players
 
-  /// Any thread. Claims `id` for a new player: false when a player has it
-  /// (or is being created with it). A released id is free at once (React
-  /// may re-create a player right after releasing it): the main queue runs
-  /// the release before the creation.
-  func claim(_ id: String) -> Bool {
+  /// Any thread. Claims `id` for a new player, to be built on main with the
+  /// slot: `nil` when a player has it (or is being created with it). An id JS
+  /// let go of (`letGo`) is free at once, even while its release is queued.
+  func claim(_ id: String, options: PlayerOptions? = nil) -> PlayerSlot? {
     lock.sync {
-      guard registry[id] == nil || releasing.contains(id), !reserved.contains(id) else { return false }
-      reserved.insert(id)
-      return true
+      guard registry[id] == nil, creating[id] == nil else { return nil }
+      instances += 1
+      let slot = PlayerSlot(instance: instances, options: options)
+      creating[id] = slot
+      return slot
     }
   }
 
-  /// Any thread: JS released `id` (the controller goes on main).
-  func willRelease(_ id: String) {
-    lock.sync { _ = releasing.insert(id) }
-  }
+  /// Any thread: the slot of a creation main has not run yet.
+  func creatingSlot(_ id: String) -> PlayerSlot? { lock.sync { creating[id] } }
 
-  /// JS's thread: JS let go of `id`, whose release main will run next. A
-  /// `claim` of it succeeds from now on, even while its creation is still
-  /// queued. Whether a player had the id (built or being built).
+  /// JS's thread, synchronously: JS let go of `id`. It leaves the registry
+  /// (or the queued creation is marked) at once, so a `claim` with it from
+  /// now on makes a new player and the getters stop answering for this one;
+  /// the release comes with JS's `releasePlayer`, after the commands JS sent
+  /// this player before (#90). Whether the id had a player.
   func letGo(_ id: String) -> Bool {
-    let (controller, pending) = lock.sync { () -> (PlayerController?, Bool) in
-      let controller = registry[id]
-      let pending = reserved.contains(id)
-      releasing.insert(id)
-      reserved.remove(id)
-      return (controller, pending)
+    let (slot, built) = lock.sync { () -> (PlayerSlot?, PlayerController?) in
+      let slot: PlayerSlot?
+      if let controller = registry.removeValue(forKey: id) {
+        order.removeAll { $0 == id }
+        slot = PlayerSlot(instance: controller.instance, options: nil)
+        slot?.controller = controller
+      } else if let pending = creating.removeValue(forKey: id) {
+        pending.letGo = true
+        slot = pending
+      } else {
+        slot = nil
+      }
+      detached[id, default: []].append(slot)
+      return (slot, slot?.controller)
     }
-    controller?.jsLetGo()
-    return controller != nil || pending
+    built?.jsLetGo()
+    return slot != nil
+  }
+
+  enum CommandTarget {
+    /// Whatever has the id when the command runs on main.
+    case current
+    /// A player JS let go of, whose release is still queued behind its commands.
+    case letGo(PlayerSlot)
+    /// JS let go of an id that had no player.
+    case gone
+  }
+
+  /// The method queue, as a command arrives: the player it is for. While a
+  /// release of `id` is pending, the commands JS sent before it are the
+  /// let-go player's (the queue keeps JS's order).
+  func target(_ id: String) -> CommandTarget {
+    lock.sync {
+      guard let queue = detached[id], let first = queue.first else { return CommandTarget.current }
+      if let slot = first { return CommandTarget.letGo(slot) }
+      return CommandTarget.gone
+    }
+  }
+
+  /// Main thread: the controller a command resolves to (not one released already).
+  func resolve(_ target: CommandTarget, _ id: String) -> PlayerController? {
+    switch target {
+    case .current: return player(id)
+    case .letGo(let slot): return lock.sync { slot.controller }.flatMap { $0.isReleased ? nil : $0 }
+    case .gone: return nil
+    }
+  }
+
+  /// The method queue, for `releasePlayer`: what JS let go of with `id`
+  /// (the oldest `letGo`), or, when no `willReleasePlayer` came first, what
+  /// has the id now, let go of here. `wasLetGo`: a `willReleasePlayer` came first.
+  func takeRelease(_ id: String) -> (slot: PlayerSlot?, wasLetGo: Bool) {
+    let wasLetGo = lock.sync { !(detached[id]?.isEmpty ?? true) }
+    if !wasLetGo { _ = letGo(id) }
+    return lock.sync {
+      guard var queue = detached[id], !queue.isEmpty else { return (nil, wasLetGo) }
+      let first = queue.removeFirst()
+      detached[id] = queue.isEmpty ? nil : queue
+      return (first, wasLetGo)
+    }
+  }
+
+  /// Main thread: releases what a slot holds (built by now: its creation was queued first).
+  func release(_ slot: PlayerSlot?) {
+    guard let controller = lock.sync({ slot?.controller }) else { return }
+    controller.release()
+    unregister(controller)
+  }
+
+  /// Main thread, on a JS teardown: what JS let go of but will not release now.
+  func releaseDetached() {
+    let left = lock.sync { () -> [PlayerController] in
+      let left = detached.values.flatMap { $0 }.compactMap { $0?.controller }
+      detached.removeAll()
+      return left
+    }
+    left.forEach {
+      $0.release()
+      unregister($0)
+    }
   }
 
   /// Main thread. Creates a claimed id's player: from JS, or natively for a
   /// voice request (`detachable`: it outlives JS).
   @discardableResult
-  func createPlayer(id: String, options: PlayerOptions, detachable: Bool, letGo: Bool = false) -> PlayerController {
+  func createPlayer(id: String, options: PlayerOptions, detachable: Bool, slot: PlayerSlot? = nil) -> PlayerController {
     startIfNeeded()
-    let controller = PlayerController(id: id, options: options, detachable: detachable, runtime: self)
-    // Released by JS before main built it: silent from the start.
-    if letGo { controller.jsLetGo() }
+    let instance = slot?.instance ?? lock.sync { () -> Int in
+      instances += 1
+      return instances
+    }
+    let controller = PlayerController(
+      id: id, options: options, detachable: detachable, runtime: self, instance: instance)
+    let letGo = lock.sync { () -> Bool in
+      slot?.controller = controller
+      if let slot, creating[id] === slot { creating.removeValue(forKey: id) }
+      return slot?.letGo ?? false
+    }
+    // JS let go of it before main built it: silent, never registered; its
+    // `releasePlayer` releases it.
+    if letGo {
+      controller.jsLetGo()
+      return controller
+    }
     #if RNAP_CAST
     controller.routing.makeRemote = { outputId in CastDriver(outputId: outputId) }
     #endif
@@ -194,9 +282,6 @@ final class AnythingPlayerRuntime: AudioSessionListener, RemoteCommandTarget {
   /// Main thread.
   func register(_ controller: PlayerController) {
     lock.sync {
-      reserved.remove(controller.id)
-      // A release of this id (queued before this creation) has already run.
-      releasing.remove(controller.id)
       registry[controller.id] = controller
       order.removeAll { $0 == controller.id }
       order.append(controller.id)
@@ -208,7 +293,6 @@ final class AnythingPlayerRuntime: AudioSessionListener, RemoteCommandTarget {
   /// Main thread.
   func unregister(_ controller: PlayerController) {
     lock.sync {
-      releasing.remove(controller.id)
       guard registry[controller.id] === controller else { return }
       registry.removeValue(forKey: controller.id)
       order.removeAll { $0 == controller.id }
@@ -426,5 +510,22 @@ final class AnythingPlayerRuntime: AudioSessionListener, RemoteCommandTarget {
     if nothingLoaded || target.options.remoteCommands.contains(command) {
       target.emitRemoteCommand(command, position: position)
     }
+  }
+}
+
+/// A player as JS's threads know it, from its claim on: main builds it later.
+/// Mutable fields are guarded by the runtime's lock.
+final class PlayerSlot {
+  /// `PlayerController.instance` of the player it becomes.
+  let instance: Int
+  /// The options JS created it with (its status before main built it).
+  let options: PlayerOptions?
+  var controller: PlayerController?
+  /// JS let go of it before main built it.
+  var letGo = false
+
+  init(instance: Int, options: PlayerOptions?) {
+    self.instance = instance
+    self.options = options
   }
 }

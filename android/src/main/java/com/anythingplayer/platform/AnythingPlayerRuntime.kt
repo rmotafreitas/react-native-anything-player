@@ -201,33 +201,48 @@ internal object AnythingPlayerRuntime : FocusListener {
   }
 
   /**
-   * Players JS let go of ([detach]) that main has not released yet, by id,
-   * oldest first. Guarded by [players]' lock, as [obtain] is.
+   * What JS let go of ([detach]) and has not released yet ([release]), by id,
+   * oldest first: the player, or `null` when the id had none. Guarded by
+   * [players]' lock, as [obtain] is.
    */
-  private val detached = HashMap<String, ArrayDeque<PlayerController>>()
+  private val detached = HashMap<String, ArrayDeque<PlayerController?>>()
 
   /**
    * JS's thread, synchronously: JS let go of [id]. It leaves the registry at
    * once, so an [obtain] with it from now on creates a new player instead of
-   * attaching to this one (the release itself comes later, on main: #90).
+   * attaching to this one; the release comes with JS's `releasePlayer`, after
+   * the commands JS sent this player before (#90). Whether the id had one.
    */
   fun detach(id: String): Boolean =
     synchronized(players) {
-      val controller = players.remove(id) ?: return false
-      controller.jsLetGo = true
+      val controller = players.remove(id)
+      controller?.jsLetGo = true
       detached.getOrPut(id) { ArrayDeque() }.addLast(controller)
-      true
+      controller != null
     }
 
   /**
-   * Any thread: releases the player JS let go of with [id] (the oldest
-   * [detach]ed one, else the one registered with it) on main, then [then].
+   * The native-modules thread, as a command arrives: the player it is for.
+   * While a release of [id] is pending, the commands JS sent before it are the
+   * let-go player's (the queue keeps JS's order); else the registered one.
+   */
+  fun target(id: String): PlayerController? {
+    synchronized(players) {
+      val pending = detached[id] ?: return players[id]
+      return pending.first()
+    }
+  }
+
+  /**
+   * The native-modules thread: releases what JS let go of with [id] (the
+   * oldest [detach]; without one, the player registered with it) on main,
+   * then [then].
    */
   fun release(id: String, then: () -> Unit) {
     val controller =
       synchronized(players) {
-        detached[id]?.let { queue -> queue.removeFirst().also { if (queue.isEmpty()) detached.remove(id) } }
-          ?: players.remove(id)
+        val queue = detached[id]
+        if (queue != null) queue.removeFirst().also { if (queue.isEmpty()) detached.remove(id) } else players.remove(id)
       }
     post {
       if (controller != null) {
@@ -235,6 +250,15 @@ internal object AnythingPlayerRuntime : FocusListener {
         unregister(controller)
       }
       then()
+    }
+  }
+
+  /** A JS teardown: releases what JS let go of but could not release any more. Main thread. */
+  fun releaseDetached() {
+    val left = synchronized(players) { detached.values.flatten().filterNotNull().also { detached.clear() } }
+    left.forEach {
+      it.release()
+      unregister(it)
     }
   }
 

@@ -255,12 +255,18 @@ final class PlayerController: EngineDelegate, DriverObserver {
   /// The load whose source a Cast receiver cannot reach (reported once).
   private var uncastableLoadId = -1
   private var released = false
+  /// Main thread.
+  var isReleased: Bool { released }
+  /// This native player among all that ever had its id: on every status and
+  /// event, so a JS player drops what a released one with the same id sent.
+  let instance: Int
   /// Whether `audioSample` windows may still be emitted (guarded by `lock`):
   /// read on the tap's and the visualizer's queues, cleared by `release`.
   private var samplesWanted = false
 
-  init(id: String, options: PlayerOptions, detachable: Bool, runtime: AnythingPlayerRuntime) {
+  init(id: String, options: PlayerOptions, detachable: Bool, runtime: AnythingPlayerRuntime, instance: Int) {
     self.id = id
+    self.instance = instance
     self.options = options
     self.detachable = detachable
     self.runtime = runtime
@@ -408,7 +414,9 @@ final class PlayerController: EngineDelegate, DriverObserver {
 
   func statusDictionary() -> [String: Any] {
     let (status, seq) = lock.sync { (snapshotStatus, snapshotSeq) }
-    return Serialization.status(status, seq: seq)
+    var dictionary = Serialization.status(status, seq: seq)
+    dictionary["instance"] = instance
+    return dictionary
   }
 
   func progressDictionary() -> [String: Any] {
@@ -520,6 +528,8 @@ final class PlayerController: EngineDelegate, DriverObserver {
 
   private func send(_ event: [String: Any]) {
     guard !lock.sync({ letGo }) else { return }
+    var event = event
+    event["instance"] = instance
     runtime.emit(event)
   }
 

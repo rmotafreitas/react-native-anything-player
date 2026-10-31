@@ -220,7 +220,7 @@ internal class PlayerController(
 
   fun statusMap(): WritableMap {
     val (status, seq) = statusSnapshot
-    return statusToMap(status, seq)
+    return statusToMap(status, seq).apply { putDouble("instance", instance.toDouble()) }
   }
 
   fun progressMap(): WritableMap = progressToMap(progressSnapshot, AndroidClock.monotonicMs, AndroidClock.wallMs)
@@ -335,8 +335,17 @@ internal class PlayerController(
    */
   @Volatile var jsLetGo = false
 
+  /**
+   * This native player among all that ever had its id: on every status and
+   * event, so a JS player drops what a released one with the same id sent
+   * (events already on their way when JS let go of it).
+   */
+  val instance: Long = instances.incrementAndGet()
+
   private fun send(event: WritableMap) {
-    if (!jsLetGo) runtime.emit(event)
+    if (jsLetGo) return
+    event.putDouble("instance", instance.toDouble())
+    runtime.emit(event)
   }
 
   // ── EngineDelegate (main thread) ──
@@ -600,3 +609,6 @@ internal class PlayerController(
     if (engine.accepts(generation)) picture?.positionJumped()
   }
 }
+
+/** Numbers [PlayerController.instance]. */
+private val instances = java.util.concurrent.atomic.AtomicLong()
