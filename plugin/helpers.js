@@ -149,7 +149,8 @@ function removeCarPlayScene(plist) {
   if (Object.keys(configurations).length === 0) return undefined;
   return {
     ...manifest,
-    UIApplicationSupportsMultipleScenes: false,
+    // Other CarPlay scenes still need multiple scenes.
+    ...(others.length === 0 && { UIApplicationSupportsMultipleScenes: false }),
     UISceneConfigurations: configurations,
   };
 }

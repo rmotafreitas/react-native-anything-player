@@ -99,7 +99,8 @@ function editInfoPlist({ projectRoot, platformProjectRoot }, edit) {
 /**
  * CarPlay's scene, outside the `withInfoPlist` chain so the plugin order does
  * not matter: removed from a project prebuilt before (dangerous mods run
- * first), added back after every other Info.plist edit (finalized mods last).
+ * first), added back after every other Info.plist edit (finalized mods last;
+ * another plugin's finalized mod listed after this one still runs later).
  */
 function withCarPlayScene(config) {
   config = withDangerousMod(config, [
