@@ -18,8 +18,15 @@ import kotlin.math.abs
  * for a while and a later step confirmed its peak (and the old one stepped too).
  * Then the new player is steered, muted, by its measured position: faster when
  * behind, slower when ahead (it waits paused while far ahead), easing off as
- * the gap closes, and takes over already playing once lined up, so how long a
- * device takes to start a player never matters. If either player moves to
+ * the gap closes, and takes over already playing once lined up. A new rate
+ * reaches what is heard only after the audio a device has already buffered
+ * (and a paused player only once it starts): each rate is kept until the
+ * player is seen moving at it. The first change made while it plays measures
+ * how long this device takes to apply a rate; from then on each rate is
+ * planned from the gap as it will be when that rate is heard (the rates
+ * already asked play out first), and it takes over once only the old
+ * player's rate is heard or on its way, so the steering does not overshoot,
+ * whatever the device. If either player moves to
  * another connection meanwhile (a dropped one replaced), its timeline no
  * longer maps (or one is queued: its connection has ended) and the switch
  * takes over unaligned. Pure: the driver reads
@@ -75,6 +82,14 @@ class LiveSwapAligner(private val startedAt: Long) {
   /** New position = old position + [shift], once measured. */
   var shift: Double? = null
     private set
+  /** Rates asked for while it plays (time, rate), oldest first: what is still on its way to the output. */
+  private val asked = ArrayList<Pair<Long, Double>>()
+  /** A change asked while playing, not yet heard: it measures the device's delay (time, from, to). */
+  private var probe: Triple<Long, Double, Double>? = null
+  /** How long a rate takes to be heard on this device, ms, once measured. */
+  private var delayMs: Long? = null
+  /** The new player's recent positions while it plays, for its observed speed. */
+  private val trail = ArrayDeque<Pair<Long, Double>>()
 
   fun step(now: Long, old: Reading, new: Reading): Step {
     if (!old.playing) return Step.Fallback("old player not playing")
@@ -87,12 +102,101 @@ class LiveSwapAligner(private val startedAt: Long) {
     newConnection = new.connection
     val k = shift ?: return measure(now, old, new)
     val behind = old.position + k - new.position
-    return when {
-      new.playing && abs(behind) <= TOLERANCE_S -> Step.Play
-      !new.playing && behind < -STEER_WINDOW_S -> Step.Hold
-      // Around the old player's own rate: the gap closes in about HORIZON_S.
-      else -> Step.Steer((old.rate + behind / HORIZON_S).coerceIn(old.rate * MIN_RATE, old.rate * MAX_RATE))
+    if (!new.playing && behind < -STEER_WINDOW_S * old.rate) {
+      asked.clear()
+      return Step.Hold
     }
+    return steer(now, old, new, behind)
+  }
+
+  /** Steers by the new player's observed response (see the class comment). */
+  private fun steer(now: Long, old: Reading, new: Reading, behind: Double): Step {
+    val clamp = { r: Double -> r.coerceIn(old.rate * MIN_RATE, old.rate * MAX_RATE) }
+    if (!new.playing) {
+      // Starting it: the first rate is heard once it moves (its start time is not a rate delay).
+      trail.clear()
+      probe = null
+      val rate = asked.lastOrNull()?.second ?: clamp(old.rate + behind / HORIZON_S)
+      asked.clear()
+      asked.add(now to rate)
+      return Step.Steer(rate)
+    }
+    if (asked.isEmpty()) asked.add(now to old.rate)
+    trail.addLast(now to new.position)
+    while (trail.size > 2 && now - trail.elementAt(1).first >= SPEED_WINDOW_MS) trail.removeFirst()
+    val speed = trail.firstOrNull()?.takeIf { now - it.first >= SPEED_WINDOW_MS }?.let {
+      (new.position - it.second) / ((now - it.first) / 1000.0)
+    }
+    val last = asked.last().second
+    probe?.let { (at, from, to) ->
+      // Heard once the windowed speed covered most of the step; the window lags it by that much of itself.
+      if (speed != null && abs(speed - to) <= SEEN_FRACTION * abs(to - from)) {
+        delayMs = maxOf(0L, now - at - ((1 - SEEN_FRACTION) * SPEED_WINDOW_MS).toLong())
+        probe = null
+      }
+    }
+    val d =
+      delayMs
+        ?: run {
+          // The delay is unknown until a change is heard: once the start rate
+          // is, measure it with one clear change, toward where the gap needs it.
+          val step = PROBE_STEP * old.rate
+          // Settled at the start rate (within a quarter of the probe's step), so the probe is the only change in sight.
+          if (probe != null || speed == null || abs(speed - last) > SEEN_FRACTION * step) return Step.Steer(last)
+          val to =
+            when {
+              last - old.rate >= step -> last - step
+              old.rate - last >= step -> last + step
+              else -> clamp(old.rate + if (behind >= 0) step else -step)
+            }
+          asked.add(now to to)
+          probe = Triple(now, last, to)
+          return Step.Steer(to)
+        }
+    // Lined up, with only the old rate on its way and seen heard: it takes over.
+    val heard = asked.lastOrNull { it.first <= now - d }?.second
+    if (
+      abs(behind) <= TOLERANCE_S &&
+      heard == old.rate &&
+      asked.all { it.first <= now - d || it.second == old.rate } &&
+      speed != null &&
+      abs(speed - old.rate) <= SEEN_FRACTION * RATE_STEP * old.rate
+    )
+      return Step.Play
+    val gap = behind - onTheWay(now, d, old.rate)
+    val target =
+      if (abs(gap) <= TOLERANCE_S) {
+        old.rate
+      } else {
+        // At least RATE_STEP faster or slower, so each change is observable.
+        val push = maxOf(abs(gap) / HORIZON_S, RATE_STEP * old.rate)
+        clamp(old.rate + if (gap > 0) push else -push)
+      }
+    if (abs(target - last) >= RATE_STEP * old.rate - EPSILON || (target == old.rate && last != old.rate)) {
+      asked.add(now to target)
+      return Step.Steer(target)
+    }
+    return Step.Steer(last)
+  }
+
+  /**
+   * How much more the new player gains on the old one before a rate asked now
+   * is heard: the rates already asked play out over the next [delayMs].
+   */
+  private fun onTheWay(now: Long, delayMs: Long, oldRate: Double): Double {
+    if (delayMs <= 0) return 0.0
+    var gained = 0.0
+    var t = now
+    val end = now + delayMs
+    while (t < end) {
+      // Heard at t: the last rate asked by t - delay.
+      val heard = asked.lastOrNull { it.first <= t - delayMs }?.second ?: asked.first().second
+      val next = asked.firstOrNull { it.first + delayMs > t }?.first?.plus(delayMs) ?: end
+      val until = minOf(end, maxOf(next, t + 1))
+      gained += (heard - oldRate) * (until - t) / 1000.0
+      t = until
+    }
+    return gained
   }
 
   private fun measure(now: Long, old: Reading, new: Reading): Step {
@@ -120,18 +224,25 @@ class LiveSwapAligner(private val startedAt: Long) {
   }
 
   companion object {
-    /**
-     * The new connection plays (muted) at the old one's rate + behind / this:
-     * it would close the gap in this long, seconds. A new rate only reaches the
-     * audio not yet in the device's output buffer (up to ~0.75 s): a horizon
-     * well above that keeps the steering from overshooting on any device.
-     */
-    const val HORIZON_S = 2.0
+    /** The new connection closes the gap (as it will be when a rate is heard) over this long, seconds. */
+    const val HORIZON_S = 1.0
+    /** Its speed is read over this window... */
+    const val SPEED_WINDOW_MS = 300L
+    /** ...and a rate counts as heard once the speed covered all but this fraction of the step. */
+    const val SEEN_FRACTION = 0.25
+    /** Rates differ by at least this (as factors of 1x), so a change stands out of the speed's noise. */
+    const val RATE_STEP = 0.1
+    /** The change that measures a device's delay (as a factor of 1x): plain to see. */
+    const val PROBE_STEP = 0.5
+    private const val EPSILON = 1e-9
     /** The rates it is steered within, as factors of the old one's (Media3's Sonic handles these cleanly). */
     const val MIN_RATE = 0.5
     const val MAX_RATE = 4.0
-    /** Ahead by more than this it waits paused: at [MIN_RATE] the old one gains on it slowly. */
-    const val STEER_WINDOW_S = 2.0
+    /**
+     * Ahead by more than this much of the old player's playing (seconds at its
+     * rate) it waits paused: paused, the old one gains on it fastest.
+     */
+    const val STEER_WINDOW_S = 1.0
     /** Lined up within this, seconds. */
     const val TOLERANCE_S = 0.05
     /** Past this, the switch takes over unaligned (below RecoveryPolicy.SWAP_ALIGN_MS). */

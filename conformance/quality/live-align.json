@@ -1,6 +1,6 @@
 [
  {
-  "name": "behind: measures until the burst is in, then plays muted faster (easing off as it closes in) and takes over lined up",
+  "name": "behind: measures until the burst is in, then starts playing muted faster (the steering itself: LiveSwapSteeringTest)",
   "readings": [
    {
     "t": 0,
@@ -133,28 +133,6 @@
      22.5,
      false
     ]
-   },
-   {
-    "t": 3000,
-    "old": [
-     28.0,
-     33.0
-    ],
-    "new": [
-     17.5,
-     23.0
-    ]
-   },
-   {
-    "t": 3200,
-    "old": [
-     28.2,
-     33.2
-    ],
-    "new": [
-     18.17,
-     23.2
-    ]
    }
   ],
   "expect": [
@@ -168,13 +146,11 @@
    "measure",
    "measure",
    "measure",
-   "steer:4.00",
-   "steer:1.25",
-   "play"
+   "steer:4.00"
   ]
  },
  {
-  "name": "ahead: waits paused while far ahead, then plays muted slower until lined up (however long it takes to start), and takes over",
+  "name": "ahead: waits paused until about a second of the old player's playing ahead, then starts playing muted slower",
   "readings": [
    {
     "t": 0,
@@ -339,19 +315,9 @@
      44.0
     ],
     "new": [
-     0.4,
-     16.0
-    ]
-   },
-   {
-    "t": 16000,
-    "old": [
-     29.0,
-     46.0
-    ],
-    "new": [
-     0.97,
-     18.0
+     0,
+     16.0,
+     false
     ]
    }
   ],
@@ -368,13 +334,12 @@
    "measure",
    "hold",
    "hold",
-   "steer:0.50",
-   "steer:0.50",
-   "play"
+   "hold",
+   "steer:0.50"
   ]
  },
  {
-  "name": "the old player plays at 0.75x: steered around its rate (and within factors of it), and lined up",
+  "name": "the old player plays at 0.75x: its first rate is around (and within factors of) the old rate",
   "readings": [
    {
     "t": 0,
@@ -540,34 +505,6 @@
      22.5,
      false
     ]
-   },
-   {
-    "t": 4000,
-    "old": [
-     27.5,
-     34.0,
-     true,
-     0,
-     0.75
-    ],
-    "new": [
-     17.3,
-     24.0
-    ]
-   },
-   {
-    "t": 4100,
-    "old": [
-     27.52,
-     34.1,
-     true,
-     0,
-     0.75
-    ],
-    "new": [
-     17.49,
-     24.1
-    ]
    }
   ],
   "expect": [
@@ -581,9 +518,7 @@
    "measure",
    "measure",
    "measure",
-   "steer:3.00",
-   "steer:0.85",
-   "play"
+   "steer:3.00"
   ]
  },
  {
@@ -780,17 +715,6 @@
      22.4,
      false
     ]
-   },
-   {
-    "t": 9650,
-    "old": [
-     61.4,
-     86.95
-    ],
-    "new": [
-     0.47,
-     22.4
-    ]
    }
   ],
   "expect": [
@@ -809,8 +733,7 @@
    "measure",
    "measure",
    "hold",
-   "steer:1.00",
-   "play"
+   "steer:1.00"
   ]
  },
  {
@@ -1031,17 +954,6 @@
      22.9,
      false
     ]
-   },
-   {
-    "t": 10650,
-    "old": [
-     62.4,
-     87.95
-    ],
-    "new": [
-     0.47,
-     22.9
-    ]
    }
   ],
   "expect": [
@@ -1062,8 +974,7 @@
    "measure",
    "measure",
    "hold",
-   "steer:1.00",
-   "play"
+   "steer:1.00"
   ]
  },
  {
@@ -1464,7 +1375,7 @@
   ]
  },
  {
-  "name": "the old edge steps too (a 64 kbps player switching up), first step at 0.3 s: measured once it steps, steered in, taken over lined up",
+  "name": "the old edge steps too (a 64 kbps player switching up), first step at 0.3 s: measured once it steps",
   "readings": [
    {
     "t": 0,
@@ -1789,17 +1700,6 @@
      18.8,
      false
     ]
-   },
-   {
-    "t": 13500,
-    "old": [
-     38.5,
-     53.5
-    ],
-    "new": [
-     0.47,
-     19.5
-    ]
    }
   ],
   "expect": [
@@ -1829,12 +1729,11 @@
    "measure",
    "measure",
    "hold",
-   "steer:0.90",
-   "play"
+   "steer:0.80"
   ]
  },
  {
-  "name": "the old edge steps too (a 64 kbps player switching up), first step at 2.0 s: measured once it steps, steered in, taken over lined up",
+  "name": "the old edge steps too (a 64 kbps player switching up), first step at 2.0 s: measured once it steps",
   "readings": [
    {
     "t": 0,
@@ -2159,17 +2058,6 @@
      18.8,
      false
     ]
-   },
-   {
-    "t": 13500,
-    "old": [
-     38.5,
-     55.2
-    ],
-    "new": [
-     0.47,
-     19.5
-    ]
    }
   ],
   "expect": [
@@ -2199,12 +2087,11 @@
    "measure",
    "measure",
    "hold",
-   "steer:0.90",
-   "play"
+   "steer:0.80"
   ]
  },
  {
-  "name": "the old edge steps too (a 64 kbps player switching up), first step at 4.0 s: measured once it steps, steered in, taken over lined up",
+  "name": "the old edge steps too (a 64 kbps player switching up), first step at 4.0 s: measured once it steps",
   "readings": [
    {
     "t": 0,
@@ -2709,17 +2596,6 @@
      18.8,
      false
     ]
-   },
-   {
-    "t": 13500,
-    "old": [
-     38.5,
-     57.2
-    ],
-    "new": [
-     0.47,
-     19.5
-    ]
    }
   ],
   "expect": [
@@ -2764,8 +2640,7 @@
    "measure",
    "measure",
    "hold",
-   "steer:0.90",
-   "play"
+   "steer:0.80"
   ]
  },
  {
