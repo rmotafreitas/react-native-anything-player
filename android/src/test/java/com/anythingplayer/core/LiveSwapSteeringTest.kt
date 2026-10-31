@@ -48,8 +48,17 @@ class LiveSwapSteeringTest {
           }
         }
         LiveSwapAligner.Step.Play -> {
-          // After takeover the new player plays at the old rate, once its buffered audio (at the last applied rate) has played.
-          val drift = (appliedRate - oldRate) * delayS
+          // After takeover the new player plays at the old rate once its buffered
+          // audio has played: the rate heard now, then each change still on its way.
+          var drift = 0.0
+          var from = t
+          var rate = appliedRate
+          for ((at, next) in pending.filter { it.first < t + delayS }) {
+            drift += (rate - oldRate) * (at - from)
+            from = at
+            rate = next
+          }
+          drift += (rate - oldRate) * (t + delayS - from)
           return Outcome("play", oldPos + shift - newPos - drift, t)
         }
         is LiveSwapAligner.Step.Fallback -> return Outcome("fallback", Double.NaN, t)
