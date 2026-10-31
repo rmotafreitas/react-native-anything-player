@@ -52,14 +52,39 @@ const appIntents = require('./plugin/appIntents');
 
 const RECEIVER_META = 'com.anythingplayer.CAST_RECEIVER_ID';
 
-/** Edits the Info.plist on disk (outside the `withInfoPlist` chain). */
-function editInfoPlist(projectRoot, edit) {
-  let file;
+/**
+ * The app target's Info.plist, found as Expo's Info.plist provider finds it:
+ * the Xcode project's `INFOPLIST_FILE`, then the first one in `ios/` (an
+ * extension's, such as Siri's, is never picked over the app's).
+ */
+function appInfoPlistPath(projectRoot, platformProjectRoot) {
   try {
-    file = IOSConfig.Paths.getInfoPlistPath(projectRoot);
+    const project = IOSConfig.XcodeUtils.getPbxproj(projectRoot);
+    const setting = IOSConfig.Target.getXCBuildConfigurationFromPbxproj(
+      project,
+      { buildConfiguration: 'Release' }
+    )?.buildSettings?.INFOPLIST_FILE;
+    if (setting) {
+      const file = path.join(
+        platformProjectRoot,
+        setting.replace(/"/g, '').replace('$(SRCROOT)', '')
+      );
+      if (fs.existsSync(file)) return file;
+    }
   } catch {
-    return; // No iOS project yet.
+    // No Xcode project: the glob below.
   }
+  try {
+    return IOSConfig.Paths.getInfoPlistPath(projectRoot) || null;
+  } catch {
+    return null; // No iOS project yet.
+  }
+}
+
+/** Edits the app's Info.plist on disk (outside the `withInfoPlist` chain). */
+function editInfoPlist({ projectRoot, platformProjectRoot }, edit) {
+  const file = appInfoPlistPath(projectRoot, platformProjectRoot);
+  if (!file) return;
   // The plist library expo/config-plugins itself uses.
   const plist = require(
     require.resolve('@expo/plist', {
@@ -80,7 +105,7 @@ function withCarPlayScene(config) {
   config = withDangerousMod(config, [
     'ios',
     (cfg) => {
-      editInfoPlist(cfg.modRequest.projectRoot, (plist) => {
+      editInfoPlist(cfg.modRequest, (plist) => {
         const manifest = helpers.removeCarPlayScene(plist);
         if (manifest === plist.UIApplicationSceneManifest) return plist;
         const out = { ...plist, UIApplicationSceneManifest: manifest };
@@ -93,7 +118,7 @@ function withCarPlayScene(config) {
   return withFinalizedMod(config, [
     'ios',
     (cfg) => {
-      editInfoPlist(cfg.modRequest.projectRoot, (plist) => {
+      editInfoPlist(cfg.modRequest, (plist) => {
         if (!helpers.hasWindowScene(plist))
           WarningAggregator.addWarningIOS(
             'react-native-anything-player',

@@ -199,6 +199,13 @@ function place(value, explicit) {
   return { value: Boolean(value), explicit: Boolean(explicit) };
 }
 
+/** An option's value as on/off: `car: { ios: false, android: false }` is off. */
+function expoOn(module, value) {
+  if (module.id === 'car' && value && typeof value === 'object')
+    return value.ios !== false || value.android !== false;
+  return Boolean(value);
+}
+
 function expoState(module, ctx) {
   if (!module.expo || !ctx.expo.rnapPlugin || ctx.jsConfigFile) return null;
   const raw = ctx.expo.rawOptions;
@@ -208,7 +215,7 @@ function expoState(module, ctx) {
   if (!options) return place(module.defaultOn, false);
   const value = options[module.expo.key];
   return place(
-    value === undefined ? module.defaultOn : Boolean(value),
+    value === undefined ? module.defaultOn : expoOn(module, value),
     explicit
   );
 }
