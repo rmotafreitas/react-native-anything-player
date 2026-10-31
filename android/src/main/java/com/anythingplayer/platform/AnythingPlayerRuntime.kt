@@ -208,7 +208,11 @@ internal object AnythingPlayerRuntime : FocusListener {
    */
   private val detached = HashMap<Pair<Long, String>, ArrayDeque<PlayerController?>>()
 
-  /** JS instances torn down ([releaseDetached]): they let go of and release nothing more. */
+  /**
+   * JS instances torn down ([retire]): they let go of and release nothing
+   * more. It only grows (one per reload), on purpose: an owner taken out
+   * would look alive again.
+   */
   private val deadOwners = HashSet<Long>()
   private val owners = java.util.concurrent.atomic.AtomicLong()
 
@@ -267,6 +271,15 @@ internal object AnythingPlayerRuntime : FocusListener {
       }
       then()
     }
+  }
+
+  /**
+   * Any thread, at once when a JS is torn down: [owner] lets go of and
+   * releases nothing more (what it let go of already is still taken, by
+   * [releaseDetached] or a release already on its way).
+   */
+  fun retire(owner: Long) {
+    synchronized(players) { deadOwners += owner }
   }
 
   /** A JS teardown: releases what that JS ([owner]) let go of but could not release any more. Main thread. */

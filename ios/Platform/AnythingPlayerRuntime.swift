@@ -38,7 +38,9 @@ final class AnythingPlayerRuntime: AudioSessionListener, RemoteCommandTarget {
     let owner: Int
     let id: String
   }
-  /// JS instances torn down (`releaseDetached`): they let go of and release nothing more.
+  /// JS instances torn down (`retire`): they let go of and release nothing
+  /// more. It only grows (one per reload), on purpose: an owner taken out
+  /// would look alive again.
   private var deadOwners = Set<Int>()
   private var owners = 0
 
@@ -249,6 +251,13 @@ final class AnythingPlayerRuntime: AudioSessionListener, RemoteCommandTarget {
   }
 
   /// Main thread, on a JS teardown: what JS let go of but will not release now.
+  /// Any thread, at once when a JS is torn down: `owner` lets go of and
+  /// releases nothing more (what it let go of already is still taken, by
+  /// `releaseDetached` or a release already on its way).
+  func retire(owner: Int) {
+    lock.sync { _ = deadOwners.insert(owner) }
+  }
+
   func releaseDetached(owner: Int) {
     let left = lock.sync { () -> [PlayerController] in
       deadOwners.insert(owner)

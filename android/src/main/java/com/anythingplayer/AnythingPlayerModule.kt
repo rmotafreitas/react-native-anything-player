@@ -433,6 +433,8 @@ class AnythingPlayerModule(reactContext: ReactApplicationContext) : NativeAnythi
   /** JS reload / React host teardown: no JS can control these players any more. */
   override fun invalidate() {
     synchronized(sinkLock) { invalidated = true }
+    // At once, before anything this JS sent can still take a player: none of it does any more.
+    AnythingPlayerRuntime.retire(owner)
     AnythingPlayerRuntime.detachModule(sink, activities)
     main.post { Voice.jsDetached() }
     val ids = synchronized(owned) { owned.toList().also { owned.clear() } }

@@ -511,6 +511,8 @@ public final class AnythingPlayerBridge: NSObject {
   /// app-chosen id are detached (they keep playing; the next JS attaches);
   /// the others can no longer be controlled and are released.
   @objc public func invalidate() {
+    // At once, before anything this JS sent can still take a player: none of it does any more.
+    runtime.retire(owner: owner)
     runtime.detachEvents(owner: self)
     let ids = lock.sync { () -> [String] in
       let ids = Array(owned)
