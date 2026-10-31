@@ -72,7 +72,7 @@ A paused live stream keeps downloading audio that resuming will never play, so i
 
 ## Several bitrates of one station
 
-Give a station's mounts as `renditions` of one source, and `selectQuality` switches between them behind what is heard ([Qualities](playback.md#qualities)). Each mount's connection starts at the oldest audio of its connect burst, a byte count, so a low bitrate's starts many seconds further back. On Android a live switch is lined up first: the new connection plays muted, faster or slower, until it reaches the same point in the program, and takes over there. A switch that cannot be lined up within 25 s takes over as before, with a `discontinuity` event. iOS and the web switch at once, and repeat or skip by the difference ([#82](https://github.com/rmotafreitas/react-native-anything-player/issues/82)).
+Give a station's mounts as `renditions` of one source, and `selectQuality` switches between them behind what is heard ([Qualities](playback.md#qualities)). Each mount's connection starts at the oldest audio of its connect burst, a byte count, so a low bitrate's starts many seconds further back. On Android a live switch is lined up first: the new connection plays muted, faster or slower (or waits paused when it is far ahead), until it reaches the same point in the program, and takes over there. A switch that cannot be lined up within 25 s, or whose connections drop or end meanwhile, takes over as before, with a `discontinuity` event. iOS and the web switch as soon as the new mount is ready, and repeat or skip by the difference ([#82](https://github.com/rmotafreitas/react-native-anything-player/issues/82)).
 
 ## Recovery
 

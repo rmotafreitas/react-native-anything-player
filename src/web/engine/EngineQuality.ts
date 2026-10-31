@@ -274,7 +274,7 @@ export abstract class EngineQuality extends EngineFades {
   protected swapReady(info: ReadyInfo): void {
     if (this.pendingSwap != null) {
       this.pendingSwap.info = info;
-      // Live, the driver lines it up first: more time once ready.
+      // Live, a driver that lines it up first (Android's) needs more time once ready.
       if (this.isLive) this.pendingSwap.readyAt ??= this.now;
     }
     this.swapNote('ready');
