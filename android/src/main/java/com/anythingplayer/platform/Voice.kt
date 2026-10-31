@@ -169,8 +169,14 @@ internal object Voice {
     if (startSeconds == null && loaded?.sameMedia(descriptor) == true) {
       // Already loaded (the app's own load, or an earlier pick): no gap, and
       // the app's now-playing stays.
-      if (autoplay) controller.engine.play()
-      completion?.settled(LoadOutcome.Ready)
+      try {
+        if (autoplay) controller.engine.play()
+        completion?.settled(LoadOutcome.Ready)
+      } catch (error: PlayerError) {
+        // Audio focus refused (a call): reported like a failed load.
+        if (completion == null) Log.w("RNAP", "voice play failed: ${error.message}")
+        completion?.settled(LoadOutcome.Failed(error))
+      }
     } else {
       // The item's `quality`: an id, `'auto'` for automatic; absent: keep the pick.
       val qualityGiven = entry.json.has("quality")

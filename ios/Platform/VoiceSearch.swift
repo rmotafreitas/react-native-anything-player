@@ -188,6 +188,9 @@ final class VoiceSearch {
         // the app's now-playing stays.
         try controller.engine.play()
         completion(.success(()))
+        // Already playing: no status change follows, so a Siri request waiting
+        // for audio to start is told now.
+        statusChanged(controller)
       } else {
         // The item's `quality`: an id, `'auto'` for automatic; absent: keep the pick.
         let quality = (item["quality"] as? String).flatMap { $0 == "auto" ? nil : $0 }
