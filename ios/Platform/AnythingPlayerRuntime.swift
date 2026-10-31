@@ -250,7 +250,6 @@ final class AnythingPlayerRuntime: AudioSessionListener, RemoteCommandTarget {
     unregister(controller)
   }
 
-  /// Main thread, on a JS teardown: what JS let go of but will not release now.
   /// Any thread, at once when a JS is torn down: `owner` lets go of and
   /// releases nothing more (what it let go of already is still taken, by
   /// `releaseDetached` or a release already on its way).
@@ -258,6 +257,7 @@ final class AnythingPlayerRuntime: AudioSessionListener, RemoteCommandTarget {
     lock.sync { _ = deadOwners.insert(owner) }
   }
 
+  /// Main thread, on a JS teardown: what JS let go of but will not release now.
   func releaseDetached(owner: Int) {
     let left = lock.sync { () -> [PlayerController] in
       deadOwners.insert(owner)
