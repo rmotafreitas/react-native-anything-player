@@ -116,7 +116,7 @@ Android's assistants, Google Assistant and Gemini, reach media apps two ways, an
 - the app's media session and media library (Media3), which is how they find the catalog and play from it, even when the app is not running;
 - a `MEDIA_PLAY_FROM_SEARCH` intent to the app's activity.
 
-An intent that comes before the app can answer it (a fresh install it opens: no catalog, no search handler) waits: it plays once the app's JavaScript calls `setCatalog` or `setSearchHandler` (a handler with no answer leaves it waiting for the catalog), unless something was loaded meanwhile (the user's choice wins). It is dropped if that JavaScript goes away first, a reload included. A [bundled catalog](#a-catalog-the-app-bundles) answers it at once, with no JavaScript.
+An intent that comes before the app can answer it (a fresh install it opens: no catalog, no search handler) waits: it plays once the app's JavaScript calls `setCatalog` or `setSearchHandler` (when the handler has no answer, the catalog's match plays if the catalog came meanwhile), unless something was loaded meanwhile (the user's choice wins). It is dropped if that JavaScript goes away first, a reload included. A [bundled catalog](#a-catalog-the-app-bundles) answers it at once, with no JavaScript.
 
 **Expo**: nothing to configure (turn it off with `"assistant": false`). The plugin adds the intent filter and the two lines below.
 

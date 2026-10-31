@@ -219,7 +219,10 @@ internal object Voice {
     resolveOrAsk(request) { entry ->
       if (entry == null) return@resolveOrAsk done(Result.success(null))
       // Asked late (a waiting request): the app's answer may come after the user chose.
-      if (!stillWanted()) return@resolveOrAsk done(Result.success(null))
+      if (!stillWanted()) {
+        Log.d(TAG, "request \"${request.query}\" dropped: something else is loaded")
+        return@resolveOrAsk done(Result.success(null))
+      }
       val controller =
         try {
           voicePlayer(playerId)
@@ -267,7 +270,11 @@ internal object Voice {
     playFromAssistant(request, stillWanted = { !somethingLoaded() }, waited = true)
   }
 
-  /** Any player has something loaded (the lock screen's or not). Main thread. */
+  /**
+   * Any player has something loaded (the lock screen's or not; one in error
+   * counts, it holds the user's choice). Wider than [nothingLoaded], which asks
+   * what a bare "play" on the lock screen would resume. Main thread.
+   */
   private fun somethingLoaded(): Boolean =
     AnythingPlayerRuntime.players.values.any { !it.isReleased && it.status.state != PlaybackState.IDLE }
 
@@ -281,15 +288,24 @@ internal object Voice {
     }
     playFromSearch(request, null, stillWanted) { result ->
       result.onFailure { Log.w(TAG, "assistant request \"${request.query}\" failed: ${it.message}") }
-      result.onSuccess {
-        if (it != null) return@onSuccess
-        // The app's search handler had nothing and its catalog is still to come: wait for it.
-        if (waited && !hasItems() && waiting == null && stillWanted()) {
-          waiting = request
-          Log.d(TAG, "assistant request \"${request.query}\" waits for the app's catalog")
-        } else {
+      result.onSuccess { entry ->
+        if (entry != null) return@onSuccess
+        // The app's catalog came while its search handler was answering (it had
+        // nothing): the catalog's match, then. Nothing waits again: a reload or a
+        // catalog still to come ends the request.
+        val late = if (waited && stillWanted()) resolve(request) else null
+        if (late == null) {
           Log.d(TAG, "assistant request \"${request.query}\" matched nothing")
+          return@onSuccess
         }
+        val controller =
+          try {
+            voicePlayer(null)
+          } catch (error: PlayerError) {
+            Log.w(TAG, "assistant request \"${request.query}\" failed: ${error.message}")
+            return@onSuccess
+          }
+        load(controller, late, request, autoplay = true, startSeconds = null, completion = null)
       }
     }
   }
