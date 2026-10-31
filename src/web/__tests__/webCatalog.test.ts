@@ -5,6 +5,9 @@
 
 import { install, uninstall, type FakeWorld } from './FakeBrowser';
 import { WebModule } from '../platform/WebModule';
+import fs from 'node:fs';
+import path from 'node:path';
+import { sameMedia, type SourceDescriptor } from '../engine/types';
 
 type Event = Record<string, unknown> & { type: string };
 
@@ -118,6 +121,88 @@ describe('web catalog', () => {
     await expect(
       module.playFromSearch({ query: 'jazz' }, 'gone')
     ).rejects.toMatchObject({ code: 'PLAYER_RELEASED' });
+  });
+
+  it('a pick of what is loaded plays on, without opening it again', async () => {
+    await module.setCatalog(CATALOG, { playerId: 'main' });
+    await play({ query: 'jazz' });
+    const opened = module.getStatus('main') as { loadId: number };
+    // Playing: nothing changes.
+    await play({ query: 'jazz' });
+    expect((module.getStatus('main') as { loadId: number }).loadId).toBe(
+      opened.loadId
+    );
+    await module.pause('main');
+    events = [];
+    await play({ query: 'jazz' });
+    const again = module.getStatus('main') as {
+      loadId: number;
+      playWhenReady: boolean;
+    };
+    expect(again.loadId).toBe(opened.loadId);
+    expect(again.playWhenReady).toBe(true);
+    expect(events.find((e) => e.type === 'searchPlay')).toMatchObject({
+      item: { id: 'jazz' },
+    });
+    // Another item opens.
+    await play({ query: 'world news' });
+    expect(
+      (module.getStatus('main') as { loadId: number }).loadId
+    ).toBeGreaterThan(opened.loadId);
+  });
+
+  it("an item's quality is the one it starts at", async () => {
+    await module.setCatalog(
+      [
+        item('radio', 'Radio', {
+          source: {
+            renditions: [
+              {
+                id: '320',
+                uri: 'https://cdn.example/320.mp3',
+                bitrate: 320_000,
+              },
+              { id: '64', uri: 'https://cdn.example/64.mp3', bitrate: 64_000 },
+            ],
+            live: true,
+          },
+          quality: '64',
+        }),
+      ],
+      { playerId: 'main' }
+    );
+    await play({ query: 'radio' });
+    expect(module.getStatus('main')).toMatchObject({
+      quality: '64',
+      selectedQuality: '64',
+    });
+  });
+
+  it('the same media (conformance/catalog/same-media.json)', () => {
+    const cases = JSON.parse(
+      fs.readFileSync(
+        path.resolve(__dirname, '../../../conformance/catalog/same-media.json'),
+        'utf8'
+      )
+    ) as Array<{
+      name: string;
+      a: { uri: string; renditions?: string[] };
+      b: { uri: string; renditions?: string[] };
+      same: boolean;
+    }>;
+    const source = (s: { uri: string; renditions?: string[] }) =>
+      ({
+        uri: s.uri,
+        headers: {},
+        liveHint: null,
+        renditions: s.renditions?.map((uri) => ({ uri })) ?? null,
+      }) as SourceDescriptor;
+    expect(cases.length).toBeGreaterThan(3);
+    for (const c of cases)
+      expect([c.name, sameMedia(source(c.a), source(c.b))]).toEqual([
+        c.name,
+        c.same,
+      ]);
   });
 
   it('plays the last item for an empty request, else the first', async () => {

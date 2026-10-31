@@ -27,6 +27,8 @@ await setCatalog(
 
 The catalog is stored on the device, so an assistant finds it when the app is not running. Call `setCatalog` again whenever the list changes; `[]` clears it. Each item has an `id` (unique, and not starting with `rnap:`, which the [browse tree](cars-and-watches.md#the-tree) keeps for its folders; `setCatalog` rejects it), a `title`, a `source` (anything `load()` accepts except a `Blob` or `File`: an item needs a URL), and optionally `artist`, `album`, `genre`, `artwork`, `keywords` (other names people say) and a `kind` (`station` by default, or `song`, `album`, `podcast`, `audiobook`, `other`). The lock screen shows the item's title, artist, album and artwork unless the source has its own `metadata`.
 
+An item whose source has `renditions` can say the `quality` it starts at (a rendition id, or `'auto'`), as `load(source, { quality })` does: a player that native code creates for a request, with no JavaScript running, has no pick of its own. Asking for what is already loaded (the same file, or the same renditions) plays on instead of opening it again: no gap, and the app's `updateNowPlaying` stays; `searchPlay` is still emitted. The loaded source's headers and DRM stay too.
+
 An item can also have a `group` (`"Jazz"`, or `"Podcasts/Daily"`), which files it in the browse tree that [cars and watches](cars-and-watches.md) show; `setCatalog`'s `browse` option and `setFavorites(ids)` add "Recently played" and "Favorites" folders. `searchCatalog({ query, group })` and `playFromSearch({ query, group })` search one group (and its subgroups) only. A pick in the car plays like a voice request and emits `searchPlay` with `origin: 'browse'`.
 
 ## Playing a request

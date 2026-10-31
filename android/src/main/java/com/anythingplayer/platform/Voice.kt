@@ -30,6 +30,13 @@ private const val ADHOC_CAPACITY = 8
  */
 internal object Voice {
   private val main = Handler(Looper.getMainLooper())
+
+  /**
+   * States that keep an opened source: a pick of it plays on instead of
+   * opening again (one still loading has not proved it opens: it is opened again).
+   */
+  private val HOLDS_SOURCE =
+    setOf(PlaybackState.BUFFERING, PlaybackState.PLAYING, PlaybackState.PAUSED, PlaybackState.STOPPED, PlaybackState.RECONNECTING)
   /** The catalog file is written off the main thread (the last-played mark is written on every request). */
   private val writes = Executors.newSingleThreadExecutor { Thread(it, "rnap-catalog") }
   private var store: CatalogStore? = null
@@ -161,7 +168,25 @@ internal object Voice {
    */
   fun load(controller: PlayerController, entry: CatalogEntry, request: SearchRequest, autoplay: Boolean, startSeconds: Double?, completion: LoadCompletion?) {
     val (descriptor, fields) = parseSource(entry.source.toReadableMap())
-    controller.load(descriptor, fields, autoplay, startSeconds, completion = completion)
+    val loaded = controller.engine.source?.takeIf { controller.status.state in HOLDS_SOURCE }
+    if (startSeconds == null && loaded?.sameMedia(descriptor) == true) {
+      // Already loaded (the app's own load, or an earlier pick): no gap, and
+      // the app's now-playing stays.
+      try {
+        if (autoplay) controller.engine.play()
+        completion?.settled(LoadOutcome.Ready)
+      } catch (error: PlayerError) {
+        // Audio focus refused (a call): reported like a failed load, as on iOS.
+        if (completion == null) Log.w("RNAP", "voice play failed: ${error.message}")
+        completion?.settled(LoadOutcome.Failed(error))
+        return
+      }
+    } else {
+      // The item's `quality`: an id, `'auto'` for automatic; absent: keep the pick.
+      val qualityGiven = entry.json.has("quality")
+      val quality = entry.json.optString("quality").takeIf { it.isNotEmpty() && it != "auto" }
+      controller.load(descriptor, fields, autoplay, startSeconds, qualityGiven = qualityGiven, quality = quality, completion = completion)
+    }
     store().let { s -> writes.execute { s.played(entry.id) } }
     AnythingPlayerRuntime.activate(controller)
     controller.emitEvent(

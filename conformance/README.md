@@ -242,5 +242,10 @@ voice catalog's matcher: `src/core/catalog.ts`, `ios/Core/CatalogSearch.swift`,
 `android/.../core/CatalogSearch.kt`. The pipeline and scores are documented at
 the top of `src/core/catalog.ts`.
 
+`catalog/same-media.json` (two sources `a` and `b` → `same`) specifies when a
+voice or car pick is of what is already loaded, and plays on instead of
+opening it again: `sameMedia` in `src/web/engine/types.ts`, `ios/Core/Types.swift`
+and `android/.../core/Types.kt`.
+
 The fake jitter source returns 0.5, so backoff delays are exactly
 1000, 2000, 4000, 8000, 16000, 30000 ms.

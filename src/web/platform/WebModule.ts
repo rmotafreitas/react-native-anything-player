@@ -22,6 +22,20 @@ import { WebCatalog, type StoredItem } from './WebCatalog';
 import { WebOutputs } from './WebOutputs';
 import { WebPlayerController } from './WebPlayerController';
 import { WebRuntime } from './WebRuntime';
+import { sameMedia } from '../engine/types';
+import type { PlaybackState } from '../engine/types';
+
+/**
+ * States that keep an opened source: a pick of it plays on instead of opening
+ * again (one still loading has not proved it opens: it is opened again).
+ */
+const HOLDS_SOURCE: ReadonlySet<PlaybackState> = new Set<PlaybackState>([
+  'buffering',
+  'playing',
+  'paused',
+  'stopped',
+  'reconnecting',
+]);
 
 type Listener = (event: object) => void;
 
@@ -416,7 +430,25 @@ export class WebModule implements PlayerModule {
   ): Promise<void> {
     const [descriptor, fields] = parseSource(item.source);
     controller.userGesture();
-    const loaded = controller.load(descriptor, fields, true, null);
+    const current = controller.engine.source;
+    // Already loaded (the app's own load, or an earlier pick): no gap, and the
+    // app's now-playing stays.
+    const again =
+      current != null &&
+      HOLDS_SOURCE.has(controller.engine.state) &&
+      sameMedia(current, descriptor);
+    if (again) controller.engine.play();
+    const loaded = again
+      ? Promise.resolve()
+      : controller.load(
+          descriptor,
+          fields,
+          true,
+          null,
+          null,
+          null,
+          parseLoadQuality(item.quality)
+        );
     controller.takePlayAttempt();
     this.catalog.played(item);
     this.emit({ playerId: controller.id, type: 'searchPlay', request, item });

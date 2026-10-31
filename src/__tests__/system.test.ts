@@ -260,6 +260,22 @@ describe('catalog', () => {
     });
   });
 
+  it("keeps an item's quality, checked against its renditions", async () => {
+    const renditions = [
+      { id: '320', uri: 'https://radio.example/320' },
+      { id: '64', uri: 'https://radio.example/64' },
+    ];
+    await setCatalog([
+      { ...station, source: { renditions, live: true }, quality: '64' },
+      { ...station, id: 'auto', source: { renditions }, quality: 'auto' },
+    ]);
+    const items = fake.calls[0]![1] as Array<Record<string, unknown>>;
+    expect(items.map((i) => i.quality)).toEqual(['64', 'auto']);
+    await expect(
+      setCatalog([{ ...station, source: { renditions }, quality: '128' }])
+    ).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
+  });
+
   it('rejects invalid catalogs', async () => {
     await expect(setCatalog('x' as never)).rejects.toMatchObject({
       code: 'INVALID_ARGUMENT',

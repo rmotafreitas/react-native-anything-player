@@ -8,6 +8,7 @@ import { groupSegments } from './catalog';
 import { host } from './host';
 import { onModuleEvent } from './moduleEvents';
 import {
+  checkQuality,
   ensureSubscription,
   normalizeNowPlaying,
   normalizeSource,
@@ -179,6 +180,10 @@ function serializeItem(item: CatalogItem): Record<string, unknown> {
   const group = groupSegments(item.group).join('/');
   if (group !== '') out.group = group;
   if (shown.artwork != null) out.artwork = shown.artwork;
+  if (item.quality != null) {
+    checkQuality(item.quality, source.renditions);
+    out.quality = item.quality;
+  }
   return out;
 }
 
@@ -196,6 +201,7 @@ function deserializeItem(raw: unknown): CatalogItem {
   if (typeof item.genre === 'string') out.genre = item.genre;
   if (typeof item.group === 'string') out.group = item.group;
   if (typeof item.artwork === 'string') out.artwork = item.artwork;
+  if (typeof item.quality === 'string') out.quality = item.quality;
   return out;
 }
 
