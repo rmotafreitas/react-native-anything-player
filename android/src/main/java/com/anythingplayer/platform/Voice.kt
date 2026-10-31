@@ -210,9 +210,16 @@ internal object Voice {
   }
 
   /** `playFromSearch()` and the assistants' intent: resolve, play, report. Main thread. */
-  fun playFromSearch(request: SearchRequest, playerId: String?, done: (Result<CatalogEntry?>) -> Unit) {
+  fun playFromSearch(
+    request: SearchRequest,
+    playerId: String?,
+    stillWanted: () -> Boolean = { true },
+    done: (Result<CatalogEntry?>) -> Unit,
+  ) {
     resolveOrAsk(request) { entry ->
       if (entry == null) return@resolveOrAsk done(Result.success(null))
+      // Asked late (a waiting request): the app's answer may come after the user chose.
+      if (!stillWanted()) return@resolveOrAsk done(Result.success(null))
       val controller =
         try {
           voicePlayer(playerId)
@@ -253,23 +260,26 @@ internal object Voice {
   fun answerWaiting() {
     val request = waiting ?: return
     waiting = null
-    val active = AnythingPlayerRuntime.active
-    if (active != null && active.status.state != PlaybackState.IDLE) {
+    if (somethingLoaded()) {
       Log.d(TAG, "assistant request \"${request.query}\" dropped: something else is loaded")
       return
     }
-    playFromAssistant(request)
+    playFromAssistant(request, stillWanted = { !somethingLoaded() })
   }
 
+  /** Any player has something loaded (the lock screen's or not). Main thread. */
+  private fun somethingLoaded(): Boolean =
+    AnythingPlayerRuntime.players.values.any { !it.isReleased && it.status.state != PlaybackState.IDLE }
+
   /** An assistant started the app with a request: no JS is needed, no answer is expected. Main thread. */
-  fun playFromAssistant(request: SearchRequest) {
+  fun playFromAssistant(request: SearchRequest, stillWanted: () -> Boolean = { true }) {
     waiting = null
     if (!hasItems() && !handlerEnabled) {
       Log.d(TAG, "assistant request \"${request.query}\" waits for the app's catalog or search handler")
       waiting = request
       return
     }
-    playFromSearch(request, null) { result ->
+    playFromSearch(request, null, stillWanted) { result ->
       result.onFailure { Log.w(TAG, "assistant request \"${request.query}\" failed: ${it.message}") }
       result.onSuccess { if (it == null) Log.d(TAG, "assistant request \"${request.query}\" matched nothing") }
     }
