@@ -70,6 +70,10 @@ It never cuts audio that is flowing just to catch up: being a few seconds behind
 
 A paused live stream keeps downloading audio that resuming will never play, so its connection is **released after 30 s** of pause; `play()` re-opens at the live edge.
 
+## Several bitrates of one station
+
+Give a station's mounts as `renditions` of one source, and `selectQuality` switches between them behind what is heard ([Qualities](playback.md#qualities)). Each mount's connection starts at the oldest audio of its connect burst, a byte count, so a low bitrate's starts many seconds further back. On Android a live switch is lined up first: the new connection plays muted, faster or slower (or waits paused when it is far ahead), until it reaches the same point in the program, and takes over there. A switch that cannot be lined up within 25 s, or whose connections stall, drop or end meanwhile, takes over as before, with a `discontinuity` event. iOS and the web switch as soon as the new mount is ready, and repeat or skip by the difference ([#82](https://github.com/rmotafreitas/react-native-anything-player/issues/82)).
+
 ## Recovery
 
 | Situation | What RNAP does |

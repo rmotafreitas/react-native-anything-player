@@ -59,7 +59,7 @@ Supported: the current and previous version of each browser. Radio titles on iPh
 | Progress events, `getProgress()` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Sleep timer (`sleep`, `status.sleepAt`) | ✓ | ✓ | ◐ ⁷ | ◐ ⁷ | ◐ ⁷ | ◐ ⁷ |
 | Fades on play, pause and stop, `fadeTo` | ✓ | ✓ | ◐ ⁷ | ◐ ⁷ | ◐ ⁷ | – ⁶ |
-| Separate quality files (`renditions`) switched with no gap, a pick that holds across loads | ✓ † | ✓ † | ✓ | ✓ | ✓ | ✓ † |
+| Separate quality files (`renditions`) switched with no gap, a pick that holds across loads | ✓ † ⁸ | ✓ † ⁸ | ✓ ⁸ | ✓ ⁸ | ✓ ⁸ | ✓ † ⁸ |
 | Queue (next / previous, gapless) | – | – | – | – | – | – |
 
 1. Leave it out with `rnapHls=false`.
@@ -69,6 +69,7 @@ Supported: the current and previous version of each browser. Radio titles on iPh
 5. When RNAP reads the stream itself (MSE, hls.js), not on the plain `<audio>` element. On iPhone and iPad, from iOS 17.1.
 6. The system fixes the volume: `setVolume` has no effect, `setMuted` works. Fades have no effect either; the sleep timer pauses without one.
 7. In a hidden tab the browser runs timers less often: fades move in larger steps and the sleep timer can fire late.
+8. Live streams (Icecast mounts at different bitrates): Android lines the switch up with what is heard, so it neither repeats nor skips; one that cannot be lined up takes over as before, with a `discontinuity` event ([Internet radio](internet-radio.md#several-bitrates-of-one-station)). iOS and the web switch as soon as the new mount is ready, and repeat or skip by the difference of the mounts' connect bursts ([#82](https://github.com/rmotafreitas/react-native-anything-player/issues/82)).
 
 A queue is planned: see the [roadmap](roadmap.md).
 

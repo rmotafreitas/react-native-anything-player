@@ -701,7 +701,7 @@ final class PlaybackEngine {
     if isSwapGeneration(gen) {
       // A quality switch's file: its facts wait for it to take over.
       pendingSwap?.info = info
-      // Live, the driver lines it up first: more time once ready.
+      // Live, a driver that lines it up first (Android's) needs more time once ready.
       if pendingSwap?.readyAt == nil && isLive { pendingSwap?.readyAt = now }
       return swapNote("ready")
     }
