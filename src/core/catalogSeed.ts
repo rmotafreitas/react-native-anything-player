@@ -21,14 +21,26 @@ const BUILD_HOST: PlayerHost = {
   },
 };
 
-/** A hash of `text`, as 8 hex digits: tells one bundled catalog from another. */
+/**
+ * cyrb53 of `text` (a well-distributed 53-bit hash), as 14 hex digits: tells
+ * one bundled catalog from another.
+ */
 function contentId(text: string): string {
-  // Polynomial, modulo the largest prime below 2^32 (exact in a double).
-  const PRIME = 4_294_967_291;
-  let hash = 0;
-  for (let i = 0; i < text.length; i++)
-    hash = (hash * 31 + text.charCodeAt(i)) % PRIME;
-  return hash.toString(16).padStart(8, '0');
+  /* eslint-disable no-bitwise -- a hash is bitwise by nature */
+  let h1 = 0xdeadbeef;
+  let h2 = 0x41c6ce57;
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 2654435761);
+    h2 = Math.imul(h2 ^ c, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507);
+  h1 ^= Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507);
+  h2 ^= Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  const hash = 4294967296 * (2097151 & h2) + (h1 >>> 0);
+  /* eslint-enable no-bitwise */
+  return hash.toString(16).padStart(14, '0');
 }
 
 /** The catalog file's format version, as native writes it (`CatalogStore`). */

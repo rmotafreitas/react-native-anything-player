@@ -148,7 +148,11 @@ internal class CatalogStore(private val file: File, private val seed: () -> Stri
   private fun ensureLoaded() {
     if (loaded) return
     loaded = true
-    val stored = if (file.exists()) parse(file.readText()) else null
+    val text = if (file.exists()) file.readText() else null
+    // A newer library's file: read as empty and left alone until the app sets a catalog.
+    if (text != null && newer(text)) return
+    // A damaged one is nothing to keep: as if there were none.
+    val stored = text?.let { parse(it) }
     if (stored != null && stored.optNonEmpty("seed") == null) return apply(stored)
     // Nothing the app set: the bundled catalog, the newest one if an update brought another.
     val bundled = seed()?.let { parse(it) }
@@ -164,6 +168,8 @@ internal class CatalogStore(private val file: File, private val seed: () -> Stri
       browse = JSONObject(browse?.toString() ?: "{}").put("favorites", JSONArray(strings(favorites).filter { it in ids }))
     }
   }
+
+  private fun newer(text: String): Boolean = runCatching { JSONObject(text).optInt("version", 0) > VERSION }.getOrDefault(false)
 
   /** A catalog file's root, or `null` when it is damaged or from a newer library version. */
   private fun parse(text: String): JSONObject? =

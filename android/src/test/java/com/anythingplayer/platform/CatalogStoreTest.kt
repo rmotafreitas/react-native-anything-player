@@ -79,6 +79,14 @@ class CatalogStoreTest {
     val none = "{\"version\":1,\"items\":[],\"seed\":\"none\"}"
     assertEquals(emptyList<String>(), CatalogStore(file()) { none }.snapshot().items.map { it.id })
 
+    // A newer library's file stays as it is: no bundled catalog over it.
+    val newer = "{\"version\":${CatalogStore.VERSION + 1},\"items\":[]}"
+    file().writeText(newer)
+    val left = CatalogStore(file()) { second }
+    assertEquals(emptyList<String>(), left.snapshot().items.map { it.id })
+    left.played("news")
+    assertEquals(newer, file().readText())
+
     // What the app sets is never replaced by a bundled one.
     CatalogStore(file()) { first }.replace(listOf(item("mine", "Mine")), "main", null)
     assertEquals(listOf("mine"), CatalogStore(file()) { second }.snapshot().items.map { it.id })

@@ -166,6 +166,14 @@ final class CatalogStore {
         unreadable = true
         return
       }
+      // A newer library's file: read as empty and left alone until the app sets a catalog.
+      if let version = ((try? JSONSerialization.jsonObject(with: data)) as? [String: Any])?["version"] as? Int,
+        version > Self.schemaVersion
+      {
+        unreadable = true
+        return
+      }
+      // A damaged one is nothing to keep: as if there were none.
       stored = Self.parse(data)
     }
     if let stored, (stored["seed"] as? String).map({ $0.isEmpty }) ?? true { return apply(stored) }

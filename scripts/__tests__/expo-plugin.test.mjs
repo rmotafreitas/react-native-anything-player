@@ -673,7 +673,11 @@ test('catalog: the id tells one bundled catalog from another, and only that', ()
   const { catalogSeed } = require('../../lib/plugin/catalogSeed.cjs');
   const item = (title) => ({ id: 'a', title, source: 'https://x/a' });
   const a = catalogSeed({ items: [item('A')] });
-  assert.match(a.seed, /^[0-9a-f]{8}$/);
+  assert.match(a.seed, /^[0-9a-f]{14}$/);
+  // A pair a weak hash confuses (only a source URL differs).
+  const at = (uri) =>
+    catalogSeed({ items: [{ id: 'a', title: 'A', source: uri }] }).seed;
+  assert.notEqual(at('https://example.com/Aa'), at('https://example.com/BB'));
   assert.equal(catalogSeed({ items: [item('A')] }).seed, a.seed);
   assert.notEqual(catalogSeed({ items: [item('B')] }).seed, a.seed);
   assert.throws(
