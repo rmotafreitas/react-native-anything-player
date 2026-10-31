@@ -73,7 +73,13 @@ internal object Voice {
   /** Replaces the catalog (persisted before this returns) and tells the media library. Any thread. */
   fun set(items: List<JSONObject>, playerId: String, playerOptions: JSONObject?, browse: JSONObject? = null) {
     store().replace(items, playerId, playerOptions, browse)
-    AnythingPlayerRuntime.post { AnythingPlayerRuntime.catalogChanged() }
+    AnythingPlayerRuntime.post {
+      AnythingPlayerRuntime.catalogChanged()
+      waiting?.let {
+        waiting = null
+        playFromAssistant(it)
+      }
+    }
   }
 
   /** Replaces the ids of the Favorites folder (persisted before this returns) and tells the media library. Any thread. */
@@ -138,6 +144,7 @@ internal object Voice {
   /** The JS instance is gone: nobody will answer. Main thread. */
   fun jsDetached() {
     handlerEnabled = false
+    waiting = null
     pending.keys.toList().forEach { pending.remove(it)?.invoke(null) }
   }
 
@@ -234,8 +241,21 @@ internal object Voice {
     return true
   }
 
-  /** An assistant started the app with a request: no JS is needed, no answer is expected. */
+  /**
+   * An assistant request that came before the app had a catalog (a fresh
+   * install it opened): played once the app's JavaScript sets one, dropped
+   * if that JavaScript goes away first (#79). Main thread.
+   */
+  private var waiting: SearchRequest? = null
+
+  /** An assistant started the app with a request: no JS is needed, no answer is expected. Main thread. */
   fun playFromAssistant(request: SearchRequest) {
+    waiting = null
+    if (!hasItems() && !handlerEnabled) {
+      Log.d(TAG, "assistant request \"${request.query}\" waits for the app's catalog")
+      waiting = request
+      return
+    }
     playFromSearch(request, null) { result ->
       result.onFailure { Log.w(TAG, "assistant request \"${request.query}\" failed: ${it.message}") }
       result.onSuccess { if (it == null) Log.d(TAG, "assistant request \"${request.query}\" matched nothing") }
