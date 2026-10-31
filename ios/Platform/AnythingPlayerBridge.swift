@@ -11,6 +11,8 @@ import Foundation
 public final class AnythingPlayerBridge: NSObject {
   private let lock = NSLock()
   private var owned = Set<String>()
+  /// `invalidate()` ran: this JS is gone.
+  private var invalidated = false
   private static let counterLock = NSLock()
   private static var counter = 0
 
@@ -45,8 +47,10 @@ public final class AnythingPlayerBridge: NSObject {
         return Self.counter
       }
       id = "ios-\(n)-\(String(UInt64(Date().timeIntervalSince1970 * 1000), radix: 36))"
-      // A new id: nothing else has it.
-      slot = runtime.claim(id, options: parsed) ?? PlayerSlot(instance: 0, options: parsed)
+      guard let claimed = runtime.claim(id, options: parsed) else {
+        preconditionFailure("react-native-anything-player: the new id \(id) is taken")
+      }
+      slot = claimed
       detachable = false
     }
     lock.sync { _ = owned.insert(id) }
@@ -71,7 +75,7 @@ public final class AnythingPlayerBridge: NSObject {
     _ id: String, resolve: @escaping (Any?) -> Void, reject: @escaping (String, String, NSError?) -> Void
   ) {
     let runtime = self.runtime
-    let (slot, wasLetGo) = runtime.takeRelease(id)
+    let (slot, wasLetGo) = runtime.takeRelease(id, letGoIfNone: !lock.sync { invalidated })
     if !wasLetGo { lock.sync { _ = owned.remove(id) } }
     DispatchQueue.main.async {
       runtime.release(slot)
@@ -507,6 +511,7 @@ public final class AnythingPlayerBridge: NSObject {
   /// app-chosen id are detached (they keep playing; the next JS attaches);
   /// the others can no longer be controlled and are released.
   @objc public func invalidate() {
+    lock.sync { invalidated = true }
     runtime.detachEvents(owner: self)
     let ids = lock.sync { () -> [String] in
       let ids = Array(owned)

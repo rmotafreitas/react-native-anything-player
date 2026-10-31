@@ -126,23 +126,26 @@ final class AnythingPlayerRuntime: AudioSessionListener, RemoteCommandTarget {
   /// the release comes with JS's `releasePlayer`, after the commands JS sent
   /// this player before (#90). Whether the id had a player.
   func letGo(_ id: String) -> Bool {
-    let (slot, built) = lock.sync { () -> (PlayerSlot?, PlayerController?) in
-      let slot: PlayerSlot?
-      if let controller = registry.removeValue(forKey: id) {
-        order.removeAll { $0 == id }
-        slot = PlayerSlot(instance: controller.instance, options: nil)
-        slot?.controller = controller
-      } else if let pending = creating.removeValue(forKey: id) {
-        pending.letGo = true
-        slot = pending
-      } else {
-        slot = nil
-      }
-      detached[id, default: []].append(slot)
-      return (slot, slot?.controller)
-    }
-    built?.jsLetGo()
+    let slot = lock.sync { letGoLocked(id) }
+    slot?.controller?.jsLetGo()
     return slot != nil
+  }
+
+  /// `letGo` with the lock held; the built controller is silenced by the caller.
+  private func letGoLocked(_ id: String) -> PlayerSlot? {
+    let slot: PlayerSlot?
+    if let controller = registry.removeValue(forKey: id) {
+      order.removeAll { $0 == id }
+      slot = PlayerSlot(instance: controller.instance, options: nil)
+      slot?.controller = controller
+    } else if let pending = creating.removeValue(forKey: id) {
+      pending.letGo = true
+      slot = pending
+    } else {
+      slot = nil
+    }
+    detached[id, default: []].append(slot)
+    return slot
   }
 
   enum CommandTarget {
@@ -195,15 +198,23 @@ final class AnythingPlayerRuntime: AudioSessionListener, RemoteCommandTarget {
   /// The method queue, for `releasePlayer`: what JS let go of with `id`
   /// (the oldest `letGo`), or, when no `willReleasePlayer` came first, what
   /// has the id now, let go of here. `wasLetGo`: a `willReleasePlayer` came first.
-  func takeRelease(_ id: String) -> (slot: PlayerSlot?, wasLetGo: Bool) {
-    let wasLetGo = lock.sync { !(detached[id]?.isEmpty ?? true) }
-    if !wasLetGo { _ = letGo(id) }
-    return lock.sync {
-      guard var queue = detached[id], !queue.isEmpty else { return (nil, wasLetGo) }
+  /// `letGoIfNone`: false once that JS is gone (a release it sent before its
+  /// teardown must not take a player that outlives it).
+  func takeRelease(_ id: String, letGoIfNone: Bool = true) -> (slot: PlayerSlot?, wasLetGo: Bool) {
+    let (slot, wasLetGo, silence) = lock.sync { () -> (PlayerSlot?, Bool, PlayerController?) in
+      let wasLetGo = !(detached[id]?.isEmpty ?? true)
+      var silence: PlayerController?
+      if !wasLetGo {
+        guard letGoIfNone else { return (nil, false, nil) }
+        silence = letGoLocked(id)?.controller
+      }
+      guard var queue = detached[id], !queue.isEmpty else { return (nil, wasLetGo, silence) }
       let first = queue.removeFirst()
       detached[id] = queue.isEmpty ? nil : queue
-      return (first, wasLetGo)
+      return (first, wasLetGo, silence)
     }
+    silence?.jsLetGo()
+    return (slot, wasLetGo)
   }
 
   /// Main thread: releases what a slot holds (built by now: its creation was queued first).
@@ -301,7 +312,6 @@ final class AnythingPlayerRuntime: AudioSessionListener, RemoteCommandTarget {
     ]
   }
 
-  /// Main thread.
   /// Main thread.
   func unregister(_ controller: PlayerController) {
     lock.sync {
