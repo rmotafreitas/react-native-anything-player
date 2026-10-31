@@ -45,6 +45,13 @@ internal object Voice {
   /** Whether the app answers what the catalog does not have (`setSearchHandler`). */
   @Volatile var handlerEnabled = false
 
+  /**
+   * An assistant request that came before the app could answer it (a fresh
+   * install it opened: no catalog, no search handler), waiting for the app's
+   * JavaScript to set a catalog or a search handler (#79). Main thread.
+   */
+  private var waiting: SearchRequest? = null
+
   private val pending = HashMap<String, (CatalogEntry?) -> Unit>()
   private var asked = 0
   private val adhoc = object : LinkedHashMap<String, CatalogEntry>() {
@@ -75,10 +82,7 @@ internal object Voice {
     store().replace(items, playerId, playerOptions, browse)
     AnythingPlayerRuntime.post {
       AnythingPlayerRuntime.catalogChanged()
-      waiting?.let {
-        waiting = null
-        playFromAssistant(it)
-      }
+      answerWaiting()
     }
   }
 
@@ -242,17 +246,26 @@ internal object Voice {
   }
 
   /**
-   * An assistant request that came before the app had a catalog (a fresh
-   * install it opened): played once the app's JavaScript sets one, dropped
-   * if that JavaScript goes away first (#79). Main thread.
+   * The app can answer now (a catalog, or a search handler): the waiting
+   * request plays, unless something was loaded meanwhile (the user, or the
+   * app, chose already: a late answer must not replace it). Main thread.
    */
-  private var waiting: SearchRequest? = null
+  fun answerWaiting() {
+    val request = waiting ?: return
+    waiting = null
+    val active = AnythingPlayerRuntime.active
+    if (active != null && active.status.state != PlaybackState.IDLE) {
+      Log.d(TAG, "assistant request \"${request.query}\" dropped: something else is loaded")
+      return
+    }
+    playFromAssistant(request)
+  }
 
   /** An assistant started the app with a request: no JS is needed, no answer is expected. Main thread. */
   fun playFromAssistant(request: SearchRequest) {
     waiting = null
     if (!hasItems() && !handlerEnabled) {
-      Log.d(TAG, "assistant request \"${request.query}\" waits for the app's catalog")
+      Log.d(TAG, "assistant request \"${request.query}\" waits for the app's catalog or search handler")
       waiting = request
       return
     }
