@@ -20,6 +20,8 @@ private const val TAG = "RNAP"
 private const val HANDLER_TIMEOUT_MS = 5_500L
 /** JS-provided items kept so a media item resolved from one can be loaded a moment later. */
 private const val ADHOC_CAPACITY = 8
+/** The catalog an app bundles (the Expo plugin's `catalog` option), in its assets. */
+private const val SEED_ASSET = "rnap/catalog-seed.json"
 
 /**
  * The voice side of the library: the persisted catalog, the search every entry
@@ -56,7 +58,12 @@ internal object Voice {
   fun attach(appContext: Context) {
     if (store != null) return
     context = appContext.applicationContext
-    store = CatalogStore(File(appContext.applicationContext.filesDir, "rnap/catalog.json"))
+    val app = appContext.applicationContext
+    store =
+      CatalogStore(File(app.filesDir, "rnap/catalog.json")) {
+        // The catalog the app bundles, if any (the Expo plugin's `catalog`).
+        runCatching { app.assets.open(SEED_ASSET).bufferedReader().use { it.readText() } }.getOrNull()
+      }
   }
 
   private fun store(): CatalogStore = store ?: error("Voice used before attach(context)")

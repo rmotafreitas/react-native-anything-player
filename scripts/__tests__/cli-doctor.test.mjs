@@ -167,6 +167,29 @@ test("the car option's object takes ios and android, booleans", (t) => {
   assert.deepEqual(check({ ios: 'no' }), ['error']);
 });
 
+test('the catalog option is a JSON file with items', (t) => {
+  const root = expoGood(t);
+  const appJson = JSON.parse(
+    fs.readFileSync(path.join(root, 'app.json'), 'utf8')
+  );
+  const check = (catalog) => {
+    appJson.expo.plugins = [[LIBRARY, { catalog }]];
+    fs.writeFileSync(path.join(root, 'app.json'), JSON.stringify(appJson));
+    const result = runCli(['doctor', '--json', '--cwd', root], { cwd: root });
+    return byId(result.json, 'expo-plugin-options').map(
+      (item) => item.severity
+    );
+  };
+  fs.writeFileSync(path.join(root, 'catalog.json'), '{"items":[]}');
+  fs.writeFileSync(path.join(root, 'list.json'), '[]');
+  fs.writeFileSync(path.join(root, 'broken.json'), '{');
+  assert.deepEqual(check('./catalog.json'), []);
+  assert.deepEqual(check('./missing.json'), ['error']);
+  assert.deepEqual(check('./broken.json'), ['error']);
+  assert.deepEqual(check('./list.json'), ['error']);
+  assert.deepEqual(check(true), ['error']);
+});
+
 test('deliberate plugin choices are info, not errors', (t) => {
   const root = expoPluginOptions(t);
   const result = runCli(['doctor', '--json', '--cwd', root], { cwd: root });

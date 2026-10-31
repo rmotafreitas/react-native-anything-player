@@ -273,6 +273,18 @@ export async function setCatalog(
   items: CatalogItem[],
   options: CatalogOptions = {}
 ): Promise<void> {
+  const catalog = serializeCatalog(items, options);
+  await run(() => native().setCatalog(catalog.items, catalog.options));
+}
+
+/**
+ * @internal What `setCatalog` sends native: the items and options checked
+ * and serialized. Also builds the catalog an app bundles (`catalogSeed`).
+ */
+export function serializeCatalog(
+  items: CatalogItem[],
+  options: CatalogOptions = {}
+): { items: Record<string, unknown>[]; options: Record<string, unknown> } {
   if (!Array.isArray(items)) throw invalid('setCatalog expects an array.');
   const serialized = items.map(serializeItem);
   const ids = new Set(serialized.map((i) => i.id));
@@ -285,7 +297,7 @@ export async function setCatalog(
     nativeOptions.playerOptions = options.playerOptions;
   if (options.browse)
     nativeOptions.browse = serializeBrowse(options.browse, ids);
-  await run(() => native().setCatalog(serialized, nativeOptions));
+  return { items: serialized, options: nativeOptions };
 }
 
 /**

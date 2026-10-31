@@ -72,9 +72,12 @@ internal data class CatalogSnapshot(
  * (also by the media service with no JS in the process); written atomically
  * (a temp file, then a rename) so a kill mid-write keeps the previous catalog.
  * A file from a newer library version is read as empty and left alone until
- * the app sets a catalog again. Twin: `CatalogStore.swift`.
+ * the app sets a catalog again. Until the app has stored one, [seed] is the
+ * catalog the app bundles (the Expo plugin's `catalog` option): a fresh
+ * install answers voice requests and cars before it was ever opened. Twin:
+ * `CatalogStore.swift`.
  */
-internal class CatalogStore(private val file: File) {
+internal class CatalogStore(private val file: File, private val seed: () -> String? = { null }) {
   private var loaded = false
   private var playerId = DEFAULT_PLAYER_ID
   private var playerOptions: JSONObject? = null
@@ -138,9 +141,9 @@ internal class CatalogStore(private val file: File) {
   private fun ensureLoaded() {
     if (loaded) return
     loaded = true
-    if (!file.exists()) return
+    val text = if (file.exists()) file.readText() else seed() ?: return
     try {
-      val root = JSONObject(file.readText())
+      val root = JSONObject(text)
       if (root.optInt("version", 0) > VERSION) return
       playerId = root.optNonEmpty("playerId") ?: DEFAULT_PLAYER_ID
       playerOptions = root.optJSONObject("playerOptions")

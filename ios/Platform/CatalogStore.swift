@@ -1,7 +1,8 @@
 import Foundation
 
 /// The catalog voice requests search, persisted in Application Support
-/// (`rnap/catalog.json`) so that Siri finds it when JavaScript is not running.
+/// (`rnap/catalog.json`) so that Siri finds it when JavaScript is not running;
+/// until the app sets one, the catalog it bundles (`rnap-catalog-seed.json`).
 /// Items are kept as JS serialized them (src/core/system.ts) and searched with
 /// the shared matcher (`CatalogSearch`). Twins: `src/web/platform/WebCatalog.ts`,
 /// `android/.../CatalogStore.kt`. Main thread only; writes are atomic and off
@@ -151,7 +152,7 @@ final class CatalogStore {
   private func loadIfNeeded() {
     guard !loaded else { return }
     loaded = true
-    guard let url = Self.fileURL, let data = try? Data(contentsOf: url),
+    guard let data = Self.fileURL.flatMap({ try? Data(contentsOf: $0) }) ?? Self.seed(),
       let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
       root["version"] as? Int == Self.schemaVersion
     else { return }
@@ -161,6 +162,13 @@ final class CatalogStore {
     lastPlayedId = root["lastPlayedId"] as? String
     browse = root["browse"] as? [String: Any] ?? [:]
     recentIds = root["recentIds"] as? [String] ?? []
+  }
+
+  /// The catalog the app bundles (the Expo plugin's `catalog` option), used
+  /// until the app stores its own: a fresh install answers Siri and CarPlay
+  /// before it was ever opened.
+  private static func seed() -> Data? {
+    Bundle.main.url(forResource: "rnap-catalog-seed", withExtension: "json").flatMap { try? Data(contentsOf: $0) }
   }
 
   private func save() {

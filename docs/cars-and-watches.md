@@ -159,7 +159,7 @@ func application(
 
 What CarPlay shows: a tab bar with one list per tab (the top-level groups, **Recently played**, **Favorites**, **More**), folders that open as lists, and the system *Now Playing* screen with the controls the player already publishes (play, pause, and next, previous and skip when you enabled them in `mediaSession.commands`). A pick starts the player and opens *Now Playing* once audio starts; if it cannot play, an alert says so. The lists follow `setCatalog` and `setFavorites`.
 
-The app does not need to be open. CarPlay can start it in the background; RNAP plays through the catalog's player with no JavaScript, as it does for Siri.
+The app does not need to be open. CarPlay can start it in the background; RNAP plays through the catalog's player with no JavaScript, as it does for Siri. On a fresh install that was never opened, the tree is the catalog the app bundles ([Voice assistants](voice.md#a-catalog-the-app-bundles)).
 
 ## Apple Watch
 

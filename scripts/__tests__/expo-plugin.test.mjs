@@ -37,6 +37,7 @@ test('defaults: background audio and the assistant, no Cast, no Siri', () => {
     car: null,
     video: null,
     videoDecoders: false,
+    catalog: null,
   });
   assert.equal(
     helpers.resolveOptions({ backgroundAudio: false }).backgroundAudio,
@@ -585,4 +586,68 @@ test("car: a prebuild again starts from the manifest without CarPlay's scene", (
     }),
     undefined
   );
+});
+
+test('catalog: the path of a JSON file, or nothing', () => {
+  assert.equal(helpers.resolveOptions({}).catalog, null);
+  assert.equal(
+    helpers.resolveOptions({ catalog: './catalog.json' }).catalog,
+    './catalog.json'
+  );
+  // The plugin refuses anything else (rnap doctor reports it instead).
+  assert.equal(helpers.resolveOptions({ catalog: true }).catalog, true);
+  assert.throws(() => helpers.checkCatalog(true), /JSON file/);
+  assert.throws(() => helpers.checkCatalog(' '), /JSON file/);
+  assert.equal(helpers.checkCatalog('./catalog.json'), './catalog.json');
+});
+
+test("catalog: bundled in the format native stores, by setCatalog's own checks", () => {
+  const { catalogSeed } = require('../../lib/plugin/catalogSeed.cjs');
+  const seed = catalogSeed({
+    playerId: 'radio',
+    playerOptions: { metadata: { useStreamMetadataForNowPlaying: true } },
+    browse: { recent: true, favorites: ['a', 'nope'] },
+    items: [
+      {
+        id: 'a',
+        title: 'A FM',
+        group: ' Music / Jazz ',
+        artwork: 'https://example.com/a.png',
+        source: {
+          renditions: [
+            { id: 'hi', uri: 'https://example.com/a-320' },
+            { id: 'lo', uri: 'https://example.com/a-64' },
+          ],
+          live: true,
+        },
+        quality: 'lo',
+      },
+    ],
+  });
+  assert.equal(seed.version, 1);
+  assert.equal(seed.playerId, 'radio');
+  assert.equal(seed.lastPlayedId, null);
+  assert.deepEqual(seed.recentIds, []);
+  assert.deepEqual(seed.browse.favorites, ['a']);
+  const [item] = seed.items;
+  assert.equal(item.group, 'Music/Jazz');
+  assert.equal(item.kind, 'station');
+  assert.equal(item.quality, 'lo');
+  assert.deepEqual(item.source.metadata, {
+    title: 'A FM',
+    artwork: 'https://example.com/a.png',
+  });
+  assert.throws(
+    () =>
+      catalogSeed({ items: [{ id: 'a', title: 'A', source: 'ftp://x/a' }] }),
+    /scheme/
+  );
+  assert.throws(
+    () =>
+      catalogSeed({
+        items: [{ id: 'rnap:x', title: 'X', source: 'https://x/a' }],
+      }),
+    /reserves/
+  );
+  assert.throws(() => catalogSeed([]), /items/);
 });

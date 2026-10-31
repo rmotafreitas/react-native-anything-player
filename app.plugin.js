@@ -28,6 +28,10 @@
 //   docs/cars-and-watches.md.
 // - `assistant` (default true): Google Assistant and Gemini requests to the
 //   main activity (`MEDIA_PLAY_FROM_SEARCH` → `AnythingPlayer.handleIntent`).
+// - `catalog` (a JSON file, from the project root): what the app passes to
+//   `setCatalog` (`{ items, playerId, playerOptions, browse }`), bundled as
+//   the catalog voice requests and cars use until the app sets its own (a
+//   fresh install that was never opened). See docs/voice.md.
 const fs = require('fs');
 const path = require('path');
 const {
@@ -247,10 +251,83 @@ function withAndroid(config, resolved) {
   });
 }
 
+const SEED_ANDROID = [
+  'app',
+  'src',
+  'main',
+  'assets',
+  'rnap',
+  'catalog-seed.json',
+];
+const SEED_IOS = 'rnap-catalog-seed.json';
+
+/**
+ * `catalog`: the file serialized by the library's own `setCatalog` code (so
+ * a bundled item is exactly what `setCatalog` would store), written where
+ * native reads it while it has no catalog of its own.
+ */
+function withCatalogSeed(config, file) {
+  helpers.checkCatalog(file);
+  const seed = (projectRoot) => {
+    const full = path.resolve(projectRoot, file);
+    let input;
+    try {
+      input = JSON.parse(fs.readFileSync(full, 'utf8'));
+    } catch (error) {
+      throw new Error(
+        `react-native-anything-player: catalog: cannot read ${full}: ${error.message}`
+      );
+    }
+    try {
+      const { catalogSeed } = require('./lib/plugin/catalogSeed.cjs');
+      return JSON.stringify(catalogSeed(input));
+    } catch (error) {
+      throw new Error(
+        `react-native-anything-player: catalog (${file}): ${error.message}`
+      );
+    }
+  };
+  config = withDangerousMod(config, [
+    'android',
+    (cfg) => {
+      const out = path.join(
+        cfg.modRequest.platformProjectRoot,
+        ...SEED_ANDROID
+      );
+      fs.mkdirSync(path.dirname(out), { recursive: true });
+      fs.writeFileSync(out, seed(cfg.modRequest.projectRoot));
+      return cfg;
+    },
+  ]);
+  config = withDangerousMod(config, [
+    'ios',
+    (cfg) => {
+      const { platformProjectRoot, projectName, projectRoot } = cfg.modRequest;
+      fs.writeFileSync(
+        path.join(platformProjectRoot, projectName, SEED_IOS),
+        seed(projectRoot)
+      );
+      return cfg;
+    },
+  ]);
+  return withXcodeProject(config, (cfg) => {
+    const filepath = path.join(cfg.modRequest.projectName, SEED_IOS);
+    if (!cfg.modResults.hasFile(filepath))
+      IOSConfig.XcodeUtils.addResourceFileToGroup({
+        filepath,
+        groupName: cfg.modRequest.projectName,
+        project: cfg.modResults,
+        isBuildFile: true,
+      });
+    return cfg;
+  });
+}
+
 /** @param {object} [options] see the header */
 function withAnythingPlayer(config, options = {}) {
   const resolved = helpers.resolveOptions(options);
-  return withAndroid(withIos(config, resolved), resolved);
+  config = withAndroid(withIos(config, resolved), resolved);
+  return resolved.catalog ? withCatalogSeed(config, resolved.catalog) : config;
 }
 
 module.exports = createRunOncePlugin(withAnythingPlayer, pkg.name, pkg.version);
