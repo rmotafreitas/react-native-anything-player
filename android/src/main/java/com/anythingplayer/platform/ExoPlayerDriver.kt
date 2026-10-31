@@ -117,6 +117,8 @@ internal data class ProgressReading(
   val liveOffset: Double?,
   val isPlaying: Boolean,
   val rate: Double,
+  /** Which connection the buffered edge belongs to: a replaced one (a live continuation) counts up. */
+  val connection: Int = 0,
 )
 
 private const val MEDIA_ID_PREFIX = "anythingplayer:"
@@ -787,6 +789,7 @@ internal class ExoPlayerDriver(
       offset,
       p.isPlaying,
       rate.toDouble(),
+      continuationCount,
     )
   }
 

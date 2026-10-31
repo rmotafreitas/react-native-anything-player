@@ -10,14 +10,19 @@ import org.junit.Test
 /** Runs `conformance/quality/live-align.json`. */
 class LiveSwapAlignerTest {
   private fun reading(list: JSONArray) =
-    LiveSwapAligner.Reading(list.getDouble(0), list.getDouble(1), if (list.length() > 2) list.getBoolean(2) else true)
+    LiveSwapAligner.Reading(
+      list.getDouble(0),
+      list.getDouble(1),
+      if (list.length() > 2) list.getBoolean(2) else true,
+      if (list.length() > 3) list.getInt(3) else 0,
+    )
 
   private fun name(step: LiveSwapAligner.Step) =
     when (step) {
       LiveSwapAligner.Step.Measure -> "measure"
       LiveSwapAligner.Step.Hold -> "hold"
       LiveSwapAligner.Step.Play -> "play"
-      is LiveSwapAligner.Step.CatchUp -> "catchUp:" + String.format(Locale.ROOT, "%.2f", step.rate)
+      is LiveSwapAligner.Step.Steer -> "steer:" + String.format(Locale.ROOT, "%.2f", step.rate)
       is LiveSwapAligner.Step.Fallback -> "fallback"
     }
 

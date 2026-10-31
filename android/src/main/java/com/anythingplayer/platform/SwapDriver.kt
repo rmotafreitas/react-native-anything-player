@@ -203,15 +203,15 @@ internal class SwapDriver(
     val step =
       aligner.step(
         now,
-        LiveSwapAligner.Reading(old.position, old.buffered, old.isPlaying),
-        LiveSwapAligner.Reading(new.position, new.buffered),
+        LiveSwapAligner.Reading(old.position, old.buffered, old.isPlaying, old.connection),
+        LiveSwapAligner.Reading(new.position, new.buffered, new.isPlaying, new.connection),
       )
     when (step) {
       LiveSwapAligner.Step.Measure, LiveSwapAligner.Step.Hold -> {
         waiting.aligning = true
         if (new.isPlaying) next.pause()
       }
-      is LiveSwapAligner.Step.CatchUp -> {
+      is LiveSwapAligner.Step.Steer -> {
         waiting.aligning = true
         next.setRate(step.rate)
         if (!new.isPlaying) next.play()
@@ -220,7 +220,7 @@ internal class SwapDriver(
         waiting.aligning = false
         waiting.unaligned = step is LiveSwapAligner.Step.Fallback
         next.setRate(rate)
-        // Already playing (it caught up): it takes over now; else its `playing` will.
+        // Playing (Play always is): it takes over now; else (a fallback) its `playing` will.
         if (new.isPlaying) playing(waiting.generation) else next.play()
         return
       }

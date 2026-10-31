@@ -1,5 +1,7 @@
 package com.anythingplayer.core
 
+import kotlin.math.abs
+
 /**
  * Lines a live quality switch's new connection up with what is heard, so the
  * switch neither repeats nor skips audio. Separate live files of one sound
@@ -14,33 +16,42 @@ package com.anythingplayer.core
  * the time elapsed peaks right after a step lands, so `k` is the difference of
  * those peaks. The burst is in once the new one's edge has not risen notably
  * for a while and a later step confirmed its peak (and the old one stepped too).
- * Behind, the new player catches up (muted, faster the further behind, up to
- * [MAX_CATCH_UP_RATE]: it slows as it closes in, so it never overshoots); ahead, it
- * holds (paused) until the old one gets there; then it takes over. Pure: the
- * driver reads both players and acts on each [Step]. Specified by
+ * Then the new player is steered, muted, by its measured position: faster when
+ * behind, slower when ahead (it waits paused while far ahead), easing off as
+ * the gap closes, and takes over already playing once lined up, so how long a
+ * device takes to start a player never matters. If either player moves to
+ * another connection meanwhile (a dropped one replaced), its timeline no
+ * longer maps and the switch takes over unaligned. Pure: the driver reads
+ * both players and acts on each [Step]. Specified by
  * `conformance/quality/live-align.json`.
  */
 class LiveSwapAligner(private val startedAt: Long) {
-  /** A player's reading: playhead and buffered edge, seconds in its own timeline. */
-  data class Reading(val position: Double, val edge: Double, val playing: Boolean = true)
+  /**
+   * A player's reading: playhead and buffered edge, seconds in its own
+   * timeline, whether it plays, and which connection the edge belongs to.
+   */
+  data class Reading(val position: Double, val edge: Double, val playing: Boolean = true, val connection: Int = 0)
 
   sealed class Step {
     /** The new connection's burst is still arriving: keep it paused. */
     object Measure : Step()
 
-    /** Behind: play it muted at [rate]. */
-    data class CatchUp(val rate: Double) : Step()
-
-    /** Ahead: keep it paused until the old one gets there. */
+    /** Far ahead: keep it paused until the old one comes close. */
     object Hold : Step()
 
-    /** Lined up: play it at the normal rate and let it take over. */
+    /** Play it muted at [rate]: above 1 when behind, below when ahead. */
+    data class Steer(val rate: Double) : Step()
+
+    /** Playing and lined up: back to the normal rate, and it takes over. */
     object Play : Step()
 
     /** No alignment: take over now, as an unaligned switch does. */
     data class Fallback(val reason: String) : Step()
   }
 
+  /** The connections the readings started on. */
+  private var oldConnection: Int? = null
+  private var newConnection: Int? = null
   /** Each player's highest edge less the time elapsed (see the class comment). */
   private var newTop: Double? = null
   private var oldTop: Double? = null
@@ -59,13 +70,16 @@ class LiveSwapAligner(private val startedAt: Long) {
   fun step(now: Long, old: Reading, new: Reading): Step {
     if (!old.playing) return Step.Fallback("old player not playing")
     if (now - startedAt >= BUDGET_MS) return Step.Fallback("budget")
+    if (oldConnection.let { it != null && it != old.connection } || newConnection.let { it != null && it != new.connection })
+      return Step.Fallback("connection replaced")
+    oldConnection = old.connection
+    newConnection = new.connection
     val k = shift ?: return measure(now, old, new)
     val behind = old.position + k - new.position
     return when {
-      // Paused and ahead: played that much early, it starts in step.
-      behind in -(TOLERANCE_S + START_LATENCY_S)..TOLERANCE_S -> Step.Play
-      behind > 0 -> Step.CatchUp((1 + behind / CATCH_UP_HORIZON_S).coerceIn(MIN_CATCH_UP_RATE, MAX_CATCH_UP_RATE))
-      else -> Step.Hold
+      new.playing && abs(behind) <= TOLERANCE_S -> Step.Play
+      !new.playing && behind < -STEER_WINDOW_S -> Step.Hold
+      else -> Step.Steer((1 + behind / HORIZON_S).coerceIn(MIN_RATE, MAX_RATE))
     }
   }
 
@@ -94,14 +108,15 @@ class LiveSwapAligner(private val startedAt: Long) {
   }
 
   companion object {
-    /** A behind connection plays (muted) at 1 + behind / this: it would close the gap in this long, seconds. */
-    const val CATCH_UP_HORIZON_S = 1.0
-    const val MIN_CATCH_UP_RATE = 1.05
-    const val MAX_CATCH_UP_RATE = 4.0
+    /** The new connection plays (muted) at 1 + behind / this: it would close the gap in this long, seconds. */
+    const val HORIZON_S = 1.0
+    /** The rates it is steered within (Media3's Sonic handles these cleanly). */
+    const val MIN_RATE = 0.5
+    const val MAX_RATE = 4.0
+    /** Ahead by more than this it waits paused: at [MIN_RATE] the old one gains on it slowly. */
+    const val STEER_WINDOW_S = 2.0
     /** Lined up within this, seconds. */
     const val TOLERANCE_S = 0.05
-    /** How long a paused player takes to sound once played: a held one is played this much early. */
-    const val START_LATENCY_S = 0.1
     /** Past this, the switch takes over unaligned (below RecoveryPolicy.SWAP_ALIGN_MS). */
     const val BUDGET_MS = 25_000L
     /** The burst is in once the new edge has not risen by more than [RAISE_S] over the time for [QUIET_MS], a later step confirmed it... */
