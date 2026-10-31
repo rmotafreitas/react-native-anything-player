@@ -264,7 +264,7 @@ internal object Voice {
       Log.d(TAG, "assistant request \"${request.query}\" dropped: something else is loaded")
       return
     }
-    playFromAssistant(request, stillWanted = { !somethingLoaded() })
+    playFromAssistant(request, stillWanted = { !somethingLoaded() }, waited = true)
   }
 
   /** Any player has something loaded (the lock screen's or not). Main thread. */
@@ -272,7 +272,7 @@ internal object Voice {
     AnythingPlayerRuntime.players.values.any { !it.isReleased && it.status.state != PlaybackState.IDLE }
 
   /** An assistant started the app with a request: no JS is needed, no answer is expected. Main thread. */
-  fun playFromAssistant(request: SearchRequest, stillWanted: () -> Boolean = { true }) {
+  fun playFromAssistant(request: SearchRequest, stillWanted: () -> Boolean = { true }, waited: Boolean = false) {
     waiting = null
     if (!hasItems() && !handlerEnabled) {
       Log.d(TAG, "assistant request \"${request.query}\" waits for the app's catalog or search handler")
@@ -281,7 +281,16 @@ internal object Voice {
     }
     playFromSearch(request, null, stillWanted) { result ->
       result.onFailure { Log.w(TAG, "assistant request \"${request.query}\" failed: ${it.message}") }
-      result.onSuccess { if (it == null) Log.d(TAG, "assistant request \"${request.query}\" matched nothing") }
+      result.onSuccess {
+        if (it != null) return@onSuccess
+        // The app's search handler had nothing and its catalog is still to come: wait for it.
+        if (waited && !hasItems() && waiting == null && stillWanted()) {
+          waiting = request
+          Log.d(TAG, "assistant request \"${request.query}\" waits for the app's catalog")
+        } else {
+          Log.d(TAG, "assistant request \"${request.query}\" matched nothing")
+        }
+      }
     }
   }
 
