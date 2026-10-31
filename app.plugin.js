@@ -337,8 +337,21 @@ function withCatalogSeed(config, file) {
  */
 function withoutCatalogSeed(config) {
   const empty = JSON.stringify(helpers.EMPTY_CATALOG_SEED);
+  // Only a file that is there: opened as it is (no separate check to race).
   const overwrite = (file) => {
-    if (fs.existsSync(file)) fs.writeFileSync(file, empty);
+    let fd;
+    try {
+      fd = fs.openSync(file, 'r+');
+    } catch (error) {
+      if (error.code === 'ENOENT') return;
+      throw error;
+    }
+    try {
+      fs.ftruncateSync(fd);
+      fs.writeSync(fd, empty, 0);
+    } finally {
+      fs.closeSync(fd);
+    }
   };
   config = withDangerousMod(config, [
     'android',
