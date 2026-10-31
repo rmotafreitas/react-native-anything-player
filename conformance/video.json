@@ -543,6 +543,22 @@
     ]
   },
   {
+    "name": "renditions: a switch has 12 s to get its file ready, then 25 s to play it (a live swap lines up with what is heard first)",
+    "steps": [
+      { "call": "load", "uri": "https://stream.example/", "live": true, "autoplay": true, "renditions": [{ "id": "64", "uri": "https://stream.example/64", "bitrate": 64000 }, { "id": "320", "uri": "https://stream.example/320", "bitrate": 320000 }] },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "call": "selectQuality", "id": "64" },
+      { "expect": { "commands": ["open(gen=1,start=-,play=true,r=1)", "open(gen=2,start=-,play=true,r=0,swap)"] } },
+      { "advance": 11000 },
+      { "native": "ready", "gen": 2, "live": true },
+      { "advance": 24000 },
+      { "expect": { "state": "playing", "gen": 1, "quality": "320", "errors": [], "commands": [] } },
+      { "advance": 1000 },
+      { "expect": { "quality": "320", "errors": ["QUALITY_SWITCH_FAILED:warning"], "commands": ["cancelSwap(gen=2)"] } }
+    ]
+  },
+  {
     "name": "video: a rendition that fails to switch to is dropped, sits out a minute, then is tried again",
     "options": { "video": true },
     "steps": [
