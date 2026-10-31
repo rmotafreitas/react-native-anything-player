@@ -79,6 +79,17 @@ class CatalogStoreTest {
     val none = "{\"version\":1,\"items\":[],\"seed\":\"none\"}"
     assertEquals(emptyList<String>(), CatalogStore(file()) { none }.snapshot().items.map { it.id })
 
+    // The bundle's own favorites, until the user sets some.
+    fun withFavorites(id: String, vararg favorites: String) =
+      JSONObject(bundle(id, item("news", "World News"), item("rock", "Rock FM")))
+        .put("browse", JSONObject().put("favorites", org.json.JSONArray(favorites.toList())))
+        .toString()
+    file().delete()
+    CatalogStore(file()) { withFavorites("f1", "news") }.played("news")
+    assertEquals(listOf("rock"), CatalogStore(file()) { withFavorites("f2", "rock") }.snapshot().browse.favorites)
+    CatalogStore(file()) { withFavorites("f2", "rock") }.setFavorites(listOf("news"))
+    assertEquals(listOf("news"), CatalogStore(file()) { withFavorites("f3", "rock") }.snapshot().browse.favorites)
+
     // A newer library's file stays as it is: no bundled catalog over it.
     val newer = "{\"version\":${CatalogStore.VERSION + 1},\"items\":[]}"
     file().writeText(newer)
