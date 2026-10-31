@@ -295,7 +295,10 @@ internal object Voice {
         // catalog still to come ends the request.
         // Waited requests only. Not a teardown: by the time jsDetached answers the
         // handler's questions with null, the handler is off and JS is detached.
-        if (waited && !stillWanted()) return@onSuccess // dropped, and logged so
+        if (waited && !stillWanted()) {
+          Log.d(TAG, "assistant request \"${request.query}\" dropped: something else is loaded")
+          return@onSuccess
+        }
         val late = if (waited && handlerEnabled && AnythingPlayerRuntime.hasJs) resolve(request) else null
         if (late == null) {
           Log.d(TAG, "assistant request \"${request.query}\" matched nothing")
