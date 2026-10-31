@@ -1,0 +1,107 @@
+package com.anythingplayer.core
+
+import kotlin.math.abs
+import kotlin.random.Random
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+/**
+ * Steering against simulated devices: a rate reaches the output only after
+ * the audio already buffered (the delay), and a paused player sounds only
+ * after its start latency. Whatever the device, a switch must take over lined
+ * up, or fall back (reported as a jump), never take over off the point.
+ */
+class LiveSwapSteeringTest {
+  private class Outcome(val step: String, val error: Double, val at: Double)
+
+  /** Ticks every 40 ms: the old player plays at [oldRate]; the new one obeys the aligner through a delay. */
+  private fun run(oldRate: Double, behindAtSettle: Double, delayS: Double, latencyS: Double): Outcome {
+    val shift = behindAtSettle - 25.0 - 2.5 * oldRate
+    val aligner = LiveSwapAligner(startedAt = 0)
+    var newPos = 0.0
+    var playing = false
+    var startsAt = Double.MAX_VALUE
+    var appliedRate = oldRate
+    val pending = ArrayDeque<Pair<Double, Double>>() // (applies at, rate)
+    // The driver's 40 ms tick lands a few ms early or late.
+    val jitter = Random(42)
+    var t = 0.0
+    while (t < 40.0) {
+      val oldPos = 25.0 + oldRate * t
+      val step =
+        aligner.step(
+          (t * 1000).toLong(),
+          // ExoPlayer reports whole milliseconds.
+          LiveSwapAligner.Reading(ms(oldPos), ms(30.0 + t), true, 0, oldRate),
+          LiveSwapAligner.Reading(ms(newPos), ms(30.0 + shift + t), playing && t >= startsAt),
+        )
+      when (step) {
+        LiveSwapAligner.Step.Measure, LiveSwapAligner.Step.Hold -> {
+          playing = false
+          startsAt = Double.MAX_VALUE
+        }
+        is LiveSwapAligner.Step.Steer -> {
+          if (pending.lastOrNull()?.second != step.rate) pending.addLast(t + delayS to step.rate)
+          if (!playing) {
+            playing = true
+            startsAt = t + latencyS
+          }
+        }
+        LiveSwapAligner.Step.Play -> {
+          // After takeover the new player plays at the old rate once its buffered
+          // audio has played: the rate heard now, then each change still on its way.
+          var drift = 0.0
+          var from = t
+          var rate = appliedRate
+          for ((at, next) in pending.filter { it.first < t + delayS }) {
+            drift += (rate - oldRate) * (at - from)
+            from = at
+            rate = next
+          }
+          drift += (rate - oldRate) * (t + delayS - from)
+          return Outcome("play", oldPos + shift - newPos - drift, t)
+        }
+        is LiveSwapAligner.Step.Fallback -> return Outcome("fallback", Double.NaN, t)
+      }
+      val dt = 0.04 + jitter.nextDouble(-0.005, 0.005)
+      t += dt
+      while (pending.isNotEmpty() && pending.first().first <= t) appliedRate = pending.removeFirst().second
+      if (playing && t >= startsAt) newPos += appliedRate * dt
+    }
+    return Outcome("timeout", Double.NaN, t)
+  }
+
+  private fun ms(seconds: Double) = Math.round(seconds * 1000) / 1000.0
+
+  @Test
+  fun realisticDevicesLineUp() {
+    for (oldRate in listOf(1.0, 0.75))
+      for (behind in listOf(14.0, 2.7, -1.5, -12.0))
+        for (delay in listOf(0.0, 0.25, 0.75, 1.0))
+          for (latency in listOf(0.0, 0.3)) {
+            val o = run(oldRate, behind, delay, latency)
+            val label = "rate=$oldRate behind=$behind delay=$delay latency=$latency"
+            assertTrue("$label: ${o.step} at ${o.at}", o.step == "play")
+            assertTrue("$label: off by ${o.error}", abs(o.error) <= 0.08)
+          }
+  }
+
+  @Test
+  fun aStartRateJustShortOfAStepFromTheOldOneLinesUp() {
+    // The start rate lands just short of a probe step from the old one (the
+    // probe's size itself: live-align.json); it still lines up.
+    for (delay in listOf(0.0, 0.25, 0.75)) {
+      val o = run(0.99, 0.494901, delay, latencyS = 0.0)
+      assertTrue("delay=$delay: ${o.step} at ${o.at}", o.step == "play")
+      assertTrue("delay=$delay: off by ${o.error}", abs(o.error) <= 0.08)
+    }
+  }
+
+  @Test
+  fun anExtremeDelayLinesUpOrFallsBackNeverOffThePoint() {
+    for (behind in listOf(14.0, -12.0)) {
+      val o = run(1.0, behind, delayS = 3.0, latencyS = 0.5)
+      assertTrue("behind=$behind: ${o.step}", o.step == "fallback" || (o.step == "play" && abs(o.error) <= 0.08))
+    }
+  }
+}

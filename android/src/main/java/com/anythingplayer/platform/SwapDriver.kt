@@ -2,7 +2,9 @@ package com.anythingplayer.platform
 
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import com.anythingplayer.core.InterruptionReason
+import com.anythingplayer.core.LiveSwapAligner
 import com.anythingplayer.core.MediaTrack
 import com.anythingplayer.core.OpenRequest
 import com.anythingplayer.core.PlaybackSample
@@ -34,15 +36,25 @@ private const val RENDEZVOUS_TICK_MS = 40L
  * one that prepares a quality switch behind it (`open(swap = true)`, separate
  * files of one video or one sound). The second one opens a little ahead,
  * muted, waits until the first reaches that point, plays, and takes over: no
- * spinner, no gap, no jump. The second ExoPlayer is only made at the first
- * switch. Twin of `src/web/platform/SwapDriver.ts`.
+ * spinner, no gap, no jump. Live, where there is no position to wait for, the
+ * new connection is lined up with what is heard first ([LiveSwapAligner]: it
+ * catches up muted, or holds, so the switch neither repeats nor skips). The
+ * second ExoPlayer is only made at the first switch. Twin of
+ * `src/web/platform/SwapDriver.ts`.
  */
 internal class SwapDriver(
   private val observer: DriverObserver,
   private val make: (DriverObserver) -> ExoPlayerDriver,
   private val stage: SwapStage,
 ) : Output {
-  private class Pending(val generation: Int, var target: Double?, var ready: Boolean = false)
+  private class Pending(val generation: Int, var target: Double?, var ready: Boolean = false) {
+    /** Live: lines the new connection up before it takes over. */
+    var aligner: LiveSwapAligner? = null
+    /** The new file plays muted to catch up: its `playing` is not the takeover yet. */
+    var aligning = false
+    /** Taken over without lining up: the audio jumps, which the engine is told. */
+    var unaligned = false
+  }
 
   private val main = Handler(Looper.getMainLooper())
   private val proxy = Proxy()
@@ -165,11 +177,11 @@ internal class SwapDriver(
     val waiting = pending ?: return
     val next = spare ?: return
     if (!waiting.ready) return
+    val target = waiting.target ?: return align(waiting, next)
     val reading = current.progress()
-    val target = waiting.target
-    // Live, a stalled picture, or one already at the point: no reason to wait.
-    if (target == null || !reading.isPlaying || reading.position >= target - 0.04) {
-      if (target != null && reading.isPlaying && reading.position > target + 0.3) {
+    // A stalled picture, or one already at the point: no reason to wait.
+    if (!reading.isPlaying || reading.position >= target - 0.04) {
+      if (reading.isPlaying && reading.position > target + 0.3) {
         // Too slow to open: try again a little further ahead.
         waiting.target = reading.position + LOOKAHEAD_S
         next.seek(waiting.target!!, true)
@@ -178,7 +190,54 @@ internal class SwapDriver(
         return
       }
     }
+    main.removeCallbacks(tick)
     main.postDelayed(tick, RENDEZVOUS_TICK_MS)
+  }
+
+  /** Live: plays the new connection once it is lined up with what is heard. */
+  private fun align(waiting: Pending, next: ExoPlayerDriver) {
+    val now = SystemClock.elapsedRealtime()
+    val aligner = waiting.aligner ?: LiveSwapAligner(now).also { waiting.aligner = it }
+    val old = current.progress()
+    val new = next.progress()
+    val step =
+      aligner.step(
+        now,
+        LiveSwapAligner.Reading(old.position, old.buffered, old.isPlaying, old.connection, old.rate, old.continuing),
+        LiveSwapAligner.Reading(new.position, new.buffered, new.isPlaying, new.connection, new.rate, new.continuing),
+      )
+    when (step) {
+      LiveSwapAligner.Step.Measure, LiveSwapAligner.Step.Hold -> {
+        waiting.aligning = true
+        if (new.isPlaying) next.pause()
+      }
+      is LiveSwapAligner.Step.Steer -> {
+        waiting.aligning = true
+        next.setRate(step.rate)
+        if (!new.isPlaying) next.play()
+      }
+      LiveSwapAligner.Step.Play, is LiveSwapAligner.Step.Fallback -> {
+        waiting.aligning = false
+        waiting.unaligned = step is LiveSwapAligner.Step.Fallback
+        next.setRate(rate)
+        // Playing (Play always is): it takes over now; else (a fallback) its `playing` will.
+        if (new.isPlaying) playing(waiting.generation) else next.play()
+        return
+      }
+    }
+    main.removeCallbacks(tick)
+    main.postDelayed(tick, RENDEZVOUS_TICK_MS)
+  }
+
+  /** The switch's new file plays (and is lined up): it takes over, and the engine hears it. */
+  private fun playing(generation: Int) {
+    val unaligned = pending?.unaligned == true
+    takeOver()
+    observer.onPlaying(generation)
+    // The engine took the switch's generation: the new file's tracks are the ones now.
+    current.mappedTracks?.let { observer.onTracks(generation, it.tracks, it.variants) }
+    // A live switch that could not be lined up repeats or skips: say where the new audio starts.
+    if (unaligned) observer.onDiscontinuity(generation, current.sample().position)
   }
 
   /** The new file plays: it is the picture and the sound now. */
@@ -214,11 +273,10 @@ internal class SwapDriver(
     }
 
     override fun onPlaying(generation: Int) {
-      val switched = switching(generation)
-      if (switched) takeOver()
-      observer.onPlaying(generation)
-      // The engine took the switch's generation: the new file's tracks are the ones now.
-      if (switched) current.mappedTracks?.let { observer.onTracks(generation, it.tracks, it.variants) }
+      if (!switching(generation)) return observer.onPlaying(generation)
+      // Catching up muted: not lined up yet (align() hands it over).
+      if (pending?.aligning == true) return
+      playing(generation)
     }
 
     override fun onBuffering(generation: Int) = observer.onBuffering(generation)

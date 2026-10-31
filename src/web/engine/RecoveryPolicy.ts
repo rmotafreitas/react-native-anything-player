@@ -61,6 +61,12 @@ export const RecoveryPolicy = {
   PIP_GRACE_MS: 1_000,
   /** A quality switch's new file must play within this, or the switch is dropped. */
   SWAP_TIMEOUT_MS: 12_000,
+  /**
+   * Once its file is ready, how long a live switch may still take: a live swap
+   * lines the new connection up with what is heard first (it can hold or
+   * catch up for as long as the relays' delays differ).
+   */
+  SWAP_ALIGN_MS: 30_000,
   /** A rendition that failed is not picked again for this long. */
   FAILED_RENDITION_MS: 60_000,
   /** How long a 401/403 waits for the app's new source before the backoff takes over. */

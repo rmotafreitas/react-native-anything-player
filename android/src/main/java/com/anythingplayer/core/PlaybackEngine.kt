@@ -339,7 +339,17 @@ class PlaybackEngine(
   }
 
   /** `info`: what the new file reported when ready, the item's facts once it takes over. */
-  private data class PendingSwap(val generation: Int, val rendition: Int, val startedAt: Long, var info: ReadyInfo? = null)
+  private data class PendingSwap(
+    val generation: Int,
+    val rendition: Int,
+    val startedAt: Long,
+    var info: ReadyInfo? = null,
+    var readyAt: Long? = null,
+  ) {
+    /** The new file must play by then: [RecoveryPolicy.SWAP_TIMEOUT_MS] to be ready, [RecoveryPolicy.SWAP_ALIGN_MS] once ready. */
+    val deadline: Long
+      get() = readyAt?.let { it + RecoveryPolicy.SWAP_ALIGN_MS } ?: (startedAt + RecoveryPolicy.SWAP_TIMEOUT_MS)
+  }
 
   private data class PendingRefresh(
     val reason: RefreshReason,
@@ -757,7 +767,11 @@ class PlaybackEngine(
   fun onReady(generation: Int, info: ReadyInfo) {
     if (isSwapGeneration(generation)) {
       // A quality switch's file: its facts wait for it to take over.
-      pendingSwap?.info = info
+      pendingSwap?.let { swap ->
+        swap.info = info
+        // Live, the driver lines it up first (SwapDriver): more time once ready.
+        if (swap.readyAt == null && isLive) swap.readyAt = now
+      }
       return swapNote("ready")
     }
     if (!accepts(generation)) return logStale("ready", generation)
@@ -2197,7 +2211,7 @@ class PlaybackEngine(
     detachedSince?.let { if (t - it >= RecoveryPolicy.VIEW_DETACH_GRACE_MS) noViewDue() }
     pendingRefresh?.let { if (it.deadline <= t) refreshTimedOut(it) }
     refreshAskAt?.let { if (it <= t) expiryDue() }
-    pendingSwap?.let { if (t - it.startedAt >= RecoveryPolicy.SWAP_TIMEOUT_MS) dropSwap(it, "timeout") }
+    pendingSwap?.let { if (t >= it.deadline) dropSwap(it, "timeout") }
   }
 
   private fun videoWakeups(candidates: MutableList<Long>) {
@@ -2206,7 +2220,7 @@ class PlaybackEngine(
     if (detached != null && pictureMayGoOff) candidates.add(detached + RecoveryPolicy.VIEW_DETACH_GRACE_MS)
     pendingRefresh?.let { candidates.add(it.deadline) }
     refreshAskAt?.let { candidates.add(it) }
-    pendingSwap?.let { candidates.add(it.startedAt + RecoveryPolicy.SWAP_TIMEOUT_MS) }
+    pendingSwap?.let { candidates.add(it.deadline) }
   }
 
   /** The app came back (`appForegrounded`). */
