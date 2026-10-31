@@ -176,9 +176,10 @@ internal object Voice {
         if (autoplay) controller.engine.play()
         completion?.settled(LoadOutcome.Ready)
       } catch (error: PlayerError) {
-        // Audio focus refused (a call): reported like a failed load.
+        // Audio focus refused (a call): reported like a failed load, as on iOS.
         if (completion == null) Log.w("RNAP", "voice play failed: ${error.message}")
         completion?.settled(LoadOutcome.Failed(error))
+        return
       }
     } else {
       // The item's `quality`: an id, `'auto'` for automatic; absent: keep the pick.
