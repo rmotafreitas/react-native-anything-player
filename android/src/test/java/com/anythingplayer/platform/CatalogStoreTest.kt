@@ -96,6 +96,7 @@ class CatalogStoreTest {
     val left = CatalogStore(file()) { second }
     assertEquals(emptyList<String>(), left.snapshot().items.map { it.id })
     left.played("news")
+    left.setFavorites(listOf("news"))
     assertEquals(newer, file().readText())
 
     // What the app sets is never replaced by a bundled one.

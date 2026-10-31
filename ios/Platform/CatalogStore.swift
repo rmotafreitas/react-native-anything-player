@@ -28,9 +28,9 @@ final class CatalogStore {
   private var seedId: String?
   /// `setFavorites` ran since the last `set`: an updated bundled catalog keeps them.
   private var favoritesSet = false
-  /// The stored file exists but cannot be read now (before the first unlock):
-  /// nothing falls back to the bundled catalog or overwrites it, and the next
-  /// access reads it again.
+  /// The stored file exists but cannot be read now (before the first unlock:
+  /// the next access reads it again) or is a newer library's (left alone until
+  /// `set`): nothing falls back to the bundled catalog or overwrites it.
   private var unreadable = false
   private let writes = DispatchQueue(label: "anythingplayer.catalog", qos: .utility)
 

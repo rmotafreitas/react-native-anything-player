@@ -94,6 +94,8 @@ internal class CatalogStore(private val file: File, private val seed: () -> Stri
   private var seedId: String? = null
   /** `setFavorites` ran since the last `setCatalog`: an updated bundled catalog keeps them. */
   private var favoritesSet = false
+  /** The stored file is a newer library's: nothing overwrites it until `replace`. */
+  private var newerFile = false
 
   @Synchronized
   fun snapshot(): CatalogSnapshot {
@@ -120,6 +122,7 @@ internal class CatalogStore(private val file: File, private val seed: () -> Stri
     recentIds = recent
     seedId = null
     favoritesSet = false
+    newerFile = false
     revision += 1
   }
 
@@ -128,7 +131,7 @@ internal class CatalogStore(private val file: File, private val seed: () -> Stri
   fun setFavorites(ids: List<String>) {
     ensureLoaded()
     val updated = JSONObject(browse?.toString() ?: "{}").put("favorites", JSONArray(ids.distinct().filter { id -> items.any { it.id == id } }))
-    write(Persisted(playerId, playerOptions, lastPlayedId, items, updated, recentIds, seedId, favoritesSet = true))
+    if (!newerFile) write(Persisted(playerId, playerOptions, lastPlayedId, items, updated, recentIds, seedId, favoritesSet = true))
     browse = updated
     favoritesSet = true
     revision += 1
@@ -146,7 +149,7 @@ internal class CatalogStore(private val file: File, private val seed: () -> Stri
     recentIds = recent
     revision += 1
     // Best effort: losing "what played last" only changes an empty request.
-    runCatching { write(Persisted(playerId, playerOptions, id, items, browse, recent, seedId, favoritesSet)) }
+    if (!newerFile) runCatching { write(Persisted(playerId, playerOptions, id, items, browse, recent, seedId, favoritesSet)) }
   }
 
   private fun ensureLoaded() {
@@ -154,7 +157,10 @@ internal class CatalogStore(private val file: File, private val seed: () -> Stri
     loaded = true
     val text = if (file.exists()) file.readText() else null
     // A newer library's file: read as empty and left alone until the app sets a catalog.
-    if (text != null && newer(text)) return
+    if (text != null && newer(text)) {
+      newerFile = true
+      return
+    }
     // A damaged one is nothing to keep: as if there were none.
     val stored = text?.let { parse(it) }
     if (stored != null && stored.optNonEmpty("seed") == null) return apply(stored)
