@@ -169,7 +169,7 @@
    "measure",
    "measure",
    "steer:4.00",
-   "steer:1.50",
+   "steer:1.25",
    "play"
   ]
  },
@@ -374,7 +374,7 @@
   ]
  },
  {
-  "name": "the old player plays at 0.75x: steered around its rate, not 1x, and lined up",
+  "name": "the old player plays at 0.75x: steered around its rate (and within factors of it), and lined up",
   "readings": [
    {
     "t": 0,
@@ -581,8 +581,8 @@
    "measure",
    "measure",
    "measure",
-   "steer:4.00",
-   "steer:0.95",
+   "steer:3.00",
+   "steer:0.85",
    "play"
   ]
  },
@@ -1829,7 +1829,7 @@
    "measure",
    "measure",
    "hold",
-   "steer:0.80",
+   "steer:0.90",
    "play"
   ]
  },
@@ -2199,7 +2199,7 @@
    "measure",
    "measure",
    "hold",
-   "steer:0.80",
+   "steer:0.90",
    "play"
   ]
  },
@@ -2764,7 +2764,7 @@
    "measure",
    "measure",
    "hold",
-   "steer:0.80",
+   "steer:0.90",
    "play"
   ]
  },
@@ -2907,6 +2907,173 @@
   ],
   "expect": [
    "fallback"
+  ]
+ },
+ {
+  "name": "once measured, a replacement queued behind the old connection does not stop it (its timeline holds until the switch)",
+  "readings": [
+   {
+    "t": 0,
+    "old": [
+     25.0,
+     30.0
+    ],
+    "new": [
+     0,
+     20.0,
+     false
+    ]
+   },
+   {
+    "t": 250,
+    "old": [
+     25.25,
+     30.25
+    ],
+    "new": [
+     0,
+     20.25,
+     false
+    ]
+   },
+   {
+    "t": 500,
+    "old": [
+     25.5,
+     30.5
+    ],
+    "new": [
+     0,
+     20.5,
+     false
+    ]
+   },
+   {
+    "t": 750,
+    "old": [
+     25.75,
+     30.75
+    ],
+    "new": [
+     0,
+     20.75,
+     false
+    ]
+   },
+   {
+    "t": 1000,
+    "old": [
+     26.0,
+     31.0
+    ],
+    "new": [
+     0,
+     21.0,
+     false
+    ]
+   },
+   {
+    "t": 1250,
+    "old": [
+     26.25,
+     31.25
+    ],
+    "new": [
+     0,
+     21.25,
+     false
+    ]
+   },
+   {
+    "t": 1500,
+    "old": [
+     26.5,
+     31.5
+    ],
+    "new": [
+     0,
+     21.5,
+     false
+    ]
+   },
+   {
+    "t": 1750,
+    "old": [
+     26.75,
+     31.75
+    ],
+    "new": [
+     0,
+     21.75,
+     false
+    ]
+   },
+   {
+    "t": 2000,
+    "old": [
+     27.0,
+     32.0
+    ],
+    "new": [
+     0,
+     22.0,
+     false
+    ]
+   },
+   {
+    "t": 2250,
+    "old": [
+     27.25,
+     32.25
+    ],
+    "new": [
+     0,
+     22.25,
+     false
+    ]
+   },
+   {
+    "t": 2500,
+    "old": [
+     27.5,
+     32.5
+    ],
+    "new": [
+     0,
+     22.5,
+     false
+    ]
+   },
+   {
+    "t": 2750,
+    "old": [
+     27.75,
+     32.75,
+     true,
+     0,
+     1.0,
+     true
+    ],
+    "new": [
+     0,
+     22.75,
+     false
+    ]
+   }
+  ],
+  "expect": [
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "measure",
+   "steer:4.00",
+   "steer:4.00"
   ]
  },
  {

@@ -79,7 +79,8 @@ class LiveSwapAligner(private val startedAt: Long) {
   fun step(now: Long, old: Reading, new: Reading): Step {
     if (!old.playing) return Step.Fallback("old player not playing")
     if (now - startedAt >= BUDGET_MS) return Step.Fallback("budget")
-    if (old.continuing || new.continuing) return Step.Fallback("connection ending")
+    // Before the shift is known, a queued replacement leaves no timeline to measure.
+    if (shift == null && (old.continuing || new.continuing)) return Step.Fallback("connection ending")
     if (oldConnection.let { it != null && it != old.connection } || newConnection.let { it != null && it != new.connection })
       return Step.Fallback("connection replaced")
     oldConnection = old.connection
@@ -90,7 +91,7 @@ class LiveSwapAligner(private val startedAt: Long) {
       new.playing && abs(behind) <= TOLERANCE_S -> Step.Play
       !new.playing && behind < -STEER_WINDOW_S -> Step.Hold
       // Around the old player's own rate: the gap closes in about HORIZON_S.
-      else -> Step.Steer((old.rate + behind / HORIZON_S).coerceIn(MIN_RATE, MAX_RATE))
+      else -> Step.Steer((old.rate + behind / HORIZON_S).coerceIn(old.rate * MIN_RATE, old.rate * MAX_RATE))
     }
   }
 
@@ -119,9 +120,14 @@ class LiveSwapAligner(private val startedAt: Long) {
   }
 
   companion object {
-    /** The new connection plays (muted) at the old one's rate + behind / this: it would close the gap in this long, seconds. */
-    const val HORIZON_S = 1.0
-    /** The rates it is steered within (Media3's Sonic handles these cleanly). */
+    /**
+     * The new connection plays (muted) at the old one's rate + behind / this:
+     * it would close the gap in this long, seconds. A new rate only reaches the
+     * audio not yet in the device's output buffer (up to ~0.75 s): a horizon
+     * well above that keeps the steering from overshooting on any device.
+     */
+    const val HORIZON_S = 2.0
+    /** The rates it is steered within, as factors of the old one's (Media3's Sonic handles these cleanly). */
     const val MIN_RATE = 0.5
     const val MAX_RATE = 4.0
     /** Ahead by more than this it waits paused: at [MIN_RATE] the old one gains on it slowly. */
