@@ -43,7 +43,7 @@ function resolveOptions(options = {}) {
       : null,
     sound: options.sound === true,
     assistant: options.assistant !== false,
-    car: Boolean(options.car),
+    car: resolveCar(options.car),
     video: options.video
       ? {
           pictureInPicture:
@@ -53,6 +53,14 @@ function resolveOptions(options = {}) {
       : null,
     videoDecoders: options.videoDecoders === true,
   };
+}
+
+/** `car`: true (CarPlay and Android Auto), or `{ ios, android }` to leave one out. */
+function resolveCar(car) {
+  if (!car) return null;
+  const ios = car === true || car.ios !== false;
+  const android = car === true || car.android !== false;
+  return ios || android ? { ios, android } : null;
 }
 
 function union(list, values) {
@@ -91,14 +99,15 @@ function applyInfoPlist(plist, resolved) {
       'INPlayMediaIntent',
     ]);
   }
-  if (resolved.car) out.UIApplicationSceneManifest = addCarPlayScene(out);
   return out;
 }
 
 /**
  * The scene manifest with CarPlay's scene (a `CPTemplateApplicationScene`
  * handled by RNAP's delegate) added, and multiple scenes allowed. Everything
- * else in the manifest (the phone's window scene) is kept.
+ * else in the manifest (the phone's window scene) is kept. app.plugin.js adds
+ * it after every other Info.plist edit: plugins that own the manifest (such as
+ * expo-build-properties' `ios.enableSceneSupport`) refuse one they did not write.
  */
 function addCarPlayScene(plist) {
   const manifest = plist.UIApplicationSceneManifest ?? {};
@@ -117,6 +126,35 @@ function addCarPlayScene(plist) {
 }
 
 /**
+ * The manifest without CarPlay's scene, as before {@link addCarPlayScene}
+ * (multiple scenes off): what the other Info.plist edits see when a project is
+ * prebuilt again. `undefined` when nothing else is left.
+ */
+function removeCarPlayScene(plist) {
+  const manifest = plist.UIApplicationSceneManifest;
+  const carplay = manifest?.UISceneConfigurations?.[CARPLAY_ROLE];
+  if (
+    !carplay?.some(
+      (c) =>
+        c.UISceneConfigurationName === CARPLAY_SCENE.UISceneConfigurationName
+    )
+  )
+    return manifest;
+  const others = carplay.filter(
+    (c) => c.UISceneConfigurationName !== CARPLAY_SCENE.UISceneConfigurationName
+  );
+  const { [CARPLAY_ROLE]: _carplay, ...configurations } =
+    manifest.UISceneConfigurations;
+  if (others.length > 0) configurations[CARPLAY_ROLE] = others;
+  if (Object.keys(configurations).length === 0) return undefined;
+  return {
+    ...manifest,
+    UIApplicationSupportsMultipleScenes: false,
+    UISceneConfigurations: configurations,
+  };
+}
+
+/**
  * Whether the phone has a window scene in the manifest. Without one, adding
  * CarPlay's scene would make the app scene-based with no scene for the phone's
  * window; the app must adopt the scene life cycle first (iOS 27 requires it).
@@ -131,7 +169,7 @@ function hasWindowScene(plist) {
 function applyEntitlements(entitlements, resolved) {
   const out = { ...entitlements };
   if (resolved.siri) out['com.apple.developer.siri'] = true;
-  if (resolved.car) out['com.apple.developer.carplay-audio'] = true;
+  if (resolved.car?.ios) out['com.apple.developer.carplay-audio'] = true;
   return out;
 }
 
@@ -142,7 +180,7 @@ function applyPodfileProperties(properties, resolved) {
   else delete out['rnap.cast'];
   if (resolved.sound) out['rnap.sound'] = 'true';
   else delete out['rnap.sound'];
-  if (resolved.car) out['rnap.car'] = 'true';
+  if (resolved.car?.ios) out['rnap.car'] = 'true';
   else delete out['rnap.car'];
   if (resolved.video) out['rnap.video'] = 'true';
   else delete out['rnap.video'];
@@ -168,7 +206,7 @@ function applyGradleProperties(entries, resolved) {
     out.push({ type: 'property', key: 'rnapCast', value: 'true' });
   if (resolved.sound)
     out.push({ type: 'property', key: 'rnapSound', value: 'true' });
-  if (resolved.car)
+  if (resolved.car?.android)
     out.push({ type: 'property', key: 'rnapCar', value: 'true' });
   if (resolved.video)
     out.push({ type: 'property', key: 'rnapVideo', value: 'true' });
@@ -225,7 +263,8 @@ function addPlayFromSearchFilter(activity) {
 
 function addImport(source, line) {
   if (source.includes(line)) return source;
-  return source.replace(/^(package [^\n]+\n)/, `$1\n${line}`);
+  // Its own line, even when another import follows `package` directly.
+  return source.replace(/^(package [^\n]+\n)\n?/, `$1\n${line}\n`);
 }
 
 /**
@@ -269,5 +308,6 @@ module.exports = {
   applyPodfileProperties,
   hasWindowScene,
   injectHandleIntent,
+  removeCarPlayScene,
   resolveOptions,
 };

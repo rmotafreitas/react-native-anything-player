@@ -34,7 +34,7 @@ test('defaults: background audio and the assistant, no Cast, no Siri', () => {
     siri: null,
     sound: false,
     assistant: true,
-    car: false,
+    car: null,
     video: null,
     videoDecoders: false,
   });
@@ -256,6 +256,24 @@ test('MainActivity hands its intents to RNAP, once', () => {
   );
 });
 
+test('MainActivity: the imports keep their own lines when an import follows package', () => {
+  const tight = MAIN_ACTIVITY.replace(
+    'package com.example.app\n\n',
+    'package com.example.app\nimport expo.modules.splashscreen.SplashScreenManager\n'
+  );
+  const out = helpers.injectHandleIntent(tight);
+  assert.match(
+    out,
+    /\nimport com\.anythingplayer\.AnythingPlayer\n/
+  );
+  assert.match(
+    out,
+    /\nimport expo\.modules\.splashscreen\.SplashScreenManager\n/
+  );
+  assert.match(out, /\nimport android\.content\.Intent\n/);
+  assert.equal(helpers.injectHandleIntent(out), out);
+});
+
 test('Siri: App Intents unless turned off', () => {
   assert.deepEqual(helpers.resolveOptions({ siri: true }).siri, {
     usageDescription: 'Lets you ask Siri to play stations and episodes.',
@@ -421,7 +439,7 @@ test('App Intents: the app target named after the project, or none when ambiguou
 test('car: CarPlay audio entitlement, scene, and the build flags', () => {
   const on = helpers.resolveOptions({ car: true });
   const off = helpers.resolveOptions({});
-  assert.equal(on.car, true);
+  assert.deepEqual(on.car, { ios: true, android: true });
   assert.deepEqual(helpers.applyEntitlements({ a: 1 }, on), {
     'a': 1,
     'com.apple.developer.carplay-audio': true,
@@ -450,6 +468,25 @@ test('car: CarPlay audio entitlement, scene, and the build flags', () => {
   assert.deepEqual(helpers.applyGradleProperties(gradle, off), []);
 });
 
+test('car: Android Auto alone leaves iOS untouched, and the reverse', () => {
+  const android = helpers.resolveOptions({ car: { ios: false } });
+  assert.deepEqual(android.car, { ios: false, android: true });
+  assert.deepEqual(helpers.applyEntitlements({}, android), {});
+  assert.deepEqual(helpers.applyPodfileProperties({}, android), {});
+  assert.deepEqual(helpers.applyGradleProperties([], android), [
+    { type: 'property', key: 'rnapCar', value: 'true' },
+  ]);
+  const ios = helpers.resolveOptions({ car: { android: false } });
+  assert.deepEqual(helpers.applyGradleProperties([], ios), []);
+  assert.deepEqual(helpers.applyPodfileProperties({}, ios), {
+    'rnap.car': 'true',
+  });
+  assert.equal(
+    helpers.resolveOptions({ car: { ios: false, android: false } }).car,
+    null
+  );
+});
+
 test("car: CarPlay's scene joins the manifest, keeping the phone's, once", () => {
   const window = {
     UISceneConfigurationName: 'Default Configuration',
@@ -463,8 +500,10 @@ test("car: CarPlay's scene joins the manifest, keeping the phone's, once", () =>
   };
   assert.equal(helpers.hasWindowScene(plist), true);
   assert.equal(helpers.hasWindowScene({}), false);
-  const resolved = helpers.resolveOptions({ car: true });
-  const once = helpers.applyInfoPlist(plist, resolved);
+  const once = {
+    ...plist,
+    UIApplicationSceneManifest: helpers.addCarPlayScene(plist),
+  };
   const manifest = once.UIApplicationSceneManifest;
   assert.equal(manifest.UIApplicationSupportsMultipleScenes, true);
   assert.deepEqual(
@@ -482,10 +521,48 @@ test("car: CarPlay's scene joins the manifest, keeping the phone's, once", () =>
       },
     ]
   );
-  assert.deepEqual(helpers.applyInfoPlist(once, resolved), once);
+  assert.deepEqual(helpers.addCarPlayScene(once), manifest);
+  // The Info.plist chain leaves the scene manifest alone (app.plugin.js adds
+  // CarPlay's scene after it).
   assert.equal(
-    helpers.applyInfoPlist({}, helpers.resolveOptions({}))
+    helpers.applyInfoPlist({}, helpers.resolveOptions({ car: true }))
       .UIApplicationSceneManifest,
+    undefined
+  );
+});
+
+test("car: a prebuild again starts from the manifest without CarPlay's scene", () => {
+  // expo-build-properties' `ios.enableSceneSupport` manifest, which it only
+  // accepts unchanged.
+  const owned = {
+    UIApplicationSupportsMultipleScenes: false,
+    UISceneConfigurations: {
+      UIWindowSceneSessionRoleApplication: [
+        {
+          UISceneConfigurationName: 'Default Configuration',
+          UISceneDelegateClassName: 'EXExpoAppSceneDelegate',
+        },
+      ],
+    },
+  };
+  const added = helpers.addCarPlayScene({ UIApplicationSceneManifest: owned });
+  assert.equal(
+    JSON.stringify(
+      helpers.removeCarPlayScene({ UIApplicationSceneManifest: added })
+    ),
+    JSON.stringify(owned)
+  );
+  // Nothing of RNAP's: the same object back.
+  assert.equal(
+    helpers.removeCarPlayScene({ UIApplicationSceneManifest: owned }),
+    owned
+  );
+  assert.equal(helpers.removeCarPlayScene({}), undefined);
+  // CarPlay's scene alone: no manifest left.
+  assert.equal(
+    helpers.removeCarPlayScene({
+      UIApplicationSceneManifest: helpers.addCarPlayScene({}),
+    }),
     undefined
   );
 });

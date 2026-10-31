@@ -130,7 +130,7 @@ export const MODULES = [
     platforms: ['android', 'ios'],
     gradle: { key: 'rnapCar', on: 'true', off: 'false' },
     pod: { key: 'rnap.car' },
-    expo: { key: 'car' },
+    expo: { key: 'car', type: 'string' },
     manual: {
       ios: "CarPlay also needs Apple's CarPlay audio entitlement (`com.apple.developer.carplay-audio`) and the `RNAP CarPlay` scene in `UIApplicationSceneManifest`: follow docs/cars-and-watches.md#carplay, or use the Expo plugin with `car: true`.",
     },

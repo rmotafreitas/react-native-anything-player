@@ -84,7 +84,7 @@ Add the build option, then rebuild:
 rnapCar=true
 ```
 
-**Expo**: `["react-native-anything-player", { "car": true }]`.
+**Expo**: `["react-native-anything-player", { "car": true }]`, or `{ "car": { "ios": false } }` for Android Auto alone (CarPlay waits for Apple's entitlement).
 
 It declares the app as a media app for Android Auto (`<uses name="media"/>` in an `automotive_app_desc` resource, referenced by the `com.google.android.gms.car.application` meta-data). The browse tree is served by the library service RNAP already declares, so there is nothing else to add. Without the option the tree is still served to every other browser (Assistant, Wear OS).
 
@@ -155,7 +155,7 @@ func application(
 }
 ```
 
-**Expo**: `["react-native-anything-player", { "car": true }]` sets the build option, adds the entitlement and CarPlay's scene to the manifest, and keeps the window scene your app already has. It warns when the app has no window scene to keep: adopt the scene life cycle first.
+**Expo**: `["react-native-anything-player", { "car": true }]` sets the build option, adds the entitlement and CarPlay's scene to the manifest, and keeps the window scene your app already has. It warns when the app has no window scene to keep: adopt the scene life cycle first. The scene is added after every other plugin's Info.plist edit, and taken out first on a prebuild again, so it works with expo-build-properties' `ios.enableSceneSupport` in any plugin order. `{ "car": { "android": false } }` sets up CarPlay alone.
 
 What CarPlay shows: a tab bar with one list per tab (the top-level groups, **Recently played**, **Favorites**, **More**), folders that open as lists, and the system *Now Playing* screen with the controls the player already publishes (play, pause, and next, previous and skip when you enabled them in `mediaSession.commands`). A pick starts the player and opens *Now Playing* once audio starts; if it cannot play, an alert says so. The lists follow `setCatalog` and `setFavorites`.
 
