@@ -77,10 +77,10 @@ enum RecoveryPolicy {
   static let pipGraceMs: Int64 = 1_000
   /// A quality switch's new file must play within this, or the switch is dropped.
   static let swapTimeoutMs: Int64 = 12_000
-  /// Once its file is ready, how long a switch may still take: a live swap
+  /// Once its file is ready, how long a live switch may still take: a live swap
   /// lines the new connection up with what is heard first (it can hold or
   /// catch up for as long as the relays' delays differ).
-  static let swapAlignMs: Int64 = 25_000
+  static let swapAlignMs: Int64 = 30_000
   /// A rendition that failed is not picked again for this long.
   static let failedRenditionMs: Int64 = 60_000
   /// How long a 401/403 waits for the app's new source before the backoff takes over.

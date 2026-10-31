@@ -769,7 +769,8 @@ class PlaybackEngine(
       // A quality switch's file: its facts wait for it to take over.
       pendingSwap?.let { swap ->
         swap.info = info
-        if (swap.readyAt == null) swap.readyAt = now
+        // Live, the driver lines it up first (SwapDriver): more time once ready.
+        if (swap.readyAt == null && isLive) swap.readyAt = now
       }
       return swapNote("ready")
     }

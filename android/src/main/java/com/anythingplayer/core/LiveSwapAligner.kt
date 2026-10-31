@@ -1,7 +1,5 @@
 package com.anythingplayer.core
 
-import kotlin.math.abs
-
 /**
  * Lines a live quality switch's new connection up with what is heard, so the
  * switch neither repeats nor skips audio. Separate live files of one sound
@@ -64,7 +62,8 @@ class LiveSwapAligner(private val startedAt: Long) {
     val k = shift ?: return measure(now, old, new)
     val behind = old.position + k - new.position
     return when {
-      abs(behind) <= TOLERANCE_S -> Step.Play
+      // Paused and ahead: played that much early, it starts in step.
+      behind in -(TOLERANCE_S + START_LATENCY_S)..TOLERANCE_S -> Step.Play
       behind > 0 -> Step.CatchUp((1 + behind / CATCH_UP_HORIZON_S).coerceIn(MIN_CATCH_UP_RATE, MAX_CATCH_UP_RATE))
       else -> Step.Hold
     }
@@ -101,8 +100,10 @@ class LiveSwapAligner(private val startedAt: Long) {
     const val MAX_CATCH_UP_RATE = 4.0
     /** Lined up within this, seconds. */
     const val TOLERANCE_S = 0.05
+    /** How long a paused player takes to sound once played: a held one is played this much early. */
+    const val START_LATENCY_S = 0.1
     /** Past this, the switch takes over unaligned (below RecoveryPolicy.SWAP_ALIGN_MS). */
-    const val BUDGET_MS = 20_000L
+    const val BUDGET_MS = 25_000L
     /** The burst is in once the new edge has not risen by more than [RAISE_S] over the time for [QUIET_MS], a later step confirmed it... */
     const val RAISE_S = 0.5
     const val QUIET_MS = 2_500L

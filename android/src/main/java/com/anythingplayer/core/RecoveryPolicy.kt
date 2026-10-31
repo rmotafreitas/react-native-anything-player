@@ -77,11 +77,11 @@ object RecoveryPolicy {
   const val SWAP_TIMEOUT_MS = 12_000L
 
   /**
-   * Once its file is ready, how long a switch may still take: a live swap
+   * Once its file is ready, how long a live switch may still take: a live swap
    * lines the new connection up with what is heard first (it can hold or
    * catch up for as long as the relays' delays differ).
    */
-  const val SWAP_ALIGN_MS = 25_000L
+  const val SWAP_ALIGN_MS = 30_000L
 
   /** A rendition that failed is not picked again for this long. */
   const val FAILED_RENDITION_MS = 60_000L

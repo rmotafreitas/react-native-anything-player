@@ -190,6 +190,7 @@ internal class SwapDriver(
         return
       }
     }
+    main.removeCallbacks(tick)
     main.postDelayed(tick, RENDEZVOUS_TICK_MS)
   }
 
@@ -224,6 +225,7 @@ internal class SwapDriver(
         return
       }
     }
+    main.removeCallbacks(tick)
     main.postDelayed(tick, RENDEZVOUS_TICK_MS)
   }
 

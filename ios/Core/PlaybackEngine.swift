@@ -701,7 +701,8 @@ final class PlaybackEngine {
     if isSwapGeneration(gen) {
       // A quality switch's file: its facts wait for it to take over.
       pendingSwap?.info = info
-      if pendingSwap?.readyAt == nil { pendingSwap?.readyAt = now }
+      // Live, the driver lines it up first: more time once ready.
+      if pendingSwap?.readyAt == nil && isLive { pendingSwap?.readyAt = now }
       return swapNote("ready")
     }
     guard accepts(gen) else { return logStale("ready", gen) }
