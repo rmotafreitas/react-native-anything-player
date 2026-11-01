@@ -80,7 +80,7 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
       - name: Set up Gradle caches and wrapper validation
-        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
         with:
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
       - name: Android lint and Kotlin engine conformance + ICY tests
@@ -132,7 +132,7 @@ jobs:
 
 
       - name: Set up Gradle caches and wrapper validation
-        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
         with:
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
       - name: Build example for Android
