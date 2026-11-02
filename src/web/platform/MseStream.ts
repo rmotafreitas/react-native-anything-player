@@ -245,7 +245,6 @@ export class MseStream {
     const document = browser().document!;
     // An element `src` (the previous item's) would win over child sources.
     this.element.removeAttribute('src');
-    this.element.load();
     const primary = document.createElement('source');
     primary.src = objectUrl;
     this.sources = [primary];
@@ -259,6 +258,10 @@ export class MseStream {
       this.element.disableRemotePlayback = true;
     }
     for (const node of this.sources) this.element.appendChild(node);
+    // Resource selection restarts with the children in place. A load() before
+    // they are appended makes WebKit pass over the media source and play the
+    // alternative: the stream, unread, on the plain element.
+    this.element.load();
   }
 
   /** Closes the connection at once and frees the media source. */

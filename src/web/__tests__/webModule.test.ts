@@ -980,6 +980,29 @@ describe('live streams through MSE', () => {
     expect(element.children).toHaveLength(0);
   });
 
+  it('restarts resource selection on iOS only once the managed sources are in place', async () => {
+    uninstall();
+    setup({ mediaSource: 'managed' });
+    world.fetch.respond({ headers: ICY });
+    const id = module.createPlayer({});
+    const element = world.element();
+    // WebKit passes over the media source when load() runs before the
+    // children are appended, and plays the alternative (the stream itself).
+    const childrenAtLoad: number[] = [];
+    const load = element.load.bind(element);
+    element.load = () => {
+      childrenAtLoad.push(element.children.length);
+      load();
+    };
+    module
+      .load(id, { uri: 'https://radio.example/live' }, { autoplay: true })
+      .catch(() => undefined);
+    await flush();
+    expect(element.children).toHaveLength(2);
+    expect(childrenAtLoad).toEqual([2]);
+    await module.reset(id);
+  });
+
   it.each([
     ['without MSE', 'none' as const, 'https://radio.example/live'],
     [
