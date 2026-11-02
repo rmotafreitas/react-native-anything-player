@@ -7,6 +7,60 @@ and versions follow [Semantic Versioning](https://semver.org/): see
 change and how releases are made. Changes not released yet are listed in the
 open release pull request.
 
+## [1.4.0](https://github.com/rmotafreitas/react-native-anything-player/compare/v1.3.1...v1.4.0) (2026-11-02)
+
+
+### Added
+
+* a catalog the app bundles, for voice and cars on a fresh install ([3d45937](https://github.com/rmotafreitas/react-native-anything-player/commit/3d459372e88770dcd3be84ab2217860bea4e8036)), closes [#80](https://github.com/rmotafreitas/react-native-anything-player/issues/80)
+* **android:** line a live rendition switch up with what is heard ([31f968f](https://github.com/rmotafreitas/react-native-anything-player/commit/31f968f241715d95879030c5c32434ec1ba940b2))
+* **plugin:** car for one platform, CarPlay's scene in any plugin order ([a8278e3](https://github.com/rmotafreitas/react-native-anything-player/commit/a8278e31da5a327d024942f0b66de1d1889bc8fe))
+* **plugin:** car for one platform, CarPlay's scene in any plugin order ([2a2231a](https://github.com/rmotafreitas/react-native-anything-player/commit/2a2231adaa363d0fe835d73aa46f4ebf1c40cde8))
+* **voice:** a pick of what is loaded plays on; a catalog item's quality ([e7ca4b2](https://github.com/rmotafreitas/react-native-anything-player/commit/e7ca4b247c43f1a007eaaccb5d405eb0c5a27826))
+* **voice:** a pick of what is loaded plays on; a catalog item's quality ([5cd3526](https://github.com/rmotafreitas/react-native-anything-player/commit/5cd35266a0164b9195c71c2f8639e64945b6db94))
+
+
+### Fixed
+
+* a JS that is gone lets go of and releases nothing, decided under the runtime's lock ([7a9a616](https://github.com/rmotafreitas/react-native-anything-player/commit/7a9a6162e3776669ca1937c873d23b77cb3ed83b))
+* a newer bundled catalog replaces the one in use, until the app sets its own ([6ba93b4](https://github.com/rmotafreitas/react-native-anything-player/commit/6ba93b4c691945e9a0393dd90d9542f5235dfece))
+* a player released and created again with the same id is a new one ([b57b291](https://github.com/rmotafreitas/react-native-anything-player/commit/b57b2911805329f004e64cead026b1bd7dffe457)), closes [#90](https://github.com/rmotafreitas/react-native-anything-player/issues/90)
+* a release from a JS that is gone never takes another JS's player ([7798ad7](https://github.com/rmotafreitas/react-native-anything-player/commit/7798ad7bcd806306bb7c6376bc5fa3ba69a80a0b))
+* a released player's commands, events and status never reach the new one ([7d5eab4](https://github.com/rmotafreitas/react-native-anything-player/commit/7d5eab45274e0448b92ed742e17c1335c0dbf45d))
+* a torn-down JS is retired at once, not when main drains its queue ([cf9bed7](https://github.com/rmotafreitas/react-native-anything-player/commit/cf9bed772d7594e2b3f3c8c86bf3ae94890f8e0a))
+* an updated bundled catalog keeps only favorites the user set; iOS reads a locked file again later ([3fe6731](https://github.com/rmotafreitas/react-native-anything-player/commit/3fe6731cbd327c66cb83182a7f3c65f00dcee9b4))
+* **android:** a live swap follows the connection a reading belongs to, and steers around the old player's rate ([0e3e9f7](https://github.com/rmotafreitas/react-native-anything-player/commit/0e3e9f755db9223aa04242c591ad1d99ecccc94e))
+* **android:** a live swap takes over once its speed is nearer the old rate than a step off ([b472018](https://github.com/rmotafreitas/react-native-anything-player/commit/b472018d61f918d43ef7373ac7f5d90c81787588))
+* **android:** a live swap's probe is a full step from the start rate ([480ed99](https://github.com/rmotafreitas/react-native-anything-player/commit/480ed99ce81631f6d745714b8700db912a692b0d))
+* **android:** a newer library's catalog file survives setFavorites too ([9eae746](https://github.com/rmotafreitas/react-native-anything-player/commit/9eae7468866fd7a70662286cdf3ced97365550b4))
+* **android:** a reload's teardown answering the handler's question does not play the catalog's match ([84f0eea](https://github.com/rmotafreitas/react-native-anything-player/commit/84f0eead3df5b0cc7de517cdfeb577065e426f18))
+* **android:** a waited request dropped after an empty handler answer says so in the log ([9f30da5](https://github.com/rmotafreitas/react-native-anything-player/commit/9f30da50dc9079be329bd14863451db8e079017c))
+* **android:** a waiting request checks again before it loads, and looks at every player ([0f9318a](https://github.com/rmotafreitas/react-native-anything-player/commit/0f9318a0450aee363db2e30cbd9effdf6eb1d9ab))
+* **android:** a waiting request plays on the app's search handler too, never over what was loaded ([1dc2d3e](https://github.com/rmotafreitas/react-native-anything-player/commit/1dc2d3e6a8ce49c56ba53bbc755225af15e6117d))
+* **android:** a waiting request the handler had nothing for takes the catalog's match if it came meanwhile ([6c8195e](https://github.com/rmotafreitas/react-native-anything-player/commit/6c8195ecd9b944f79cfb3cc7047754a48e5da5c4))
+* **android:** a waiting request the search handler had nothing for waits for the catalog ([da63046](https://github.com/rmotafreitas/react-native-anything-player/commit/da63046d6a7febf139ae6a59db85dd97c1db25dd))
+* **android:** an assistant request before the app has a catalog waits for it ([6e373cf](https://github.com/rmotafreitas/react-native-anything-player/commit/6e373cf4a9cf9625b06cdfaf31dbf4855ebe69d3)), closes [#79](https://github.com/rmotafreitas/react-native-anything-player/issues/79)
+* **android:** one log line for a dropped waited request, from the request's own callback ([d87dbc5](https://github.com/rmotafreitas/react-native-anything-player/commit/d87dbc51c2a351a848dc8287d1801b8b52b6e763))
+* **android:** settle a live swap only on a confirmed peak; an unaligned one reports its jump ([601dbd6](https://github.com/rmotafreitas/react-native-anything-player/commit/601dbd60ce57f25a862372079e0522374d8a2e3d))
+* **android:** steer a live swap by its measured position, no start-latency guess; a replaced connection falls back ([7ca148e](https://github.com/rmotafreitas/react-native-anything-player/commit/7ca148e6d62961177c927a2a34a81ab872ec487a))
+* **android:** steer a live swap by the device's measured delay, not an assumed bound ([760d4e6](https://github.com/rmotafreitas/react-native-anything-player/commit/760d4e6a826f08d7c28eeb98b740f8a9e68bc9d2))
+* **android:** steer within any device's output buffer and around any rate; a queued replacement only stops measuring ([5ebbcea](https://github.com/rmotafreitas/react-native-anything-player/commit/5ebbcea29f222c543f40311a47262ef13fe79bf1))
+* **android:** the late catalog match needs JS attached; one log line per dropped request ([76fa381](https://github.com/rmotafreitas/react-native-anything-player/commit/76fa381b429a8581acebe6d1422163aa761cd554))
+* bundled catalogs are told apart by cyrb53; a newer library's stored file is left alone ([fe3c3a4](https://github.com/rmotafreitas/react-native-anything-player/commit/fe3c3a48d05d6f2d10123e9edd8b44c0dd395c64))
+* **ios:** a creation is published with the slot it leaves; commands fix their player as they arrive ([e7ee613](https://github.com/rmotafreitas/react-native-anything-player/commit/e7ee613f86e7707f61013d1a190ab8136ae69ec0))
+* **ios:** invalidate's main block captures the owner token (explicit self in an escaping closure) ([3354b61](https://github.com/rmotafreitas/react-native-anything-player/commit/3354b61c6f5d2d671b9af015dfe0efbb01b22c29))
+* **ios:** takeRelease in one look; a release from a JS that is gone lets go of nothing ([5cda6f5](https://github.com/rmotafreitas/react-native-anything-player/commit/5cda6f53b92372a1c8492b1df7ba98f7760290de))
+* live swaps get 25 s to line up, a held one starts early; files keep the 12 s switch ([8538a85](https://github.com/rmotafreitas/react-native-anything-player/commit/8538a85a607665a4bc94352fb0026b707c52fefc))
+* **plugin:** CarPlay's scene goes to the app's Info.plist; the CLI reads a car object ([1ea60df](https://github.com/rmotafreitas/react-native-anything-player/commit/1ea60df5585661d429da9ee5a5e81669b76fd5a7))
+* **plugin:** keep multiple scenes for another CarPlay scene left in the manifest ([fc77fcd](https://github.com/rmotafreitas/react-native-anything-player/commit/fc77fcd0fa7bdd859763848da96aea6d1a67f4d2))
+* **plugin:** the empty bundled catalog overwrites only a file that is there, with no separate check ([4b4ac5c](https://github.com/rmotafreitas/react-native-anything-player/commit/4b4ac5c688ddb0b850cf9d085e5883ed83124c48))
+* **voice:** a refused play-on reports nothing played, as on iOS; Siri's check only for what was already playing ([9176269](https://github.com/rmotafreitas/react-native-anything-player/commit/9176269502a6e4107fd6e90783d571e3b7817349))
+* **voice:** a resume refused audio focus is reported; Siri hears that an already-playing item started ([00afeb6](https://github.com/rmotafreitas/react-native-anything-player/commit/00afeb68cb73d50cf5abbdc43f9746c8cedb2e44))
+* **voice:** a source still loading is opened again; NSNull is no quality; docs and an already-playing test ([afbe334](https://github.com/rmotafreitas/react-native-anything-player/commit/afbe3343ff261bd9186462d9a90db5cf0a701c7a))
+* **web:** a live stream plays through MSE on iPhone and iPad ([0a9b190](https://github.com/rmotafreitas/react-native-anything-player/commit/0a9b1906d13695321f141d1f40918b3741c62260))
+* **web:** the visualizer reads Safari's streams from their own bytes ([bb9467d](https://github.com/rmotafreitas/react-native-anything-player/commit/bb9467db33c83a72d64b88625c3c2d697a6ca4a6))
+* what a JS let go of is its own; a reload's old JS cannot take the new one's ([032e4d0](https://github.com/rmotafreitas/react-native-anything-player/commit/032e4d056efd46f031e0a2e7b087de4ae61b0eb8))
+
 ## [1.3.1](https://github.com/rmotafreitas/react-native-anything-player/compare/v1.3.0...v1.3.1) (2026-10-30)
 
 Quality switching for audio players. This release adds features, so by Semantic Versioning it should have been 1.4.0: the release tool missed the commits that added them. Nothing is removed or renamed, so upgrading is safe.
