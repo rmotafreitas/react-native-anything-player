@@ -21,7 +21,11 @@ import {
   type StreamMetadata,
   type StreamTitleFormat,
 } from '../engine/StreamMetadata';
-import { engineError, type SourceDescriptor } from '../engine/types';
+import {
+  engineError,
+  isNetworkSource,
+  type SourceDescriptor,
+} from '../engine/types';
 import {
   browser,
   monotonicNow,
@@ -35,8 +39,9 @@ import {
   type SourceElementLike,
 } from './dom';
 import type { AudioCodec } from './AudioFrames';
+import type { StreamAudio } from './DecodedTap';
 import type { Fmp4Muxer } from './Fmp4Muxer';
-import { isHlsType } from './hlsFormats';
+import { isHlsType, isHlsUri } from './hlsFormats';
 
 export interface MseStreamListener {
   /** Station info from the response headers (`icy-name`, `icy-genre`). */
@@ -56,6 +61,8 @@ export interface MseStreamListener {
   onNote(event: string, details: Record<string, string>): void;
   /** The stream answered with CORS: a later fetch failure is the network. */
   onConnected(): void;
+  /** The audio about to be appended (a decoded tap reads it where Web Audio cannot). */
+  onAudio?(audio: StreamAudio): void;
 }
 
 export interface MediaSourceSupport {
@@ -98,6 +105,7 @@ const ignore = () => undefined;
 
 /** How a stream goes into the source buffer. */
 export interface MseFormat {
+  codec: AudioCodec;
   /** The source buffer's MSE type. */
   type: string;
   /** Set when the browser takes the codec only in MP4: the frames are remuxed. */
@@ -116,11 +124,17 @@ function mseFormat(
   const known = MSE_CODECS[base];
   if (!known) return null;
   if (ctor.isTypeSupported(known.type))
-    return { type: known.type, remux: null };
+    return { codec: known.codec, type: known.type, remux: null };
   const wrapped = MP4_TYPES[known.codec];
   return ctor.isTypeSupported(wrapped)
-    ? { type: wrapped, remux: known.codec }
+    ? { codec: known.codec, type: wrapped, remux: known.codec }
     : null;
+}
+
+/** A network source that may be a live stream (not HLS, not marked a file): read through MSE. */
+export function mayStream(source: SourceDescriptor): boolean {
+  if (!isNetworkSource(source) || source.liveHint === false) return false;
+  return !isHlsUri(source.uri);
 }
 
 /** The MediaSource implementation, preferring the standard one (iOS only has the managed one). */
@@ -191,6 +205,9 @@ export class MseStream {
   private halted = false;
   /** Wraps the frames in MP4 for a browser that takes them only that way. */
   private mux: Fmp4Muxer | null = null;
+  private codec: AudioCodec | null = null;
+  /** The next audio is a connection's first. */
+  private fresh = true;
   /** Ask for ICY metadata (dropped when a cross-origin server hides `icy-metaint`). */
   private wantIcy = true;
   /** Audio bytes appended over all connections. */
@@ -302,6 +319,7 @@ export class MseStream {
       10
     );
     const reader = response.body!.getReader();
+    this.fresh = true;
     const base = this.totalBytes;
     const openedAt = monotonicNow();
     const failure = await this.pump(
@@ -420,6 +438,7 @@ export class MseStream {
       try {
         this.buffer = this.mediaSource!.addSourceBuffer(format.type);
         this.buffer.mode = 'sequence';
+        this.codec = format.codec;
       } catch (error) {
         reason = `addSourceBuffer: ${String(error)}`;
       }
@@ -582,6 +601,14 @@ export class MseStream {
    * the browser needs MP4; `false` once the stream is over.
    */
   private async feed(audio: Uint8Array): Promise<boolean> {
+    // In sequence mode the next whole frame plays where the buffer ends.
+    this.listener.onAudio?.({
+      codec: this.codec!,
+      bytes: audio,
+      time: this.bufferedEnd(),
+      fresh: this.fresh,
+    });
+    this.fresh = false;
     const mux = this.mux;
     if (!mux) return this.append(audio, audio.length);
     const { init, fragment, changed, unsupported } = mux.push(audio);

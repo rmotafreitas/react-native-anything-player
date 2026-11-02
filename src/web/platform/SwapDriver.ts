@@ -250,6 +250,8 @@ export class SwapDriver implements LocalDriver {
       onElementReplaced: (element) => {
         if (element !== this.spare?.element) f.onElementReplaced(element);
       },
+      // Both elements' streams: the hidden one's tap is ready when it takes over.
+      onStreamAudio: (element, audio) => f.onStreamAudio?.(element, audio),
       onVideoInfo: (g, info) => f.onVideoInfo?.(g, info),
       onFirstFrame: (g) => f.onFirstFrame?.(g),
       onVariants: (g, variants) => f.onVariants?.(g, variants),

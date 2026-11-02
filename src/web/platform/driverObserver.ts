@@ -11,6 +11,7 @@ import type {
 } from '../engine/types';
 import type { LicenseRequestEvent } from '../../core/drm';
 import type { AudioElementLike } from './dom';
+import type { StreamAudio } from './DecodedTap';
 import type { MediaTrack } from '../../core/subtitles/tracks';
 import type { SubtitleCue } from '../../core/subtitles/types';
 
@@ -30,6 +31,8 @@ export interface DriverObserver {
   ): void;
   /** The element changed (a new one replaced a tapped one); the sampler re-attaches. */
   onElementReplaced(element: AudioElementLike): void;
+  /** Audio a stream is about to give `element` (the sampler decodes it where Web Audio cannot tap). */
+  onStreamAudio?(element: AudioElementLike, audio: StreamAudio): void;
   /** Video: the picture's size (and the variant playing). */
   onVideoInfo?(generation: number, info: VideoInfo): void;
   /** Video: the first frame was shown. */

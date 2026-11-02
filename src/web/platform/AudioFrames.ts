@@ -34,6 +34,8 @@ export interface FrameHeader {
 /** One frame, as the sample the muxer writes. */
 export interface Frame {
   data: Uint8Array;
+  /** The whole frame, header included: what a decoder takes. */
+  whole: Uint8Array;
   samples: number;
 }
 
@@ -351,6 +353,7 @@ export class FrameScanner {
     if (audio) {
       frames.push({
         data: data.subarray(pos + header.skip, end),
+        whole: data.subarray(pos, end),
         samples: header.samples,
       });
     }

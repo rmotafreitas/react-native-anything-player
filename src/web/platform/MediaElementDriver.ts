@@ -44,7 +44,8 @@ import { OwnSeeks } from './OwnSeeks';
 import { ItemFacts, elementReadyInfo } from './ItemFacts';
 import { isDashUri, shakaNamespace, type ShakaLike } from '../../core/shaka';
 import type { DashStream } from './DashStream';
-import { MseStream, mediaSourceConstructor } from './MseStream';
+import { AudioSampler } from './AudioSampler';
+import { MseStream, mayStream, mediaSourceConstructor } from './MseStream';
 import type { RemuxStream } from './RemuxStream';
 import { protect, type ProtectedItem } from './protectedSource';
 import { requestLicense } from './licenseRequests';
@@ -60,16 +61,12 @@ import {
 } from './sourceParts';
 import type { MediaTrack } from '../../core/subtitles/tracks';
 
-export type {
-  DriverObserver,
-  PlayAttempt,
-  ProgressReading,
-} from './driverObserver';
 import type {
   DriverObserver,
   PlayAttempt,
   ProgressReading,
 } from './driverObserver';
+export type { DriverObserver, PlayAttempt, ProgressReading };
 
 /** What the driver plays: sound alone, or a picture too. */
 export type MediaKind = 'audio' | 'video';
@@ -114,13 +111,7 @@ const MEDIA_ERR_ABORTED = 1;
 const MEDIA_ERR_SRC_NOT_SUPPORTED = 4;
 
 /** A source whose bytes the page itself holds (a picked file). */
-const LOCAL_URI = /^(blob|data):/i;
-
-/** A network source that may be a live stream (not HLS, not marked a file): read through MSE. */
-function mayStream(source: SourceDescriptor): boolean {
-  if (!isNetworkSource(source) || source.liveHint === false) return false;
-  return !isHlsUri(source.uri);
-}
+export const LOCAL_URI = /^(blob|data):/i;
 
 export class MediaElementDriver implements EngineDriver {
   private _element: AudioElementLike;
@@ -302,11 +293,27 @@ export class MediaElementDriver implements EngineDriver {
     const media = mediaSourceConstructor();
     // ICY over MSE is audio's: a video plays on the element (or hls.js).
     if (this.kind === 'audio' && media != null && mayStream(source)) {
+      // WebKit plays a stream on an element a local file routed as silence
+      // (elsewhere the routed element plays it, and the sampler keeps it).
+      if (this.tapped && AudioSampler.decodesStreams) this.untap();
       this.attach();
       this.startStream(source, media);
     } else {
       this.playPlain(source);
     }
+  }
+
+  /**
+   * A Web Audio-routed element plays a cross-origin source as silence:
+   * continue on a fresh element (the old one stays with the sampler).
+   */
+  private untap(): void {
+    this._element.pause();
+    this._element = this.createElement();
+    this._element.volume = this.volume;
+    this.applyRate();
+    this.tapped = false;
+    this.observer.onElementReplaced(this._element);
   }
 
   play(): void {
@@ -632,16 +639,7 @@ export class MediaElementDriver implements EngineDriver {
     const hls = this.needsHls(source, contentType);
     this.nativeHls = !hls && (isHlsUri(source.uri) || isHlsType(contentType));
     // hls.js feeds the element from a MediaSource: the audio is same-origin.
-    if (this.tapped && isNetworkSource(source) && !hls) {
-      // A Web Audio-routed element plays a cross-origin source as silence:
-      // continue on a fresh element (the old one stays with the sampler).
-      this._element.pause();
-      this._element = this.createElement();
-      this._element.volume = this.volume;
-      this.applyRate();
-      this.tapped = false;
-      this.observer.onElementReplaced(this._element);
-    }
+    if (this.tapped && isNetworkSource(source) && !hls) this.untap();
     this.attach();
     if (hls) {
       // The hls.js glue is fetched first: stop what the element had while it
@@ -1079,6 +1077,9 @@ export class MediaElementDriver implements EngineDriver {
         },
         onConnected: () => {
           if (live()) this.corsProven = true;
+        },
+        onAudio: (audio) => {
+          if (live()) this.observer.onStreamAudio?.(this._element, audio);
         },
       },
       this.corsProven,
