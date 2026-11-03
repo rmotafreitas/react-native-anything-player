@@ -44,6 +44,8 @@ export interface AlignReading {
    * The stream's own clock (program dates): epoch seconds it gives position 0 on this timeline, `programDate − position`. With one on both sides the mapping is known at once, and followed as a live window slides.
    */
   clock?: number | null;
+  /** How far back it can be moved (its live window's start): a clocked player ahead is moved back. */
+  start?: number | null;
 }
 
 /** What the new player can do while it is muted. */
@@ -110,6 +112,8 @@ export const Align = {
   TOLERANCE_S: 0.05,
   /** Close enough when the player cannot do better, or did not within `FINE_BUDGET_MS` of first getting this close. */
   ACCEPT_S: 0.3,
+  /** A clocked player this much further ahead than a jump would land it is moved back, not held. */
+  BACK_S: 1,
   FINE_BUDGET_MS: 3_000,
   /** The rate closes the gap over about this long (1 + gap / horizon). */
   HORIZON_S: 1,
@@ -307,13 +311,13 @@ export class LiveAligner {
     // At first anything short of the lead is moved (the start is then always
     // from a hold); later only a player that fell behind.
     const short = first ? gap < this.lead : gap < -Align.TOLERANCE_S;
-    if (short && canJump) {
+    // On a stream's clock it can go back too (within its live window).
+    const landing = this.lead + this.caps.jumpLead;
+    const back = next.start != null && jump === 'always' && gap > landing + Align.BACK_S; // prettier-ignore
+    if ((short && canJump) || back) {
       // Moved just ahead, then held: it never starts behind.
-      const to = target + this.lead + this.caps.jumpLead;
-      return {
-        kind: 'jump',
-        to: next.edge == null ? to : Math.min(to, next.edge),
-      };
+      const to = Math.min(target + this.lead + this.caps.jumpLead, next.edge ?? Infinity); // prettier-ignore
+      return { kind: 'jump', to: Math.max(to, next.start ?? -Infinity) };
     }
     if (gap > this.lead || next.ready === false)
       return this.holding(t, elapsed, gap, first, next);

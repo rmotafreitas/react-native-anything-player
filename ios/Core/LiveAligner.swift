@@ -43,12 +43,15 @@ final class LiveAligner {
     /// position 0 on this timeline, `programDate − position`. With one on
     /// both sides the mapping is known at once, and followed as a live window slides.
     var clock: Double?
+    /// How far back it can be moved (its live window's start): a clocked player ahead is moved back.
+    var start: Double?
 
     init(
       position: Double, edge: Double?, playing: Bool, reconnecting: Bool = false, ready: Bool = true,
-      edgeAt: Int64? = nil, clock: Double? = nil
+      edgeAt: Int64? = nil, clock: Double? = nil, start: Double? = nil
     ) {
       self.clock = clock
+      self.start = start
       self.position = position
       self.edge = edge
       self.playing = playing
@@ -122,6 +125,8 @@ final class LiveAligner {
   /// Close enough when the player cannot do better, or did not within
   /// `fineBudgetMs` of first getting this close.
   static let acceptS = 0.3
+  /// A clocked player this much further ahead than a jump would land it is moved back, not held.
+  static let backS = 1.0
   static let fineBudgetMs: Int64 = 3_000
   /// The rate closes the gap over about this long (1 + gap / horizon).
   static let horizonS = 1.0
@@ -269,10 +274,13 @@ final class LiveAligner {
     // At first anything short of the lead is moved (the start is then always
     // from a hold); later only a player that fell behind.
     let short = first ? gap < lead : gap < -Self.toleranceS
-    if short && canJump {
+    // On a stream's clock it can go back too (within its live window).
+    let landing = lead + caps.jumpLead
+    let back = next.start != nil && caps.jump == .always && gap > landing + Self.backS
+    if (short && canJump) || back {
       // Moved just ahead, then held: it never starts behind.
-      let to = target + lead + caps.jumpLead
-      return .jump(to: next.edge.map { min(to, $0) } ?? to)
+      let to = min(target + lead + caps.jumpLead, next.edge ?? .infinity)
+      return .jump(to: max(to, next.start ?? -.infinity))
     }
     if gap > lead || !next.ready { return holding(t, elapsed: elapsed, gap: gap, first: first, next: next) }
     if gap < -Self.toleranceS && caps.maxRate > 1 { return setRate(t, speedUp(gap), gap: gap, next: next) }

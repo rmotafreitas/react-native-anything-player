@@ -823,6 +823,8 @@ internal class ExoPlayerDriver(
         edge = p.bufferedPosition / 1000.0,
         playing = p.isPlaying,
         clock = start / 1000.0,
+        // Positions are the live window's: it can be moved back to its start.
+        start = 0.0,
       )
     }
     val edge = p.bufferedPosition / 1000.0

@@ -14,6 +14,7 @@
 // as before and the app hears a `discontinuity`. Positions stay continuous
 // across a live switch.
 
+import { awaitsClock } from './liveClock';
 import type { EngineDriver } from '../engine/PlaybackEngine';
 import type { StreamMetadata } from '../engine/StreamMetadata';
 import { engineError } from '../engine/types';
@@ -116,6 +117,9 @@ function whispers(element: AudioElementLike): boolean {
   return works;
 }
 
+/** How long a new HLS or DASH item may go without a program date before it is taken to have none. */
+const CLOCK_WAIT_MS = 3_000;
+
 interface Pending {
   generation: number;
   /** The media time the new file waits at (`null`: live). */
@@ -134,6 +138,8 @@ interface Pending {
   whisper: boolean;
   /** Lined up by program dates (HLS, DASH), not by edges. */
   clocked: boolean;
+  /** Since when it waits for the new item's first program date. */
+  clockWaitSince?: number;
   /** The rate the aligner asked of the new element (× the app's). */
   alignRate: number;
   /** A start the aligner timed between two ticks. */
@@ -465,8 +471,25 @@ export class SwapDriver implements LocalDriver {
    * renditions of different kinds) at once, as before.
    */
   private startAligning(pending: Pending, spare: MediaElementDriver): void {
+    if (pending.aligner != null) return;
     const old = this.current.alignReading();
     const next = spare.alignReading();
+    // hls.js or Shaka without a program date yet (no fragment at its
+    // playhead): it comes with the first one, for a while.
+    if (
+      old?.clock != null &&
+      next == null &&
+      awaitsClock(spare.liveSources())
+    ) {
+      pending.clockWaitSince ??= monotonicNow();
+      if (monotonicNow() - pending.clockWaitSince < CLOCK_WAIT_MS) {
+        pending.timer = browser().setTimeout(() => {
+          pending.timer = null;
+          if (this.pending === pending) this.startAligning(pending, spare);
+        }, Align.TICK_MS);
+        return;
+      }
+    }
     if (
       old == null ||
       next == null ||
@@ -495,7 +518,9 @@ export class SwapDriver implements LocalDriver {
       spare.setVolume(WHISPER);
       spare.element.muted = false;
     }
-    this.alignTick();
+    // On a clock: once the library's own handlers have placed its playhead.
+    if (!pending.clocked) return this.alignTick();
+    pending.timer = browser().setTimeout(() => this.alignTick(), 0);
   }
 
   private alignTick(): void {

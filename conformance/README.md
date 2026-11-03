@@ -220,7 +220,9 @@ three test harnesses run alike, every 40 ms:
 - `programDates`: both readings carry the stream's clock (`clock`, HLS
   program dates or a DASH presentation's), one epoch for the old
   connection's live point at 0: the mapping is known at once, without the
-  edges settling.
+  edges settling; the new reading also carries its window's `start` (0),
+  so a new player ahead can be moved back. `nextStartAt` starts the new
+  player that far along its own timeline.
 
 `expect` gives the `outcome` (`takeOver`, or `fallback:<reason>`), the time
 `at` (ms) it came, the kinds of `actions` in order (repeats collapsed), and

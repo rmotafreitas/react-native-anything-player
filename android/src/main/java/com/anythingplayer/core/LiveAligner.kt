@@ -47,6 +47,8 @@ class LiveAligner(private val caps: Caps) {
      * The stream's own clock (program dates): epoch seconds it gives position 0 on this timeline, `programDate − position`. With one on both sides the mapping is known at once, and followed as a live window slides.
      */
     val clock: Double? = null,
+    /** How far back it can be moved (its live window's start): a clocked player ahead is moved back. */
+    val start: Double? = null,
   )
 
   /** Whether (and when) the new player can be moved forward within what it received. */
@@ -214,10 +216,13 @@ class LiveAligner(private val caps: Caps) {
     // At first anything short of the lead is moved (the start is then always
     // from a hold); later only a player that fell behind.
     val short = if (first) gap < lead else gap < -TOLERANCE_S
-    if (short && canJump) {
+    // On a stream's clock it can go back too (within its live window).
+    val landing = lead + caps.jumpLead
+    val back = next.start != null && caps.jump == Jump.ALWAYS && gap > landing + BACK_S
+    if ((short && canJump) || back) {
       // Moved just ahead, then held: it never starts behind.
-      val to = target + lead + caps.jumpLead
-      return Action.JumpTo(next.edge?.let { minOf(to, it) } ?: to)
+      val to = minOf(target + lead + caps.jumpLead, next.edge ?: Double.POSITIVE_INFINITY)
+      return Action.JumpTo(maxOf(to, next.start ?: Double.NEGATIVE_INFINITY))
     }
     if (gap > lead || !next.ready) return holding(t, elapsed, gap, first, next)
     if (gap < -TOLERANCE_S && caps.maxRate > 1) return setRate(t, speedUp(gap), gap, next)
@@ -289,6 +294,9 @@ class LiveAligner(private val caps: Caps) {
 
     /** Close enough when the player cannot do better, or did not within [FINE_BUDGET_MS] of first getting this close. */
     const val ACCEPT_S = 0.3
+
+    /** A clocked player this much further ahead than a jump would land it is moved back, not held. */
+    const val BACK_S = 1.0
     const val FINE_BUDGET_MS = 3_000L
 
     /** The rate closes the gap over about this long (1 + gap / horizon). */

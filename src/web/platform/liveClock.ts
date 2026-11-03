@@ -28,6 +28,13 @@ export function programDateOf(s: LiveSources): number | null {
   return ms + s.position * 1000;
 }
 
+/** HLS or DASH whose program date is not known yet (none, or no fragment at the playhead). */
+export function awaitsClock(s: LiveSources): boolean {
+  return (
+    (s.hls != null || s.dash != null || s.nativeHls) && programDateOf(s) == null
+  );
+}
+
 /** The player's own reading behind live (HLS latency, a DASH presentation's clock). */
 export function nativeLiveOffset(s: LiveSources): number | null {
   if (s.hls?.live) return s.hls.liveOffset;
@@ -47,12 +54,13 @@ export function clockReading(
   const date = programDateOf(s);
   if (date == null) return null;
   const seekable = s.element.seekable;
-  const end = seekable.length > 0 ? seekable.end(seekable.length - 1) : 0;
+  const any = seekable.length > 0;
   return {
     position: s.position,
-    edge: Math.max(end, bufferedEnd),
+    edge: Math.max(any ? seekable.end(seekable.length - 1) : 0, bufferedEnd),
     playing,
     clock: date / 1000 - s.position,
+    start: any ? seekable.start(0) : null,
     reconnects: 0,
   };
 }

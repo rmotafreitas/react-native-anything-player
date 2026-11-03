@@ -75,8 +75,9 @@ class LiveAlignerTest {
     val dates = w.optBoolean("programDates", false)
     val ticks = w.optJSONArray("ticksMs")?.let { a -> (0 until a.length()).map { a.getLong(it) } } ?: listOf(TICK_MS)
     var i = 0
-    val k = burst - oldPositionAt0 - oldLag
-    var x = 0.0
+    val nextStart = w.optDouble("nextStartAt", 0.0)
+    val k = burst - oldPositionAt0 - oldLag + nextStart
+    var x = nextStart
     var rate = 0.0
     var moveFrom: Long? = null
     var lastT = 0L
@@ -89,7 +90,7 @@ class LiveAlignerTest {
       }
       val tq = maxOf(0L, lastChunk(t, nextChunkMs, nextPhaseMs))
       val arrived = (burstSpeed * tq) / 1000
-      val received = if (endsAfterBurst) minOf(arrived, burst) else minOf(arrived, burst + tq / 1000.0)
+      val received = nextStart + if (endsAfterBurst) minOf(arrived, burst) else minOf(arrived, burst + tq / 1000.0)
       x = minOf(x, received)
       val stalled = stallAt != null && t >= stallAt
       val oldT = if (stalled) stallAt!! else t
@@ -112,7 +113,8 @@ class LiveAlignerTest {
           playing = rate > 0 && moving != null && t >= moving && x < received,
           ready = readyAt == null || t >= readyAt,
           edgeAt = if (arrival) tq else null,
-          clock = if (dates) EPOCH - burst else null,
+          clock = if (dates) EPOCH - burst - nextStart else null,
+          start = if (dates) 0.0 else null,
         )
       val action = if (interruptAt != null && t >= interruptAt) aligner.interrupt() else aligner.step(t, old, next)
       lastT = t

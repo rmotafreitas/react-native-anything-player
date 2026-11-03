@@ -20,6 +20,8 @@ private let rendezvousTick: DispatchTimeInterval = .milliseconds(40)
 private let alignCaps = LiveAligner.Caps(maxRate: 1, minRate: 0.5, jump: .first, startLead: 0.4, jumpLead: 2)
 /// HLS by program dates: AVPlayer seeks within the live window any time (it still cannot run a live item faster).
 private let clockCaps = LiveAligner.Caps(maxRate: 1, minRate: 0.5, jump: .always, startLead: 0.4, jumpLead: 2)
+/// How long a new HLS item may go without a program date before it is taken to have none.
+private let clockWaitMs: Int64 = 3_000
 
 /// A player's local output: the AVPlayer heard (and on screen), and a second
 /// one that prepares a quality switch behind it (`open(swap: true)`,
@@ -52,6 +54,10 @@ final class SwapDriver: LocalOutput {
     var alignRate = 1.0
     /// Readings taken so far: a reading that goes away after the first breaks the mapping.
     var steps = 0
+    /// Lined up on program dates (`clockCaps`).
+    var clocked = false
+    /// Since when it waits for the new item's program dates.
+    var clockWaitSince: Int64?
     /// The latest metadata the new driver's audio reached: told again once it is heard.
     var metadata: StreamMetadata?
     /// When it came (`told`): told again only if after the old driver's latest.
@@ -276,10 +282,16 @@ final class SwapDriver: LocalOutput {
   private func alignStep() {
     alignTick = nil
     guard let waiting = pending, var aligner = waiting.aligner, !waiting.fallback, let next = spare else { return }
-    // An HLS item still loading: its program dates come with it.
-    if waiting.steps == 0, next.awaitsClock { return scheduleAlign(waiting) }
     let old = current.alignReading()
     let reading = next.alignReading()
+    // An HLS item still loading, or without a date for its first moments:
+    // its program dates come with it (for a while).
+    if waiting.steps == 0, next.awaitsClock || (old?.clock != nil && reading == nil && next.mayHaveClock) {
+      if waiting.clockWaitSince == nil { waiting.clockWaitSince = SystemClock.shared.monotonicMs }
+      if next.awaitsClock || SystemClock.shared.monotonicMs - waiting.clockWaitSince! < clockWaitMs {
+        return scheduleAlign(waiting)
+      }
+    }
     let sameKind = waiting.steps > 0 || (old?.clock == nil) == (reading?.clock == nil)
     guard let old, let reading, sameKind else {
       // A reading that went away (an item that changed kind): as before, reported.
@@ -293,9 +305,11 @@ final class SwapDriver: LocalOutput {
       if waiting.ready { next.play() }
       return
     }
-    if waiting.steps == 0, reading.clock != nil {
+    // On the stream's clock (known only once the proxy redirected to a playlist, too): a seek any time.
+    if reading.clock != nil, !waiting.clocked, aligner.offset == nil {
       aligner = LiveAligner(caps: clockCaps)
       waiting.aligner = aligner
+      waiting.clocked = true
     }
     waiting.steps += 1
     let action = aligner.step(SystemClock.shared.monotonicMs, old: old, next: reading)

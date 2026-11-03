@@ -435,7 +435,7 @@ export class MediaElementDriver implements EngineDriver {
     };
   }
 
-  private liveSources(): liveClock.LiveSources {
+  liveSources(): liveClock.LiveSources {
     const { hls, dash, nativeHls, _element: element } = this;
     return { hls, dash, nativeHls, element, position: this.position() };
   }

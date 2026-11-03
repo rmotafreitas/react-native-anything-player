@@ -88,8 +88,9 @@ final class LiveAlignerTests: XCTestCase {
     let epoch = 1_700_000_000.0
     let ticks = (w["ticksMs"] as? [NSNumber])?.map { $0.int64Value } ?? [tickMs]
     var i = 0
-    let k = burst - oldPositionAt0 - oldLag
-    var x = 0.0
+    let nextStart = w["nextStartAt"].map { number($0) } ?? 0
+    let k = burst - oldPositionAt0 - oldLag + nextStart
+    var x = nextStart
     var rate = 0.0
     var moveFrom: Int64?
     var lastT: Int64 = 0
@@ -101,7 +102,7 @@ final class LiveAlignerTests: XCTestCase {
       }
       let tq = max(0, lastChunk(t, nextChunkMs, nextPhaseMs))
       let arrived = (burstSpeed * Double(tq)) / 1000
-      let received = endsAfterBurst ? min(arrived, burst) : min(arrived, burst + Double(tq) / 1000)
+      let received = nextStart + (endsAfterBurst ? min(arrived, burst) : min(arrived, burst + Double(tq) / 1000))
       x = min(x, received)
       let stalled = stallAt.map { t >= $0 } ?? false
       let oldT = stalled ? stallAt! : t
@@ -114,7 +115,8 @@ final class LiveAlignerTests: XCTestCase {
       let moving = moveFrom.map { rate > 0 && t >= $0 && x < received } ?? false
       let next = LiveAligner.Reading(
         position: x + (i % 2 == 0 ? jitter : -jitter), edge: received, playing: moving, ready: readyAt.map { t >= $0 } ?? true,
-        edgeAt: arrival ? tq : nil, clock: dates ? epoch - burst : nil)
+        edgeAt: arrival ? tq : nil, clock: dates ? epoch - burst - nextStart : nil,
+        start: dates ? 0 : nil)
       let action = interruptAt.map { t >= $0 } == true ? aligner.interrupt() : aligner.step(t, old: old, next: next)
       lastT = t
       switch action {

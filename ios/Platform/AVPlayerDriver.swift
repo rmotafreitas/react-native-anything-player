@@ -520,23 +520,37 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
   /// HLS AVFoundation reads itself: lined up on its program dates
   /// (`EXT-X-PROGRAM-DATE-TIME`), moved by a seek. `nil` without them.
   private func clockReading() -> LiveAligner.Reading? {
-    guard proxied == nil, let item, item.status == .readyToPlay, let date = item.currentDate() else { return nil }
-    let position = currentPosition
+    guard mayHaveClock, let item, item.status == .readyToPlay else { return nil }
+    // The date and the time it belongs to, read together: a seek in flight
+    // reports its target as the position, the date is still the old one's.
+    // A date missing for a moment keeps the last clock.
+    let now = player.currentTime().seconds
+    if let date = item.currentDate(), now.isFinite { lastClock = date.timeIntervalSince1970 - now }
+    guard let clock = lastClock else { return nil }
     var edge = bufferedEnd
+    var start: Double?
     for range in item.seekableTimeRanges {
-      let end = CMTimeRangeGetEnd(range.timeRangeValue).seconds
+      let r = range.timeRangeValue
+      let end = CMTimeRangeGetEnd(r).seconds
       if end.isFinite { edge = max(edge, end) }
+      if r.start.seconds.isFinite { start = min(start ?? r.start.seconds, r.start.seconds) }
     }
     return LiveAligner.Reading(
-      position: position, edge: edge, playing: player.timeControlStatus == .playing, ready: true,
-      clock: date.timeIntervalSince1970 - position)
+      position: currentPosition, edge: edge, playing: player.timeControlStatus == .playing, ready: true,
+      clock: clock, start: start)
   }
 
-  /// An item AVFoundation reads itself, still loading: whether it has program dates is not known yet.
+  /// HLS AVFoundation reads itself (directly, or redirected to by the proxy): it may have program dates.
+  var mayHaveClock: Bool { remuxSession == nil && (proxied == nil || redirected) }
+
+  /// One that may, still loading: whether it has program dates is not known yet.
   var awaitsClock: Bool {
-    guard proxied == nil, remuxSession == nil, let item else { return false }
+    guard mayHaveClock, let item else { return false }
     return item.status == .unknown
   }
+
+  /// The last program-date clock read (`clockReading`), per item.
+  private var lastClock: Double?
 
   /// Lets a held burst through from `seconds` on its timeline (0: all of it).
   func openBurst(from seconds: Double) {
@@ -739,6 +753,7 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
 
   private func tearDownItem() {
     pendingSplices = []
+    lastClock = nil
     // The stream visualizer (decoder, queued windows, its timer) belongs to
     // the item: the next item restarts it while sampling is on (`open`,
     // then `attachSampling` on readiness).

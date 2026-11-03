@@ -40,6 +40,8 @@ interface World {
   edgeArrival?: boolean;
   /** Readings carry the stream's clock (`clock`: program dates, HLS/DASH). */
   programDates?: boolean;
+  /** The new player starts this far along its own timeline (it can be moved back to 0). */
+  nextStartAt?: number;
 }
 
 /** The stream clock's epoch seconds at the old connection's live point at `t` 0. */
@@ -79,8 +81,10 @@ export function simulate(caps: AlignCaps, world: World): Outcome {
   const note = (kind: string) => {
     if (actions.at(-1) !== kind) actions.push(kind);
   };
-  const k = world.burst - world.oldPosition - world.oldLag;
-  let x = 0;
+  const k =
+    world.burst - world.oldPosition - world.oldLag + (world.nextStartAt ?? 0);
+  const nextStart = world.nextStartAt ?? 0;
+  let x = nextStart;
   let rate = 0;
   let moveFrom: number | null = null;
   let lastT = 0;
@@ -96,9 +100,11 @@ export function simulate(caps: AlignCaps, world: World): Outcome {
       lastChunk(t, world.nextChunkMs ?? world.chunkMs, world.nextPhaseMs ?? 0)
     );
     const arrived = (world.burstSpeed * tq) / 1000;
-    const received = world.endsAfterBurst
-      ? Math.min(arrived, world.burst)
-      : Math.min(arrived, world.burst + tq / 1000);
+    const received =
+      nextStart +
+      (world.endsAfterBurst
+        ? Math.min(arrived, world.burst)
+        : Math.min(arrived, world.burst + tq / 1000));
     x = Math.min(x, received);
     const stallAt = world.oldStallAt;
     const stalled = stallAt != null && t >= stallAt;
@@ -126,7 +132,9 @@ export function simulate(caps: AlignCaps, world: World): Outcome {
       position: x + (i % 2 === 0 ? jitter : -jitter),
       edge: received,
       ...(arrival ? { edgeAt: tq } : {}),
-      ...(world.programDates ? { clock: EPOCH - world.burst } : {}),
+      ...(world.programDates
+        ? { clock: EPOCH - world.burst - nextStart, start: 0 }
+        : {}),
       playing: rate > 0 && moveFrom != null && t >= moveFrom && x < received,
       ready: world.nextReadyAt == null || t >= world.nextReadyAt,
     };
