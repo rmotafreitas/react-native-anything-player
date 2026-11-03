@@ -68,7 +68,7 @@ export class LiveOffset {
   private since: number | null = null;
   private risenAt = 0;
   private anchor: number | null = null;
-  /** A reading with a clock: the live point it gives (`position + offset − time`). */
+  /** A reading with a clock: the live point it gives (`playhead + offset − time`, the playhead on `programDate` when there is one). */
   private native: number | null = null;
   private lastPosition: number | null = null;
 

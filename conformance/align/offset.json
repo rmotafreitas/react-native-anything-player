@@ -1027,5 +1027,28 @@
       {"t": 11500, "position": 35.5, "edge": null, "native": 20, "live": true, "programDate": 1700000041500},
       {"t": 12000, "position": 30.0, "edge": null, "native": 20, "live": true, "programDate": 1700000042000, "expect": {"offset": 20, "settled": true}}
     ]
+  },
+  {
+    "name": "a reading with a clock but no program date whose playhead jumps (hls.js recovering): unsettled until it holds again",
+    "steps": [
+      {"t": 0, "position": 50.0, "edge": null, "native": 10, "live": true},
+      {"t": 500, "position": 50.5, "edge": null, "native": 10, "live": true},
+      {"t": 1000, "position": 51.0, "edge": null, "native": 10, "live": true},
+      {"t": 1500, "position": 51.5, "edge": null, "native": 10, "live": true},
+      {"t": 2000, "position": 52.0, "edge": null, "native": 10, "live": true},
+      {"t": 2500, "position": 52.5, "edge": null, "native": 10, "live": true},
+      {"t": 3000, "position": 53.0, "edge": null, "native": 10, "live": true},
+      {"t": 3500, "position": 53.5, "edge": null, "native": 10, "live": true},
+      {"t": 4000, "position": 54.0, "edge": null, "native": 10, "live": true},
+      {"t": 4500, "position": 54.5, "edge": null, "native": 10, "live": true},
+      {"t": 5000, "position": 55.0, "edge": null, "native": 10, "live": true, "expect": {"offset": 10, "settled": true}},
+      {"t": 5500, "position": 20.0, "edge": null, "native": 10, "live": true, "expect": {"offset": 10, "settled": false}},
+      {"t": 6000, "position": 20.5, "edge": null, "native": 10, "live": true},
+      {"t": 6500, "position": 21.0, "edge": null, "native": 10, "live": true},
+      {"t": 7000, "position": 21.5, "edge": null, "native": 10, "live": true},
+      {"t": 7500, "position": 22.0, "edge": null, "native": 10, "live": true},
+      {"t": 8000, "position": 22.5, "edge": null, "native": 10, "live": true, "expect": {"offset": 10, "settled": false}},
+      {"t": 8500, "position": 23.0, "edge": null, "native": 10, "live": true, "expect": {"offset": 10, "settled": true}}
+    ]
   }
 ]

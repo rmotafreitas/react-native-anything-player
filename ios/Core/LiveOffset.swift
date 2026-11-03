@@ -58,7 +58,7 @@ final class LiveOffset {
   private var since: Int64?
   private var risenAt: Int64 = 0
   private var anchor: Double?
-  /// A reading with a clock: the live point it gives (`position + offset − time`).
+  /// A reading with a clock: the live point it gives (`playhead + offset − time`, the playhead on `programDate` when there is one).
   private var native: Double?
   private var lastPosition: Double?
 
