@@ -328,13 +328,8 @@ final class PlaybackEngine {
     let startedAt: Int64
     /// What the new file reported when ready: the item's facts once it takes over.
     var info: ReadyInfo?
+    /// When the new file was first ready: the time it has to take over counts from here.
     var readyAt: Int64?
-
-    /// The new file must play by then: `swapTimeoutMs` to be ready, `swapAlignMs` once ready.
-    var deadline: Int64 {
-      if let readyAt { return readyAt + RecoveryPolicy.swapAlignMs }
-      return startedAt + RecoveryPolicy.swapTimeoutMs
-    }
   }
 
   private struct PendingRefresh {
@@ -701,8 +696,7 @@ final class PlaybackEngine {
     if isSwapGeneration(gen) {
       // A quality switch's file: its facts wait for it to take over.
       pendingSwap?.info = info
-      // Live, a driver that lines it up first (Android's) needs more time once ready.
-      if pendingSwap?.readyAt == nil && isLive { pendingSwap?.readyAt = now }
+      if pendingSwap?.readyAt == nil { pendingSwap?.readyAt = now }
       return swapNote("ready")
     }
     guard accepts(gen) else { return logStale("ready", gen) }
@@ -2208,9 +2202,19 @@ extension PlaybackEngine {
     if let since = detachedSince, t - since >= RecoveryPolicy.viewDetachGraceMs { noViewDue() }
     if let refresh = pendingRefresh, refresh.deadline <= t { refreshTimedOut(refresh) }
     if let ask = refreshAskAt, ask <= t { expiryDue() }
-    if let swap = pendingSwap, t >= swap.deadline {
+    if let swap = pendingSwap, t >= swapDeadline(swap) {
       dropSwap(swap, reason: "timeout")
     }
+  }
+
+  /// When a switch is dropped: `swapTimeoutMs` to be ready (`swapLiveReadyMs`
+  /// live), then as long again to take over (`swapAlignTimeoutMs` live,
+  /// where the new audio is lined up with what is heard first).
+  private func swapDeadline(_ swap: PendingSwap) -> Int64 {
+    guard let readyAt = swap.readyAt else {
+      return swap.startedAt + (isLive ? RecoveryPolicy.swapLiveReadyMs : RecoveryPolicy.swapTimeoutMs)
+    }
+    return readyAt + (isLive ? RecoveryPolicy.swapAlignTimeoutMs : RecoveryPolicy.swapTimeoutMs)
   }
 
   fileprivate func videoWakeups(_ candidates: inout [Int64]) {
@@ -2220,7 +2224,7 @@ extension PlaybackEngine {
     }
     if let refresh = pendingRefresh { candidates.append(refresh.deadline) }
     if let ask = refreshAskAt { candidates.append(ask) }
-    if let swap = pendingSwap { candidates.append(swap.deadline) }
+    if let swap = pendingSwap { candidates.append(swapDeadline(swap)) }
   }
 
   /// The app came back (`appForegrounded`).
@@ -2750,7 +2754,8 @@ extension PlaybackEngine {
     driver.open(
       OpenRequest(
         generation: gen, source: renditionSource(target), startPosition: position,
-        playWhenReady: true, allowReconnect: options.reconnect, swap: true, rendition: target))
+        playWhenReady: true, allowReconnect: options.reconnect, swap: true, rendition: target,
+        required: state == .buffering))
   }
 
   /// A switch that failed or timed out: its file sits out a while, and the
@@ -2761,12 +2766,15 @@ extension PlaybackEngine {
     if abrLevel == swap.rendition { abrLevel = currentRendition }
     cancelSwap(reason)
     let target = renditions![swap.rendition].id(at: swap.rendition)
+    // A live switch that could wait and could not be lined up: refused, why in `cause`.
+    let refused = cause?.code == .qualitySwitchFailed
+    let outcome = refused ? "was refused" : cause != nil ? "failed" : "timed out"
     var error = PlayerError.code(
       .qualitySwitchFailed,
-      "The switch to quality \"\(target)\" \(cause != nil ? "failed" : "timed out"); the current one plays on.",
+      "The switch to quality \"\(target)\" \(outcome); the current one plays on.",
       recoverable: true)
     // The new file's own failure: its code, then its message.
-    error.cause = cause.map { "\($0.code.rawValue): \($0.message)" } ?? reason
+    error.cause = cause.map { refused ? $0.message : "\($0.code.rawValue): \($0.message)" } ?? reason
     error.platformDomain = cause?.platformDomain
     error.platformCode = cause?.platformCode
     pendingEvents.append { [weak self] in self?.delegate?.engine(warning: error) }

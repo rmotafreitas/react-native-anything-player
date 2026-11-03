@@ -249,6 +249,9 @@ final class PlayerController: EngineDelegate, DriverObserver {
   /// `progress` events while playing (`progressInterval`): a native timer, so
   /// JS hears about the audio's progress even while its own timers are frozen.
   private var progressTimer: DispatchSourceTimer?
+  private var liveTimer: DispatchSourceTimer?
+  /// How far a live item trails its live point: `liveOffset`.
+  private let liveOffset = LiveOffset()
   /// Titles of a live stream playing on a Cast receiver (see `updateIcyReader`).
   private var icyReader: IcyMetadataReader?
   private var icyReaderLoadId = -1
@@ -301,6 +304,7 @@ final class PlayerController: EngineDelegate, DriverObserver {
     sourceFields = fields
     overrides = NowPlayingFields(nil)
     trackClock = nil
+    liveOffset.reset()
     lock.sync {
       snapshotMetadata = nil
       lastBandwidth = nil
@@ -365,6 +369,8 @@ final class PlayerController: EngineDelegate, DriverObserver {
     wakeup?.cancel()
     progressTimer?.cancel()
     progressTimer = nil
+    liveTimer?.cancel()
+    liveTimer = nil
     icyReader?.stop()
     icyReader = nil
     engine.release()
@@ -551,6 +557,7 @@ final class PlayerController: EngineDelegate, DriverObserver {
     // The song advances with the audio, not the wall clock.
     trackClock?.setRunning(status.state == .playing, now: SystemClock.shared.monotonicMs)
     updateProgressTicks(status.state)
+    updateLiveReads(status)
     updateIcyReader(status)
     picture?.statusChanged(status)
     runtime.statusChanged(self)
@@ -580,6 +587,43 @@ final class PlayerController: EngineDelegate, DriverObserver {
     reader.start()
   }
 
+  /// Where the item is, with how far it trails a live source's live point
+  /// (`LiveOffset`: smooth, growing while paused).
+  private func timedProgress() -> ProgressReading {
+    var reading = routing.progress()
+    let live = lock.sync { snapshotStatus.isLive }
+    let value = liveOffset.read(
+      SystemClock.shared.monotonicMs,
+      LiveOffset.Reading(
+        position: reading.position, edge: reading.edge, native: reading.liveOffset, live: live,
+        programDate: reading.programDate))
+    reading.liveOffset = value.offset
+    reading.liveOffsetSettled = value.settled
+    return reading
+  }
+
+  /// A live item is read while it plays, whatever `progressInterval` is:
+  /// `liveOffset` follows it, and a splice is reported (and measured afresh)
+  /// once it is heard.
+  private func updateLiveReads(_ status: Status) {
+    let wanted = status.isLive && status.state == .playing && !released
+    guard wanted != (liveTimer != nil) else { return }
+    liveTimer?.cancel()
+    liveTimer = nil
+    guard wanted else { return }
+    let timer = DispatchSource.makeTimerSource(queue: .main)
+    timer.schedule(deadline: .now(), repeating: .milliseconds(500), leeway: .milliseconds(50))
+    timer.setEventHandler { [weak self] in
+      guard let self, !self.released else { return }
+      self.driver.reportHeardSplices()
+      let reading = self.timedProgress()
+      let clock = SystemClock.shared
+      self.lock.sync { self.snapshotProgress = (reading, clock.monotonicMs, clock.wallMs) }
+    }
+    liveTimer = timer
+    timer.resume()
+  }
+
   private func updateProgressTicks(_ state: PlaybackState) {
     let wanted = options.progressIntervalMs > 0 && state == .playing && !released
     guard wanted != (progressTimer != nil) else { return }
@@ -592,7 +636,7 @@ final class PlayerController: EngineDelegate, DriverObserver {
     timer.setEventHandler { [weak self] in
       guard let self, !self.released else { return }
       self.driver.reportHeardSplices()
-      let reading = self.routing.progress()
+      let reading = self.timedProgress()
       let clock = SystemClock.shared
       self.lock.sync { self.snapshotProgress = (reading, clock.monotonicMs, clock.wallMs) }
       self.emit("progress", self.progressDictionary())
@@ -673,7 +717,7 @@ final class PlayerController: EngineDelegate, DriverObserver {
       DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: item)
     }
     // Every engine entry ends here: refresh the progress snapshot JS reads.
-    let reading = routing.progress()
+    let reading = timedProgress()
     let clock = SystemClock.shared
     let stats = engine.stats
     lock.sync {
@@ -704,7 +748,7 @@ final class PlayerController: EngineDelegate, DriverObserver {
   }
 
   func driverPositionChanged() {
-    let reading = routing.progress()
+    let reading = timedProgress()
     let clock = SystemClock.shared
     lock.sync { snapshotProgress = (reading, clock.monotonicMs, clock.wallMs) }
     picture?.positionJumped()
@@ -753,9 +797,21 @@ final class PlayerController: EngineDelegate, DriverObserver {
     note(event, details)
   }
 
-  func driverDiscontinuity(generation: Int, position: Double) {
+  func driverDiscontinuity(generation: Int, position: Double, reason: String, jump: Double?) {
     guard engine.accepts(generation) else { return }
-    emit("discontinuity", ["position": position, "timestamp": SystemClock.shared.wallMs])
+    // A new connection: how far behind live is measured again.
+    liveOffset.reset()
+    // Listeners read the progress to place themselves again: the snapshot
+    // from the last tick still describes the connection playback just left.
+    let reading = timedProgress()
+    let clock = SystemClock.shared
+    lock.sync { snapshotProgress = (reading, clock.monotonicMs, clock.wallMs) }
+    emit(
+      "discontinuity",
+      [
+        "position": position, "reason": reason, "jump": Serialization.optional(jump),
+        "timestamp": SystemClock.shared.wallMs,
+      ])
   }
 
   var isOffline: Bool { runtime.networkState == .offline }
@@ -842,12 +898,19 @@ enum Serialization {
   }
 
   static func progress(_ r: ProgressReading, takenAt: Int64, now: Int64, wall: Int64) -> [String: Any] {
+    let elapsed = Double(max(0, now - takenAt)) / 1000
     var position = r.position
-    if r.isPlaying { position += Double(max(0, now - takenAt)) / 1000 * r.rate }
+    if r.isPlaying { position += elapsed * r.rate }
     if let d = r.duration { position = min(position, d) }
+    // The live point moves on with the clock, the playhead with what plays:
+    // the offset grows while paused, falls at a rate above 1.
+    let played = max(0, position - r.position)
+    let offset = r.liveOffset.map { max(0, $0 + elapsed - played) }
+    let programDate = r.programDate.map { $0 + Int64((played * 1000).rounded()) }
     return [
       "position": position, "duration": optional(r.duration), "buffered": max(r.buffered, position),
-      "bufferedAhead": max(0, r.buffered - position), "liveOffset": optional(r.liveOffset), "timestamp": wall,
+      "bufferedAhead": max(0, r.buffered - position), "liveOffset": optional(offset),
+      "liveOffsetSettled": r.liveOffsetSettled, "programDate": optional(programDate), "timestamp": wall,
     ]
   }
 

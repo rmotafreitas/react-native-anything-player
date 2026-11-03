@@ -26,6 +26,8 @@ import { LOCAL_TONE, STREAM_HOST, serverControl, serverStats } from './config';
 
 type Scenario = {
   name: string;
+  /** Run only by name (`test/<name>`), not with `all`: it takes minutes. */
+  manual?: boolean;
   timeoutMs: number;
   run: (log: (m: string) => void) => Promise<void>;
 };
@@ -911,8 +913,90 @@ SCENARIOS.push(
     name: 'probe-release-closes',
     timeoutMs: 80_000,
     run: (log) => timeToClose(log, (p) => p.release()),
+  },
+  {
+    // One station as three Icecast mounts (the test server's /radio/…, each
+    // with a 64 KiB burst): every switch is lined up with what is heard.
+    // scripts/align-measure records the device and reads back what each
+    // switch did to the audio; this logs when each one took over.
+    name: 'live-renditions',
+    manual: true,
+    timeoutMs: 300_000,
+    run: (log) => liveRenditions(log, (id) => `${STREAM_HOST}/radio/${id}`),
+  },
+  {
+    // The same program as live HLS renditions (/radio-hls/…: 2, 4 and 6 s
+    // segments with program dates): lined up by their program dates.
+    name: 'live-hls-renditions',
+    manual: true,
+    timeoutMs: 300_000,
+    run: (log) =>
+      liveRenditions(log, (id) => `${STREAM_HOST}/radio-hls/${id}/live.m3u8`),
+  },
+  {
+    // The same program as a live MPEG-TS channel (/radio-ts/…, AAC in TS,
+    // each connection with a burst): remuxed on the web and iOS, played as a
+    // progressive stream on Android, lined up by its edges.
+    name: 'live-ts-renditions',
+    manual: true,
+    timeoutMs: 300_000,
+    run: (log) =>
+      liveRenditions(
+        log,
+        (id) => `${STREAM_HOST}/radio-ts/${id}.ts`,
+        TS_RENDITIONS
+      ),
   }
 );
+
+const TS_RENDITIONS = {
+  ids: ['48', '96', '192'],
+  first: '192',
+  order: ['48', '192', '96', '48', '96'],
+};
+
+/** Five switches between a station's renditions, each logged as it takes over. */
+function liveRenditions(
+  log: (line: string) => void,
+  uri: (id: string) => string,
+  { ids, first, order } = {
+    ids: ['64', '192', '320'],
+    first: '320',
+    order: ['64', '320', '192', '64', '192'],
+  }
+) {
+  return withPlayer(async (p) => {
+    let jumps = 0;
+    const off = p.on('discontinuity', () => {
+      jumps += 1;
+    });
+    await p.load(
+      {
+        live: true,
+        renditions: ids.map((id) => ({
+          id,
+          uri: uri(id),
+          bitrate: Number(id) * 1000,
+        })),
+      },
+      { quality: first }
+    );
+    await p.play();
+    await waitFor(p, (s) => s.state === 'playing', 20_000, 'playing');
+    log(`PLAYING at=${Date.now()}`);
+    await sleep(10_000);
+    for (const quality of order) {
+      const asked = Date.now();
+      await p.selectQuality(quality);
+      await waitFor(p, (s) => s.quality === quality, 60_000, quality);
+      log(`SWITCH ${quality} asked=${asked} took=${Date.now()}`);
+      await sleep(8_000);
+    }
+    off();
+    log(`discontinuities ${jumps}`);
+    expect(jumps === 0, `${jumps} switch(es) not lined up`);
+  });
+}
 
 export async function runScenarios(
   names: string[] | 'all',
@@ -920,7 +1004,7 @@ export async function runScenarios(
 ): Promise<{ passed: number; failed: number }> {
   const selected =
     names === 'all'
-      ? SCENARIOS
+      ? SCENARIOS.filter((s) => s.manual !== true)
       : SCENARIOS.filter((s) => names.includes(s.name));
   let passed = 0;
   let failed = 0;

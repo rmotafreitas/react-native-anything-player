@@ -42,6 +42,11 @@ enum DashToHls {
     guard let period = root.children("Period").first else { throw Failure(message: "The manifest has no period.") }
     let periodBase = resolve(period.child("BaseURL")?.text, against: base)
     let periodDuration = period["duration"].flatMap(isoDuration) ?? duration
+    // A live presentation's clock: segment times from here are program dates
+    // (`EXT-X-PROGRAM-DATE-TIME`), which a live quality switch lines up on.
+    let clock = live
+      ? root["availabilityStartTime"].flatMap(isoDate)?.addingTimeInterval(period["start"].flatMap(isoDuration) ?? 0)
+      : nil
 
     var media: [Media] = []
     var videos: [(rep: Representation, playlist: String)] = []
@@ -55,7 +60,7 @@ enum DashToHls {
       case "video":
         for rep in reps {
           let name = "video-\(safe(rep.id)).m3u8"
-          media.append(Media(name: name, playlist: try mediaPlaylist(rep, live: live, duration: periodDuration)))
+          media.append(Media(name: name, playlist: try mediaPlaylist(rep, live: live, duration: periodDuration, clock: clock)))
           videos.append((rep, name))
         }
       case "audio":
@@ -63,7 +68,7 @@ enum DashToHls {
         // renditions do not switch bitrates within a group).
         guard let rep = reps.max(by: { $0.bandwidth < $1.bandwidth }) else { continue }
         let name = "audio-\(safe(rep.id)).m3u8"
-        media.append(Media(name: name, playlist: try mediaPlaylist(rep, live: live, duration: periodDuration)))
+        media.append(Media(name: name, playlist: try mediaPlaylist(rep, live: live, duration: periodDuration, clock: clock)))
         audios.append((set, rep, name))
       case "text":
         // A sidecar WebVTT file (segmented text is not converted).
@@ -144,7 +149,7 @@ enum DashToHls {
 
   // MARK: - Media playlists
 
-  private static func mediaPlaylist(_ rep: Representation, live: Bool, duration: Double?) throws -> String {
+  private static func mediaPlaylist(_ rep: Representation, live: Bool, duration: Double?, clock: Date?) throws -> String {
     let segments = try rep.segments(duration: duration)
     guard !segments.list.isEmpty else { throw Failure(message: "Representation \(rep.id) lists no segments.") }
     let target = Int(ceil(segments.list.map(\.duration).max() ?? 1))
@@ -155,6 +160,9 @@ enum DashToHls {
     if !live { lines.append("#EXT-X-PLAYLIST-TYPE:VOD") }
     if let initialization = segments.initialization { lines.append("#EXT-X-MAP:URI=\"\(initialization)\"") }
     for segment in segments.list {
+      if let clock, let at = segment.start {
+        lines.append("#EXT-X-PROGRAM-DATE-TIME:" + isoFormatter.string(from: clock.addingTimeInterval(at)))
+      }
       lines.append(String(format: "#EXTINF:%.3f,", segment.duration))
       lines.append(segment.url)
     }
@@ -179,6 +187,9 @@ enum DashToHls {
   struct Segment: Equatable {
     let url: String
     let duration: Double
+    /// Seconds from the period's start (a segment timeline's time, less the
+    /// presentation time offset); `nil` where the manifest does not say.
+    var start: Double? = nil
   }
 
   struct Representation {
@@ -235,6 +246,7 @@ enum DashToHls {
       -> (initialization: String?, firstNumber: Int, list: [Segment])
     {
       let timescale = Double(t["timescale"] ?? "1") ?? 1
+      let offset = Double(t["presentationTimeOffset"] ?? "0") ?? 0
       let start = Int(t["startNumber"] ?? "1") ?? 1
       let initialization = t["initialization"].map { url($0) }
       guard let media = t["media"] else { throw Failure(message: "Representation \(id) has no media template.") }
@@ -261,7 +273,10 @@ enum DashToHls {
             ? repeats + 1
             : max(1, Int(((duration ?? 0) * timescale - Double(time)) / Double(max(d, 1))))
           for _ in 0..<count {
-            list.append(Segment(url: url(media, number: number, time: time), duration: Double(d) / timescale))
+            list.append(
+              Segment(
+                url: url(media, number: number, time: time), duration: Double(d) / timescale,
+                start: (Double(time) - offset) / timescale))
             time += d
             number += 1
           }
@@ -275,7 +290,10 @@ enum DashToHls {
       let count = Int(ceil(total / length - 0.0001))
       for i in 0..<count {
         let last = i == count - 1 ? total - length * Double(i) : length
-        list.append(Segment(url: url(media, number: start + i, time: Int(Double(i) * d)), duration: last))
+        // Numbered segments follow each other from the period's start.
+        list.append(
+          Segment(
+            url: url(media, number: start + i, time: Int(Double(i) * d)), duration: last, start: length * Double(i)))
       }
       return (initialization, start, list)
     }
@@ -369,6 +387,18 @@ enum DashToHls {
     out += rest
     return out
   }
+
+  /// An ISO 8601 date and time (`availabilityStartTime`), with or without fractional seconds.
+  static func isoDate(_ text: String) -> Date? {
+    isoFormatter.date(from: text) ?? ISO8601DateFormatter().date(from: text)
+  }
+
+  /// Program dates with milliseconds (`2026-10-24T00:00:10.000Z`).
+  static let isoFormatter: ISO8601DateFormatter = {
+    let f = ISO8601DateFormatter()
+    f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    return f
+  }()
 
   /// ISO 8601 durations as DASH writes them: `PT1M0.0S`, `P1DT2H`, `PT4.5S`.
   static func isoDuration(_ text: String) -> Double? {

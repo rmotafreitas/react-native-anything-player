@@ -59,17 +59,19 @@ Supported: the current and previous version of each browser. Radio titles on iPh
 | Progress events, `getProgress()` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Sleep timer (`sleep`, `status.sleepAt`) | ✓ | ✓ | ◐ ⁷ | ◐ ⁷ | ◐ ⁷ | ◐ ⁷ |
 | Fades on play, pause and stop, `fadeTo` | ✓ | ✓ | ◐ ⁷ | ◐ ⁷ | ◐ ⁷ | – ⁶ |
-| Separate quality files (`renditions`) switched with no gap, a pick that holds across loads | ✓ † ⁸ | ✓ † ⁸ | ✓ ⁸ | ✓ ⁸ | ✓ ⁸ | ✓ † ⁸ |
+| Separate quality files (`renditions`) switched with no gap, a pick that holds across loads | ✓ † | ✓ † | ✓ | ✓ | ✓ | ✓ † |
+| Live renditions (one station's mounts, a live MPEG-TS sound channel, or HLS / DASH with program dates) switched in step with what is heard, no repeat or skip | ◐ † ⁸ | ✓ † | ◐ ⁸ ⁹ | ◐ ⁸ ⁹ | ◐ ⁸ ⁹ | ◐ † ⁸ ⁹ |
 | Queue (next / previous, gapless) | – | – | – | – | – | – |
 
 1. Leave it out with `rnapHls=false`.
 2. The browser's own HLS where it has one (Chrome on Android), else [hls.js](web.md#hls), registered with `configureHls`.
 3. `file://` URLs and paths; Android also takes `content://`.
 4. `File` / `Blob`, `blob:` and `data:` URLs.
-5. When RNAP reads the stream itself (MSE, hls.js), not on the plain `<audio>` element. On iPhone and iPad, from iOS 17.1.
+5. When RNAP reads the stream itself (MSE, hls.js, Shaka), not on the plain `<audio>` element. On iPhone and iPad, from iOS 17.1.
 6. The system fixes the volume: `setVolume` has no effect, `setMuted` works. Fades have no effect either; the sleep timer pauses without one.
 7. In a hidden tab the browser runs timers less often: fades move in larger steps and the sleep timer can fire late.
-8. Live streams (Icecast mounts at different bitrates): Android lines the switch up with what is heard, so it neither repeats nor skips; one that cannot be lined up takes over as before, with a `discontinuity` event ([Internet radio](internet-radio.md#several-bitrates-of-one-station)). iOS and the web switch as soon as the new mount is ready, and repeat or skip by the difference of the mounts' connect bursts ([#82](https://github.com/rmotafreitas/react-native-anything-player/issues/82)).
+8. A live MPEG-TS channel switches at once, as before, on iOS, and in a browser when it has a picture ([live renditions](playback.md#live-renditions)).
+9. When RNAP reads the stream itself (MSE, hls.js, Shaka; HLS with program dates also on Safari's own player), not on the plain `<audio>` element, where a switch goes ahead with a `discontinuity`. On iPhone and iPad, from iOS 17.1.
 
 A queue is planned: see the [roadmap](roadmap.md).
 
@@ -82,7 +84,7 @@ In browsers, RNAP reads a stream itself (Media Source Extensions) when the stati
 | ICY titles, timed to when they are heard | ✓ | ✓ | ◐ ¹ | ◐ ¹ ² | ◐ ¹ | ◐ ¹ |
 | Station name and genre (`icy-name`, `icy-genre`) | ✓ | ✓ | ◐ ¹ | ◐ ¹ | ◐ ¹ | ◐ ¹ |
 | A dropped connection replaced without stopping (`discontinuity`) | ✓ | ✓ | ◐ ¹ | ◐ ¹ | ◐ ¹ | ◐ ¹ |
-| `liveOffset` (how far behind live) | ✓ | ✓ | ◐ ¹ ³ | ◐ ¹ ³ | ◐ ¹ | ◐ ¹ |
+| `liveOffset` (how far behind live), `liveOffsetSettled`, `programDate` | ✓ | ✓ | ◐ ¹ ³ | ◐ ¹ ³ | ◐ ¹ | ◐ ¹ |
 | HLS / ID3 timed metadata | ✓ | ✓ | ◐ ³ | ◐ ³ | – ⁴ | – ⁴ |
 | One connection per stream, closed on release | ✓ | ✓ | ◐ ¹ | ◐ ¹ | ◐ ¹ | ◐ ¹ |
 

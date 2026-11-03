@@ -115,8 +115,14 @@ export default function App() {
 
   // anythingplayer-example://test/<name|all>  ·  anythingplayer-example://play/<stationIndex>
   useEffect(() => {
-    const handle = (url: string | null | undefined) => {
+    const handle = (url: string | null | undefined): void => {
       if (!url) return;
+      // On the web, from the page's address: `?rnapTest=<name|all>&delay=ms`.
+      const web = /[?&]rnapTest=([\w,-]+)(?:&delay=(\d+))?/.exec(url);
+      if (web)
+        return handle(
+          `anythingplayer-example://test/${web[1]}${web[2] ? `?delay=${web[2]}` : ''}`
+        );
       const match =
         /anythingplayer-example:\/\/(test|play)\/([\w,-]+)(?:\?delay=(\d+))?/.exec(
           url

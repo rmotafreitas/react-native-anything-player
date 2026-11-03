@@ -930,6 +930,8 @@ export class Player {
           buffered: event.buffered as number,
           bufferedAhead: event.bufferedAhead as number,
           liveOffset: (event.liveOffset as number | null) ?? null,
+          liveOffsetSettled: event.liveOffsetSettled === true,
+          programDate: (event.programDate as number | null) ?? null,
           timestamp: event.timestamp as number,
         });
         break;
@@ -948,6 +950,8 @@ export class Player {
       case 'discontinuity':
         this.emit('discontinuity', {
           position: event.position as number,
+          reason: event.reason === 'switch' ? 'switch' : 'reconnect',
+          jump: typeof event.jump === 'number' ? event.jump : null,
           timestamp: event.timestamp as number,
         });
         break;

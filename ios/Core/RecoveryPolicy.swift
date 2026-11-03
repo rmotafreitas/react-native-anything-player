@@ -75,12 +75,17 @@ enum RecoveryPolicy {
   static let viewDetachGraceMs: Int64 = 1_000
   /// In the background, Picture in Picture may start (or the app return) this long after the event.
   static let pipGraceMs: Int64 = 1_000
-  /// A quality switch's new file must play within this, or the switch is dropped.
+  /// A quality switch's new file must be ready within this, then take over
+  /// within this again, or the switch is dropped.
   static let swapTimeoutMs: Int64 = 12_000
-  /// Once its file is ready, how long a live switch may still take: a live swap
-  /// lines the new connection up with what is heard first (it can hold or
-  /// catch up for as long as the relays' delays differ).
-  static let swapAlignMs: Int64 = 30_000
+  /// Once ready, a live switch takes over within this: it first lines its
+  /// audio up with what is heard (the driver gives up sooner, `LiveAligner.budgetMs`:
+  /// a switch the player needs then goes ahead, one that can wait is refused).
+  static let swapAlignTimeoutMs: Int64 = 45_000
+  /// A live switch's new connection must be ready within this: its audio
+  /// waits in the stream proxy until the alignment knows where it starts
+  /// (the burst settles within 8 s).
+  static let swapLiveReadyMs: Int64 = 20_000
   /// A rendition that failed is not picked again for this long.
   static let failedRenditionMs: Int64 = 60_000
   /// How long a 401/403 waits for the app's new source before the backoff takes over.

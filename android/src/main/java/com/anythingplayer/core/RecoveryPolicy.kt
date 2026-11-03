@@ -73,15 +73,22 @@ object RecoveryPolicy {
   /** In the background, Picture in Picture may start (or the app return) this long after the event. */
   const val PIP_GRACE_MS = 1_000L
 
-  /** A quality switch's new file must play within this, or the switch is dropped. */
+  /** A quality switch's new file must be ready within this, then take over within this again, or the switch is dropped. */
   const val SWAP_TIMEOUT_MS = 12_000L
 
   /**
-   * Once its file is ready, how long a live switch may still take: a live swap
-   * lines the new connection up with what is heard first (it can hold or
-   * catch up for as long as the relays' delays differ).
+   * Once ready, a live switch takes over within this: it first lines its
+   * audio up with what is heard (the driver gives up sooner, `LiveAligner.BUDGET_MS`:
+   * a switch the player needs then goes ahead, one that can wait is refused).
    */
-  const val SWAP_ALIGN_MS = 30_000L
+  const val SWAP_ALIGN_TIMEOUT_MS = 45_000L
+
+  /**
+   * A live switch's new connection must be ready within this: on iOS its audio
+   * waits in the stream proxy until the alignment knows where it starts (the
+   * burst settles within 8 s).
+   */
+  const val SWAP_LIVE_READY_MS = 20_000L
 
   /** A rendition that failed is not picked again for this long. */
   const val FAILED_RENDITION_MS = 60_000L

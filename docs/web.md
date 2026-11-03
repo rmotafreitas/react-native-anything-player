@@ -156,7 +156,7 @@ RNAP uses hls.js for a source whose path ends in `.m3u8`, or whose response says
 - **Recovery is the engine's.** A fatal hls.js error (hls.js has already retried a fragment) is reported as a recoverable `NETWORK_ERROR` or `DECODER_ERROR`, hls.js is destroyed, and the engine re-opens the item with a new instance under its usual [backoff](recovery.md). RNAP never calls hls.js's `startLoad()` or `recoverMediaError()`, so the two do not fight over retries. A missing playlist (HTTP 404/410) is `SOURCE_NOT_FOUND`, not recoverable.
 - **Titles.** ID3 text frames in the stream (`TIT2` title, `TPE1` artist, `TALB` album; ID3v2.2–2.4) become [`metadata`](events.md#events), each delivered when its time is heard, as native HLS timed metadata is.
 - **Headers.** The source's `headers` are sent on every playlist and segment request (`xhrSetup` / `fetchSetup`). A custom header makes a cross-origin request preflighted: the server has to allow it.
-- **Live offset.** `liveOffset` is hls.js's latency to the live edge.
+- **Live offset.** `liveOffset` is hls.js's latency to the live edge, and `programDate` the program date playing (`EXT-X-PROGRAM-DATE-TIME`).
 - **Teardown.** The hls.js instance is destroyed on `stop()`, `reset()`, the next `load()` and `release()`.
 
 ## DASH

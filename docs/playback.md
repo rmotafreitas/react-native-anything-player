@@ -88,7 +88,14 @@ const player = new Player({ progressInterval: 1000 });
 player.on('progress', ({ position, liveOffset }) => { /* e.g. switch the lock screen to the next song */ });
 ```
 
-For live streams `position` is the time played since the stream was (re-)opened, `duration` is `null`, `bufferedAhead` is how much audio is buffered past the playhead, and `liveOffset` is how far behind the live edge playback is, when it can be measured: HLS program dates (`EXT-X-PROGRAM-DATE-TIME`), ExoPlayer's live window, and on iOS any live HTTP stream, from the audio the stream proxy has handed the player. Otherwise it is `null`; use `bufferedAhead`.
+For live streams `position` is the time played since the stream was (re-)opened, `duration` is `null`, and `bufferedAhead` is how much is buffered past the playhead. `liveOffset` is how far what is heard trails the live point, in seconds: the whole delay (the server's burst, the buffer, the decoder), so it does not saw-tooth as chunks arrive, it grows while paused or stalled, and it carries on across a lined-up quality switch. A stream with a clock reports its own reading: HLS program dates (`EXT-X-PROGRAM-DATE-TIME`), a DASH or ExoPlayer live window (in a browser a DASH stream's is measured against the device's clock, so a clock set wrong reads wrong). A progressive live stream (ICY / Icecast, plain HTTP, a remuxed MPEG-TS channel) is measured from what has been received against the device's clock. It is `null` for a file, on Cast, on a browser's plain `<audio>` element (a stream without CORS) and on a browser's own HLS player (Safari, Chrome on Android: `programDate` is still there); use `bufferedAhead` there.
+
+`liveOffsetSettled` turns `true` once `liveOffset` has held steady for 3 s, the connection's burst has arrived, so a delay shown to the user ("12 s behind live") or lyrics placed against it do not move. It is `false` again after a `discontinuity` or a new load. `programDate` is the epoch milliseconds the stream's own clock gives what plays now (HLS program dates, DASH), `null` without one.
+
+```ts
+const { liveOffset, liveOffsetSettled } = player.getProgress();
+if (liveOffsetSettled) showDelay(Math.round(liveOffset!));
+```
 
 ## Sleep timer and fades
 
@@ -166,7 +173,59 @@ await player.load(
 await player.selectQuality('192k'); // switches without a gap, and holds for the next loads
 ```
 
-`status.qualities` lists them, `status.quality` is the one playing and `status.selectedQuality` the pick (`null`: automatic). Automatic starts at the highest (a sound's bitrates are small), or for a file at what the last bandwidth reading fits; it steps down on stalls and on a bandwidth that stays too low, and up after 30 s of headroom. Where nothing measures headroom (a live stream arrives at its own bitrate; Safari and Firefox read no bandwidth for a file), it tries one step up after two minutes without a stall. The background never changes it. On Android, a live rendition switch is lined up with what is heard first: separate live files (Icecast mounts at different bitrates) start at different points behind the live edge, so the new connection plays muted and faster to catch up, or waits, and takes over at the same point in the program, neither repeating nor skipping audio. A switch that cannot be lined up within 25 s, or whose connections stall, drop or end meanwhile, takes over as before, with a `discontinuity` event. iOS and the web switch as soon as the new file is ready (#82). A pick holds across loads by `id` (give each episode's files the same ids), and a switch that fails is a non-fatal `QUALITY_SWITCH_FAILED` error while the current file plays on. An HLS or DASH source's own variants are left to the platform on an audio player.
+`status.qualities` lists them, `status.quality` is the one playing and `status.selectedQuality` the pick (`null`: automatic). Automatic starts at the highest (a sound's bitrates are small), or for a file at what the last bandwidth reading fits; it steps down on stalls and on a bandwidth that stays too low, and up after 30 s of headroom. Where nothing measures headroom (a live stream arrives at its own bitrate; Safari and Firefox read no bandwidth for a file), it tries one step up after two minutes without a stall. The background never changes it. A live switch is lined up with what is heard first, neither repeating nor skipping ([live renditions](#live-renditions)). A pick holds across loads by `id` (give each episode's files the same ids), and a switch that fails is a non-fatal `QUALITY_SWITCH_FAILED` error while the current file plays on. An HLS or DASH source's own variants are left to the platform on an audio player.
+
+### Live renditions
+
+One station's mounts at several bitrates (Icecast's `/64`, `/192`, `/320`) are renditions of one live source:
+
+```ts
+await player.load({
+  live: true,
+  renditions: [
+    { id: '64', uri: 'https://radio.example/64', bitrate: 64_000 },
+    { id: '192', uri: 'https://radio.example/192', bitrate: 192_000 },
+    { id: '320', uri: 'https://radio.example/320', bitrate: 320_000 },
+  ],
+});
+```
+
+Each connection to a mount starts with the server's burst of recent audio, and the burst is a byte count, so a lower bitrate starts further behind live: Icecast's default 64 KiB is 1.6 s at 320 kbps and 8 s at 64 kbps. Played as it arrives, a switch from 320 to 64 kbps would repeat those seconds, and back again would skip them. RNAP lines the new connection up with what is heard before it takes over. It waits for the new connection's burst to arrive, maps the two connections' timelines onto each other by their live edges, then plays the new one silently: held until the old one catches up, moved forward within what it holds, or run faster or slower, until it plays what is heard. The switch is then a change of volume, with no repeat and no skip. It takes a few seconds, longer when the new connection starts far ahead: up to 30 s, the difference between the two bursts.
+
+When it cannot line them up, what happens depends on why it was switching. A switch that has to happen (automatic quality stepping down because the current connection stalls) switches anyway and reports a [`discontinuity`](events.md#events) with `reason: 'switch'` and, when known, `jump`: the seconds skipped (+) or heard again (−). A switch that can wait (`selectQuality`, a step up) is refused when its new connection's burst never settles, it never starts playing, it is behind and cannot catch up (on iOS AVPlayer cannot run a live stream faster), a connection is being replaced or jumps, or the alignment would take more than 30 s: the current quality plays on, a non-fatal `QUALITY_SWITCH_FAILED` error says why, and that rendition sits out a minute. A station a browser plays on its plain `<audio>` element (no CORS) can never be lined up, so its switches always go ahead, with a `discontinuity`.
+
+Positions go on across a live switch: `position` does not restart with the new connection, and neither does `liveOffset`. A switch that was lined up reports no `discontinuity`, so an app that keeps its own place in the station's timeline (a song's progress, lyrics) should place it again on `discontinuity`, not on every change of `quality`. The title playing is told again when the new connection takes over, if it changed.
+
+| Measured (`scripts/align-measure`, the test station's 320, 192 and 64 kbps mounts with Icecast's burst, five switches each) | Before | Now |
+|---|---|---|
+| Android (emulator) | −13.2 s to +6.6 s | aligned, within 0.06 s |
+| Chromium (Playwright; also through Expo web) | the same | aligned, within 0.08 s |
+| Firefox (Playwright; also through Expo web) | the same | aligned, within 0.13 s |
+| Safari (Playwright WebKit) | the same | aligned, within 0.06 s |
+
+A minus sign is audio heard twice, a plus sign audio skipped. The recordings are of what the device played. How the new connection is brought into line depends on the platform. Android runs it faster or holds it. Chromium and Firefox move it within what it has received, then hold it (Firefox plays it at −80 dB, not muted: it stops a silent element's output, and its clock slips when the element is heard again). WebKit runs it faster: an element moved there is paused again, so its switches take about 10 s. On iOS, AVPlayer cannot run a live stream faster, so the stream proxy drops the start of the new connection's burst before AVPlayer reads it, then holds it. iOS is written, and its aligner and burst gate are tested, but it has not been recorded yet. In a browser, the station must send CORS headers so that RNAP reads the stream ([what to send](web.md#what-the-stream-server-must-send)). A station played on the plain `<audio>` element cannot be lined up (a paused element stops loading, and what it has loaded moves in steps of seconds).
+
+HLS and DASH renditions are lined up by their program dates (`EXT-X-PROGRAM-DATE-TIME`, a DASH presentation's clock): each says which moment of the station its playhead is at, so the mapping is known as soon as the new one is ready, with no burst to wait for. The new one is moved to what is heard (a seek within its live window, back as well as forward: a listener behind live, after a pause, is not made to wait), held, and started, as above; separate playlists with different segment lengths or start points line up the same way, audio or video. A new one that has no program date yet (no segment at its playhead) is given 3 s to get one. On iOS a DASH presentation's clock becomes the program dates of the HLS it is played as. HLS or DASH without program dates, or renditions of different kinds (an Icecast mount and an HLS stream), switch at once, as before, whatever the reason.
+
+| Measured (the test station's program as live HLS of packed MP3 with program dates, 2, 4 and 6 s segments; five switches each) | Before | Now |
+|---|---|---|
+| Chromium, hls.js (Playwright) | −15.7 s to +16.9 s | aligned, within 0.03 s |
+| Firefox, hls.js (Playwright) | −18.5 s to +17.1 s | aligned, within 0.08 s |
+| WebKit, hls.js (Playwright) | −13.8 s to +15.2 s | aligned, within 0.05 s |
+| Android (emulator, ExoPlayer) | not recorded | aligned, within 0.22 s |
+
+A switch takes 1 to 2 s in a browser. In one Firefox run of four, the audio also went back 1.8 s, 4 s after a switch had taken over; it was not seen again. On Android the residual is ExoPlayer's own: it plays packed-MP3 segments with jumps of its own at segment boundaries (up to 0.5 s, once 6 s, with no switch near), so its positions are that coarse. Safari's own HLS player (macOS, iOS) and AVPlayer on iOS are written to the same plan (a seek, then held) but not recorded yet. React Native Web plays HLS through hls.js too, once the app registers it ([HLS](web.md#hls)).
+
+A live MPEG-TS channel of sound (an IPTV radio stream: `.ts` and the like, which RNAP remuxes in a browser) lines up too. In a browser RNAP feeds the remuxed stream through MSE, so it is lined up by its edges, like an Icecast mount; Android plays it as a progressive stream, lined up the same way (with a picture too, though that was not recorded). Two kinds still switch at once, as before, whatever the reason: in a browser a TS channel with a picture (what it holds grows a keyframe group at a time, too coarse to measure its live point by), and every TS channel on iOS (the remuxer serves it to AVPlayer as HLS, with no program dates to line up by).
+
+| Measured (the test station's program as a live MPEG-TS channel, AAC at 192, 96 and 48 kbps, with a 64 KiB burst; five switches each) | Before | Now |
+|---|---|---|
+| Chromium (Playwright) | −1.6 s to +2.3 s, reported as nothing | aligned, within 0.18 s |
+| Firefox (Playwright) | −4.3 s to +2.6 s | aligned, within 0.3 s |
+| WebKit (Playwright) | −1.4 s to +2.4 s | aligned, within 0.21 s; 2 of 15 switches refused (`unsettled`) |
+| Android (emulator) | not recorded | aligned, within 0.12 s |
+
+A TS channel lines up less closely than an Icecast mount: its muxer sends audio ahead of its time stamps, by an amount of its own at each bitrate, so what has arrived is the live point only to within that. On WebKit a switch whose edges did not settle in time was refused (an optional one: the current quality played on); in Chromium and Firefox none were.
 
 ## Several players
 

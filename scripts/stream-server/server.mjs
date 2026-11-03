@@ -17,9 +17,22 @@
 //   ?dropAfter=S        destroy the socket after S s
 //   ?endAfter=S         end the response cleanly after S s
 //   ?slow=BYTES_PER_S   throttle below the bitrate (buffering forever)
+// Renditions:   GET /radio/320, /radio/192, /radio/64  one station as three
+//               Icecast mounts (MP3, generated; /radio/64aac: the same as
+//               ADTS AAC): every connection starts
+//               with the most recent 64 KiB like Icecast's burst, so it is
+//               further behind live at a lower bitrate; the same controls
+//   ?burst=BYTES        the burst's size instead
 //   ?status=503         answer with this HTTP status instead
 //   ?delay=MS           wait before sending headers
 //   ?noCors=1           omit CORS headers (browsers must fall back to <audio>)
+// HLS renditions: GET /radio-hls/320/live.m3u8, /192/…, /64/…  the renditions'
+//               program as live HLS of packed-MP3 segments of 2, 4 and 6 s,
+//               with EXT-X-PROGRAM-DATE-TIME on one clock: each window starts
+//               elsewhere in the program, so only program dates line a switch up
+//               (/radio-hls/N/seg-K.mp3: one segment)
+//               GET /radio-ts/192.ts, /96.ts, /48.ts  the same program as a live MPEG-TS
+//               channel (AAC), each connection with a 64 KiB burst
 // HLS:          GET /hls/vod.m3u8   the program as 4.5 s packed-MP3 segments,
 //                                   with an ID3 title at the start of each
 //               GET /hls/live.m3u8  the same as a live sliding window
@@ -183,6 +196,46 @@ const LIVE_STREAMS = {
       }
     : {}),
 };
+/** One station as three Icecast mounts (generate-media.sh), on one on-air timeline. */
+for (const kbps of [320, 192, 64]) {
+  const name = `radio-${kbps}.mp3`;
+  if (!existsSync(join(here, 'media', name))) continue;
+  const body = media(name);
+  LIVE_STREAMS[`/radio/${kbps}`] = {
+    body,
+    type: 'audio/mpeg',
+    // The file's own pace (120 s): every mount stays on one on-air timeline.
+    rate: body.length / 120,
+    burst: 65_536,
+    frames: null,
+  };
+}
+const fileSize = (name) => readFileSync(join(here, 'media', name)).length;
+/** The renditions' program as a live MPEG-TS channel at three bitrates, each with a burst. */
+for (const kbps of [192, 96, 48]) {
+  const name = `radio-${kbps}.ts`;
+  if (!existsSync(join(here, 'media', name))) continue;
+  const body = media(name);
+  LIVE_STREAMS[`/radio-ts/${kbps}.ts`] = { body, type: 'video/mp2t', rate: body.length / 120, burst: 65_536, frames: null };
+}
+/** The renditions' program as live HLS: whole MP3 frames per segment, 2, 4 and 6 s long. */
+const RADIO_HLS = {};
+for (const [kbps, seconds] of [[320, 2], [192, 4], [64, 6]]) {
+  const name = `radio-${kbps}.mp3`;
+  if (!existsSync(join(here, 'media', name))) continue;
+  const body = media(name);
+  const per = Math.round((seconds * 44_100) / 1152);
+  RADIO_HLS[kbps] = { body, frames: null, per, duration: (per * 1152) / 44_100 };
+}
+if (existsSync(join(here, 'media', 'radio-64aac.aac'))) {
+  LIVE_STREAMS['/radio/64aac'] = {
+    body: media('radio-64aac.aac'),
+    type: 'audio/aac',
+    rate: fileSize('radio-64aac.aac') / 120,
+    burst: 65_536,
+    frames: null,
+  };
+}
 const TICK_MS = 100;
 const MAX_DELAY_MS = 60_000;
 const STARTED_AT = Date.now();
@@ -229,8 +282,9 @@ function metadataBlock(text, charset, malformed, host) {
 
 function liveStream(req, res, url) {
   const q = url.searchParams;
-  const { body: program, type: contentType, rate: bitrate } =
-    LIVE_STREAMS[url.pathname];
+  const mount = LIVE_STREAMS[url.pathname];
+  const { body: program, type: contentType, rate: bitrate } = mount;
+  const burst = mount.burst == null ? null : Number(q.get('burst') ?? mount.burst);
   const status = Number(q.get('status') ?? 200);
   const delay = Number(q.get('delay') ?? state.delay);
   if (!Number.isFinite(delay) || delay < 0 || delay > MAX_DELAY_MS) {
@@ -263,7 +317,8 @@ function liveStream(req, res, url) {
     titleEvery <= 0 ||
     !Number.isFinite(rate) ||
     rate <= 0 ||
-    rate > bitrate
+    rate > bitrate ||
+    (burst != null && (!Number.isSafeInteger(burst) || burst < 0 || burst > program.length / 2))
   ) {
     res.writeHead(400);
     res.end('invalid stream controls');
@@ -310,6 +365,18 @@ function liveStream(req, res, url) {
     const openedAt = Date.now();
     // Prefill ~2 s like real servers do (fast start), then real time.
     let budget = bitrate * 2;
+    if (burst != null) {
+      // Icecast: the most recent `burst` bytes at once (from a frame), then
+      // real time. The live point stays where it is: the connection starts
+      // that much behind it.
+      mount.frames ??= framesOf(contentType, program);
+      const want = (offset - burst + program.length) % program.length;
+      const start = mount.frames.find((at) => at >= want) ?? 0;
+      budget = (offset - start + program.length) % program.length;
+      offset = start;
+      // Where in the program it starts: what a recording of it is checked against.
+      record({ kind: 'burst', id: conn.id, programStart: offset / bitrate, burstSeconds: budget / bitrate });
+    }
 
     const timer = setInterval(() => {
       const elapsed = (Date.now() - openedAt) / 1000;
@@ -399,6 +466,13 @@ const SEGMENT_SECONDS = (SEGMENT_FRAMES * 1152) / 44100;
 const MPEG1_BITRATES = [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320];
 const MPEG1_RATES = [44100, 48000, 32000];
 
+/** Where a connection may start in a mount's program: its frames, or a TS packet. */
+function framesOf(contentType, program) {
+  if (contentType === 'audio/aac') return adtsFrames(program);
+  if (contentType === 'video/mp2t') return Array.from({ length: Math.floor(program.length / 188) }, (_, i) => i * 188);
+  return mp3Frames(program).map(([at]) => at);
+}
+
 /** Frame offsets of an MPEG-1 Layer III file without tags (what generate-media.sh makes). */
 function mp3Frames(buffer) {
   const frames = [];
@@ -411,6 +485,25 @@ function mp3Frames(buffer) {
     }
     const length = Math.floor((144 * bitrate) / rate) + ((buffer[at + 2] >> 1) & 1);
     frames.push([at, length]);
+    at += length;
+  }
+  return frames;
+}
+
+/** Frame offsets of an ADTS AAC file. */
+function adtsFrames(buffer) {
+  const frames = [];
+  for (let at = 0; at + 7 <= buffer.length; ) {
+    if (buffer[at] !== 0xff || (buffer[at + 1] & 0xf6) !== 0xf0) {
+      at += 1;
+      continue;
+    }
+    const length = ((buffer[at + 3] & 3) << 11) | (buffer[at + 4] << 3) | (buffer[at + 5] >> 5);
+    if (length < 7) {
+      at += 1;
+      continue;
+    }
+    frames.push(at);
     at += length;
   }
   return frames;
@@ -456,6 +549,44 @@ function playlist(first, last, ended) {
     lines.push(`#EXTINF:${SEGMENT_SECONDS.toFixed(3)},`, `seg-${n}.mp3`);
   if (ended) lines.push('#EXT-X-ENDLIST');
   return lines.join('\n') + '\n';
+}
+
+/** Program date of segment 0 of every rendition (10 minutes before the server started: always a full window). */
+const radioHlsEpoch = () => STARTED_AT - 600_000;
+
+function radioHls(req, res, url) {
+  const m = /^\/radio-hls\/(\d+)\/(?:live\.m3u8|seg-(\d+)\.mp3)$/.exec(url.pathname);
+  const r = m && RADIO_HLS[m[1]];
+  if (!r) {
+    res.writeHead(404);
+    return res.end('not found');
+  }
+  r.frames ??= mp3Frames(r.body);
+  let body;
+  let type = 'audio/mpeg';
+  if (m[2] == null) {
+    type = 'application/vnd.apple.mpegurl';
+    const edge = Math.floor((Date.now() - radioHlsEpoch()) / 1000 / r.duration) - 1;
+    const lines = ['#EXTM3U', '#EXT-X-VERSION:3', `#EXT-X-TARGETDURATION:${Math.ceil(r.duration)}`, `#EXT-X-MEDIA-SEQUENCE:${edge - 4}`];
+    for (let n = edge - 4; n <= edge; n++) {
+      const date = new Date(radioHlsEpoch() + n * r.duration * 1000).toISOString();
+      lines.push(`#EXT-X-PROGRAM-DATE-TIME:${date}`, `#EXTINF:${r.duration.toFixed(5)},`, `seg-${n}.mp3`);
+    }
+    body = lines.join('\n') + '\n';
+  } else {
+    // Segment n holds the program's frames from n × per on, looping.
+    const n = Number(m[2]);
+    const parts = [];
+    for (let i = 0; i < r.per; i++) {
+      const [at, length] = r.frames[(n * r.per + i) % r.frames.length];
+      parts.push(r.body.subarray(at, at + length));
+    }
+    body = Buffer.concat(parts);
+  }
+  stats.byPath[url.pathname] = (stats.byPath[url.pathname] ?? 0) + 1;
+  record({ kind: 'hls', path: url.pathname });
+  res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'no-cache', 'Content-Length': Buffer.byteLength(body) });
+  res.end(body);
 }
 
 /** The newest finished segment of the live window (it began 10 minutes ago, so there are always enough). */
@@ -563,6 +694,7 @@ const server = createServer((req, res) => {
   }
   if (LIVE_STREAMS[url.pathname]) return liveStream(req, res, url);
   if (url.pathname.startsWith('/hls/')) return hls(req, res, url);
+  if (url.pathname.startsWith('/radio-hls/')) return radioHls(req, res, url);
   if (FILES[url.pathname]) return staticFile(req, res, url);
   if (url.pathname === '/drm/clearkey') return clearKeyLicense(req, res, url);
   if (url.pathname === '/control') {

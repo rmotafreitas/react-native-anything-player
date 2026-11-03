@@ -7,6 +7,7 @@ import android.os.SystemClock
 import android.util.Log
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.WritableMap
+import com.anythingplayer.core.LiveOffset
 import com.anythingplayer.core.AudioRoute
 import com.anythingplayer.core.AudioRouteKind
 import com.anythingplayer.core.DiagnosticEntry
@@ -57,6 +58,9 @@ internal object AndroidClock : EngineClock {
 }
 
 private const val TAG = "RNAP"
+
+/** How often a playing live item is read for `liveOffset` (ms). */
+private const val LIVE_READ_MS = 500L
 private const val DIAGNOSTICS_CAPACITY = 300
 
 /**
@@ -132,11 +136,44 @@ internal class PlayerController(
     object : Runnable {
       override fun run() {
         if (released || !progressTicking) return
-        progressSnapshot = ProgressSnapshot(driver.progress(), AndroidClock.monotonicMs, AndroidClock.wallMs)
+        progressSnapshot = ProgressSnapshot(timedProgress(), AndroidClock.monotonicMs, AndroidClock.wallMs)
         emit("progress", progressMap())
         handler.postDelayed(this, options.progressIntervalMs)
       }
     }
+
+  /** How far a live item trails its live point (smooth, growing while paused): `liveOffset`. */
+  private val liveOffset = LiveOffset()
+
+  /** Where the item is, with how far it trails a live source's live point. */
+  private fun timedProgress(): ProgressReading {
+    val reading = driver.progress()
+    val value =
+      liveOffset.read(
+        AndroidClock.monotonicMs,
+        LiveOffset.Reading(reading.position, reading.edge, reading.liveOffset, statusSnapshot.first.isLive, reading.programDate),
+      )
+    return reading.copy(liveOffset = value.offset, liveOffsetSettled = value.settled)
+  }
+
+  /** A live item is read while it plays, whatever `progressInterval` is: `liveOffset` follows it. */
+  private var liveReading = false
+  private val liveRead =
+    object : Runnable {
+      override fun run() {
+        if (released || !liveReading) return
+        progressSnapshot = ProgressSnapshot(timedProgress(), AndroidClock.monotonicMs, AndroidClock.wallMs)
+        handler.postDelayed(this, LIVE_READ_MS)
+      }
+    }
+
+  private fun updateLiveReads(status: Status) {
+    val wanted = status.isLive && status.state == PlaybackState.PLAYING && !released
+    if (wanted == liveReading) return
+    liveReading = wanted
+    handler.removeCallbacks(liveRead)
+    if (wanted) handler.post(liveRead)
+  }
 
   private fun updateProgressTicks(state: PlaybackState) {
     val wanted = options.progressIntervalMs > 0 && state == PlaybackState.PLAYING && !released
@@ -168,6 +205,7 @@ internal class PlayerController(
     quality: String? = null,
     completion: LoadCompletion? = null,
   ) {
+    liveOffset.reset()
     runtime.beforeLoad(this, source.isNetwork)
     sourceFields = fields
     overrides = NowPlayingFields()
@@ -363,6 +401,7 @@ internal class PlayerController(
     // The song advances with the audio, not the wall clock.
     trackClock?.setRunning(status.state == PlaybackState.PLAYING, AndroidClock.monotonicMs)
     updateProgressTicks(status.state)
+    updateLiveReads(status)
     picture?.statusChanged(status)
     runtime.onStatusChanged(this)
   }
@@ -521,7 +560,7 @@ internal class PlayerController(
       handler.postDelayed(wakeup, (at - AndroidClock.monotonicMs).coerceAtLeast(0))
     }
     // Every engine entry ends here: refresh the progress snapshot JS reads.
-    progressSnapshot = ProgressSnapshot(driver.progress(), AndroidClock.monotonicMs, AndroidClock.wallMs)
+    progressSnapshot = ProgressSnapshot(timedProgress(), AndroidClock.monotonicMs, AndroidClock.wallMs)
     statsSnapshot = engine.stats
     if (picture != null) droppedSnapshot = localDriver.droppedFrames
   }
@@ -547,15 +586,19 @@ internal class PlayerController(
     runtime.onNowPlayingChanged(this)
   }
 
-  override fun onDiscontinuity(generation: Int, position: Double) {
+  override fun onDiscontinuity(generation: Int, position: Double, reason: String, jump: Double?) {
     if (!engine.accepts(generation)) return
+    // A new connection: how far behind live is measured again.
+    liveOffset.reset()
     // Listeners read the progress to place themselves again: the snapshot
     // from the last tick still describes the item playback just left.
-    progressSnapshot = ProgressSnapshot(driver.progress(), AndroidClock.monotonicMs, AndroidClock.wallMs)
+    progressSnapshot = ProgressSnapshot(timedProgress(), AndroidClock.monotonicMs, AndroidClock.wallMs)
     emit(
       "discontinuity",
       Arguments.createMap().apply {
         putDouble("position", position)
+        putString("reason", reason)
+        if (jump != null) putDouble("jump", jump) else putNull("jump")
         putDouble("timestamp", AndroidClock.wallMs.toDouble())
       },
     )

@@ -201,6 +201,8 @@ export class MseStream {
   private objectUrl: string | null = null;
   private abort: (() => void) | null = null;
   private closed = false;
+  private splicing = false;
+  private drops = 0;
   /** The stream was ended (or handed to the plain element): nothing more is read. */
   private halted = false;
   /** Wraps the frames in MP4 for a browser that takes them only that way. */
@@ -230,6 +232,16 @@ export class MseStream {
     /** A dropped connection may be spliced (off with `reconnect: false`). */
     private readonly mayReconnect = true
   ) {}
+
+  /** A dropped connection is being replaced: what is buffered says nothing about live. */
+  get reconnecting(): boolean {
+    return this.splicing;
+  }
+
+  /** Connections dropped and replaced so far (a splice can come and go between two readings). */
+  get reconnects(): number {
+    return this.drops;
+  }
 
   /** Seconds of received audio not yet heard. */
   get bufferedAhead(): number {
@@ -481,6 +493,7 @@ export class MseStream {
     this.buffer!.abort();
     // The new connection continues mid-frame, on the same timeline.
     this.mux?.restart();
+    this.splicing = false;
     this.listener.onSplice(this.bufferedEnd());
     return true;
   }
@@ -557,6 +570,8 @@ export class MseStream {
         splice: 'true',
         ...cause,
       });
+      this.splicing = true;
+      this.drops += 1;
       this.connect(false);
     } else {
       // Short-lived: a flapping server. End the stream; the engine's backoff

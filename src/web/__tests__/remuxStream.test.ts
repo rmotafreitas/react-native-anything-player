@@ -390,6 +390,20 @@ describe('live streams', () => {
     expect(r.server.requests[0]!.signal!.aborted).toBe(false);
   });
 
+  // What a live quality switch may line up on: the sound alone (its edge
+  // moves with what arrives), not a picture (a keyframe group at a time).
+  test.each([
+    ['a video player muxes the picture', true, true],
+    ['an audio player muxes the sound alone', false, false],
+  ])('%s: muxesVideo', async (_name, video, muxes) => {
+    const r = open({ file: 'h264-aac.mpegts', liveHint: true, video });
+    r.server.next({ stallAfter: 30000 });
+    await settle();
+
+    expect(r.stream.live).toBe(true);
+    expect(r.stream.muxesVideo).toBe(muxes);
+  });
+
   test('a live stream that ends is reported as recoverable', async () => {
     const r = open({ file: 'h264-aac.mpegts', liveHint: true });
     await settle();

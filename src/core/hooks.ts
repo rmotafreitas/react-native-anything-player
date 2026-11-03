@@ -67,6 +67,8 @@ const EMPTY_PROGRESS: Progress = {
   buffered: 0,
   bufferedAhead: 0,
   liveOffset: null,
+  liveOffsetSettled: false,
+  programDate: null,
   timestamp: 0,
 };
 

@@ -211,6 +211,11 @@ export class RemuxStream implements HlsTracks {
     private readonly listener: RemuxListener
   ) {}
 
+  /** It muxes a picture: what it holds then grows a keyframe group at a time. */
+  get muxesVideo(): boolean {
+    return this.remuxer?.muxed?.some((t) => t.kind === 'video') === true;
+  }
+
   /** Whether it is a live stream; `null` until known. */
   get live(): boolean | null {
     return this.remuxer?.muxed ? this.size == null : null;

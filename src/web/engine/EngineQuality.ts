@@ -32,16 +32,10 @@ interface PendingSwap {
   generation: number;
   rendition: number;
   startedAt: number;
+  /** When the new file was first ready: the time it has to take over counts from here. */
+  readyAt: number | null;
   /** What the new file reported when ready: the item's facts once it takes over. */
   info: ReadyInfo | null;
-  readyAt?: number;
-}
-
-/** The new file must play by then: `SWAP_TIMEOUT_MS` to be ready, `SWAP_ALIGN_MS` once ready. */
-export function swapDeadline(swap: PendingSwap): number {
-  return swap.readyAt != null
-    ? swap.readyAt + RecoveryPolicy.SWAP_ALIGN_MS
-    : swap.startedAt + RecoveryPolicy.SWAP_TIMEOUT_MS;
 }
 
 /** A rendition's id: the app's, or `r<index>`. */
@@ -272,12 +266,32 @@ export abstract class EngineQuality extends EngineFades {
   }
 
   protected swapReady(info: ReadyInfo): void {
-    if (this.pendingSwap != null) {
-      this.pendingSwap.info = info;
-      // Live, a driver that lines it up first (Android's) needs more time once ready.
-      if (this.isLive) this.pendingSwap.readyAt ??= this.now;
+    const swap = this.pendingSwap;
+    if (swap != null) {
+      swap.info = info;
+      swap.readyAt ??= this.now;
     }
     this.swapNote('ready');
+  }
+
+  /**
+   * When a switch is dropped: `SWAP_TIMEOUT_MS` to be ready
+   * (`SWAP_LIVE_READY_MS` live), then `SWAP_TIMEOUT_MS`
+   * again to take over (`SWAP_ALIGN_TIMEOUT_MS` live, where the new audio is
+   * lined up with what is heard first).
+   */
+  protected swapDeadline(swap: PendingSwap): number {
+    if (swap.readyAt == null)
+      return (
+        swap.startedAt +
+        (this.isLive
+          ? RecoveryPolicy.SWAP_LIVE_READY_MS
+          : RecoveryPolicy.SWAP_TIMEOUT_MS)
+      );
+    const takeOver = this.isLive
+      ? RecoveryPolicy.SWAP_ALIGN_TIMEOUT_MS
+      : RecoveryPolicy.SWAP_TIMEOUT_MS;
+    return swap.readyAt + takeOver;
   }
 
   protected cancelSwap(reason: string): void {
@@ -613,6 +627,7 @@ export abstract class EngineQuality extends EngineFades {
       generation,
       rendition: target,
       startedAt: this.now,
+      readyAt: null,
       info: null,
     };
     this.log('quality switch', { to: `r${target}`, cause });
@@ -624,6 +639,7 @@ export abstract class EngineQuality extends EngineFades {
       allowReconnect: this.options.reconnect,
       swap: true,
       rendition: target,
+      required: this._state === 'buffering',
     });
   }
 
@@ -647,14 +663,21 @@ export abstract class EngineQuality extends EngineFades {
       this.renditions![swap.rendition]!,
       swap.rendition
     );
-    const outcome = cause ? 'failed' : 'timed out';
+    // A live switch that could wait and could not be lined up: refused, why in `cause`.
+    const refused = cause?.code === 'QUALITY_SWITCH_FAILED';
+    let outcome = cause ? 'failed' : 'timed out';
+    // The new file's own failure: its code, then its message.
+    let causeText = cause ? `${cause.code}: ${cause.message}` : reason;
+    if (refused) {
+      outcome = 'was refused';
+      causeText = cause.message;
+    }
     const error = engineError(
       'QUALITY_SWITCH_FAILED',
       `The switch to quality "${target}" ${outcome}; the current one plays on.`,
       true,
       {
-        // The new file's own failure: its code, then its message.
-        cause: cause ? `${cause.code}: ${cause.message}` : reason,
+        cause: causeText,
         ...(cause?.platformDomain != null
           ? { platformDomain: cause.platformDomain }
           : {}),

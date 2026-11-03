@@ -286,6 +286,12 @@ export interface OpenRequest {
   swap?: boolean;
   /** Index into the source's renditions, when it has them. */
   rendition?: number | null;
+  /**
+   * A switch the player needs (the current item is stalling): one that
+   * cannot be lined up with what is heard switches anyway, reported as a
+   * `discontinuity`. Otherwise it is dropped and the current one plays on.
+   */
+  required?: boolean;
 }
 
 /** A point-in-time reading of the media element, taken on demand. */

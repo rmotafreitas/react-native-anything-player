@@ -105,7 +105,7 @@ Call `player.release()` only when you are done with it for good.
 | `didJustFinish` | `player.on('ended', …)`, or `status.state === 'ended'` |
 | `error: string \| null` | `status.error: { code, message, recoverable, … }` or the `error` event ([errors](errors.md)) |
 | `isLive` | `status.isLive` |
-| `currentOffsetFromLive` | `getProgress().liveOffset` (`null` when it cannot be measured; use `bufferedAhead`) |
+| `currentOffsetFromLive` | `getProgress().liveOffset` (`null` when it cannot be measured; use `bufferedAhead`), steady once `liveOffsetSettled` |
 | `playbackRate` | `status.rate` |
 | `mute` | `status.muted` |
 | `loop` | `player.setLoop(bool)` (not in `status`) |

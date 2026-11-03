@@ -71,6 +71,9 @@ final class StreamProxy {
     /// The response was an HLS playlist: AVPlayer was redirected to this URL
     /// and fetches the playlist and its segments itself. Called on the proxy queue.
     var onRedirect: ((URL) -> Void)? = nil
+    /// A live quality switch's new connection: its endless response's audio
+    /// is held here until the aligner opens it (`BurstGate`).
+    var gate: BurstGate? = nil
   }
 
   private let queue = DispatchQueue(label: "anythingplayer.proxy")
@@ -173,6 +176,28 @@ final class StreamProxy {
       }
       for downstream in downstreams.values where downstream.token == token { close(downstream) }
     }
+  }
+
+  /// Relays what a burst gate's open let through, without waiting for more audio.
+  func flushGate(_ proxied: URL) {
+    let token = Self.token(of: proxied)
+    queue.async { [self] in
+      guard let gate = routes[token]?.gate,
+        let upstream = upstreams.values.first(where: { $0.token == token && $0.endless && $0.range == nil }),
+        let out = gate.flush()
+      else { return }
+      relay(upstream, gated: out)
+    }
+  }
+
+  /// The audio a gate lets through, framed again at the response's ICY
+  /// cadence, each block before the byte it came before.
+  private func relay(_ upstream: Upstream, gated out: BurstGate.Out) {
+    let blocks = out.blocks.map { IcyDeinterleaver.Block(audioOffset: Int64($0.offset), bytes: $0.bytes) }
+    if !out.audio.isEmpty { routes[upstream.token]?.onAudio?(Data(out.audio), upstream.contentType) }
+    let framed = upstream.reframer.frame((audio: out.audio, blocks: blocks), audioEnd: Int64(out.audio.count))
+    guard !framed.isEmpty else { return }
+    for reader in upstream.readers { send(reader, Data(framed)) }
   }
 
   /// The app returns to the foreground, possibly after a suspension: check the
@@ -487,6 +512,14 @@ final class StreamProxy {
     if upstream.endless {
       let chunk = upstream.deinterleaver.consume([UInt8](data))
       upstream.bytes += Int64(chunk.audio.count)
+      // A live switch's new connection: held until the aligner opens it.
+      if upstream.range == nil, let gate = routes[upstream.token]?.gate, !gate.isOpen {
+        // Each block's place in this chunk's audio.
+        let start = upstream.deinterleaver.audioBytes - Int64(chunk.audio.count)
+        let found = chunk.blocks.map { (offset: Int($0.audioOffset - start), bytes: $0.bytes) }
+        guard let out = gate.pass(chunk.audio, blocks: found, contentType: upstream.contentType) else { return }
+        return relay(upstream, gated: out)
+      }
       if upstream.range == nil, !chunk.audio.isEmpty, let onAudio = routes[upstream.token]?.onAudio {
         onAudio(Data(chunk.audio), upstream.contentType)
       }

@@ -344,12 +344,9 @@ class PlaybackEngine(
     val rendition: Int,
     val startedAt: Long,
     var info: ReadyInfo? = null,
+    /** When the new file was first ready: the time it has to take over counts from here. */
     var readyAt: Long? = null,
-  ) {
-    /** The new file must play by then: [RecoveryPolicy.SWAP_TIMEOUT_MS] to be ready, [RecoveryPolicy.SWAP_ALIGN_MS] once ready. */
-    val deadline: Long
-      get() = readyAt?.let { it + RecoveryPolicy.SWAP_ALIGN_MS } ?: (startedAt + RecoveryPolicy.SWAP_TIMEOUT_MS)
-  }
+  )
 
   private data class PendingRefresh(
     val reason: RefreshReason,
@@ -769,8 +766,7 @@ class PlaybackEngine(
       // A quality switch's file: its facts wait for it to take over.
       pendingSwap?.let { swap ->
         swap.info = info
-        // Live, the driver lines it up first (SwapDriver): more time once ready.
-        if (swap.readyAt == null && isLive) swap.readyAt = now
+        if (swap.readyAt == null) swap.readyAt = now
       }
       return swapNote("ready")
     }
@@ -2211,7 +2207,19 @@ class PlaybackEngine(
     detachedSince?.let { if (t - it >= RecoveryPolicy.VIEW_DETACH_GRACE_MS) noViewDue() }
     pendingRefresh?.let { if (it.deadline <= t) refreshTimedOut(it) }
     refreshAskAt?.let { if (it <= t) expiryDue() }
-    pendingSwap?.let { if (t >= it.deadline) dropSwap(it, "timeout") }
+    pendingSwap?.let { if (t >= swapDeadline(it)) dropSwap(it, "timeout") }
+  }
+
+  /**
+   * When a switch is dropped: `SWAP_TIMEOUT_MS` to be ready (`SWAP_LIVE_READY_MS`
+   * live), then as long again to take over (`SWAP_ALIGN_TIMEOUT_MS` live,
+   * where the new audio is lined up with what is heard first).
+   */
+  private fun swapDeadline(swap: PendingSwap): Long {
+    val readyAt =
+      swap.readyAt
+        ?: return swap.startedAt + if (isLive) RecoveryPolicy.SWAP_LIVE_READY_MS else RecoveryPolicy.SWAP_TIMEOUT_MS
+    return readyAt + if (isLive) RecoveryPolicy.SWAP_ALIGN_TIMEOUT_MS else RecoveryPolicy.SWAP_TIMEOUT_MS
   }
 
   private fun videoWakeups(candidates: MutableList<Long>) {
@@ -2220,7 +2228,7 @@ class PlaybackEngine(
     if (detached != null && pictureMayGoOff) candidates.add(detached + RecoveryPolicy.VIEW_DETACH_GRACE_MS)
     pendingRefresh?.let { candidates.add(it.deadline) }
     refreshAskAt?.let { candidates.add(it) }
-    pendingSwap?.let { candidates.add(it.deadline) }
+    pendingSwap?.let { candidates.add(swapDeadline(it)) }
   }
 
   /** The app came back (`appForegrounded`). */
@@ -2748,6 +2756,7 @@ class PlaybackEngine(
         allowReconnect = options.reconnect,
         swap = true,
         rendition = target,
+        required = state == PlaybackState.BUFFERING,
       ),
     )
   }
@@ -2762,14 +2771,21 @@ class PlaybackEngine(
     if (abrLevel == swap.rendition) abrLevel = currentRendition
     cancelSwap(reason)
     val target = renditions!![swap.rendition].idAt(swap.rendition)
-    val outcome = if (cause != null) "failed" else "timed out"
+    // A live switch that could wait and could not be lined up: refused, why in `cause`.
+    val refused = cause?.code == ErrorCode.QUALITY_SWITCH_FAILED
+    val outcome = if (refused) "was refused" else if (cause != null) "failed" else "timed out"
     val error =
       PlayerError(
         ErrorCode.QUALITY_SWITCH_FAILED,
         "The switch to quality \"$target\" $outcome; the current one plays on.",
         true,
         // The new file's own failure: its code, then its message.
-        causeDescription = if (cause != null) "${cause.code.wire}: ${cause.message}" else reason,
+        causeDescription =
+          when {
+            refused -> cause!!.message
+            cause != null -> "${cause.code.wire}: ${cause.message}"
+            else -> reason
+          },
         platformDomain = cause?.platformDomain,
         platformCode = cause?.platformCode,
       )

@@ -2,6 +2,7 @@
 // `Player`. Twin of `PlayerController.kt` / `PlayerController.swift`, on the
 // browser's single thread.
 
+import { LiveOffset } from '../engine/LiveOffset';
 import type { LicenseRequestEvent } from '../../core/drm';
 import { answerLicense } from './licenseRequests';
 import type { PlayerError } from '../../errors';
@@ -97,6 +98,8 @@ export const webClock: EngineClock = {
   },
 };
 
+/** How often a playing live item is read for `liveOffset` (ms). */
+const LIVE_READ_MS = 500;
 const DIAGNOSTICS_CAPACITY = 300;
 
 interface PendingLoad {
@@ -136,6 +139,9 @@ export class WebPlayerController
   private localItem = false;
   private wakeupTimer: number | null = null;
   private progressTimer: number | null = null;
+  /** Reads a live item every `LIVE_READ_MS` while it plays: `liveOffset` follows it. */
+  private liveTimer: number | null = null;
+  private readonly liveOffset = new LiveOffset();
   private localRoute: AudioRoute = UNKNOWN_ROUTE;
   /** The object URL of the loaded `Blob`/`File`, revoked when the item goes. */
   private objectUrl: string | null = null;
@@ -201,6 +207,7 @@ export class WebPlayerController
     this.sourceFields = fields;
     this.localItem = LOCAL_URI.test(source.uri);
     this.overrides = NO_FIELDS;
+    this.liveOffset.reset();
     this.trackClock = null;
     this._streamMetadata = null;
     this.station = { name: null, genre: null };
@@ -417,9 +424,24 @@ export class WebPlayerController
     return statusToMap(this.statusSnapshot.status, this.statusSnapshot.seq);
   }
 
-  /** Where the item is, on the current output. */
+  /**
+   * Where the item is, on the current output, with how far it trails a live
+   * source's live point (`LiveOffset`: smooth, growing while paused).
+   */
   progress(): ProgressReading {
-    return this.routing.progress();
+    const reading = this.routing.progress();
+    const value = this.liveOffset.read(monotonicNow(), {
+      position: reading.position,
+      edge: reading.edge ?? null,
+      native: reading.liveOffset,
+      live: this.statusSnapshot.status.isLive,
+      programDate: reading.programDate ?? null,
+    });
+    return {
+      ...reading,
+      liveOffset: value.offset,
+      liveOffsetSettled: value.settled,
+    };
   }
 
   progressMap(): Record<string, unknown> {
@@ -512,8 +534,23 @@ export class WebPlayerController
     const g = browser();
     g.clearTimeout(this.wakeupTimer);
     g.clearInterval(this.progressTimer);
+    g.clearInterval(this.liveTimer);
     this.wakeupTimer = null;
     this.progressTimer = null;
+    this.liveTimer = null;
+  }
+
+  /** A live item is read while it plays, whatever `progressInterval` is: `liveOffset` follows it. */
+  private updateLiveReads(state: EngineStatus['state'], live: boolean): void {
+    const wanted = live && state === 'playing' && !this.released;
+    if (wanted === (this.liveTimer !== null)) return;
+    const g = browser();
+    if (wanted) {
+      this.liveTimer = g.setInterval(() => this.progress(), LIVE_READ_MS);
+    } else {
+      g.clearInterval(this.liveTimer);
+      this.liveTimer = null;
+    }
   }
 
   /** `progress` events while playing (`progressInterval`). */
@@ -556,6 +593,7 @@ export class WebPlayerController
       webClock.monotonicMs
     );
     this.updateProgressTicks(status.state);
+    this.updateLiveReads(status.state, status.isLive);
     if (status.state === 'playing') this.updateSampler();
     this.video?.statusChanged(status);
     this.runtime.onStatusChanged(this);
@@ -676,9 +714,21 @@ export class WebPlayerController
     this.runtime.onNowPlayingChanged(this);
   }
 
-  onDiscontinuity(generation: number, position: number): void {
+  onDiscontinuity(
+    generation: number,
+    position: number,
+    reason: 'reconnect' | 'switch' = 'reconnect',
+    jump: number | null = null
+  ): void {
     if (!this.engine.accepts(generation)) return;
-    this.emit('discontinuity', { position, timestamp: webClock.wallMs });
+    // A new connection: how far behind live is measured again.
+    this.liveOffset.reset();
+    this.emit('discontinuity', {
+      position,
+      reason,
+      jump,
+      timestamp: webClock.wallMs,
+    });
   }
 
   onNote(

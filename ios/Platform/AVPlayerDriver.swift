@@ -20,8 +20,11 @@ protocol DriverObserver: AnyObject {
   func driverNote(generation: Int, event: String, details: [String: String])
   /// A live stream's audio jumped, now audible: the proxy spliced a fresh
   /// upstream in, whose connect burst replays recent audio. `position` is
-  /// the media time (s) the new upstream's audio starts at.
-  func driverDiscontinuity(generation: Int, position: Double)
+  /// the media time (s) the new upstream's audio starts at. `reason`:
+  /// `reconnect` (a dropped connection replaced) or `switch` (a live quality
+  /// switch that could not be lined up); `jump`: seconds skipped (+) or heard
+  /// again (−), when known.
+  func driverDiscontinuity(generation: Int, position: Double, reason: String, jump: Double?)
   var isOffline: Bool { get }
   /// Video: the picture's size and the variant playing.
   func driverVideoInfo(generation: Int, info: VideoInfo)
@@ -66,6 +69,12 @@ struct ProgressReading {
   var liveOffset: Double?
   var isPlaying = false
   var rate: Double = 1
+  /// A progressive live stream: where the audio received so far ends (`LiveOffset` measures from it).
+  var edge: Double?
+  /// Epoch ms the stream's own clock gives what plays now (HLS program dates); `nil` without one.
+  var programDate: Int64?
+  /// `liveOffset` has settled (`LiveOffset`): the controller's reading.
+  var liveOffsetSettled = false
 }
 
 /// `EngineDriver` over one AVPlayer. Main thread only.
@@ -108,8 +117,17 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
   private var packetClock: StreamDecoder?
   /// When relayed audio last arrived (monotonic ms; guarded by `feedLock`).
   private var packetClockFedAt: Int64 = 0
+  /// A progressive stream AVFoundation reads itself (a video, protected audio): no packet clock.
+  private var directProgressive = false
   private static let recentAudioLimit = 512 * 1024
   private var itemIsLive = false
+  /// The next open is a live switch's new connection: its audio is held back
+  /// (`BurstGate`) until the aligner says where it starts.
+  var holdBurst = false
+  private var burstGate: BurstGate?
+  /// The connection's audio the gate dropped, seconds: AVPlayer's time 0 is
+  /// here on the connection's timeline.
+  private var burstDropped = 0.0
   weak var observer: DriverObserver?
   private let titleFormat: StreamTitleFormat
 
@@ -226,6 +244,10 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
     pendingStart = request.startPosition.flatMap { $0 > 0 ? $0 : nil }
     if lastRequest?.source.uri != request.source.uri { forcedRemux = nil }
     lastRequest = request
+    let gate = holdBurst ? BurstGate() : nil
+    holdBurst = false
+    burstGate = nil
+    burstDropped = 0
 
     guard let url = Self.resolveURL(request.source.uri) else {
       let gen = generation
@@ -260,6 +282,7 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
       remuxURL = StreamProxy.shared.registerRemux(session)
     }
     // A video goes to AVFoundation directly: range requests, and no ICY to read.
+    directProgressive = remuxSession == nil && (video || request.source.drm != nil) && Self.proxies(url)
     if remuxSession == nil && !video && request.source.drm == nil && Self.proxies(url) {
       let gen = generation
       proxied = StreamProxy.shared.register(
@@ -310,7 +333,9 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
           reconnect: request.allowReconnect,
           onRedirect: { [weak self] _ in
             DispatchQueue.main.async { self?.upstreamRedirected(gen) }
-          }))
+          },
+          gate: gate))
+      if proxied != nil { burstGate = gate }
     }
     itemIsLive = false
     feedLock.sync {
@@ -456,19 +481,85 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
     }
     if let date = item?.currentDate() {
       let offset = Date().timeIntervalSince(date)
-      reading.liveOffset = offset.isFinite && offset >= 0 && offset < 3600 ? offset : nil
-    } else if itemIsLive, let edge = liveEdge {
-      // A live progressive stream (no program dates): how much audio the proxy
-      // has handed AVPlayer past the playhead. `loadedTimeRanges` alone
-      // under-reads it right after connecting: it covers what AVPlayer has
-      // parsed, not the whole connect burst it already holds (measured on a
-      // 64 kbps AAC+ station: 11.6 s reported, 17 s heard behind the edge).
-      let offset = max(edge - reading.position, reading.buffered - reading.position)
-      reading.liveOffset = offset.isFinite && offset >= 0 && offset < 3600 ? offset : nil
+      reading.liveOffset = offset.isFinite && offset >= 0 ? offset : nil
+      reading.programDate = Int64((date.timeIntervalSince1970 * 1000).rounded())
+    } else if itemIsLive, let edge = receivedEdge {
+      // A live progressive stream (no program dates): what the proxy has
+      // handed AVPlayer, which `LiveOffset` measures from (an edge that stops
+      // moving, a stall, keeps the live point it gave). `loadedTimeRanges`
+      // alone under-reads it right after connecting: it covers what AVPlayer
+      // has parsed, not the whole connect burst it already holds (measured on
+      // a 64 kbps AAC+ station: 11.6 s reported, 17 s heard behind the edge).
+      reading.edge = max(edge, reading.buffered)
+    } else if itemIsLive, directProgressive {
+      // A live progressive video: what AVFoundation has loaded.
+      reading.edge = reading.buffered
     }
     reading.isPlaying = player.timeControlStatus == .playing
     reading.rate = Double(rate)
     return reading
+  }
+
+  /// What a live quality switch lines its audio up on (`LiveAligner`), on the
+  /// connection's timeline: only a progressive stream the proxy relays has a
+  /// buffered edge that is the live edge. While its burst is held, nothing
+  /// has reached AVPlayer: the edge is what the gate holds. `nil`: not one.
+  func alignReading() -> LiveAligner.Reading? {
+    guard remuxSession == nil else { return nil }
+    guard relaysAudio else { return clockReading() }
+    if let held = burstGate?.heldSeconds {
+      return LiveAligner.Reading(position: 0, edge: held, playing: false, ready: false)
+    }
+    return LiveAligner.Reading(
+      position: burstDropped + currentPosition,
+      edge: liveEdge.map { burstDropped + $0 },
+      playing: player.timeControlStatus == .playing,
+      ready: item?.status == .readyToPlay)
+  }
+
+  /// HLS AVFoundation reads itself: lined up on its program dates
+  /// (`EXT-X-PROGRAM-DATE-TIME`), moved by a seek. `nil` without them.
+  private func clockReading() -> LiveAligner.Reading? {
+    guard mayHaveClock, let item, item.status == .readyToPlay else { return nil }
+    // The date and the time it belongs to, read together: a seek in flight
+    // reports its target as the position, the date is still the old one's.
+    // A date missing for a moment keeps the last clock.
+    let now = player.currentTime().seconds
+    if let date = item.currentDate(), now.isFinite { lastClock = date.timeIntervalSince1970 - now }
+    guard let clock = lastClock else { return nil }
+    var edge = bufferedEnd
+    var start: Double?
+    for range in item.seekableTimeRanges {
+      let r = range.timeRangeValue
+      let end = CMTimeRangeGetEnd(r).seconds
+      if end.isFinite { edge = max(edge, end) }
+      if r.start.seconds.isFinite { start = min(start ?? r.start.seconds, r.start.seconds) }
+    }
+    return LiveAligner.Reading(
+      position: currentPosition, edge: edge, playing: player.timeControlStatus == .playing, ready: true,
+      clock: clock, start: start)
+  }
+
+  /// HLS AVFoundation reads itself (directly, or redirected to by the proxy): it may have program dates.
+  var mayHaveClock: Bool { remuxSession == nil && (proxied == nil || redirected) }
+
+  /// Reached through the proxy, which has not yet found out whether a playlist is behind the URL.
+  var unclassified: Bool { remuxSession == nil && proxied != nil && !redirected && receivedEdge == nil }
+
+  /// One that may, still loading: whether it has program dates is not known yet.
+  var awaitsClock: Bool {
+    guard mayHaveClock, let item else { return false }
+    return item.status == .unknown
+  }
+
+  /// The last program-date clock read (`clockReading`), per item.
+  private var lastClock: Double?
+
+  /// Lets a held burst through from `seconds` on its timeline (0: all of it).
+  func openBurst(from seconds: Double) {
+    guard let gate = burstGate, let proxied, gate.heldSeconds != nil else { return }
+    burstDropped = gate.requestOpen(from: seconds)
+    StreamProxy.shared.flushGate(proxied)
   }
 
   /// A quality switch's driver samples as `other` does (on or off is set apart).
@@ -553,6 +644,11 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
       guard let clock = packetClock, SystemClock.shared.monotonicMs - packetClockFedAt < 3_000 else { return nil }
       return clock.parsedSeconds
     }
+  }
+
+  /// Stream time of the newest relayed audio, however long ago it came.
+  private var receivedEdge: Double? {
+    feedLock.sync { packetClock?.parsedSeconds }
   }
 
   private var bufferedEnd: Double {
@@ -655,11 +751,12 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
     let heard = pendingSplices.filter { $0 + Self.spliceHeardAfter <= position }
     guard !heard.isEmpty else { return }
     pendingSplices.removeAll { $0 + Self.spliceHeardAfter <= position }
-    for at in heard { observer?.driverDiscontinuity(generation: generation, position: at) }
+    for at in heard { observer?.driverDiscontinuity(generation: generation, position: at, reason: "reconnect", jump: nil) }
   }
 
   private func tearDownItem() {
     pendingSplices = []
+    lastClock = nil
     // The stream visualizer (decoder, queued windows, its timer) belongs to
     // the item: the next item restarts it while sampling is on (`open`,
     // then `attachSampling` on readiness).

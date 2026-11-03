@@ -69,6 +69,8 @@ export interface AudioElementLike extends EventTargetLike {
   readonly remote?: RemotePlaybackLike;
   readonly buffered: TimeRangesLike;
   readonly seekable: TimeRangesLike;
+  /** Safari's own HLS: the date of position 0 (`EXT-X-PROGRAM-DATE-TIME`); an invalid date without one. */
+  getStartDate?(): Date;
   readonly error: MediaErrorLike | null;
   play(): Promise<void>;
   pause(): void;

@@ -42,6 +42,21 @@ final class DashToHlsTests: XCTestCase {
     XCTAssertTrue(output.live)
   }
 
+  /// A live presentation of numbered segments (a duration, no timeline): its clock dates them too.
+  func testLiveNumberedSegmentsCarryProgramDates() throws {
+    let mpd = """
+      <MPD type="dynamic" availabilityStartTime="2026-10-24T00:00:00Z"><Period start="PT10S" duration="PT6S">
+      <AdaptationSet mimeType="audio/mp4" codecs="mp4a.40.2"><SegmentTemplate timescale="1000" duration="2000"
+      media="a-$Number$.m4s" initialization="a-init.mp4" startNumber="5"/><Representation id="a" bandwidth="1"/>
+      </AdaptationSet></Period></MPD>
+      """
+    let output = try DashToHls.convert(mpd, url: URL(string: "https://x/m.mpd")!)
+    let playlist = try XCTUnwrap(output.media.first { $0.name.hasPrefix("audio") }?.playlist)
+    for date in ["00:00:10.000", "00:00:12.000", "00:00:14.000"] {
+      XCTAssertTrue(playlist.contains("#EXT-X-PROGRAM-DATE-TIME:2026-10-24T\(date)Z"), date)
+    }
+  }
+
   func testTemplates() {
     XCTAssertEqual(
       DashToHls.fill("$RepresentationID$/$Number%05d$-$Bandwidth$$$.m4s", id: "v1", bandwidth: 800, number: 42, time: nil),

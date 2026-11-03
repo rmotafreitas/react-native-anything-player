@@ -37,6 +37,7 @@ import androidx.media3.extractor.metadata.id3.TextInformationFrame
 import com.anythingplayer.core.EngineDriver
 import com.anythingplayer.core.ErrorCode
 import com.anythingplayer.core.InterruptionReason
+import com.anythingplayer.core.LiveAligner
 import com.anythingplayer.core.MediaTrack
 import com.anythingplayer.core.OpenRequest
 import com.anythingplayer.core.PlaybackSample
@@ -63,8 +64,11 @@ internal interface DriverObserver {
    * A live stream's audio jumped, now audible: playback moved onto a fresh
    * connection of the same source (see `onPositionDiscontinuity`).
    * [position] is the media position (s) the new connection starts at.
+   * [reason]: `reconnect` (a dropped connection replaced) or `switch` (a live
+   * quality switch that could not be lined up); [jump]: seconds skipped (+)
+   * or heard again (−), when known.
    */
-  fun onDiscontinuity(generation: Int, position: Double)
+  fun onDiscontinuity(generation: Int, position: Double, reason: String = "reconnect", jump: Double? = null)
   fun isOffline(): Boolean
 
   /** Video: the picture's size, HDR, and the variant playing. */
@@ -117,10 +121,12 @@ internal data class ProgressReading(
   val liveOffset: Double?,
   val isPlaying: Boolean,
   val rate: Double,
-  /** Which connection the position and edge belong to: counts up whenever one replaces another. */
-  val connection: Int = 0,
-  /** A replacement connection is already queued behind this one (it ended or is ending). */
-  val continuing: Boolean = false,
+  /** A progressive live stream: where the audio received so far ends (`LiveOffset` measures from it). */
+  val edge: Double? = null,
+  /** Epoch ms the stream's own clock gives what plays now (HLS program dates, a DASH live window); `null` without one. */
+  val programDate: Long? = null,
+  /** `liveOffset` has settled (`LiveOffset`): the controller's reading. */
+  val liveOffsetSettled: Boolean = false,
 )
 
 private const val MEDIA_ID_PREFIX = "anythingplayer:"
@@ -194,8 +200,6 @@ internal class ExoPlayerDriver(
     OkHttpDataSource.Factory(HttpConnections.client).setUserAgent(Util.getUserAgent(context, "RNAP"))
   }
   private var continuationCount = 0
-  /** Counts the connections whose timeline readings follow (see [ProgressReading.connection]). */
-  private var connectionEpoch = 0
   private val continuationTimes = ArrayDeque<Long>()
   /**
    * A fresh connection playback moved onto before any of its audio could
@@ -280,7 +284,6 @@ internal class ExoPlayerDriver(
         // connection's audio plays on, else (an outage outlasted the buffer:
         // nothing of it has arrived yet) once playback resumes.
         val p = player ?: return
-        if (reason == Player.DISCONTINUITY_REASON_AUTO_TRANSITION || reason == Player.DISCONTINUITY_REASON_INTERNAL) connectionEpoch++
         val gen = currentGeneration(p) ?: return
         if (video) report { observer.onPositionJump(gen) }
         if (reason != Player.DISCONTINUITY_REASON_AUTO_TRANSITION && reason != Player.DISCONTINUITY_REASON_INTERNAL) return
@@ -581,7 +584,7 @@ internal class ExoPlayerDriver(
   // ── EngineDriver ──
 
   override fun open(request: OpenRequest) {
-    connectionEpoch++
+    alignEdge = 0.0
     val p = ensurePlayer()
     // Close the previous item's sockets now, even a read blocked on a dead one.
     cancelCallsExcept(emptySet())
@@ -788,6 +791,8 @@ internal class ExoPlayerDriver(
     val p = player ?: return ProgressReading(0.0, 0.0, null, null, false, rate.toDouble())
     val duration = p.duration.takeIf { it != C.TIME_UNSET && it > 0 }?.let { it / 1000.0 }
     val offset = p.currentLiveOffset.takeIf { it != C.TIME_UNSET && it >= 0 }?.let { it / 1000.0 }
+    val live = p.isCurrentMediaItemLive || (p.duration == C.TIME_UNSET && !p.isCurrentMediaItemSeekable)
+    val date = windowStartMs(p)?.let { it + p.currentPosition }
     return ProgressReading(
       p.currentPosition / 1000.0,
       p.bufferedPosition / 1000.0,
@@ -795,10 +800,69 @@ internal class ExoPlayerDriver(
       offset,
       p.isPlaying,
       rate.toDouble(),
-      connectionEpoch,
-      p.mediaItemCount - p.currentMediaItemIndex > 1,
+      // A progressive live stream measures from what it received (`LiveOffset`).
+      edge = if (live && p.currentManifest == null) p.bufferedPosition / 1000.0 else null,
+      programDate = date,
     )
   }
+
+  /**
+   * What a live quality switch lines its audio up on ([LiveAligner]): a
+   * progressive stream's buffered edge (the live edge), or an HLS or DASH
+   * live window's program date. `null`: neither, or nothing loaded.
+   */
+  fun alignReading(): LiveAligner.Reading? {
+    val p = player ?: return null
+    if (p.mediaItemCount == 0) return null
+    if (p.currentManifest != null) {
+      // HLS or DASH: lined up on the stream's clock, the live window's
+      // program date (none: not lined up), and moved by a seek.
+      val start = windowStartMs(p) ?: return null
+      return LiveAligner.Reading(
+        position = p.currentPosition / 1000.0,
+        edge = p.bufferedPosition / 1000.0,
+        playing = p.isPlaying,
+        clock = start / 1000.0,
+        // Positions are the live window's: it can be moved back to its start.
+        start = 0.0,
+      )
+    }
+    val edge = p.bufferedPosition / 1000.0
+    // An edge that fell: ExoPlayer restarted the stream after a load error,
+    // a fresh connection with a burst of its own (reported for no item it has not played).
+    val restarted = edge < alignEdge - 0.5
+    alignEdge = edge
+    return LiveAligner.Reading(
+      position = p.currentPosition / 1000.0,
+      edge = edge,
+      playing = p.isPlaying,
+      // A fresh connection is queued: this one ended, its edge stopped.
+      reconnecting = restarted || p.mediaItemCount - p.currentMediaItemIndex > 1,
+    )
+  }
+
+  /** Epoch ms of the live window's start (HLS EXT-X-PROGRAM-DATE-TIME, DASH), when it has one. */
+  private fun windowStartMs(p: ExoPlayer): Long? {
+    if (p.currentTimeline.isEmpty) return null
+    val window = p.currentTimeline.getWindow(p.currentMediaItemIndex, Timeline.Window())
+    return window.windowStartTimeMs.takeIf { it != C.TIME_UNSET }
+  }
+
+  /** The last edge [alignReading] saw (per open, and per alignment). */
+  private var alignEdge = 0.0
+
+  /** An alignment starts: an edge from before it says nothing. */
+  fun resetAlignEdge() {
+    alignEdge = 0.0
+  }
+
+  /** A progressive stream (no HLS or DASH manifest, whose live window moves its position by segments). */
+  val isProgressive: Boolean
+    get() = player?.currentManifest == null
+
+  /** The item playing: a live stream's reconnection is a new one, its position from 0 again. */
+  val currentItemId: String?
+    get() = player?.currentMediaItem?.mediaId
 
   /** Destroys the native player (frees codecs, sockets and wake locks). */
   fun destroy() {

@@ -59,14 +59,23 @@ export const RecoveryPolicy = {
   VIEW_DETACH_GRACE_MS: 1_000,
   /** In the background, Picture in Picture may start (or the app return) this long after the event. */
   PIP_GRACE_MS: 1_000,
-  /** A quality switch's new file must play within this, or the switch is dropped. */
+  /**
+   * A quality switch's new file must be ready within this, and then take over
+   * within this again, or the switch is dropped.
+   */
   SWAP_TIMEOUT_MS: 12_000,
   /**
-   * Once its file is ready, how long a live switch may still take: a live swap
-   * lines the new connection up with what is heard first (it can hold or
-   * catch up for as long as the relays' delays differ).
+   * Once ready, a live switch takes over within this: it first lines its
+   * audio up with what is heard (the driver gives up sooner, `Align.BUDGET_MS`:
+   * a switch the player needs then goes ahead, one that can wait is refused).
    */
-  SWAP_ALIGN_MS: 30_000,
+  SWAP_ALIGN_TIMEOUT_MS: 45_000,
+  /**
+   * A live switch's new connection must be ready within this: on iOS its
+   * audio waits in the stream proxy until the alignment knows where it
+   * starts (the burst settles within 8 s).
+   */
+  SWAP_LIVE_READY_MS: 20_000,
   /** A rendition that failed is not picked again for this long. */
   FAILED_RENDITION_MS: 60_000,
   /** How long a 401/403 waits for the app's new source before the backoff takes over. */

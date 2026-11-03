@@ -113,7 +113,8 @@ happened since the previous one.
 Command formats: `open(gen=N,start=-|S.S,play=B)`, `play`, `pause`,
 `seek(S.S)`, `release`, `unload`, `volume(V.VV)`, `rate(R.RR)`,
 `switchOutput(ID)`; for video `open(…,r=N)` (a rendition), `open(…,swap)` (a
-quality switch prepared behind the current item), `seek(S.S,exact)`,
+quality switch prepared behind the current item; `,swap,required` when the
+current item is stalling: one that cannot be lined up switches anyway), `seek(S.S,exact)`,
 `video(on|off)`, `quality(maxH=H|-,maxBps=B|-,pin=ID|-,audioOnly=B)`,
 `loop(B)`, `cancelSwap(gen=N)`, `tracks(audio=ID|-,text=ID|-)`. The fake driver's playhead freezes on
 `switchOutput`. A swap's `open` leaves the current playhead alone; the swap's
@@ -173,8 +174,11 @@ receiver reports, and a stall longer than `STALL_MAX_MS`, drive recovery.
   and up after 30 s above 1.5 × the next one. A switch while playing opens the
   new file with `swap` under a new generation (generations come from one
   counter, so a cancelled switch's number is never reused); `playing` for it
-  makes it current. A failure or `SWAP_TIMEOUT_MS` drops it (`cancelSwap`) and
-  the file sits out `FAILED_RENDITION_MS`; a pause, a seek or a new open
+  makes it current. A failure drops it (`cancelSwap`), and so does a timeout:
+  `SWAP_TIMEOUT_MS` to be ready (`SWAP_LIVE_READY_MS` live), then
+  `SWAP_TIMEOUT_MS` to take over
+  (`SWAP_ALIGN_TIMEOUT_MS` for a live stream, whose driver lines the new
+  audio up with what is heard first); the file sits out `FAILED_RENDITION_MS`; a pause, a seek or a new open
   cancels it, and the heartbeat tries again. Paused or loading: a plain
   re-open. On a Cast receiver: a plain re-open.
 - **Audio-only fallback**: below the lowest video quality, after 10 s under
@@ -192,6 +196,55 @@ receiver reports, and a stall longer than `STALL_MAX_MS`, drive recovery.
   of `null` stays off). The driver is told only about the source's own tracks
   (`tracks(…)`, an app file is `text=-`), once per item: again after every
   open and quality switch. A load clears the tracks, the picks and the delay.
+
+## Live switches (`align/`)
+
+`align/live.json` specifies `LiveAligner` (`src/web/engine/LiveAligner.ts`,
+`ios/Core/LiveAligner.swift`, `android/.../core/LiveAligner.kt`): how a live
+quality switch between separate mounts is lined up with what is heard. Each
+case has the new player's `caps` (`maxRate`, `minRate`, `jump`: `always` /
+`first` / `never`, `startLead`, `jumpLead`) and a simulated `world` that the
+three test harnesses run alike, every 40 ms:
+
+- the old connection plays from `oldPosition`, `oldLag` s behind its buffered
+  edge; the new one starts paused at 0 with a burst of `burst` s arriving at
+  `burstSpeed` × real time, then real time (`endsAfterBurst`: then nothing);
+- each edge moves only when a chunk arrives: every `chunkMs` (or
+  `oldChunkMs` / `nextChunkMs`), from `oldPhaseMs` / `nextPhaseMs`;
+- a held player starts moving `startLatencyMs` after it is told to run; a
+  rate change applies at once; a jump moves it at once, within what arrived;
+- `oldStallAt`, `oldReconnectingAt`, `interruptAt` (a discontinuity) and
+  `nextReadyAt` (the new player cannot start before) are optional, in ms;
+  `positionJitter` reads the new playhead that much off, alternately early
+  and late;
+- `edgeArrival`: the readings carry when each edge's audio arrived
+  (`edgeAt`, the last chunk's time) instead of the tick's; `appRate` is the
+  app's rate (both players run at it, the new one at the aligner's rate ×
+  it); `ticksMs` lists the ticks' lengths in turn (late timers) instead of
+  every 40 ms;
+- `programDates`: both readings carry the stream's clock (`clock`, HLS
+  program dates or a DASH presentation's), one epoch for the old
+  connection's live point at 0: the mapping is known at once, without the
+  edges settling; the new reading also carries its window's `start` (0),
+  so a new player ahead can be moved back (landing 2 s inside it).
+  `nextStartAt` starts the new player that far along its own timeline,
+  `nextWindowStart` (default 0) is where its window starts, moving on at
+  1 s/s with `nextWindowSlides`.
+
+`expect` gives the `outcome` (`takeOver`, or `fallback:<reason>`), the time
+`at` (ms) it came, the kinds of `actions` in order (repeats collapsed), and
+for a takeover the largest `maxResidual` (s) between what the two play;
+`maxJumps` bounds how many jumps it took, repeats included; a jump past
+the edge the new reading gave fails the case.
+
+`align/offset.json` specifies `LiveOffset` (`src/web/engine/LiveOffset.ts`,
+`ios/Core/LiveOffset.swift`, `android/.../core/LiveOffset.kt`): how far what
+is heard trails the live point (`Progress.liveOffset`, `liveOffsetSettled`).
+Each case's `steps` are readings fed in order, at `t` (ms): `position`,
+`edge` (where what was received ends, a progressive stream; `null`
+otherwise), `native` (the player's own offset, a stream with a clock;
+`null` otherwise), `live`, and optionally `programDate` (epoch ms). A step
+with `expect` checks the `offset` (s, or `null`) and whether it `settled`.
 
 ## Subtitles and tracks (`subtitles/`, `tracks/`)
 

@@ -562,6 +562,13 @@ export class DashStream implements HlsTracks {
     return this.loaded && this.player ? this.player.isLive() : null;
   }
 
+  /** Epoch ms of the playhead on a live presentation's clock; `null` for VOD or before it loads. */
+  get programDate(): number | null {
+    if (!this.loaded || !this.player?.isLive()) return null;
+    const date = this.player.getPlayheadTimeAsDate?.()?.getTime();
+    return date != null && Number.isFinite(date) ? date : null;
+  }
+
   /** What the manifest says about the item, once loaded; `null` before. */
   readyInfo(): ReadyInfo | null {
     if (!this.loaded || !this.player) return null;

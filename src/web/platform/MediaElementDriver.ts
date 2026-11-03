@@ -12,6 +12,7 @@
 // browser cannot play it itself (`HlsStream`). Everything else, and any stream
 // MSE cannot take, plays as the element's own `src`.
 
+import * as liveClock from './liveClock';
 import type { PlayerError } from '../../errors';
 import {
   hlsConstructor,
@@ -19,6 +20,7 @@ import {
   type HlsConstructor,
 } from '../../core/hls';
 import type { EngineDriver } from '../engine/PlaybackEngine';
+import type { AlignReading } from '../engine/LiveAligner';
 import type { StreamTitleFormat } from '../engine/StreamMetadata';
 import {
   engineError,
@@ -40,6 +42,7 @@ import { elementError } from './elementErrors';
 import type { HlsStream } from './HlsStream';
 import { MediaTracks } from './MediaTracks';
 import { TimedQueue } from './TimedQueue';
+import { createMediaElement } from './mediaElement';
 import { OwnSeeks } from './OwnSeeks';
 import { ItemFacts, elementReadyInfo } from './ItemFacts';
 import { isDashUri, shakaNamespace, type ShakaLike } from '../../core/shaka';
@@ -187,7 +190,7 @@ export class MediaElementDriver implements EngineDriver {
     private readonly titleFormat: StreamTitleFormat,
     readonly kind: MediaKind = 'audio'
   ) {
-    this._element = this.createElement();
+    this._element = createMediaElement(this.kind, this.loop);
   }
 
   get element(): AudioElementLike {
@@ -227,30 +230,6 @@ export class MediaElementDriver implements EngineDriver {
       this.dash?.live === true ||
       this.remux?.live === true
     );
-  }
-
-  private createElement(): AudioElementLike {
-    const document = browser().document!;
-    if (this.kind === 'video') {
-      const video = document.createElement('video');
-      video.preload = 'auto';
-      video.playsInline = true;
-      // iPhone Safari before `playsInline` was a property.
-      video.setAttribute('playsinline', '');
-      video.setAttribute('webkit-playsinline', '');
-      video.loop = this.loop;
-      Object.assign(video.style, {
-        width: '100%',
-        height: '100%',
-        display: 'block',
-        objectFit: 'contain',
-        backgroundColor: 'black',
-      });
-      return video;
-    }
-    const element = document.createElement('audio');
-    element.preload = 'auto';
-    return element;
   }
 
   // ── EngineDriver ──
@@ -309,7 +288,7 @@ export class MediaElementDriver implements EngineDriver {
    */
   private untap(): void {
     this._element.pause();
-    this._element = this.createElement();
+    this._element = createMediaElement(this.kind, this.loop);
     this._element.volume = this.volume;
     this.applyRate();
     this.tapped = false;
@@ -448,17 +427,50 @@ export class MediaElementDriver implements EngineDriver {
   progress(): ProgressReading {
     const position = this.position();
     const duration = this._element.duration;
+    const buffered = Math.max(position, this.bufferedEnd(position));
+    const progressive = this.isLive && !this.hls && !this.dash;
     return {
       position,
-      duration:
-        Number.isFinite(duration) && duration > 0 && !this.isLive
-          ? duration
-          : null,
-      buffered: Math.max(position, this.bufferedEnd(position)),
-      liveOffset: this.liveOffset(),
+      duration: Number.isFinite(duration) && duration > 0 && !this.isLive ? duration : null, // prettier-ignore
+      buffered,
+      liveOffset: liveClock.nativeLiveOffset(this.liveSources()),
       isPlaying: !this._element.paused && this.flowed,
       rate: this._element.playbackRate,
+      // A progressive live stream measures from what it received (`LiveOffset`).
+      edge: progressive ? buffered : null,
+      programDate: liveClock.programDateOf(this.liveSources()),
     };
+  }
+
+  liveSources(): liveClock.LiveSources {
+    const { hls, dash, nativeHls, _element: element } = this;
+    return { hls, dash, nativeHls, element, position: this.position() };
+  }
+
+  /**
+   * What a live quality switch lines up on (`LiveAligner`): a progressive
+   * stream's buffered edge, or an HLS or DASH stream's program dates. `null`:
+   * neither (HLS without program dates; a remux with a picture, whose edge
+   * moves a keyframe group at a time).
+   */
+  alignReading(): (AlignReading & { reconnects: number }) | null {
+    if (this.hlsPending || this.dashPending || this.remuxPending) return null;
+    if (this.remux?.muxesVideo) return null;
+    const e = this._element;
+    const playing = !e.paused && this.flowed && e.readyState >= 3;
+    const sources = this.liveSources();
+    if (this.hls || this.dash || this.nativeHls)
+      return liveClock.clockReading(
+        sources,
+        playing,
+        this.bufferedEnd(sources.position)
+      );
+    return liveClock.edgeReading(sources, playing, this.stream);
+  }
+
+  /** It plays from a MediaSource RNAP feeds (a stream, a remux): a seek within what it holds is exact. */
+  get feedsItself(): boolean {
+    return this.stream != null || this.remux != null;
   }
 
   destroy(): void {
@@ -588,11 +600,6 @@ export class MediaElementDriver implements EngineDriver {
     const mbps = browser().navigator?.connection?.downlink;
     if (mbps != null && Number.isFinite(mbps) && mbps > 0)
       this.observer.onBandwidth?.(generation, mbps * 1_000_000);
-  }
-
-  private liveOffset(): number | null {
-    if (this.stream) return this.stream.bufferedAhead;
-    return this.hls?.live ? this.hls.liveOffset : null;
   }
 
   /** Whether hls.js has to play this: an HLS source on an element that cannot. */
