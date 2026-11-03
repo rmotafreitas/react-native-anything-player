@@ -216,18 +216,26 @@ class LiveAligner(private val caps: Caps) {
     // At first anything short of the lead is moved (the start is then always
     // from a hold); later only a player that fell behind.
     val short = if (first) gap < lead else gap < -TOLERANCE_S
-    // On a stream's clock it can go back too (within its live window).
-    val landing = lead + caps.jumpLead
-    val back = next.start != null && caps.jump == Jump.ALWAYS && gap > landing + BACK_S
-    if ((short && canJump) || back) {
-      // Moved just ahead, then held: it never starts behind.
-      val to = minOf(target + lead + caps.jumpLead, next.edge ?: Double.POSITIVE_INFINITY)
-      return Action.JumpTo(maxOf(to, next.start ?: Double.NEGATIVE_INFINITY))
+    // Moved just ahead, then held: it never starts behind.
+    if (short && canJump) return Action.JumpTo(landing(target, next))
+    // On a stream's clock it can go back too, within its live window.
+    if (next.start != null && caps.jump == Jump.ALWAYS && gap > lead + caps.jumpLead + BACK_S) {
+      val to = landing(target, next)
+      // As far back as it goes, still this far ahead: held, if in time.
+      val left = gap - (next.position - to)
+      if ((left - lead) * 1000 > BUDGET_MS - elapsed) return fallback("ahead")
+      if (next.position - to > BACK_S) return Action.JumpTo(to)
     }
     if (gap > lead || !next.ready) return holding(t, elapsed, gap, first, next)
     if (gap < -TOLERANCE_S && caps.maxRate > 1) return setRate(t, speedUp(gap), gap, next)
     if (gap < -ACCEPT_S) return fallback("behind")
     return setRate(t, 1.0, gap, next)
+  }
+
+  /** Where a jump lands it: just ahead of what is heard, within what it holds and its live window. */
+  private fun landing(target: Double, next: Reading): Double {
+    val to = minOf(target + lead + caps.jumpLead, next.edge ?: Double.POSITIVE_INFINITY)
+    return next.start?.let { maxOf(to, it + WINDOW_MARGIN_S) } ?: to
   }
 
   /** Ahead (or not ready): held until the old one gets there, if it gets there in time. */
@@ -297,6 +305,9 @@ class LiveAligner(private val caps: Caps) {
 
     /** A clocked player this much further ahead than a jump would land it is moved back, not held. */
     const val BACK_S = 1.0
+
+    /** A jump back lands this far inside the live window (its start drops out as it slides). */
+    const val WINDOW_MARGIN_S = 2.0
     const val FINE_BUDGET_MS = 3_000L
 
     /** The rate closes the gap over about this long (1 + gap / horizon). */

@@ -385,7 +385,6 @@ enum DashToHls {
     return out
   }
 
-  /// ISO 8601 durations as DASH writes them: `PT1M0.0S`, `P1DT2H`, `PT4.5S`.
   /// An ISO 8601 date and time (`availabilityStartTime`), with or without fractional seconds.
   static func isoDate(_ text: String) -> Date? {
     isoFormatter.date(from: text) ?? ISO8601DateFormatter().date(from: text)
@@ -398,6 +397,7 @@ enum DashToHls {
     return f
   }()
 
+  /// ISO 8601 durations as DASH writes them: `PT1M0.0S`, `P1DT2H`, `PT4.5S`.
   static func isoDuration(_ text: String) -> Double? {
     guard text.hasPrefix("P") else { return nil }
     var seconds = 0.0

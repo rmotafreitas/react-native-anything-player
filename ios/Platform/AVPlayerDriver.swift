@@ -543,6 +543,9 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
   /// HLS AVFoundation reads itself (directly, or redirected to by the proxy): it may have program dates.
   var mayHaveClock: Bool { remuxSession == nil && (proxied == nil || redirected) }
 
+  /// Reached through the proxy, which has not yet found out whether a playlist is behind the URL.
+  var unclassified: Bool { remuxSession == nil && proxied != nil && !redirected && receivedEdge == nil }
+
   /// One that may, still loading: whether it has program dates is not known yet.
   var awaitsClock: Bool {
     guard mayHaveClock, let item else { return false }

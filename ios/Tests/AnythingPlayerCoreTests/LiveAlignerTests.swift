@@ -13,6 +13,7 @@ final class LiveAlignerTests: XCTestCase {
     let at: Int64
     let actions: [String]
     let residual: Double?
+    var jumps = 0
   }
 
   private static let tickMs: Int64 = 40
@@ -45,6 +46,7 @@ final class LiveAlignerTests: XCTestCase {
       XCTAssertEqual(result.outcome, expect["outcome"] as? String, name)
       XCTAssertEqual(result.at, Int64(Self.number(expect["at"])), name)
       XCTAssertEqual(result.actions, expect["actions"] as? [String], name)
+      if let most = expect["maxJumps"] { XCTAssertLessThanOrEqual(result.jumps, Int(Self.number(most)), name) }
       if let limit = expect["maxResidual"] {
         XCTAssertLessThanOrEqual(abs(try XCTUnwrap(result.residual, name)), Self.number(limit), name)
       }
@@ -91,6 +93,7 @@ final class LiveAlignerTests: XCTestCase {
     let nextStart = w["nextStartAt"].map { number($0) } ?? 0
     let k = burst - oldPositionAt0 - oldLag + nextStart
     var x = nextStart
+    var jumps = 0
     var rate = 0.0
     var moveFrom: Int64?
     var lastT: Int64 = 0
@@ -116,7 +119,7 @@ final class LiveAlignerTests: XCTestCase {
       let next = LiveAligner.Reading(
         position: x + (i % 2 == 0 ? jitter : -jitter), edge: received, playing: moving, ready: readyAt.map { t >= $0 } ?? true,
         edgeAt: arrival ? tq : nil, clock: dates ? epoch - burst - nextStart : nil,
-        start: dates ? 0 : nil)
+        start: dates ? (w["nextWindowStart"].map { number($0) } ?? 0) : nil)
       let action = interruptAt.map { t >= $0 } == true ? aligner.interrupt() : aligner.step(t, old: old, next: next)
       lastT = t
       switch action {
@@ -132,17 +135,18 @@ final class LiveAlignerTests: XCTestCase {
         }
       case .jump(let to):
         note("jump")
+        jumps += 1
         x = min(to, received)
       case .takeOver:
         note("takeOver")
-        return Outcome(outcome: "takeOver", at: t, actions: actions, residual: x - (oldPosition + k))
+        return Outcome(outcome: "takeOver", at: t, actions: actions, residual: x - (oldPosition + k), jumps: jumps)
       case .fallback(let reason):
         note("fallback")
-        return Outcome(outcome: "fallback:\(reason)", at: t, actions: actions, residual: nil)
+        return Outcome(outcome: "fallback:\(reason)", at: t, actions: actions, residual: nil, jumps: jumps)
       }
       t += ticks[i % ticks.count]
       i += 1
     }
-    return Outcome(outcome: "none", at: limitMs, actions: actions, residual: nil)
+    return Outcome(outcome: "none", at: limitMs, actions: actions, residual: nil, jumps: jumps)
   }
 }

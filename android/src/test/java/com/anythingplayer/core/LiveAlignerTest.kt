@@ -16,7 +16,7 @@ import org.junit.Test
  * muted, and checks how the aligner lines them up.
  */
 class LiveAlignerTest {
-  private data class Outcome(val outcome: String, val at: Long, val actions: List<String>, val residual: Double?)
+  private data class Outcome(val outcome: String, val at: Long, val actions: List<String>, val residual: Double?, val jumps: Int)
 
   @Test
   fun fixtures() {
@@ -31,6 +31,7 @@ class LiveAlignerTest {
       assertEquals(name, expect.getLong("at"), result.at)
       val actions = expect.getJSONArray("actions").let { a -> (0 until a.length()).map { a.getString(it) } }
       assertEquals(name, actions, result.actions)
+      if (expect.has("maxJumps")) assertTrue("$name: ${result.jumps} jumps", result.jumps <= expect.getInt("maxJumps"))
       if (expect.has("maxResidual")) {
         assertTrue("$name: residual ${result.residual}", abs(result.residual!!) <= expect.getDouble("maxResidual"))
       }
@@ -78,6 +79,7 @@ class LiveAlignerTest {
     val nextStart = w.optDouble("nextStartAt", 0.0)
     val k = burst - oldPositionAt0 - oldLag + nextStart
     var x = nextStart
+    var jumps = 0
     var rate = 0.0
     var moveFrom: Long? = null
     var lastT = 0L
@@ -114,7 +116,7 @@ class LiveAlignerTest {
           ready = readyAt == null || t >= readyAt,
           edgeAt = if (arrival) tq else null,
           clock = if (dates) EPOCH - burst - nextStart else null,
-          start = if (dates) 0.0 else null,
+          start = if (dates) w.optDouble("nextWindowStart", 0.0) else null,
         )
       val action = if (interruptAt != null && t >= interruptAt) aligner.interrupt() else aligner.step(t, old, next)
       lastT = t
@@ -132,21 +134,22 @@ class LiveAlignerTest {
         }
         is LiveAligner.Action.JumpTo -> {
           note("jump")
+          jumps += 1
           x = minOf(action.to, received)
         }
         is LiveAligner.Action.TakeOver -> {
           note("takeOver")
-          return Outcome("takeOver", t, actions, x - (oldPosition + k))
+          return Outcome("takeOver", t, actions, x - (oldPosition + k), jumps)
         }
         is LiveAligner.Action.Fallback -> {
           note("fallback")
-          return Outcome("fallback:${action.reason}", t, actions, null)
+          return Outcome("fallback:${action.reason}", t, actions, null, jumps)
         }
       }
       t += ticks[i % ticks.size]
       i += 1
     }
-    return Outcome("none", LIMIT_MS, actions, null)
+    return Outcome("none", LIMIT_MS, actions, null, jumps)
   }
 
   /** The time of the last chunk at [t]: chunks arrive every [every] ms from [phase]. */

@@ -127,6 +127,8 @@ final class LiveAligner {
   static let acceptS = 0.3
   /// A clocked player this much further ahead than a jump would land it is moved back, not held.
   static let backS = 1.0
+  /// A jump back lands this far inside the live window (its start drops out as it slides).
+  static let windowMarginS = 2.0
   static let fineBudgetMs: Int64 = 3_000
   /// The rate closes the gap over about this long (1 + gap / horizon).
   static let horizonS = 1.0
@@ -274,18 +276,26 @@ final class LiveAligner {
     // At first anything short of the lead is moved (the start is then always
     // from a hold); later only a player that fell behind.
     let short = first ? gap < lead : gap < -Self.toleranceS
-    // On a stream's clock it can go back too (within its live window).
-    let landing = lead + caps.jumpLead
-    let back = next.start != nil && caps.jump == .always && gap > landing + Self.backS
-    if (short && canJump) || back {
-      // Moved just ahead, then held: it never starts behind.
-      let to = min(target + lead + caps.jumpLead, next.edge ?? .infinity)
-      return .jump(to: max(to, next.start ?? -.infinity))
+    // Moved just ahead, then held: it never starts behind.
+    if short && canJump { return .jump(to: landing(target, next)) }
+    // On a stream's clock it can go back too, within its live window.
+    if next.start != nil && caps.jump == .always && gap > lead + caps.jumpLead + Self.backS {
+      let to = landing(target, next)
+      // As far back as it goes, still this far ahead: held, if in time.
+      let left = gap - (next.position - to)
+      if (left - lead) * 1000 > Double(Self.budgetMs - elapsed) { return fallback("ahead") }
+      if next.position - to > Self.backS { return .jump(to: to) }
     }
     if gap > lead || !next.ready { return holding(t, elapsed: elapsed, gap: gap, first: first, next: next) }
     if gap < -Self.toleranceS && caps.maxRate > 1 { return setRate(t, speedUp(gap), gap: gap, next: next) }
     if gap < -Self.acceptS { return fallback("behind") }
     return setRate(t, 1, gap: gap, next: next)
+  }
+
+  /// Where a jump lands it: just ahead of what is heard, within what it holds and its live window.
+  private func landing(_ target: Double, _ next: Reading) -> Double {
+    let to = min(target + lead + caps.jumpLead, next.edge ?? .infinity)
+    return next.start.map { max(to, $0 + Self.windowMarginS) } ?? to
   }
 
   /// Ahead (or not ready): held until the old one gets there, if it gets there in time.

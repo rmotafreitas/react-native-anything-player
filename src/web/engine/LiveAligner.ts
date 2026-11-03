@@ -114,6 +114,8 @@ export const Align = {
   ACCEPT_S: 0.3,
   /** A clocked player this much further ahead than a jump would land it is moved back, not held. */
   BACK_S: 1,
+  /** A jump back lands this far inside the live window (its start drops out as it slides). */
+  WINDOW_MARGIN_S: 2,
   FINE_BUDGET_MS: 3_000,
   /** The rate closes the gap over about this long (1 + gap / horizon). */
   HORIZON_S: 1,
@@ -311,13 +313,22 @@ export class LiveAligner {
     // At first anything short of the lead is moved (the start is then always
     // from a hold); later only a player that fell behind.
     const short = first ? gap < this.lead : gap < -Align.TOLERANCE_S;
-    // On a stream's clock it can go back too (within its live window).
+    // Moved just ahead, then held: it never starts behind.
+    if (short && canJump)
+      return { kind: 'jump', to: this.landing(target, next) };
+    // On a stream's clock it can go back too, within its live window.
     const landing = this.lead + this.caps.jumpLead;
-    const back = next.start != null && jump === 'always' && gap > landing + Align.BACK_S; // prettier-ignore
-    if ((short && canJump) || back) {
-      // Moved just ahead, then held: it never starts behind.
-      const to = Math.min(target + this.lead + this.caps.jumpLead, next.edge ?? Infinity); // prettier-ignore
-      return { kind: 'jump', to: Math.max(to, next.start ?? -Infinity) };
+    if (
+      next.start != null &&
+      jump === 'always' &&
+      gap > landing + Align.BACK_S
+    ) {
+      const to = this.landing(target, next);
+      // As far back as it goes, still this far ahead: held, if in time.
+      const left = gap - (next.position - to);
+      if ((left - this.lead) * 1000 > Align.BUDGET_MS - elapsed)
+        return this.fallback('ahead');
+      if (next.position - to > Align.BACK_S) return { kind: 'jump', to };
     }
     if (gap > this.lead || next.ready === false)
       return this.holding(t, elapsed, gap, first, next);
@@ -325,6 +336,12 @@ export class LiveAligner {
       return this.setRate(t, this.speedUp(gap), gap, next);
     if (gap < -Align.ACCEPT_S) return this.fallback('behind');
     return this.setRate(t, 1, gap, next);
+  }
+
+  /** Where a jump lands it: just ahead of what is heard, within what it holds and its live window. */
+  private landing(target: number, next: AlignReading): number {
+    const to = Math.min(target + this.lead + this.caps.jumpLead, next.edge ?? Infinity); // prettier-ignore
+    return next.start == null ? to : Math.max(to, next.start + Align.WINDOW_MARGIN_S); // prettier-ignore
   }
 
   /** Ahead (or not ready): held until the old one gets there, if it gets there in time. */

@@ -42,6 +42,8 @@ interface World {
   programDates?: boolean;
   /** The new player starts this far along its own timeline (it can be moved back to 0). */
   nextStartAt?: number;
+  /** Where the new player's live window starts (default 0): it cannot be moved back further. */
+  nextWindowStart?: number;
 }
 
 /** The stream clock's epoch seconds at the old connection's live point at `t` 0. */
@@ -61,6 +63,8 @@ interface AlignCase {
     at: number;
     actions: string[];
     maxResidual?: number;
+    /** At most this many jumps (repeats too). */
+    maxJumps?: number;
   };
 }
 
@@ -69,6 +73,8 @@ interface Outcome {
   at: number;
   actions: string[];
   residual: number | null;
+  /** Every jump, repeats too. */
+  jumps: number;
 }
 
 const TICK_MS = 40;
@@ -85,6 +91,7 @@ export function simulate(caps: AlignCaps, world: World): Outcome {
     world.burst - world.oldPosition - world.oldLag + (world.nextStartAt ?? 0);
   const nextStart = world.nextStartAt ?? 0;
   let x = nextStart;
+  let jumps = 0;
   let rate = 0;
   let moveFrom: number | null = null;
   let lastT = 0;
@@ -133,7 +140,10 @@ export function simulate(caps: AlignCaps, world: World): Outcome {
       edge: received,
       ...(arrival ? { edgeAt: tq } : {}),
       ...(world.programDates
-        ? { clock: EPOCH - world.burst - nextStart, start: 0 }
+        ? {
+            clock: EPOCH - world.burst - nextStart,
+            start: world.nextWindowStart ?? 0,
+          }
         : {}),
       playing: rate > 0 && moveFrom != null && t >= moveFrom && x < received,
       ready: world.nextReadyAt == null || t >= world.nextReadyAt,
@@ -159,6 +169,7 @@ export function simulate(caps: AlignCaps, world: World): Outcome {
         break;
       case 'jump':
         note('jump');
+        jumps += 1;
         x = Math.min(action.to, received);
         break;
       case 'takeOver':
@@ -168,6 +179,7 @@ export function simulate(caps: AlignCaps, world: World): Outcome {
           at: t,
           actions,
           residual: x - (oldPosition + k),
+          jumps,
         };
       case 'fallback':
         note('fallback');
@@ -176,10 +188,11 @@ export function simulate(caps: AlignCaps, world: World): Outcome {
           at: t,
           actions,
           residual: null,
+          jumps,
         };
     }
   }
-  return { outcome: 'none', at: LIMIT_MS, actions, residual: null };
+  return { outcome: 'none', at: LIMIT_MS, actions, residual: null, jumps };
 }
 
 const FILE = path.resolve(__dirname, '../../../conformance/align/live.json');
@@ -199,6 +212,8 @@ describe('align/live.json', () => {
       at: c.expect.at,
       actions: c.expect.actions,
     });
+    if (c.expect.maxJumps != null)
+      expect(result.jumps).toBeLessThanOrEqual(c.expect.maxJumps);
     if (c.expect.maxResidual != null)
       expect(Math.abs(result.residual!)).toBeLessThanOrEqual(
         c.expect.maxResidual

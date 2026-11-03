@@ -284,13 +284,8 @@ final class SwapDriver: LocalOutput {
     guard let waiting = pending, var aligner = waiting.aligner, !waiting.fallback, let next = spare else { return }
     let old = current.alignReading()
     let reading = next.alignReading()
-    // An HLS item still loading, or without a date for its first moments:
-    // its program dates come with it (for a while).
-    if waiting.steps == 0, next.awaitsClock || (old?.clock != nil && reading == nil && next.mayHaveClock) {
-      if waiting.clockWaitSince == nil { waiting.clockWaitSince = SystemClock.shared.monotonicMs }
-      if next.awaitsClock || SystemClock.shared.monotonicMs - waiting.clockWaitSince! < clockWaitMs {
-        return scheduleAlign(waiting)
-      }
+    if waiting.steps == 0, waitsForClock(waiting, old: old, reading: reading, next: next) {
+      return scheduleAlign(waiting)
     }
     let sameKind = waiting.steps > 0 || (old?.clock == nil) == (reading?.clock == nil)
     guard let old, let reading, sameKind else {
@@ -305,11 +300,15 @@ final class SwapDriver: LocalOutput {
       if waiting.ready { next.play() }
       return
     }
-    // On the stream's clock (known only once the proxy redirected to a playlist, too): a seek any time.
-    if reading.clock != nil, !waiting.clocked, aligner.offset == nil {
+    // Both on the stream's clock: a seek any time.
+    if waiting.steps == 0, reading.clock != nil, old.clock != nil {
       aligner = LiveAligner(caps: clockCaps)
       waiting.aligner = aligner
       waiting.clocked = true
+    }
+    // One that changed kind on the way (a clock come or gone): as before, reported.
+    if waiting.steps > 0, (reading.clock != nil) != waiting.clocked || (old.clock != nil) != waiting.clocked {
+      return apply(aligner.interrupt())
     }
     waiting.steps += 1
     let action = aligner.step(SystemClock.shared.monotonicMs, old: old, next: reading)
@@ -324,6 +323,23 @@ final class SwapDriver: LocalOutput {
     }
     apply(action)
     scheduleAlign(waiting)
+  }
+
+  /// Whether a new item that may line up on program dates cannot say yet:
+  /// still loading (as long as it takes), or, beside an old one on a clock,
+  /// with the proxy not yet sure it is a playlist, or ready without a date
+  /// (for `clockWaitMs`, counted once it has loaded).
+  private func waitsForClock(
+    _ waiting: Pending, old: LiveAligner.Reading?, reading: LiveAligner.Reading?, next: AVPlayerDriver
+  ) -> Bool {
+    if next.awaitsClock {
+      waiting.clockWaitSince = nil
+      return true
+    }
+    guard old?.clock != nil, reading?.clock == nil, next.mayHaveClock || next.unclassified else { return false }
+    let now = SystemClock.shared.monotonicMs
+    if waiting.clockWaitSince == nil { waiting.clockWaitSince = now }
+    return now - waiting.clockWaitSince! < clockWaitMs
   }
 
   private func scheduleAlign(_ waiting: Pending) {
