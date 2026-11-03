@@ -212,6 +212,7 @@ class LiveAligner(private val caps: Caps) {
 
   /** Held: moved, held on, started, or run faster. */
   private fun fromHold(t: Long, elapsed: Long, target: Double, gap: Double, first: Boolean, next: Reading): Action {
+    // `first` is spent by the first decision, a wait too: iOS opens its gate then.
     val canJump = caps.jump == Jump.ALWAYS || (caps.jump == Jump.FIRST && first)
     // At first anything short of the lead is moved (the start is then always
     // from a hold); later only a player that fell behind.

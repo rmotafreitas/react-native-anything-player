@@ -309,6 +309,7 @@ export class LiveAligner {
     next: AlignReading
   ): AlignAction {
     const { jump, maxRate } = this.caps;
+    // `first` is spent by the first decision, a wait too: iOS opens its gate then.
     const canJump = jump === 'always' || (jump === 'first' && first);
     // At first anything short of the lead is moved (the start is then always
     // from a hold); later only a player that fell behind.

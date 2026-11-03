@@ -272,6 +272,7 @@ final class LiveAligner {
   private func fromHold(
     _ t: Int64, elapsed: Int64, target: Double, gap: Double, first: Bool, next: Reading
   ) -> Action {
+    // `first` is spent by the first decision, a wait too: iOS opens its gate then.
     let canJump = caps.jump == .always || (caps.jump == .first && first)
     // At first anything short of the lead is moved (the start is then always
     // from a hold); later only a player that fell behind.
