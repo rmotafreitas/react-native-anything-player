@@ -418,9 +418,8 @@ final class SwapDriver: LocalOutput {
     takeOver(generation: waiting.generation, live: waiting.target == nil)
     observer?.driverPlaying(generation: waiting.generation)
     // The engine took the switch's generation: the new file's tracks are the ones now.
-    if let media = current.mapped {
-      observer?.driverTracks(generation: waiting.generation, tracks: media.tracks, variants: media.variants)
-    }
+    let media = current.mapped
+    observer?.driverTracks(generation: waiting.generation, tracks: media.tracks, variants: media.variants)
     // What it reached while it lined up was the pending generation's: told now.
     if let metadata = waiting.metadata, waiting.metadataAt > toldCurrent {
       observer?.driverMetadata(generation: waiting.generation, metadata: metadata)

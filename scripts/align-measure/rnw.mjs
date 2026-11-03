@@ -10,7 +10,7 @@ import { execFileSync, spawn } from 'node:child_process';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { chromium, firefox, webkit } from 'playwright';
+import { chromium, firefox, webkit } from '@playwright/test';
 import { jumps, readWav, seconds } from './analyze.mjs';
 
 const browserName = process.argv.find((a, i) => i >= 2 && !a.startsWith('--')) ?? 'chromium';

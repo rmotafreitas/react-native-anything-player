@@ -18,7 +18,7 @@ import { execFileSync, spawn } from 'node:child_process';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { chromium, firefox, webkit } from 'playwright';
+import { chromium, firefox, webkit } from '@playwright/test';
 import { jumps, seconds, readWav } from './analyze.mjs';
 
 const args = process.argv.slice(2);
