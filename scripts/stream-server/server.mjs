@@ -31,6 +31,8 @@
 //               with EXT-X-PROGRAM-DATE-TIME on one clock: each window starts
 //               elsewhere in the program, so only program dates line a switch up
 //               (/radio-hls/N/seg-K.mp3: one segment)
+//               GET /radio-ts/192.ts, /96.ts, /48.ts  the same program as a live MPEG-TS
+//               channel (AAC), each connection with a 64 KiB burst
 // HLS:          GET /hls/vod.m3u8   the program as 4.5 s packed-MP3 segments,
 //                                   with an ID3 title at the start of each
 //               GET /hls/live.m3u8  the same as a live sliding window
@@ -209,6 +211,13 @@ for (const kbps of [320, 192, 64]) {
   };
 }
 const fileSize = (name) => readFileSync(join(here, 'media', name)).length;
+/** The renditions' program as a live MPEG-TS channel at three bitrates, each with a burst. */
+for (const kbps of [192, 96, 48]) {
+  const name = `radio-${kbps}.ts`;
+  if (!existsSync(join(here, 'media', name))) continue;
+  const body = media(name);
+  LIVE_STREAMS[`/radio-ts/${kbps}.ts`] = { body, type: 'video/mp2t', rate: body.length / 120, burst: 65_536, frames: null };
+}
 /** The renditions' program as live HLS: whole MP3 frames per segment, 2, 4 and 6 s long. */
 const RADIO_HLS = {};
 for (const [kbps, seconds] of [[320, 2], [192, 4], [64, 6]]) {
@@ -360,7 +369,7 @@ function liveStream(req, res, url) {
       // Icecast: the most recent `burst` bytes at once (from a frame), then
       // real time. The live point stays where it is: the connection starts
       // that much behind it.
-      mount.frames ??= (contentType === 'audio/aac' ? adtsFrames(program) : mp3Frames(program).map(([at]) => at));
+      mount.frames ??= framesOf(contentType, program);
       const want = (offset - burst + program.length) % program.length;
       const start = mount.frames.find((at) => at >= want) ?? 0;
       budget = (offset - start + program.length) % program.length;
@@ -458,6 +467,13 @@ const MPEG1_BITRATES = [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 
 const MPEG1_RATES = [44100, 48000, 32000];
 
 /** Frame offsets of an MPEG-1 Layer III file without tags (what generate-media.sh makes). */
+/** Where a connection may start in a mount's program: its frames, or a TS packet. */
+function framesOf(contentType, program) {
+  if (contentType === 'audio/aac') return adtsFrames(program);
+  if (contentType === 'video/mp2t') return Array.from({ length: Math.floor(program.length / 188) }, (_, i) => i * 188);
+  return mp3Frames(program).map(([at]) => at);
+}
+
 function mp3Frames(buffer) {
   const frames = [];
   for (let at = 0; at + 4 <= buffer.length; ) {

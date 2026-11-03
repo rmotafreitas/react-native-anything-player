@@ -216,6 +216,17 @@ HLS and DASH renditions are lined up by their program dates (`EXT-X-PROGRAM-DATE
 
 A switch takes 1 to 2 s in a browser. In one Firefox run of four, the audio also went back 1.8 s, 4 s after a switch had taken over; it was not seen again. On Android the residual is ExoPlayer's own: it plays packed-MP3 segments with jumps of its own at segment boundaries (up to 0.5 s, once 6 s, with no switch near), so its positions are that coarse. Safari's own HLS player (macOS, iOS) and AVPlayer on iOS are written to the same plan (a seek, then held) but not recorded yet. React Native Web plays HLS through hls.js too, once the app registers it ([HLS](web.md#hls)).
 
+A live MPEG-TS channel (an IPTV stream: `.ts` and the like, which RNAP remuxes) lines up too. In a browser RNAP feeds the remuxed stream through MSE, so it is lined up by its edges, like an Icecast mount; Android plays it as a progressive stream, lined up the same way. On iOS the remuxer serves it to AVPlayer as HLS, and dates its live playlist by when each fragment arrived (the freshest over the last minute of it, as `liveOffset` measures), so it lines up by those program dates.
+
+| Measured (the test station's program as a live MPEG-TS channel, AAC at 192, 96 and 48 kbps, with a 64 KiB burst; five switches each) | Before | Now |
+|---|---|---|
+| Chromium (Playwright) | −1.6 s to +2.3 s, reported as nothing | aligned, within 0.18 s |
+| Firefox (Playwright) | −4.3 s to +2.6 s | aligned, within 0.3 s |
+| WebKit (Playwright) | −1.4 s to +2.4 s | aligned, within 0.21 s; 2 of 15 switches refused (`unsettled`) |
+| Android (emulator) | not recorded | aligned, within 0.12 s |
+
+A TS channel lines up less closely than an Icecast mount: its muxer sends audio ahead of its time stamps, by an amount of its own at each bitrate, so what has arrived is the live point only to within that. On WebKit a switch whose edges did not settle in time was refused (an optional one: the current quality played on); in Chromium and Firefox none were. iOS is written and its dated playlists are tested, but not recorded.
+
 ## Several players
 
 Players are independent native engines. The lock screen shows the most recently started player with `mediaSession.enabled` (the default). Audio focus is per app on Android: all players share it, and a focus loss pauses every player that does not use `audio.mixWithOthers`.

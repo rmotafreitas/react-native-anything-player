@@ -443,11 +443,10 @@ export class MediaElementDriver implements EngineDriver {
   /**
    * What a live quality switch lines up on (`LiveAligner`): a progressive
    * stream's buffered edge, or an HLS or DASH stream's program dates. `null`:
-   * neither (a remux, HLS without program dates).
+   * neither (HLS without program dates).
    */
   alignReading(): (AlignReading & { reconnects: number }) | null {
-    if (this.remux || this.hlsPending || this.dashPending || this.remuxPending)
-      return null;
+    if (this.hlsPending || this.dashPending || this.remuxPending) return null;
     const e = this._element;
     const playing = !e.paused && this.flowed && e.readyState >= 3;
     const sources = this.liveSources();
@@ -460,9 +459,9 @@ export class MediaElementDriver implements EngineDriver {
     return liveClock.edgeReading(sources, playing, this.stream);
   }
 
-  /** It plays from a MediaSource RNAP feeds: a seek within what it holds is exact. */
+  /** It plays from a MediaSource RNAP feeds (a stream, a remux): a seek within what it holds is exact. */
   get feedsItself(): boolean {
-    return this.stream != null;
+    return this.stream != null || this.remux != null;
   }
 
   destroy(): void {

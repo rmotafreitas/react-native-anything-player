@@ -443,3 +443,39 @@ test('a live switch on a station without CORS goes ahead, with a discontinuity: 
   );
   expect(await state(page)).toBe('playing');
 });
+
+test('lines a switch between live MPEG-TS renditions up (remuxed in the page)', async ({
+  page,
+}) => {
+  await page.mouse.click(1, 1);
+  await page.evaluate(async (stream) => {
+    const p = window.rnap.player;
+    // AAC in TS, each connection with a 64 KiB burst: 2.3 s at 192 kbps, 5 s at 48.
+    await p.load(
+      {
+        live: true,
+        renditions: ['48', '192'].map((id) => ({
+          id,
+          uri: `${stream}/radio-ts/${id}.ts`,
+          bitrate: Number(id) * 1000,
+        })),
+      },
+      { quality: '192' }
+    );
+    await p.play();
+  }, 'http://localhost:8765');
+  await expect.poll(() => state(page), { timeout: 20_000 }).toBe('playing');
+  await page.evaluate(() => window.rnap.player.selectQuality('48'));
+  await expect
+    .poll(() => page.evaluate(() => window.rnap.player.status.quality), {
+      timeout: 45_000,
+    })
+    .toBe('48');
+  const aligned = await page.evaluate(() =>
+    window.rnap.player
+      .getDiagnostics()
+      .some((d) => d.event === 'quality switch aligned')
+  );
+  expect(aligned).toBe(true);
+  expect(await events(page, 'discontinuity')).toHaveLength(0);
+});

@@ -7,7 +7,8 @@
 //   node scripts/align-measure/web.mjs [chromium|firefox|webkit] [--plain|--hls] [--qualities 320,64,320,192,64,192]
 //
 // `--hls` plays the live HLS renditions instead (/radio-hls: 2, 4 and 6 s
-// segments with program dates), lined up by their program dates.
+// segments with program dates), lined up by their program dates; `--ts` the
+// live MPEG-TS channel (/radio-ts/192.ts, /96.ts, /48.ts), remuxed in the page.
 // `--plain` serves the mounts without CORS: the browser plays them on a plain
 // <audio> (no MediaSource), where the new element cannot be moved and is run
 // faster instead. Needs PulseAudio (`pactl`, `parecord`): the browser plays
@@ -24,8 +25,10 @@ const args = process.argv.slice(2);
 const browserName = args.find((a) => !a.startsWith('--') && !/^[\d,]+$/.test(a)) ?? 'chromium';
 const plain = args.includes('--plain');
 const hls = args.includes('--hls');
+const ts = args.includes('--ts');
+const IDS = ts ? ['48', '96', '192'] : ['64', '192', '320'];
 const qualityArg = args[args.indexOf('--qualities') + 1];
-const qualities = (args.includes('--qualities') ? qualityArg : '320,64,320,192,64,192').split(',');
+const qualities = (args.includes('--qualities') ? qualityArg : ts ? '192,48,192,96,48,96' : '320,64,320,192,64,192').split(',');
 const RADIO = process.env.RADIO ?? 'http://localhost:8765';
 const PAGE = process.env.PAGE ?? 'http://localhost:4300/';
 const SINK = 'rnap_align';
@@ -44,7 +47,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function main() {
   ensureSink();
   const dir = mkdtempSync(join(tmpdir(), 'rnap-align-'));
-  const wav = join(dir, `${browserName}${plain ? '-plain' : ''}${hls ? '-hls' : ''}.wav`);
+  const wav = join(dir, `${browserName}${plain ? '-plain' : ''}${hls ? '-hls' : ''}${ts ? '-ts' : ''}.wav`);
   const recorder = spawn('parecord', [`--device=${SINK}.monitor`, '--file-format=wav', '--channels=1', '--rate=44100', wav]);
   const recordStart = Date.now();
   const kind = { chromium, firefox, webkit }[browserName];
@@ -61,14 +64,14 @@ async function main() {
   // A click: the page has the user's activation (autoplay, unmuting).
   await page.mouse.click(5, 5);
   await page.evaluate(
-    async ({ radio, suffix, first, ids, hls }) => {
+    async ({ radio, suffix, first, ids, hls, ts, base }) => {
       const p = window.rnap.player;
       await p.load(
         {
           live: true,
-          renditions: [...new Set(['64', '192', '320', ...ids])].map((id) => ({
+          renditions: [...new Set([...base, ...ids])].map((id) => ({
             id,
-            uri: hls ? `${radio}/radio-hls/${id}/live.m3u8` : `${radio}/radio/${id}${suffix}`,
+            uri: hls ? `${radio}/radio-hls/${id}/live.m3u8` : ts ? `${radio}/radio-ts/${id}.ts` : `${radio}/radio/${id}${suffix}`,
             bitrate: parseInt(id, 10) * 1000 + (id.endsWith('aac') ? 1 : 0),
           })),
         },
@@ -76,7 +79,7 @@ async function main() {
       );
       await p.play();
     },
-    { radio: RADIO, suffix, first: qualities[0], ids: qualities, hls }
+    { radio: RADIO, suffix, first: qualities[0], ids: qualities, hls, ts, base: IDS }
   );
   await sleep(10_000);
   const switches = [];

@@ -505,7 +505,7 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
   /// buffered edge that is the live edge. While its burst is held, nothing
   /// has reached AVPlayer: the edge is what the gate holds. `nil`: not one.
   func alignReading() -> LiveAligner.Reading? {
-    guard remuxSession == nil else { return nil }
+    // HLS AVFoundation reads (a remux's playlists too, dated as they arrive) lines up on its program dates.
     guard relaysAudio else { return clockReading() }
     if let held = burstGate?.heldSeconds {
       return LiveAligner.Reading(position: 0, edge: held, playing: false, ready: false)
@@ -540,8 +540,8 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
       clock: clock, start: start)
   }
 
-  /// HLS AVFoundation reads itself (directly, or redirected to by the proxy): it may have program dates.
-  var mayHaveClock: Bool { remuxSession == nil && (proxied == nil || redirected) }
+  /// HLS AVFoundation reads itself (directly, redirected to by the proxy, or a remux's): it may have program dates.
+  var mayHaveClock: Bool { proxied == nil || redirected }
 
   /// Reached through the proxy, which has not yet found out whether a playlist is behind the URL.
   var unclassified: Bool { remuxSession == nil && proxied != nil && !redirected && receivedEdge == nil }

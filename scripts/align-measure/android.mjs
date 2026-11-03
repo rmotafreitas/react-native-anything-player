@@ -6,7 +6,7 @@
 //   node scripts/stream-server/server.mjs &
 //   yarn example start --port 8088 &
 //   PULSE_SINK=rnap_align emulator -avd <avd> (with audio) &
-//   node scripts/align-measure/android.mjs [serial] [--hls]
+//   node scripts/align-measure/android.mjs [serial] [--hls|--ts]
 //
 // The emulator plays into the PulseAudio null sink `rnap_align` (start it
 // with PULSE_SINK=rnap_align, without -no-audio), or, with `--wav FILE`, into
@@ -23,7 +23,8 @@ import { jumps, readWav, seconds } from './analyze.mjs';
 const argv = process.argv.slice(2);
 const wavArg = argv.includes('--wav') ? argv[argv.indexOf('--wav') + 1] : null;
 // `--hls`: the live HLS renditions (program dates) instead of the Icecast mounts.
-const scenario = argv.includes('--hls') ? 'live-hls-renditions' : 'live-renditions';
+// `--ts`: the live MPEG-TS channel.
+const scenario = argv.includes('--hls') ? 'live-hls-renditions' : argv.includes('--ts') ? 'live-ts-renditions' : 'live-renditions';
 const serial = argv.find((a) => !a.startsWith('--') && a !== wavArg) ?? process.env.ANDROID_SERIAL ?? 'emulator-5556';
 const SINK = 'rnap_align';
 const adb = (...args) => execFileSync('adb', ['-s', serial, ...args], { encoding: 'utf8' });

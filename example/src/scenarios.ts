@@ -892,13 +892,38 @@ SCENARIOS.push(
     timeoutMs: 300_000,
     run: (log) =>
       liveRenditions(log, (id) => `${STREAM_HOST}/radio-hls/${id}/live.m3u8`),
+  },
+  {
+    // The same program as a live MPEG-TS channel (/radio-ts/…, AAC in TS,
+    // each connection with a burst): remuxed on the web and iOS, played as a
+    // progressive stream on Android, lined up by its edges.
+    name: 'live-ts-renditions',
+    manual: true,
+    timeoutMs: 300_000,
+    run: (log) =>
+      liveRenditions(
+        log,
+        (id) => `${STREAM_HOST}/radio-ts/${id}.ts`,
+        TS_RENDITIONS
+      ),
   }
 );
 
 /** Five switches between a station's renditions, each logged as it takes over. */
+const TS_RENDITIONS = {
+  ids: ['48', '96', '192'],
+  first: '192',
+  order: ['48', '192', '96', '48', '96'],
+};
+
 function liveRenditions(
   log: (line: string) => void,
-  uri: (id: string) => string
+  uri: (id: string) => string,
+  { ids, first, order } = {
+    ids: ['64', '192', '320'],
+    first: '320',
+    order: ['64', '320', '192', '64', '192'],
+  }
 ) {
   return withPlayer(async (p) => {
     let jumps = 0;
@@ -908,19 +933,19 @@ function liveRenditions(
     await p.load(
       {
         live: true,
-        renditions: ['64', '192', '320'].map((id) => ({
+        renditions: ids.map((id) => ({
           id,
           uri: uri(id),
           bitrate: Number(id) * 1000,
         })),
       },
-      { quality: '320' }
+      { quality: first }
     );
     await p.play();
     await waitFor(p, (s) => s.state === 'playing', 20_000, 'playing');
     log(`PLAYING at=${Date.now()}`);
     await sleep(10_000);
-    for (const quality of ['64', '320', '192', '64', '192']) {
+    for (const quality of order) {
       const asked = Date.now();
       await p.selectQuality(quality);
       await waitFor(p, (s) => s.quality === quality, 60_000, quality);

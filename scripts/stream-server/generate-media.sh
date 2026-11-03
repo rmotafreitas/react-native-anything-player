@@ -30,6 +30,11 @@ for kbps in 320 192 64; do
 done
 # The same program as ADTS AAC at 64 kbps (/radio/64aac): a switch between codecs.
 ffmpeg -loglevel error -y -i media/radio.wav -c:a aac -b:a 64k -f adts media/radio-64aac.aac
+# The same program as a live MPEG-TS channel at three bitrates (/radio-ts/192,
+# /96, /48: AAC in TS, as IPTV sends it), remuxed by RNAP where it plays.
+for kbps in 192 96 48; do
+  ffmpeg -loglevel error -y -i media/radio.wav -c:a aac -b:a "${kbps}k" -f mpegts -muxrate "$((kbps * 1000 + 16000))" "media/radio-${kbps}.ts"
+done
 rm media/radio.wav
 # 30 s file for VOD/seek tests and the bundled local asset.
 ffmpeg -loglevel error -y -f lavfi -i "sine=frequency=440:duration=30:sample_rate=44100" \
