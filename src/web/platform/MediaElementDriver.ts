@@ -443,10 +443,12 @@ export class MediaElementDriver implements EngineDriver {
   /**
    * What a live quality switch lines up on (`LiveAligner`): a progressive
    * stream's buffered edge, or an HLS or DASH stream's program dates. `null`:
-   * neither (HLS without program dates).
+   * neither (HLS without program dates; a remux with a picture, whose edge
+   * moves a keyframe group at a time).
    */
   alignReading(): (AlignReading & { reconnects: number }) | null {
     if (this.hlsPending || this.dashPending || this.remuxPending) return null;
+    if (this.remux?.muxesVideo) return null;
     const e = this._element;
     const playing = !e.paused && this.flowed && e.readyState >= 3;
     const sources = this.liveSources();

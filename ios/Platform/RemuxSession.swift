@@ -606,8 +606,7 @@ final class RemuxSession {
       let timescales = rendition.remuxer.muxed?.map(\.timescale) ?? []
       for segment in out.segments {
         if let start = RemuxHls.fragmentStart(segment, timescales: timescales) {
-          // Remuxed as its bytes arrive: now is when it arrived.
-          rendition.segmenter.add(fragment: segment, start: start, arrivedAt: Date().timeIntervalSince1970)
+          rendition.segmenter.add(fragment: segment, start: start)
         } else {
           rendition.segmenter.add(init: segment)
         }

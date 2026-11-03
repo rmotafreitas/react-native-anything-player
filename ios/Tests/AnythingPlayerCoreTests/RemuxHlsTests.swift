@@ -267,34 +267,4 @@ final class RemuxHlsTests: XCTestCase {
 
       """)
   }
-
-  /// Fragments given their arrival: the playlist dates each segment by the
-  /// freshest `start − arrival` (a connect burst arrives early, then live).
-  func testLiveSegmentsCarryProgramDates() throws {
-    let bytes = try read("h264-aac.mpegts")
-    let remuxer = Remuxer(format: .mpegts, choose: choice(video: true, audio: nil))
-    let live = RemuxHls.LiveSegmenter(target: 1, keep: 8)
-    var leads: [Double] = []
-    var at = 0
-    // A burst (the first 16 KiB at once), then 4 KiB every 0.5 s.
-    let epoch = 1_700_000_000.0
-    while at < bytes.count {
-      let out = remuxer.push(Array(bytes[at..<min(at + 4096, bytes.count)]))
-      let arrival = epoch + max(0, Double(at / 4096 - 3)) * 0.5
-      for segment in out.segments {
-        if let start = RemuxHls.fragmentStart(segment, timescales: remuxer.muxed!.map(\.timescale)) {
-          live.add(fragment: segment, start: start, arrivedAt: arrival)
-          leads.append(start - arrival)
-        } else {
-          live.add(init: segment)
-        }
-      }
-      at += 4096
-    }
-    let anchor = try XCTUnwrap(leads.max())
-    XCTAssertEqual(try XCTUnwrap(live.epoch), -anchor, accuracy: 1e-9)
-    let first = try XCTUnwrap(live.segments.first)
-    let date = DashToHls.isoFormatter.string(from: Date(timeIntervalSince1970: first.start - anchor))
-    XCTAssertTrue(try XCTUnwrap(live.playlist(name: "video")).contains("#EXT-X-PROGRAM-DATE-TIME:\(date)\n#EXTINF:"))
-  }
 }

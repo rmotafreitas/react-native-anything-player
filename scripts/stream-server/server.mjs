@@ -466,7 +466,6 @@ const SEGMENT_SECONDS = (SEGMENT_FRAMES * 1152) / 44100;
 const MPEG1_BITRATES = [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320];
 const MPEG1_RATES = [44100, 48000, 32000];
 
-/** Frame offsets of an MPEG-1 Layer III file without tags (what generate-media.sh makes). */
 /** Where a connection may start in a mount's program: its frames, or a TS packet. */
 function framesOf(contentType, program) {
   if (contentType === 'audio/aac') return adtsFrames(program);
@@ -474,6 +473,7 @@ function framesOf(contentType, program) {
   return mp3Frames(program).map(([at]) => at);
 }
 
+/** Frame offsets of an MPEG-1 Layer III file without tags (what generate-media.sh makes). */
 function mp3Frames(buffer) {
   const frames = [];
   for (let at = 0; at + 4 <= buffer.length; ) {

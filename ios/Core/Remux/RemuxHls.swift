@@ -284,16 +284,10 @@ enum RemuxHls {
   // MARK: - Live
 
   /// A live stream's fragments cut into segments as they arrive, the last
-  /// few listed in a sliding playlist. Given when each fragment arrived, the
-  /// playlist carries program dates (`EXT-X-PROGRAM-DATE-TIME`): what has
-  /// arrived is the live point as it arrives, so the freshest `start −
-  /// arrival` over the last minute of media places the timeline on the
-  /// clock, as `LiveOffset` does. A live quality switch lines up on them.
+  /// few listed in a sliding playlist.
   final class LiveSegmenter {
     struct Segment {
       let sequence: Int
-      /// Its start on the stream's timeline (s).
-      let start: Double
       let duration: Double
       let data: [UInt8]
       /// Which init segment it needs (`<name>-init-<n>.mp4`).
@@ -307,13 +301,6 @@ enum RemuxHls {
     /// The segment being filled: its start (s), bytes and init segment.
     private var open: (start: Double, data: [UInt8], initIndex: Int)?
     private var nextSequence = 0
-    /// Fragment starts and their `start − arrival` (epoch s), decreasing: the front is the freshest.
-    private var leads: [(start: Double, lead: Double)] = []
-    /// The leads are kept over this much media (s).
-    static let clockWindow = 60.0
-
-    /// Epoch seconds of the timeline's 0 (`date = start + epoch`); `nil` before an arrival.
-    var epoch: Double? { leads.first.map { -$0.lead } }
 
     init(target: Double = 4, keep: Int = 8) {
       self.target = target
@@ -328,9 +315,8 @@ enum RemuxHls {
 
     /// A fragment starting at `start` (s): a segment closes before it once it
     /// holds `target` seconds, or when the fragment needs another init segment.
-    func add(fragment: [UInt8], start: Double, arrivedAt: Double? = nil) {
+    func add(fragment: [UInt8], start: Double) {
       guard !inits.isEmpty else { return }
-      if let arrivedAt { arrived(start, arrivedAt) }
       let initIndex = inits.count - 1
       if let current = open, current.initIndex != initIndex || start - current.start >= target - 1e-6 {
         close(at: start, current)
@@ -339,20 +325,12 @@ enum RemuxHls {
       open!.data += fragment
     }
 
-    /// A fragment starting at `start` was there at `at` (epoch s): the freshest over the window places the clock.
-    private func arrived(_ start: Double, _ at: Double) {
-      let lead = start - at
-      while let last = leads.last, last.lead <= lead { leads.removeLast() }
-      leads.append((start, lead))
-      while leads.count > 1, leads[0].start < start - Self.clockWindow { leads.removeFirst() }
-    }
-
     private func close(at end: Double, _ current: (start: Double, data: [UInt8], initIndex: Int)) {
       open = nil
       guard !current.data.isEmpty else { return }
       segments.append(
         Segment(
-          sequence: nextSequence, start: current.start, duration: max(0.001, end - current.start), data: current.data,
+          sequence: nextSequence, duration: max(0.001, end - current.start), data: current.data,
           initIndex: current.initIndex))
       nextSequence += 1
       if segments.count > keep { segments.removeFirst(segments.count - keep) }
@@ -371,10 +349,6 @@ enum RemuxHls {
         if segment.initIndex != map {
           map = segment.initIndex
           lines.append("#EXT-X-MAP:URI=\"\(name)-init-\(map).mp4\"")
-        }
-        if let epoch {
-          let date = Date(timeIntervalSince1970: segment.start + epoch)
-          lines.append("#EXT-X-PROGRAM-DATE-TIME:" + DashToHls.isoFormatter.string(from: date))
         }
         lines.append(String(format: "#EXTINF:%.3f,", segment.duration))
         lines.append("\(name)-\(segment.sequence).m4s")

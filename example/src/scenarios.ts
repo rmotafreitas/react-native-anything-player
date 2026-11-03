@@ -909,13 +909,13 @@ SCENARIOS.push(
   }
 );
 
-/** Five switches between a station's renditions, each logged as it takes over. */
 const TS_RENDITIONS = {
   ids: ['48', '96', '192'],
   first: '192',
   order: ['48', '192', '96', '48', '96'],
 };
 
+/** Five switches between a station's renditions, each logged as it takes over. */
 function liveRenditions(
   log: (line: string) => void,
   uri: (id: string) => string,

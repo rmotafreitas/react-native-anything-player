@@ -292,7 +292,7 @@ final class SwapDriver: LocalOutput {
       // A reading that went away (an item that changed kind): as before, reported.
       if waiting.steps > 0 { return apply(aligner.interrupt()) }
       // Not a progressive stream on both sides, nor HLS with program dates
-      // on both (HLS without them, renditions of different kinds): at once, as before.
+      // on both (HLS without them, a remux, renditions of different kinds): at once, as before.
       observer?.driverNote(
         generation: waiting.generation, event: "quality switch not aligned", details: ["reason": "adaptive"])
       waiting.aligner = nil

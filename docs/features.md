@@ -60,7 +60,7 @@ Supported: the current and previous version of each browser. Radio titles on iPh
 | Sleep timer (`sleep`, `status.sleepAt`) | ✓ | ✓ | ◐ ⁷ | ◐ ⁷ | ◐ ⁷ | ◐ ⁷ |
 | Fades on play, pause and stop, `fadeTo` | ✓ | ✓ | ◐ ⁷ | ◐ ⁷ | ◐ ⁷ | – ⁶ |
 | Separate quality files (`renditions`) switched with no gap, a pick that holds across loads | ✓ † | ✓ † | ✓ | ✓ | ✓ | ✓ † |
-| Live renditions (one station's mounts, a live MPEG-TS channel, or HLS / DASH with program dates) switched in step with what is heard, no repeat or skip | ✓ † | ✓ | ◐ ⁵ | ◐ ⁵ | ◐ ⁵ | ◐ ⁵ † |
+| Live renditions (one station's mounts, a live MPEG-TS sound channel, or HLS / DASH with program dates) switched in step with what is heard, no repeat or skip | ✓ † | ✓ | ◐ ⁵ | ◐ ⁵ | ◐ ⁵ | ◐ ⁵ † |
 | Queue (next / previous, gapless) | – | – | – | – | – | – |
 
 1. Leave it out with `rnapHls=false`.
