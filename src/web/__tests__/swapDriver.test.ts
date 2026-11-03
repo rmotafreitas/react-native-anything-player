@@ -791,6 +791,27 @@ describe('a live switch', () => {
     }
   );
 
+  it('switches an adaptive source (HLS, DASH) at once, as before, even when it could wait', () => {
+    const spy = jest
+      .spyOn(MediaElementDriver.prototype, 'alignReading')
+      .mockReturnValue(null);
+    try {
+      const { next, tick } = stations(1.6, 17);
+      expect(next.paused).toBe(false);
+      expect(rec.of('onNote')).toContainEqual([
+        2,
+        'quality switch not aligned',
+        { reason: 'adaptive' },
+      ]);
+      tick(40);
+      expect(driver.element).toBe(next);
+      expect(rec.of('onFailed')).toEqual([]);
+      expect(rec.of('onDiscontinuity')).toEqual([]);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it('holds a new connection that is ahead until the old one gets there', () => {
     const { old, next, tick } = stations(17, 1.6);
     tick(10_000);

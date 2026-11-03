@@ -574,7 +574,9 @@ final class PlayerController: EngineDelegate, DriverObserver {
     let live = lock.sync { snapshotStatus.isLive }
     let value = liveOffset.read(
       SystemClock.shared.monotonicMs,
-      LiveOffset.Reading(position: reading.position, edge: reading.edge, native: reading.liveOffset, live: live))
+      LiveOffset.Reading(
+        position: reading.position, edge: reading.edge, native: reading.liveOffset, live: live,
+        programDate: reading.programDate))
     reading.liveOffset = value.offset
     reading.liveOffsetSettled = value.settled
     return reading
@@ -779,6 +781,11 @@ final class PlayerController: EngineDelegate, DriverObserver {
     guard engine.accepts(generation) else { return }
     // A new connection: how far behind live is measured again.
     liveOffset.reset()
+    // Listeners read the progress to place themselves again: the snapshot
+    // from the last tick still describes the connection playback just left.
+    let reading = timedProgress()
+    let clock = SystemClock.shared
+    lock.sync { snapshotProgress = (reading, clock.monotonicMs, clock.wallMs) }
     emit(
       "discontinuity",
       [

@@ -151,7 +151,7 @@ internal class PlayerController(
     val value =
       liveOffset.read(
         AndroidClock.monotonicMs,
-        LiveOffset.Reading(reading.position, reading.edge, reading.liveOffset, statusSnapshot.first.isLive),
+        LiveOffset.Reading(reading.position, reading.edge, reading.liveOffset, statusSnapshot.first.isLive, reading.programDate),
       )
     return reading.copy(liveOffset = value.offset, liveOffsetSettled = value.settled)
   }

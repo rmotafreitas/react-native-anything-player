@@ -17,8 +17,9 @@
 // A source with a clock (HLS program dates, a DASH or ExoPlayer live window)
 // is the player's own reading, passed through. `settled`: the live point has
 // not risen for `SETTLE_MS` (the connect burst has arrived) and has been read
-// that long. For a reading with a clock that point is `position + offset −
-// time`: it holds still while paused and at any rate. Twins: `ios/Core/LiveOffset.swift`,
+// that long. For a reading with a clock that point is `playhead + offset −
+// time`, the playhead on the stream's clock (`programDate`) when it has one:
+// it holds still while paused, at any rate, and as a live window slides. Twins: `ios/Core/LiveOffset.swift`,
 // `android/.../core/LiveOffset.kt`, against `conformance/align/offset.json`.
 
 /** One reading of the player, on its reported timeline (seconds). */
@@ -31,6 +32,8 @@ export interface OffsetReading {
   native: number | null;
   /** The source is live. */
   live: boolean;
+  /** Epoch ms the stream's own clock gives the playhead (program dates); `null` without one. */
+  programDate?: number | null;
 }
 
 export interface LiveOffsetValue {
@@ -85,13 +88,19 @@ export class LiveOffset {
       this.reset();
       return { offset: null, settled: false };
     }
+    // A reading with a clock is the player's own: its position can go back
+    // as a live window slides (ExoPlayer), and a new connection is a
+    // `discontinuity` there. Its playhead on the stream's clock does not move back.
+    if (r.native != null) {
+      const at = r.programDate == null ? r.position : r.programDate / 1000;
+      return this.fromNative(t, r.native, at);
+    }
     if (
       this.lastPosition != null &&
       r.position < this.lastPosition - Offset.BACK_S
     )
       this.reset();
     this.lastPosition = r.position;
-    if (r.native != null) return this.fromNative(t, r.native, r.position);
     if (r.edge == null) return { offset: null, settled: false };
     this.since ??= t;
     if (this.lastEdge == null || r.edge > this.lastEdge)
@@ -114,13 +123,10 @@ export class LiveOffset {
     while (this.leads[0]!.edge < edge - Offset.WINDOW_S) this.leads.shift();
   }
 
-  private fromNative(
-    t: number,
-    native: number,
-    position: number
-  ): LiveOffsetValue {
+  /** `at`: the playhead, on the stream's clock when it has one. */
+  private fromNative(t: number, native: number, at: number): LiveOffsetValue {
     this.since ??= t;
-    const point = position + native - t / 1000;
+    const point = at + native - t / 1000;
     if (
       this.native == null ||
       Math.abs(point - this.native) > Offset.NATIVE_STEP_S

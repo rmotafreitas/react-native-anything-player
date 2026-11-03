@@ -430,6 +430,7 @@ export class WebPlayerController
       edge: reading.edge ?? null,
       native: reading.liveOffset,
       live: this.statusSnapshot.status.isLive,
+      programDate: reading.programDate ?? null,
     });
     return {
       ...reading,

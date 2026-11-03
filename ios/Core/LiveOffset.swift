@@ -18,8 +18,9 @@ import Foundation
 /// A source with a clock (HLS program dates, a live window) is the player's
 /// own reading, passed through. Settled: the live point has not risen for
 /// `settleMs` (the connect burst has arrived) and has been read that long.
-/// For a reading with a clock that point is `position + offset − time`: it
-/// holds still while paused and at any rate.
+/// For a reading with a clock that point is `playhead + offset − time`, the
+/// playhead on the stream's clock (`programDate`) when it has one: it holds
+/// still while paused, at any rate, and as a live window slides.
 /// Twin of `src/web/engine/LiveOffset.ts` and `android/.../core/LiveOffset.kt`,
 /// against `conformance/align/offset.json`.
 final class LiveOffset {
@@ -31,6 +32,8 @@ final class LiveOffset {
     /// The platform's own offset behind live (program dates, a live window); `nil` when it has none.
     var native: Double?
     var live: Bool
+    /// Epoch ms the stream's own clock gives the playhead (program dates); `nil` without one.
+    var programDate: Int64? = nil
   }
 
   struct Value: Equatable {
@@ -75,9 +78,12 @@ final class LiveOffset {
       reset()
       return Value(offset: nil, settled: false)
     }
+    // A reading with a clock is the player's own: its position can go back
+    // as a live window slides, and a new connection is a `discontinuity`
+    // there. Its playhead on the stream's clock does not move back.
+    if let value = r.native { return fromNative(t, value, r.programDate.map { Double($0) / 1000 } ?? r.position) }
     if let last = lastPosition, r.position < last - Self.backS { reset() }
     lastPosition = r.position
-    if let value = r.native { return fromNative(t, value, r.position) }
     guard let edge = r.edge else { return Value(offset: nil, settled: false) }
     if since == nil { since = t }
     if lastEdge == nil || edge > lastEdge! { arrived(t, edge) }
@@ -96,9 +102,10 @@ final class LiveOffset {
     while leads[0].edge < edge - Self.windowS { leads.removeFirst() }
   }
 
-  private func fromNative(_ t: Int64, _ value: Double, _ position: Double) -> Value {
+  /// `at`: the playhead, on the stream's clock when it has one.
+  private func fromNative(_ t: Int64, _ value: Double, _ at: Double) -> Value {
     if since == nil { since = t }
-    let point = position + value - Double(t) / 1000
+    let point = at + value - Double(t) / 1000
     if native == nil || abs(point - native!) > Self.nativeStepS { risenAt = t }
     native = point
     return Value(offset: max(0, value), settled: settled(t))

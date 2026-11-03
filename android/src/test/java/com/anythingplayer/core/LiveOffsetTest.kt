@@ -29,6 +29,7 @@ class LiveOffsetTest {
               edge = if (s.isNull("edge")) null else s.getDouble("edge"),
               native = if (s.isNull("native")) null else s.getDouble("native"),
               live = s.getBoolean("live"),
+              programDate = if (s.isNull("programDate")) null else s.getLong("programDate"),
             ),
           )
         val expect = s.optJSONObject("expect") ?: continue

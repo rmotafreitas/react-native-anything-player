@@ -28,7 +28,8 @@ final class LiveOffsetTests: XCTestCase {
             position: (s["position"] as? NSNumber)?.doubleValue ?? .nan,
             edge: (s["edge"] as? NSNumber)?.doubleValue,
             native: (s["native"] as? NSNumber)?.doubleValue,
-            live: s["live"] as? Bool ?? false))
+            live: s["live"] as? Bool ?? false,
+            programDate: (s["programDate"] as? NSNumber)?.int64Value))
         guard let expect = s["expect"] as? [String: Any] else { continue }
         XCTAssertEqual(value.settled, expect["settled"] as? Bool, "\(name) @\(t)")
         if let offset = (expect["offset"] as? NSNumber)?.doubleValue {

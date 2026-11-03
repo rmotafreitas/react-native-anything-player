@@ -19,8 +19,9 @@ package com.anythingplayer.core
  * A source with a clock (HLS program dates, a DASH or ExoPlayer live window)
  * is the player's own reading, passed through. Settled: the live point has
  * not risen for [SETTLE_MS] (the connect burst has arrived) and has been read
- * that long. For a reading with a clock that point is `position + offset −
- * time`: it holds still while paused and at any rate. Twin of `src/web/engine/LiveOffset.ts` and `ios/Core/LiveOffset.swift`,
+ * that long. For a reading with a clock that point is `playhead + offset −
+ * time`, the playhead on the stream's clock (`programDate`) when it has one:
+ * it holds still while paused, at any rate, and as a live window slides. Twin of `src/web/engine/LiveOffset.ts` and `ios/Core/LiveOffset.swift`,
  * against `conformance/align/offset.json`.
  */
 class LiveOffset {
@@ -32,6 +33,8 @@ class LiveOffset {
     /** The platform's own offset behind live (program dates, a live window); `null` when it has none. */
     val native: Double?,
     val live: Boolean,
+    /** Epoch ms the stream's own clock gives the playhead (program dates); `null` without one. */
+    val programDate: Long? = null,
   )
 
   data class Value(val offset: Double?, val settled: Boolean)
@@ -65,9 +68,12 @@ class LiveOffset {
       reset()
       return Value(null, false)
     }
+    // A reading with a clock is the player's own: its position can go back
+    // as a live window slides (ExoPlayer), and a new connection is a
+    // `discontinuity` there. Its playhead on the stream's clock does not move back.
+    r.native?.let { return fromNative(t, it, r.programDate?.let { d -> d / 1000.0 } ?: r.position) }
     lastPosition?.let { if (r.position < it - BACK_S) reset() }
     lastPosition = r.position
-    r.native?.let { return fromNative(t, it, r.position) }
     val edge = r.edge ?: return Value(null, false)
     if (since == null) since = t
     if (lastEdge.let { it == null || edge > it }) arrived(t, edge)
@@ -87,9 +93,10 @@ class LiveOffset {
     while (leads.first().edge < edge - WINDOW_S) leads.removeFirst()
   }
 
-  private fun fromNative(t: Long, value: Double, position: Double): Value {
+  /** [at]: the playhead, on the stream's clock when it has one. */
+  private fun fromNative(t: Long, value: Double, at: Double): Value {
     if (since == null) since = t
-    val point = position + value - t / 1000.0
+    val point = at + value - t / 1000.0
     val previous = native
     if (previous == null || kotlin.math.abs(point - previous) > NATIVE_STEP_S) risenAt = t
     native = point

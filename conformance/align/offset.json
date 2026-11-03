@@ -997,5 +997,35 @@
       {"t": 3500, "position": 107, "edge": null, "native": 8.5, "live": true},
       {"t": 4000, "position": 108, "edge": null, "native": 8.0, "live": true, "expect": {"offset": 8.0, "settled": true}}
     ]
+  },
+  {
+    "name": "a live window that slides (ExoPlayer HLS/DASH): the position drops by a segment, the stream's clock does not; it stays settled",
+    "steps": [
+      {"t": 0, "position": 30.0, "edge": null, "native": 20, "live": true, "programDate": 1700000030000, "expect": {"offset": 20, "settled": false}},
+      {"t": 500, "position": 30.5, "edge": null, "native": 20, "live": true, "programDate": 1700000030500},
+      {"t": 1000, "position": 31.0, "edge": null, "native": 20, "live": true, "programDate": 1700000031000},
+      {"t": 1500, "position": 31.5, "edge": null, "native": 20, "live": true, "programDate": 1700000031500},
+      {"t": 2000, "position": 32.0, "edge": null, "native": 20, "live": true, "programDate": 1700000032000},
+      {"t": 2500, "position": 32.5, "edge": null, "native": 20, "live": true, "programDate": 1700000032500},
+      {"t": 3000, "position": 33.0, "edge": null, "native": 20, "live": true, "programDate": 1700000033000, "expect": {"offset": 20, "settled": true}},
+      {"t": 3500, "position": 33.5, "edge": null, "native": 20, "live": true, "programDate": 1700000033500},
+      {"t": 4000, "position": 34.0, "edge": null, "native": 20, "live": true, "programDate": 1700000034000},
+      {"t": 4500, "position": 34.5, "edge": null, "native": 20, "live": true, "programDate": 1700000034500},
+      {"t": 5000, "position": 35.0, "edge": null, "native": 20, "live": true, "programDate": 1700000035000},
+      {"t": 5500, "position": 35.5, "edge": null, "native": 20, "live": true, "programDate": 1700000035500},
+      {"t": 6000, "position": 30.0, "edge": null, "native": 20, "live": true, "programDate": 1700000036000, "expect": {"offset": 20, "settled": true}},
+      {"t": 6500, "position": 30.5, "edge": null, "native": 20, "live": true, "programDate": 1700000036500, "expect": {"offset": 20, "settled": true}},
+      {"t": 7000, "position": 31.0, "edge": null, "native": 20, "live": true, "programDate": 1700000037000},
+      {"t": 7500, "position": 31.5, "edge": null, "native": 20, "live": true, "programDate": 1700000037500},
+      {"t": 8000, "position": 32.0, "edge": null, "native": 20, "live": true, "programDate": 1700000038000},
+      {"t": 8500, "position": 32.5, "edge": null, "native": 20, "live": true, "programDate": 1700000038500},
+      {"t": 9000, "position": 33.0, "edge": null, "native": 20, "live": true, "programDate": 1700000039000, "expect": {"offset": 20, "settled": true}},
+      {"t": 9500, "position": 33.5, "edge": null, "native": 20, "live": true, "programDate": 1700000039500},
+      {"t": 10000, "position": 34.0, "edge": null, "native": 20, "live": true, "programDate": 1700000040000},
+      {"t": 10500, "position": 34.5, "edge": null, "native": 20, "live": true, "programDate": 1700000040500},
+      {"t": 11000, "position": 35.0, "edge": null, "native": 20, "live": true, "programDate": 1700000041000},
+      {"t": 11500, "position": 35.5, "edge": null, "native": 20, "live": true, "programDate": 1700000041500},
+      {"t": 12000, "position": 30.0, "edge": null, "native": 20, "live": true, "programDate": 1700000042000, "expect": {"offset": 20, "settled": true}}
+    ]
   }
 ]
