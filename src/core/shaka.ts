@@ -86,6 +86,8 @@ export interface ShakaPlayerLike {
   setTextTrackVisibility?(visible: boolean): unknown;
   /** Whether the manifest is live. */
   isLive(): boolean;
+  /** The wall-clock date of the playhead on a live presentation (its timeline, synchronized to the manifest's clock). */
+  getPlayheadTimeAsDate?(): Date | null;
   /** Playback statistics. */
   getStats(): {
     /** Bits per second, Shaka's estimate. */

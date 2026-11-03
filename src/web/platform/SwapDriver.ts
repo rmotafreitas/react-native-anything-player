@@ -16,6 +16,7 @@
 
 import type { EngineDriver } from '../engine/PlaybackEngine';
 import type { StreamMetadata } from '../engine/StreamMetadata';
+import { engineError } from '../engine/types';
 import {
   Align,
   LiveAligner,
@@ -125,6 +126,10 @@ interface Pending {
   aligner: LiveAligner | null;
   /** Gave up lining up: takes over on its first audio, reported as a discontinuity. */
   fallback: boolean;
+  /** The player needs it (the current item stalls): one that cannot be lined up switches anyway. */
+  required: boolean;
+  /** What a fallback skips (+) or repeats (−), seconds, when the aligner knew. */
+  jump: number | null;
   /** The new element plays at `WHISPER`, not muted. */
   whisper: boolean;
   /** The rate the aligner asked of the new element (× the app's). */
@@ -291,6 +296,7 @@ export class SwapDriver implements LocalDriver {
       ...reading,
       position: Math.max(0, reading.position - this.shift),
       buffered: Math.max(0, reading.buffered - this.shift),
+      edge: reading.edge == null ? null : reading.edge - this.shift,
     };
   }
 
@@ -318,6 +324,8 @@ export class SwapDriver implements LocalDriver {
       timer: null,
       aligner: null,
       fallback: false,
+      required: request.required === true,
+      jump: null,
       whisper: false,
       alignRate: 1,
       startTimer: null,
@@ -380,10 +388,10 @@ export class SwapDriver implements LocalDriver {
         }
         f.onStreamMetadata(g, metadata);
       },
-      onDiscontinuity: (g, position) => {
+      onDiscontinuity: (g, position, reason, jump) => {
         const shifted =
           g === this.generation ? position - this.shift : position;
-        f.onDiscontinuity(g, shifted);
+        f.onDiscontinuity(g, shifted, reason, jump);
         // Either connection jumped: the two no longer line up.
         if (this.aligning) this.apply(this.pending!.aligner!.interrupt());
       },
@@ -452,16 +460,9 @@ export class SwapDriver implements LocalDriver {
    * steps of seconds. An adaptive source (HLS, DASH) starts at once.
    */
   private startAligning(pending: Pending, spare: MediaElementDriver): void {
-    if (this.current.alignReading() == null || spare.alignReading() == null) {
-      spare.play();
-      return;
-    }
-    if (!spare.feedsItself) {
-      this.note(pending, 'not aligned', { reason: 'plain' });
-      pending.fallback = true;
-      spare.play();
-      return;
-    }
+    if (this.current.alignReading() == null || spare.alignReading() == null)
+      return this.unaligned(pending, spare, 'adaptive');
+    if (!spare.feedsItself) return this.unaligned(pending, spare, 'plain');
     const caps: AlignCaps = {
       maxRate: MAX_ALIGN_RATE,
       minRate: 0.5,
@@ -515,20 +516,7 @@ export class SwapDriver implements LocalDriver {
       case 'wait':
         return;
       case 'rate':
-        pending.alignRate = action.rate === 0 ? 1 : action.rate;
-        if (action.rate === 0) return spare.pause();
-        spare.setRate(action.rate * this.rate);
-        // Playing already: a rate change only (WebKit refuses a play() it
-        // did not need, without the user's activation, and stops).
-        if (!spare.element.paused) return;
-        if (action.afterMs == null) return this.playSpare(pending, spare);
-        // Due between two ticks: started on time.
-        pending.startTimer = browser().setTimeout(() => {
-          pending.startTimer = null;
-          if (this.pending === pending && this.aligning)
-            this.playSpare(pending, spare);
-        }, action.afterMs);
-        return;
+        return this.run(pending, spare, action.rate, action.afterMs);
       case 'jump':
         return spare.seek(action.to, true);
       case 'takeOver':
@@ -538,15 +526,33 @@ export class SwapDriver implements LocalDriver {
         });
         return this.switched();
       case 'fallback':
-        this.note(pending, 'not aligned', { reason: action.reason });
-        pending.fallback = true;
-        pending.alignRate = 1;
-        spare.setRate(this.rate);
-        // Already playing (it was running to catch up): at once.
-        if (spare.progress().isPlaying) return this.switched();
-        if (!spare.element.paused) return;
-        return this.playSpare(pending, spare);
+        // The old one stalls: the player needs the switch now.
+        if (action.reason === 'stalled') pending.required = true;
+        pending.jump = pending.aligner!.gap;
+        return this.unaligned(pending, spare, action.reason);
     }
+  }
+
+  /** Runs the new element at `rate` × the app's (0: holds it), from `afterMs` on. */
+  private run(
+    pending: Pending,
+    spare: MediaElementDriver,
+    rate: number,
+    afterMs: number | undefined
+  ): void {
+    pending.alignRate = rate === 0 ? 1 : rate;
+    if (rate === 0) return spare.pause();
+    spare.setRate(rate * this.rate);
+    // Playing already: a rate change only (WebKit refuses a play() it did
+    // not need, without the user's activation, and stops).
+    if (!spare.element.paused) return;
+    if (afterMs == null) return this.playSpare(pending, spare);
+    // Due between two ticks: started on time.
+    pending.startTimer = browser().setTimeout(() => {
+      pending.startTimer = null;
+      if (this.pending === pending && this.aligning)
+        this.playSpare(pending, spare);
+    }, afterMs);
   }
 
   /** Plays the new element; whispering, a refusal (no user activation yet) mutes it and plays again. */
@@ -560,6 +566,37 @@ export class SwapDriver implements LocalDriver {
       spare.element.muted = true;
       spare.play();
     });
+  }
+
+  /**
+   * A live switch that cannot be lined up: switched anyway, as a
+   * `discontinuity`, when the player needs it; else dropped, the current
+   * one playing on (`QUALITY_SWITCH_FAILED`).
+   */
+  private unaligned(
+    pending: Pending,
+    spare: MediaElementDriver,
+    reason: string
+  ): void {
+    this.note(pending, 'not aligned', { reason });
+    if (!pending.required) {
+      // The engine drops it (cancelSwap) and the app hears why.
+      this.observer.onFailed(
+        pending.generation,
+        engineError(
+          'QUALITY_SWITCH_FAILED',
+          `The live switch could not be lined up with what is heard (${reason}).`,
+          true
+        )
+      );
+      return;
+    }
+    pending.fallback = true;
+    pending.alignRate = 1;
+    spare.setRate(this.rate);
+    // Already playing (it was running to catch up): at once.
+    if (spare.progress().isPlaying) return this.switched();
+    if (spare.element.paused) this.playSpare(pending, spare);
   }
 
   private note(
@@ -589,7 +626,13 @@ export class SwapDriver implements LocalDriver {
     // What it reached while it lined up was the pending generation's: told now.
     if (pending.metadata && pending.metadataAt > this.toldCurrent)
       f.onStreamMetadata(generation, pending.metadata);
-    if (fallback) f.onDiscontinuity(generation, this.sample().position);
+    if (fallback)
+      f.onDiscontinuity(
+        generation,
+        this.sample().position,
+        'switch',
+        pending.jump
+      );
   }
 
   /** The new file plays: it is the picture and the sound now. */

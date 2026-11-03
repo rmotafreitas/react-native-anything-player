@@ -2756,6 +2756,7 @@ class PlaybackEngine(
         allowReconnect = options.reconnect,
         swap = true,
         rendition = target,
+        required = state == PlaybackState.BUFFERING,
       ),
     )
   }

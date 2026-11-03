@@ -156,6 +156,12 @@ data class OpenRequest(
    * `playing`, and is dropped then.
    */
   val swap: Boolean = false,
+  /**
+   * A switch the player needs (the current item is stalling): one that cannot
+   * be lined up with what is heard switches anyway, reported as a
+   * `discontinuity`. Otherwise it is dropped and the current one plays on.
+   */
+  val required: Boolean = false,
   /** Index into the source's renditions, when it has them. */
   val rendition: Int? = null,
 )

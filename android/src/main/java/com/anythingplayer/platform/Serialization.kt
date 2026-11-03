@@ -439,7 +439,10 @@ internal fun progressToMap(snapshot: ProgressSnapshot, nowMonotonic: Long, nowWa
     putNullableDouble("duration", r.duration)
     putDouble("buffered", maxOf(r.buffered, position))
     putDouble("bufferedAhead", (r.buffered - position).coerceAtLeast(0.0))
-    putNullableDouble("liveOffset", r.liveOffset)
+    // While paused or stalled the live point moves on: the offset grows.
+    putNullableDouble("liveOffset", r.liveOffset?.let { if (r.isPlaying) it else it + elapsed })
+    putBoolean("liveOffsetSettled", r.liveOffsetSettled)
+    if (r.programDate != null) putDouble("programDate", r.programDate.toDouble()) else putNull("programDate")
     putDouble("timestamp", nowWall.toDouble())
   }
 }

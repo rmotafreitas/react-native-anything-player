@@ -419,16 +419,18 @@ export class MediaElementDriver implements EngineDriver {
   progress(): ProgressReading {
     const position = this.position();
     const duration = this._element.duration;
+    const buffered = Math.max(position, this.bufferedEnd(position));
+    const progressive = this.isLive && !this.hls && !this.dash;
     return {
       position,
-      duration:
-        Number.isFinite(duration) && duration > 0 && !this.isLive
-          ? duration
-          : null,
-      buffered: Math.max(position, this.bufferedEnd(position)),
+      duration: Number.isFinite(duration) && duration > 0 && !this.isLive ? duration : null, // prettier-ignore
+      buffered,
       liveOffset: this.liveOffset(),
       isPlaying: !this._element.paused && this.flowed,
       rate: this._element.playbackRate,
+      // A progressive live stream measures from what it received (`LiveOffset`).
+      edge: progressive ? buffered : null,
+      programDate: this.hls?.programDate ?? this.dash?.programDate ?? null,
     };
   }
 
@@ -585,9 +587,11 @@ export class MediaElementDriver implements EngineDriver {
       this.observer.onBandwidth?.(generation, mbps * 1_000_000);
   }
 
+  /** The player's own reading behind live (HLS latency, a DASH presentation's clock). */
   private liveOffset(): number | null {
-    if (this.stream) return this.stream.bufferedAhead;
-    return this.hls?.live ? this.hls.liveOffset : null;
+    if (this.hls?.live) return this.hls.liveOffset;
+    const date = this.dash?.programDate;
+    return date == null ? null : Math.max(0, (Date.now() - date) / 1000);
   }
 
   /** Whether hls.js has to play this: an HLS source on an element that cannot. */

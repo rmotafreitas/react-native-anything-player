@@ -64,8 +64,11 @@ internal interface DriverObserver {
    * A live stream's audio jumped, now audible: playback moved onto a fresh
    * connection of the same source (see `onPositionDiscontinuity`).
    * [position] is the media position (s) the new connection starts at.
+   * [reason]: `reconnect` (a dropped connection replaced) or `switch` (a live
+   * quality switch that could not be lined up); [jump]: seconds skipped (+)
+   * or heard again (−), when known.
    */
-  fun onDiscontinuity(generation: Int, position: Double)
+  fun onDiscontinuity(generation: Int, position: Double, reason: String = "reconnect", jump: Double? = null)
   fun isOffline(): Boolean
 
   /** Video: the picture's size, HDR, and the variant playing. */
@@ -118,6 +121,12 @@ internal data class ProgressReading(
   val liveOffset: Double?,
   val isPlaying: Boolean,
   val rate: Double,
+  /** A progressive live stream: where the audio received so far ends (`LiveOffset` measures from it). */
+  val edge: Double? = null,
+  /** Epoch ms the stream's own clock gives what plays now (HLS program dates, a DASH live window); `null` without one. */
+  val programDate: Long? = null,
+  /** `liveOffset` has settled (`LiveOffset`): the controller's reading. */
+  val liveOffsetSettled: Boolean = false,
 )
 
 private const val MEDIA_ID_PREFIX = "anythingplayer:"
@@ -782,6 +791,10 @@ internal class ExoPlayerDriver(
     val p = player ?: return ProgressReading(0.0, 0.0, null, null, false, rate.toDouble())
     val duration = p.duration.takeIf { it != C.TIME_UNSET && it > 0 }?.let { it / 1000.0 }
     val offset = p.currentLiveOffset.takeIf { it != C.TIME_UNSET && it >= 0 }?.let { it / 1000.0 }
+    val live = p.isCurrentMediaItemLive || (p.duration == C.TIME_UNSET && !p.isCurrentMediaItemSeekable)
+    // The live window's program date (HLS EXT-X-PROGRAM-DATE-TIME, DASH), when it has one.
+    val window = if (p.currentTimeline.isEmpty) null else p.currentTimeline.getWindow(p.currentMediaItemIndex, Timeline.Window())
+    val date = window?.windowStartTimeMs?.takeIf { it != C.TIME_UNSET }?.let { it + p.currentPosition }
     return ProgressReading(
       p.currentPosition / 1000.0,
       p.bufferedPosition / 1000.0,
@@ -789,6 +802,9 @@ internal class ExoPlayerDriver(
       offset,
       p.isPlaying,
       rate.toDouble(),
+      // A progressive live stream measures from what it received (`LiveOffset`).
+      edge = if (live && p.currentManifest == null) p.bufferedPosition / 1000.0 else null,
+      programDate = date,
     )
   }
 

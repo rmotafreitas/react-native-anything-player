@@ -639,6 +639,7 @@ export abstract class EngineQuality extends EngineFades {
       allowReconnect: this.options.reconnect,
       swap: true,
       rendition: target,
+      required: this._state === 'buffering',
     });
   }
 

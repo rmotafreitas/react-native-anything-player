@@ -281,11 +281,30 @@ export interface Progress {
   /** Seconds of audio buffered past the playhead. */
   bufferedAhead: number;
   /**
-   * Seconds behind the live edge, when it can be measured: HLS program dates,
-   * ExoPlayer's live window, and on iOS any live HTTP stream (from the audio
-   * the stream proxy has handed the player). Else `null`: use `bufferedAhead`.
+   * Live: seconds from the source's live point to what is heard now. A
+   * progressive stream (ICY/Icecast, plain HTTP, a live MPEG-TS channel):
+   * from what has arrived, at its freshest, so it holds steady while audio
+   * plays (no saw-tooth between chunks), grows while paused or stalled, and
+   * goes on across a quality switch; it is measured again after a
+   * `discontinuity`. HLS and DASH: the player's own reading (program dates, the
+   * live window). `null` for files, on Cast, and before there is anything to
+   * measure. `timestamp − liveOffset × 1000` is when (device clock) what is
+   * heard was live.
    */
   liveOffset: number | null;
+  /**
+   * `liveOffset` has settled: the connect burst has arrived and it has held
+   * for 3 s. Before that it can only read too low. `false` again after a
+   * `discontinuity`, and whenever `liveOffset` is `null`.
+   */
+  liveOffsetSettled: boolean;
+  /**
+   * Epoch ms the stream itself gives what is heard now (HLS
+   * EXT-X-PROGRAM-DATE-TIME, a DASH presentation's clock): the station's own
+   * timeline, with no device-clock skew. `null` when the stream has no clock
+   * (ICY, plain HTTP, most files).
+   */
+  programDate: number | null;
   /** Epoch ms of the reading. */
   timestamp: number;
 }
@@ -873,6 +892,14 @@ export interface SleepEvent {
 export interface Discontinuity {
   /** Media position (s) where the new connection's audio starts. */
   position: number;
+  /**
+   * `reconnect`: a dropped connection was replaced; `switch`: a live
+   * quality switch the player needed could not be lined up with what is
+   * heard.
+   */
+  reason: 'reconnect' | 'switch';
+  /** Seconds of the source skipped (+) or heard again (−), when known; else `null`. */
+  jump: number | null;
   /** Epoch ms when it was reported (as it became audible). */
   timestamp: number;
 }

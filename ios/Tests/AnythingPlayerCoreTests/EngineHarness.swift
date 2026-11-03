@@ -68,7 +68,7 @@ final class FakeDriver: EngineDriver {
   func open(_ request: OpenRequest) {
     let start = request.startPosition.map { String(format: "%.1f", $0) } ?? "-"
     let rendition = request.rendition.map { ",r=\($0)" } ?? ""
-    let swap = request.swap ? ",swap" : ""
+    let swap = request.swap ? ",swap" + (request.required ? ",required" : "") : ""
     commands.append(
       "open(gen=\(request.generation),start=\(start),play=\(request.playWhenReady)\(rendition)\(swap))")
     if request.swap {

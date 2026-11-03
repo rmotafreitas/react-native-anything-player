@@ -20,8 +20,11 @@ protocol DriverObserver: AnyObject {
   func driverNote(generation: Int, event: String, details: [String: String])
   /// A live stream's audio jumped, now audible: the proxy spliced a fresh
   /// upstream in, whose connect burst replays recent audio. `position` is
-  /// the media time (s) the new upstream's audio starts at.
-  func driverDiscontinuity(generation: Int, position: Double)
+  /// the media time (s) the new upstream's audio starts at. `reason`:
+  /// `reconnect` (a dropped connection replaced) or `switch` (a live quality
+  /// switch that could not be lined up); `jump`: seconds skipped (+) or heard
+  /// again (−), when known.
+  func driverDiscontinuity(generation: Int, position: Double, reason: String, jump: Double?)
   var isOffline: Bool { get }
   /// Video: the picture's size and the variant playing.
   func driverVideoInfo(generation: Int, info: VideoInfo)
@@ -66,6 +69,12 @@ struct ProgressReading {
   var liveOffset: Double?
   var isPlaying = false
   var rate: Double = 1
+  /// A progressive live stream: where the audio received so far ends (`LiveOffset` measures from it).
+  var edge: Double?
+  /// Epoch ms the stream's own clock gives what plays now (HLS program dates); `nil` without one.
+  var programDate: Int64?
+  /// `liveOffset` has settled (`LiveOffset`): the controller's reading.
+  var liveOffsetSettled = false
 }
 
 /// `EngineDriver` over one AVPlayer. Main thread only.
@@ -470,14 +479,14 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
     if let date = item?.currentDate() {
       let offset = Date().timeIntervalSince(date)
       reading.liveOffset = offset.isFinite && offset >= 0 && offset < 3600 ? offset : nil
+      reading.programDate = Int64((date.timeIntervalSince1970 * 1000).rounded())
     } else if itemIsLive, let edge = liveEdge {
-      // A live progressive stream (no program dates): how much audio the proxy
-      // has handed AVPlayer past the playhead. `loadedTimeRanges` alone
-      // under-reads it right after connecting: it covers what AVPlayer has
-      // parsed, not the whole connect burst it already holds (measured on a
-      // 64 kbps AAC+ station: 11.6 s reported, 17 s heard behind the edge).
-      let offset = max(edge - reading.position, reading.buffered - reading.position)
-      reading.liveOffset = offset.isFinite && offset >= 0 && offset < 3600 ? offset : nil
+      // A live progressive stream (no program dates): what the proxy has
+      // handed AVPlayer, which `LiveOffset` measures from. `loadedTimeRanges`
+      // alone under-reads it right after connecting: it covers what AVPlayer
+      // has parsed, not the whole connect burst it already holds (measured on
+      // a 64 kbps AAC+ station: 11.6 s reported, 17 s heard behind the edge).
+      reading.edge = max(edge, reading.buffered)
     }
     reading.isPlaying = player.timeControlStatus == .playing
     reading.rate = Double(rate)
@@ -691,7 +700,7 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
     let heard = pendingSplices.filter { $0 + Self.spliceHeardAfter <= position }
     guard !heard.isEmpty else { return }
     pendingSplices.removeAll { $0 + Self.spliceHeardAfter <= position }
-    for at in heard { observer?.driverDiscontinuity(generation: generation, position: at) }
+    for at in heard { observer?.driverDiscontinuity(generation: generation, position: at, reason: "reconnect", jump: nil) }
   }
 
   private func tearDownItem() {

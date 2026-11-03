@@ -611,10 +611,10 @@ describe('a live switch', () => {
    * `burst` s arriving at 8× real time, then at real time. Each tick moves
    * both playheads as the elements would and the clock by 40 ms.
    */
-  function stations(oldLag: number, burst: number) {
+  function stations(oldLag: number, burst: number, required = false) {
     const old = playing(SD, 50);
     old.readyState = 4;
-    driver.open(swap(2, HD, null));
+    driver.open({ ...swap(2, HD, null), required });
     const next = world.videos[1]!;
     let t = 0;
     let flowing = false;
@@ -765,11 +765,11 @@ describe('a live switch', () => {
     expect(next.muted).toBe(false);
   });
 
-  it('switches a station on a plain <audio> as before, and reports the jump', () => {
+  it('switches a station on a plain <audio> anyway when the player needs it, and reports the jump', () => {
     fed = false;
     uninstall();
     setup();
-    const { next, tick } = stations(1.6, 17);
+    const { next, tick } = stations(1.6, 17, true);
     expect(next.paused).toBe(false);
     expect(rec.of('onNote')).toContainEqual([
       2,
@@ -778,7 +778,25 @@ describe('a live switch', () => {
     ]);
     tick(40);
     expect(driver.element).toBe(next);
-    expect(rec.of('onDiscontinuity').map((call) => call[0])).toEqual([2]);
+    // The position goes on from where the old one was.
+    expect(rec.of('onDiscontinuity')).toEqual([
+      [2, expect.closeTo(50, 0), 'switch', null],
+    ]);
+  });
+
+  it('drops an optional switch it cannot line up: the current one plays on', () => {
+    fed = false;
+    uninstall();
+    setup();
+    const { old, next } = stations(1.6, 17);
+    expect(next.paused).toBe(true);
+    const [failure] = rec.of('onFailed');
+    expect(failure![0]).toBe(2);
+    expect((failure![1] as { code: string }).code).toBe(
+      'QUALITY_SWITCH_FAILED'
+    );
+    expect(driver.element).toBe(old);
+    expect(rec.of('onDiscontinuity')).toEqual([]);
   });
 
   it('holds a new connection that is ahead until the old one gets there', () => {
@@ -810,8 +828,8 @@ describe('a live switch', () => {
     expect(rec.of('onDiscontinuity')[0]![0]).toBe(2);
   });
 
-  it('gives up lining up when a connection jumps', () => {
-    const { next, tick } = stations(17, 1.6);
+  it('gives up lining up when a connection jumps: switched anyway when needed, the jump measured', () => {
+    const { next, tick } = stations(17, 1.6, true);
     tick(5_000);
     expect(next.paused).toBe(true);
     proxy.onDiscontinuity(1, 40);
@@ -819,7 +837,21 @@ describe('a live switch', () => {
     expect(next.paused).toBe(false);
     tick(40);
     expect(driver.element).toBe(next);
-    expect(rec.of('onDiscontinuity').map((call) => call[0])).toEqual([1, 2]);
+    const calls = rec.of('onDiscontinuity');
+    expect(calls.map((call) => [call[0], call[2]])).toEqual([
+      [1, undefined],
+      [2, 'switch'],
+    ]);
+    // Held ahead: switching now skips what lies between.
+    expect(calls[1]![3]).toBeGreaterThan(0);
+  });
+
+  it('gives up an optional switch when a connection jumps: the current one plays on', () => {
+    const { old, tick } = stations(17, 1.6);
+    tick(5_000);
+    proxy.onDiscontinuity(1, 40);
+    expect(rec.of('onFailed').map((call) => call[0])).toEqual([2]);
+    expect(driver.element).toBe(old);
   });
 
   it('is dropped with the switch: a pause cancels the lining up', () => {

@@ -64,7 +64,7 @@ class FakeDriver(private val clock: FakeClock) : EngineDriver {
   override fun open(request: OpenRequest) {
     val start = request.startPosition?.let(::f1) ?: "-"
     val rendition = request.rendition?.let { ",r=$it" } ?: ""
-    val swap = if (request.swap) ",swap" else ""
+    val swap = if (request.swap) ",swap" + (if (request.required) ",required" else "") else ""
     commands.add("open(gen=${request.generation},start=$start,play=${request.playWhenReady}$rendition$swap)")
     if (request.swap) {
       // Prepared behind the current item: its playhead is not this one's.

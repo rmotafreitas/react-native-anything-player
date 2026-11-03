@@ -433,7 +433,7 @@
       { "advance": 5000 },
       { "native": "buffering" },
       { "advance": 500 },
-      { "expect": { "state": "buffering", "quality": "320k", "stats": { "rebufferCount": 2 }, "commands": ["open(gen=3,start=25.0,play=true,r=1,swap)"] } }
+      { "expect": { "state": "buffering", "quality": "320k", "stats": { "rebufferCount": 2 }, "commands": ["open(gen=3,start=25.0,play=true,r=1,swap,required)"] } }
     ]
   },
   {
@@ -450,7 +450,7 @@
       { "advance": 5000 },
       { "native": "buffering" },
       { "advance": 500 },
-      { "expect": { "state": "buffering", "commands": ["open(gen=2,start=-,play=true,r=1,swap)"] } },
+      { "expect": { "state": "buffering", "commands": ["open(gen=2,start=-,play=true,r=1,swap,required)"] } },
       { "native": "ready", "gen": 2, "live": true },
       { "native": "playing", "gen": 2 },
       { "expect": { "state": "playing", "quality": "192", "commands": [] } },
@@ -466,7 +466,7 @@
       { "advance": 5000 },
       { "native": "buffering" },
       { "advance": 500 },
-      { "expect": { "commands": ["open(gen=4,start=-,play=true,r=1,swap)"] } },
+      { "expect": { "commands": ["open(gen=4,start=-,play=true,r=1,swap,required)"] } },
       { "native": "ready", "gen": 4, "live": true },
       { "native": "playing", "gen": 4 },
       { "advance": 120000 },
@@ -715,7 +715,7 @@
       { "driver": "position", "value": 30 },
       { "native": "buffering" },
       { "advance": 500 },
-      { "expect": { "state": "buffering", "stats": { "rebufferCount": 1 }, "commands": ["open(gen=1,start=-,play=true,r=1)", "open(gen=2,start=30.0,play=true,r=0,swap)"] } },
+      { "expect": { "state": "buffering", "stats": { "rebufferCount": 1 }, "commands": ["open(gen=1,start=-,play=true,r=1)", "open(gen=2,start=30.0,play=true,r=0,swap,required)"] } },
       { "native": "playing", "gen": 2 },
       { "expect": { "state": "playing", "gen": 2, "quality": "r0" } }
     ]
@@ -736,7 +736,7 @@
       { "advance": 5000 },
       { "native": "buffering" },
       { "advance": 500 },
-      { "expect": { "state": "buffering", "stats": { "rebufferCount": 2 }, "commands": ["open(gen=2,start=25.0,play=true,r=0,swap)"] } }
+      { "expect": { "state": "buffering", "stats": { "rebufferCount": 2 }, "commands": ["open(gen=2,start=25.0,play=true,r=0,swap,required)"] } }
     ]
   },
   {

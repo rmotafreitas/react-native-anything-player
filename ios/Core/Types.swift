@@ -180,6 +180,10 @@ struct OpenRequest: Equatable {
   var swap = false
   /// Index into the source's renditions, when it has them.
   var rendition: Int? = nil
+  /// A switch the player needs (the current item is stalling): one that
+  /// cannot be lined up with what is heard switches anyway, reported as a
+  /// `discontinuity`. Otherwise it is dropped and the current one plays on.
+  var required = false
 }
 
 /// One file of a video at one quality (`SourceDescriptor.renditions`).

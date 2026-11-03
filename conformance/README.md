@@ -113,7 +113,8 @@ happened since the previous one.
 Command formats: `open(gen=N,start=-|S.S,play=B)`, `play`, `pause`,
 `seek(S.S)`, `release`, `unload`, `volume(V.VV)`, `rate(R.RR)`,
 `switchOutput(ID)`; for video `open(…,r=N)` (a rendition), `open(…,swap)` (a
-quality switch prepared behind the current item), `seek(S.S,exact)`,
+quality switch prepared behind the current item; `,swap,required` when the
+current item is stalling: one that cannot be lined up switches anyway), `seek(S.S,exact)`,
 `video(on|off)`, `quality(maxH=H|-,maxBps=B|-,pin=ID|-,audioOnly=B)`,
 `loop(B)`, `cancelSwap(gen=N)`, `tracks(audio=ID|-,text=ID|-)`. The fake driver's playhead freezes on
 `switchOutput`. A swap's `open` leaves the current playhead alone; the swap's

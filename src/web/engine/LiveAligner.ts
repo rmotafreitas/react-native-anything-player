@@ -153,6 +153,7 @@ export class LiveAligner {
   private lead: number;
   /** Where it was when it was told to start: it has started once it moved. */
   private startPosition = 0;
+  private lastGap: number | null = null;
 
   constructor(private readonly caps: AlignCaps) {
     this.lead = caps.startLead;
@@ -161,6 +162,11 @@ export class LiveAligner {
   /** `k`, once measured: new position = old position + k. */
   get offset(): number | null {
     return this.k;
+  }
+
+  /** The last gap read (new − old, seconds): what a switch now would skip (+) or repeat (−). */
+  get gap(): number | null {
+    return this.lastGap;
   }
 
   /** Whether it answered `takeOver` or `fallback`. */
@@ -231,6 +237,7 @@ export class LiveAligner {
   ): AlignAction {
     const target = old.position + this.k!;
     const gap = next.position - target;
+    this.lastGap = gap;
     const first = !this.decided;
     this.decided = true;
     if (this.commanded === 0)

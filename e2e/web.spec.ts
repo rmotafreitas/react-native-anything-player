@@ -374,3 +374,69 @@ test('lines a live switch between Icecast mounts up with what is heard', async (
   expect(await events(page, 'discontinuity')).toHaveLength(0);
   expect(await diagnostics(page)).not.toContain('quality switch not aligned');
 });
+
+test('liveOffset of a live station holds steady once settled, and grows while paused', async ({
+  page,
+}) => {
+  test.skip(!(await mseMp3(page)), NO_MSE);
+  await page.mouse.click(1, 1);
+  await page.evaluate(async (stream) => {
+    const p = window.rnap.player;
+    await p.load({ uri: `${stream}/radio/64`, live: true });
+    await p.play();
+  }, 'http://localhost:8765');
+  await expect.poll(() => state(page), { timeout: 15_000 }).toBe('playing');
+  const progress = () => page.evaluate(() => window.rnap.player.getProgress());
+  await expect
+    .poll(async () => (await progress()).liveOffsetSettled, { timeout: 20_000 })
+    .toBe(true);
+  // The test server's 64 KiB burst is 8.2 s at 64 kbps: that is how far behind live it plays.
+  const settled = await progress();
+  expect(settled.liveOffset).toBeGreaterThan(7.5);
+  expect(settled.liveOffset).toBeLessThan(10);
+  expect(settled.programDate).toBeNull();
+  // No saw-tooth between chunks while it plays.
+  await page.waitForTimeout(1_200);
+  const later = (await progress()).liveOffset!;
+  expect(Math.abs(later - settled.liveOffset!)).toBeLessThan(0.2);
+  // Paused, the live point moves on.
+  await page.evaluate(() => window.rnap.player.pause());
+  await page.waitForTimeout(2_000);
+  const paused = (await progress()).liveOffset!;
+  expect(paused - later).toBeGreaterThan(1.5);
+  expect(paused - later).toBeLessThan(3);
+});
+
+test('an optional live switch that cannot be lined up is refused: the current quality plays on', async ({
+  page,
+}) => {
+  await page.mouse.click(1, 1);
+  await page.evaluate(async (stream) => {
+    const p = window.rnap.player;
+    // No CORS: played on a plain <audio>, which cannot be lined up.
+    await p.load(
+      {
+        live: true,
+        renditions: ['64', '320'].map((id) => ({
+          id,
+          uri: `${stream}/radio/${id}?noCors=1`,
+          bitrate: Number(id) * 1000,
+        })),
+      },
+      { quality: '320' }
+    );
+    await p.play();
+  }, 'http://localhost:8765');
+  await expect.poll(() => state(page), { timeout: 15_000 }).toBe('playing');
+  await page.evaluate(() => window.rnap.player.selectQuality('64'));
+  await expect
+    .poll(async () => (await events(page, 'error')).map((e) => e.code), {
+      timeout: 15_000,
+    })
+    .toContain('QUALITY_SWITCH_FAILED');
+  expect(await page.evaluate(() => window.rnap.player.status.quality)).toBe(
+    '320'
+  );
+  expect(await events(page, 'discontinuity')).toHaveLength(0);
+  expect(await state(page)).toBe('playing');
+});

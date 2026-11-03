@@ -342,6 +342,8 @@ export function progressToMap(reading: ProgressReading, wallMs: number): Dict {
     buffered: Math.max(reading.buffered, position),
     bufferedAhead: Math.max(0, reading.buffered - position),
     liveOffset: reading.liveOffset,
+    liveOffsetSettled: reading.liveOffsetSettled === true,
+    programDate: reading.programDate ?? null,
     timestamp: wallMs,
   };
 }

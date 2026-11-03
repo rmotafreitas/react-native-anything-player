@@ -106,6 +106,10 @@ class LiveAligner(private val caps: Caps) {
   val offset: Double?
     get() = k
 
+  /** The last gap read (new − old, seconds): what a switch now would skip (+) or repeat (−). */
+  var gap: Double? = null
+    private set
+
   /** Whether it answered take over or fall back. */
   val finished: Boolean
     get() = done
@@ -156,6 +160,7 @@ class LiveAligner(private val caps: Caps) {
   private fun align(t: Long, elapsed: Long, old: Reading, next: Reading): Action {
     val target = old.position + k!!
     val gap = next.position - target
+    this.gap = gap
     val first = !decided
     decided = true
     if (commanded == 0.0) return fromHold(t, elapsed, target, gap, first, next)

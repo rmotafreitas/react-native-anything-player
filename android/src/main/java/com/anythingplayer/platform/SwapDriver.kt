@@ -4,6 +4,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
+import com.anythingplayer.core.ErrorCode
 import com.anythingplayer.core.InterruptionReason
 import com.anythingplayer.core.LiveAligner
 import com.anythingplayer.core.MediaTrack
@@ -61,6 +62,12 @@ internal class SwapDriver(
 
     /** Gave up lining up: takes over on its first audio, reported as a discontinuity. */
     var fallback = false
+
+    /** The player needs it (the current item stalls): one that cannot be lined up switches anyway. */
+    var required = false
+
+    /** What a fallback skips (+) or repeats (−), seconds, when the aligner knew. */
+    var jump: Double? = null
 
     /** The rate the aligner asked of the new player (× the app's). */
     var alignRate = 1.0
@@ -224,7 +231,11 @@ internal class SwapDriver(
     val reading = current.progress()
     if (!shifted) return reading
     lastReported = maxOf(0.0, reading.position - shift)
-    return reading.copy(position = lastReported, buffered = maxOf(0.0, reading.buffered - shift))
+    return reading.copy(
+      position = lastReported,
+      buffered = maxOf(0.0, reading.buffered - shift),
+      edge = reading.edge?.let { it - shift },
+    )
   }
 
   fun destroy() {
@@ -241,7 +252,7 @@ internal class SwapDriver(
     val next = spare ?: make(proxy).also { spare = it }
     val position = current.sample().position
     val target = if (request.startPosition != null) position + LOOKAHEAD_S else null
-    pending = Pending(request.generation, target)
+    pending = Pending(request.generation, target).also { it.required = request.required }
     next.setVolume(0.0)
     next.setRate(rate)
     next.setLoop(loop)
@@ -283,7 +294,7 @@ internal class SwapDriver(
   private fun startAligning(waiting: Pending, next: ExoPlayerDriver) {
     current.resetAlignEdge()
     next.resetAlignEdge()
-    if (current.alignReading() == null || next.alignReading() == null) return next.play()
+    if (current.alignReading() == null || next.alignReading() == null) return unaligned(waiting, next, "adaptive")
     waiting.aligner = LiveAligner(ALIGN_CAPS)
     alignStep()
   }
@@ -327,16 +338,40 @@ internal class SwapDriver(
         switched()
       }
       is LiveAligner.Action.Fallback -> {
-        Log.d(TAG, "quality switch not aligned: ${action.reason}")
-        waiting.fallback = true
-        waiting.alignRate = 1.0
-        main.removeCallbacks(alignTick)
-        main.removeCallbacks(alignStart)
-        next.setRate(rate)
-        // Already playing (it was running to catch up): at once.
-        if (next.progress().isPlaying) switched() else next.play()
+        // The old one stalls: the player needs the switch now.
+        if (action.reason == "stalled") waiting.required = true
+        waiting.jump = waiting.aligner?.gap
+        unaligned(waiting, next, action.reason)
       }
     }
+  }
+
+  /**
+   * A live switch that cannot be lined up: switched anyway, as a
+   * `discontinuity`, when the player needs it; else dropped, the current one
+   * playing on (`QUALITY_SWITCH_FAILED`).
+   */
+  private fun unaligned(waiting: Pending, next: ExoPlayerDriver, reason: String) {
+    Log.d(TAG, "quality switch not aligned: $reason")
+    main.removeCallbacks(alignTick)
+    main.removeCallbacks(alignStart)
+    if (!waiting.required) {
+      // The engine drops it (cancelSwap) and the app hears why.
+      observer.onFailed(
+        waiting.generation,
+        PlayerError(
+          ErrorCode.QUALITY_SWITCH_FAILED,
+          "The live switch could not be lined up with what is heard ($reason).",
+          recoverable = true,
+        ),
+      )
+      return
+    }
+    waiting.fallback = true
+    waiting.alignRate = 1.0
+    next.setRate(rate)
+    // Already playing (it was running to catch up): at once.
+    if (next.progress().isPlaying) switched() else next.play()
   }
 
   /** The new player takes over (its first audio, or lined up): the engine hears it play, its tracks, and a fallback's jump. */
@@ -348,7 +383,7 @@ internal class SwapDriver(
     current.mappedTracks?.let { observer.onTracks(waiting.generation, it.tracks, it.variants) }
     // What it reached while it lined up was the pending generation's: told now.
     waiting.metadata?.let { if (waiting.metadataAt > toldCurrent) observer.onStreamMetadata(waiting.generation, it) }
-    if (waiting.fallback) observer.onDiscontinuity(waiting.generation, sample().position)
+    if (waiting.fallback) observer.onDiscontinuity(waiting.generation, sample().position, "switch", waiting.jump)
   }
 
   /** The new file plays: it is the picture and the sound now. */
@@ -430,10 +465,10 @@ internal class SwapDriver(
       observer.onStreamMetadata(generation, metadata)
     }
 
-    override fun onDiscontinuity(generation: Int, position: Double) {
+    override fun onDiscontinuity(generation: Int, position: Double, reason: String, jump: Double?) {
       val current = generation == this@SwapDriver.generation
       if (current) rebase()
-      observer.onDiscontinuity(generation, if (current) maxOf(0.0, position - shift) else position)
+      observer.onDiscontinuity(generation, if (current) maxOf(0.0, position - shift) else position, reason, jump)
       // Either connection jumped: the two no longer line up.
       if (aligning) pending?.aligner?.let { apply(it.interrupt()) }
     }

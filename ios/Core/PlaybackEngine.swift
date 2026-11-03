@@ -2755,7 +2755,8 @@ extension PlaybackEngine {
     driver.open(
       OpenRequest(
         generation: gen, source: renditionSource(target), startPosition: position,
-        playWhenReady: true, allowReconnect: options.reconnect, swap: true, rendition: target))
+        playWhenReady: true, allowReconnect: options.reconnect, swap: true, rendition: target,
+        required: state == .buffering))
   }
 
   /// A switch that failed or timed out: its file sits out a while, and the

@@ -110,7 +110,10 @@ export class FakeDriver implements EngineDriver {
       request.startPosition != null ? f1(request.startPosition) : '-';
     const rendition =
       request.rendition != null ? `,r=${request.rendition}` : '';
-    const swap = request.swap === true ? ',swap' : '';
+    const swap =
+      request.swap === true
+        ? `,swap${request.required === true ? ',required' : ''}`
+        : '';
     this.commands.push(
       `open(gen=${request.generation},start=${start},play=${request.playWhenReady}${rendition}${swap})`
     );

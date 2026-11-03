@@ -287,6 +287,8 @@ class AnythingPlayerModule(reactContext: ReactApplicationContext) : NativeAnythi
         putDouble("buffered", 0.0)
         putDouble("bufferedAhead", 0.0)
         putNull("liveOffset")
+        putBoolean("liveOffsetSettled", false)
+        putNull("programDate")
         putDouble("timestamp", System.currentTimeMillis().toDouble())
       }
 

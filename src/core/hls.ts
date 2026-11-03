@@ -41,6 +41,8 @@ export interface HlsLike {
   on(event: string, listener: (event: string, data: any) => void): void;
   /** Seconds behind the live edge (hls.js 1.x), when it knows. */
   readonly latency?: number;
+  /** The program date (EXT-X-PROGRAM-DATE-TIME) of what plays now, when the playlist has one. */
+  readonly playingDate?: Date | null;
   /** The variants (video): height, bitrate, codecs. */
   readonly levels?: ReadonlyArray<HlsLevel>;
   /** The variant playing, or `-1` for automatic; setting it switches now (flushing the buffer). */

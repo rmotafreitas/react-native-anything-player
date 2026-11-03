@@ -82,7 +82,7 @@ In browsers, RNAP reads a stream itself (Media Source Extensions) when the stati
 | ICY titles, timed to when they are heard | ✓ | ✓ | ◐ ¹ | ◐ ¹ ² | ◐ ¹ | ◐ ¹ |
 | Station name and genre (`icy-name`, `icy-genre`) | ✓ | ✓ | ◐ ¹ | ◐ ¹ | ◐ ¹ | ◐ ¹ |
 | A dropped connection replaced without stopping (`discontinuity`) | ✓ | ✓ | ◐ ¹ | ◐ ¹ | ◐ ¹ | ◐ ¹ |
-| `liveOffset` (how far behind live) | ✓ | ✓ | ◐ ¹ ³ | ◐ ¹ ³ | ◐ ¹ | ◐ ¹ |
+| `liveOffset` (how far behind live), `liveOffsetSettled`, `programDate` | ✓ | ✓ | ◐ ¹ ³ | ◐ ¹ ³ | ◐ ¹ | ◐ ¹ |
 | HLS / ID3 timed metadata | ✓ | ✓ | ◐ ³ | ◐ ³ | – ⁴ | – ⁴ |
 | One connection per stream, closed on release | ✓ | ✓ | ◐ ¹ | ◐ ¹ | ◐ ¹ | ◐ ¹ |
 

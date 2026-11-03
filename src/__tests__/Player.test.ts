@@ -298,6 +298,9 @@ describe('events', () => {
         buffered: 18,
         bufferedAhead: 5.5,
         liveOffset: null,
+        // An older native side sends neither: not settled, no program date.
+        liveOffsetSettled: false,
+        programDate: null,
         timestamp: 9,
       },
     ]);
@@ -315,7 +318,20 @@ describe('events', () => {
       timestamp: 42,
       seq: 5,
     });
-    expect(jumps).toEqual([{ position: 0, timestamp: 42 }]);
+    fake.emit({
+      playerId: p.id,
+      type: 'discontinuity',
+      position: 12,
+      reason: 'switch',
+      jump: -1.5,
+      timestamp: 43,
+      seq: 6,
+    });
+    // An older native side sends no reason: a reconnect, jump unknown.
+    expect(jumps).toEqual([
+      { position: 0, reason: 'reconnect', jump: null, timestamp: 42 },
+      { position: 12, reason: 'switch', jump: -1.5, timestamp: 43 },
+    ]);
     await p.release();
   });
 

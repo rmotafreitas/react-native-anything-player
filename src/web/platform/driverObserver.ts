@@ -22,7 +22,17 @@ export interface DriverObserver {
   onFailed(generation: number, error: PlayerError): void;
   onPausedExternally(generation: number, reason: InterruptionReason): void;
   onStreamMetadata(generation: number, metadata: StreamMetadata): void;
-  onDiscontinuity(generation: number, position: number): void;
+  /**
+   * The audio jumped with no state change: a dropped connection replaced
+   * (`reconnect`, the default) or a live quality switch that could not be
+   * lined up (`switch`); `jump`: seconds skipped (+) or heard again (−), when known.
+   */
+  onDiscontinuity(
+    generation: number,
+    position: number,
+    reason?: 'reconnect' | 'switch',
+    jump?: number | null
+  ): void;
   onNote(
     generation: number,
     event: string,
@@ -62,7 +72,14 @@ export interface ProgressReading {
   position: number;
   duration: number | null;
   buffered: number;
+  /** The player's own seconds behind live (program dates, a live window); `null` when it has none. */
   liveOffset: number | null;
   isPlaying: boolean;
   rate: number;
+  /** A progressive live stream: where the audio received so far ends (`LiveOffset` measures from it). */
+  edge?: number | null;
+  /** Epoch ms the stream's own clock gives what plays now (HLS program dates, DASH); `null` without one. */
+  programDate?: number | null;
+  /** `liveOffset` has settled (`LiveOffset`): the controller's reading. */
+  liveOffsetSettled?: boolean;
 }

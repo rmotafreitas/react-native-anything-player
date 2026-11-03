@@ -1749,6 +1749,9 @@ describe('readings', () => {
       liveOffset: null,
       isPlaying: true,
       rate: 2,
+      // A file: no live edge, no program date.
+      edge: null,
+      programDate: null,
     });
   });
 

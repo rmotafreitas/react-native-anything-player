@@ -303,6 +303,12 @@ export class HlsStream implements HlsTracks {
       : null;
   }
 
+  /** Epoch ms the playlist's program dates give what plays now; `null` without them. */
+  get programDate(): number | null {
+    const date = this.hls?.playingDate?.getTime();
+    return date != null && Number.isFinite(date) ? date : null;
+  }
+
   /** What the playlist says about the item, once loaded; `null` before. */
   readyInfo(): ReadyInfo | null {
     const details = this.details;

@@ -42,6 +42,10 @@ final class SwapDriver: LocalOutput {
     var aligner: LiveAligner?
     /// Gave up lining up: takes over on its first audio, reported as a discontinuity.
     var fallback = false
+    /// The player needs it (the current item stalls): one that cannot be lined up switches anyway.
+    var required = false
+    /// What a fallback skips (+) or repeats (−), seconds, when the aligner knew.
+    var jump: Double?
     /// The rate the aligner asked of the new driver (× the app's).
     var alignRate = 1.0
     /// Readings taken so far: a reading that goes away after the first breaks the mapping.
@@ -174,6 +178,7 @@ final class SwapDriver: LocalOutput {
     var reading = current.progress()
     reading.position = max(0, reading.position - shift)
     reading.buffered = max(0, reading.buffered - shift)
+    reading.edge = reading.edge.map { $0 - shift }
     return reading
   }
 
@@ -203,6 +208,7 @@ final class SwapDriver: LocalOutput {
     let position = current.sample().position
     let target = request.startPosition != nil ? position + lookaheadSeconds : nil
     pending = Pending(generation: request.generation, target: target)
+    pending?.required = request.required
     next.setVolume(0)
     next.setRate(rate)
     next.setLoop(loop)
@@ -271,11 +277,8 @@ final class SwapDriver: LocalOutput {
     guard let old = current.alignReading(), let reading = next.alignReading() else {
       // A reading that went away (an item that changed kind): as before, reported.
       if waiting.steps > 0 { return apply(aligner.interrupt()) }
-      // Not a progressive stream on both sides (HLS, a remux): as before.
-      waiting.aligner = nil
-      next.openBurst(from: 0)
-      if waiting.ready { next.play() }
-      return
+      // Not a progressive stream on both sides (HLS, a remux).
+      return unaligned(waiting, next, reason: "adaptive")
     }
     waiting.steps += 1
     let action = aligner.step(SystemClock.shared.monotonicMs, old: old, next: reading)
@@ -318,20 +321,39 @@ final class SwapDriver: LocalOutput {
         ])
       switched()
     case .fallback(let reason):
-      observer?.driverNote(
-        generation: waiting.generation, event: "quality switch not aligned", details: ["reason": reason])
-      waiting.fallback = true
-      waiting.alignRate = 1
-      alignTick?.cancel()
-      alignTick = nil
-      alignStart?.cancel()
-      alignStart = nil
-      next.openBurst(from: 0)
-      next.setRate(rate)
-      // Already playing (it was running): at once.
-      if next.progress().isPlaying { return switched() }
-      next.play()
+      // The old one stalls: the player needs the switch now.
+      if reason == "stalled" { waiting.required = true }
+      waiting.jump = waiting.aligner?.gap
+      unaligned(waiting, next, reason: reason)
     }
+  }
+
+  /// A live switch that cannot be lined up: switched anyway, as a
+  /// `discontinuity`, when the player needs it; else dropped, the current one
+  /// playing on (`QUALITY_SWITCH_FAILED`).
+  private func unaligned(_ waiting: Pending, _ next: AVPlayerDriver, reason: String) {
+    observer?.driverNote(
+      generation: waiting.generation, event: "quality switch not aligned", details: ["reason": reason])
+    alignTick?.cancel()
+    alignTick = nil
+    alignStart?.cancel()
+    alignStart = nil
+    guard waiting.required else {
+      // The engine drops it (cancelSwap) and the app hears why.
+      observer?.driverFailed(
+        generation: waiting.generation,
+        error: PlayerError(
+          code: .qualitySwitchFailed,
+          message: "The live switch could not be lined up with what is heard (\(reason)).", recoverable: true))
+      return
+    }
+    waiting.fallback = true
+    waiting.alignRate = 1
+    next.openBurst(from: 0)
+    next.setRate(rate)
+    // Already playing (it was running): at once.
+    if next.progress().isPlaying { return switched() }
+    next.play()
   }
 
   /// The new driver takes over (its first audio, or lined up): the engine
@@ -348,7 +370,10 @@ final class SwapDriver: LocalOutput {
     if let metadata = waiting.metadata, waiting.metadataAt > toldCurrent {
       observer?.driverMetadata(generation: waiting.generation, metadata: metadata)
     }
-    if waiting.fallback { observer?.driverDiscontinuity(generation: waiting.generation, position: sample().position) }
+    if waiting.fallback {
+      observer?.driverDiscontinuity(
+        generation: waiting.generation, position: sample().position, reason: "switch", jump: waiting.jump)
+    }
   }
 
   /// The new file plays: it is the picture and the sound now.
@@ -437,10 +462,10 @@ final class SwapDriver: LocalOutput {
         owner.apply(aligner.interrupt())
       }
     }
-    func driverDiscontinuity(generation: Int, position: Double) {
+    func driverDiscontinuity(generation: Int, position: Double, reason: String, jump: Double?) {
       guard let owner else { return }
       let shifted = generation == owner.generation ? position - owner.shift : position
-      target?.driverDiscontinuity(generation: generation, position: shifted)
+      target?.driverDiscontinuity(generation: generation, position: shifted, reason: reason, jump: jump)
       // Either connection jumped: the two no longer line up.
       if owner.aligning, let aligner = owner.pending?.aligner { owner.apply(aligner.interrupt()) }
     }

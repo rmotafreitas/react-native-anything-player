@@ -18,7 +18,7 @@ private class RecordingObserver(val log: MutableList<String>) : DriverObserver {
   override fun onFailed(generation: Int, error: PlayerError) { failure = error; log += "failed($generation,${error.code.wire})" }
   override fun onPausedExternally(generation: Int, reason: InterruptionReason) { log += "paused-externally($generation,${reason.wire})" }
   override fun onStreamMetadata(generation: Int, metadata: StreamMetadata) = Unit
-  override fun onDiscontinuity(generation: Int, position: Double) = Unit
+  override fun onDiscontinuity(generation: Int, position: Double, reason: String, jump: Double?) = Unit
   override fun isOffline(): Boolean = false
 }
 

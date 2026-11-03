@@ -158,6 +158,9 @@ final class LiveAligner {
   /// `k`, once measured: new position = old position + k.
   var offset: Double? { k }
 
+  /// The last gap read (new − old, seconds): what a switch now would skip (+) or repeat (−).
+  private(set) var gap: Double?
+
   /// Whether it answered take over or fall back.
   var finished: Bool { done }
 
@@ -210,6 +213,7 @@ final class LiveAligner {
   private func align(_ t: Int64, elapsed: Int64, old: Reading, next: Reading) -> Action {
     let target = old.position + k!
     let gap = next.position - target
+    self.gap = gap
     let first = !decided
     decided = true
     if commanded == 0 { return fromHold(t, elapsed: elapsed, target: target, gap: gap, first: first, next: next) }
