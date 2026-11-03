@@ -23,7 +23,7 @@ import { chromium, firefox, webkit } from '@playwright/test';
 import { jumps, seconds, readWav } from './analyze.mjs';
 
 const args = process.argv.slice(2);
-const browserName = args.find((a) => !a.startsWith('--') && !/^[\d,]+$/.test(a)) ?? 'chromium';
+const browserName = args.find((a) => ['chromium', 'firefox', 'webkit'].includes(a)) ?? 'chromium';
 const plain = args.includes('--plain');
 const hls = args.includes('--hls');
 const ts = args.includes('--ts');
