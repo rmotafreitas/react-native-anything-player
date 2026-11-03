@@ -54,9 +54,10 @@ The plugin adds the iOS `audio` background mode and lets Google Assistant and Ge
 | `sound` | off | `true` builds the [Sound API](sound.md#enabling-it) in (short effects with low latency) |
 | `siri` | off | `true` adds the Siri capability and the extension that hands "play X on MyApp" to the app ([Voice assistants](voice.md#siri)) |
 | `assistant` | `true` | the Android intent filter and `MainActivity` hook for Google Assistant and Gemini ([Voice assistants](voice.md#google-assistant-and-gemini)) |
-| `car` | off | `true` builds Android Auto and the CarPlay scene in ([Cars & watches](cars-and-watches.md)) |
+| `car` | off | `true` builds Android Auto and the CarPlay scene in; `{ "ios": false }` or `{ "android": false }` leaves one out ([Cars & watches](cars-and-watches.md)) |
 | `video` | off | `true` (or `{ "pictureInPicture": false }`) builds [video](video.md#enabling-it) in, with Picture in Picture |
 | `videoDecoders` | off | `true` adds Android's [software decoders](video.md#software-decoders) (Dolby, DTS and MPEG audio, VP9, AV1) |
+| `catalog` | none | the path of a JSON file with what the app passes to `setCatalog`, bundled so that voice requests and cars work on a fresh install, before the app was opened ([Voice assistants](voice.md#a-catalog-the-app-bundles)) |
 
 Then rebuild (`npx expo run:ios`, `npx expo run:android`, or EAS Build).
 

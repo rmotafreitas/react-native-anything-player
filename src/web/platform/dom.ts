@@ -318,6 +318,14 @@ export interface AudioContextLike {
   createAnalyser(): AnalyserLike;
 }
 
+export interface OfflineAudioContextLike {
+  decodeAudioData(data: ArrayBuffer): Promise<{
+    readonly sampleRate: number;
+    readonly numberOfChannels: number;
+    getChannelData(channel: number): Float32Array;
+  }>;
+}
+
 /** A Cast receiver, as the sender SDK describes it. */
 export interface CastReceiverLike {
   readonly friendlyName: string;
@@ -488,6 +496,8 @@ export interface BrowserGlobals {
   navigator?: {
     readonly onLine: boolean;
     readonly userAgent?: string;
+    /** `Apple Computer, Inc.` in WebKit: Safari and every iOS browser. */
+    readonly vendor?: string;
     readonly mediaSession?: MediaSessionLike;
     readonly connection?: NetworkInformationLike;
     readonly languages?: readonly string[];
@@ -530,6 +540,11 @@ export interface BrowserGlobals {
   }) => unknown;
   AudioContext?: new () => AudioContextLike;
   webkitAudioContext?: new () => AudioContextLike;
+  OfflineAudioContext?: new (
+    channels: number,
+    length: number,
+    sampleRate: number
+  ) => OfflineAudioContextLike;
   URL: {
     new (
       url: string,

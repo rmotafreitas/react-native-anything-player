@@ -130,7 +130,7 @@ export const MODULES = [
     platforms: ['android', 'ios'],
     gradle: { key: 'rnapCar', on: 'true', off: 'false' },
     pod: { key: 'rnap.car' },
-    expo: { key: 'car' },
+    expo: { key: 'car', type: 'string' },
     manual: {
       ios: "CarPlay also needs Apple's CarPlay audio entitlement (`com.apple.developer.carplay-audio`) and the `RNAP CarPlay` scene in `UIApplicationSceneManifest`: follow docs/cars-and-watches.md#carplay, or use the Expo plugin with `car: true`.",
     },
@@ -199,6 +199,13 @@ function place(value, explicit) {
   return { value: Boolean(value), explicit: Boolean(explicit) };
 }
 
+/** An option's value as on/off: `car: { ios: false, android: false }` is off. */
+function expoOn(module, value) {
+  if (module.id === 'car' && value && typeof value === 'object')
+    return value.ios !== false || value.android !== false;
+  return Boolean(value);
+}
+
 function expoState(module, ctx) {
   if (!module.expo || !ctx.expo.rnapPlugin || ctx.jsConfigFile) return null;
   const raw = ctx.expo.rawOptions;
@@ -208,7 +215,7 @@ function expoState(module, ctx) {
   if (!options) return place(module.defaultOn, false);
   const value = options[module.expo.key];
   return place(
-    value === undefined ? module.defaultOn : Boolean(value),
+    value === undefined ? module.defaultOn : expoOn(module, value),
     explicit
   );
 }

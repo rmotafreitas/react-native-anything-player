@@ -9,6 +9,7 @@
  */
 export interface PlayerModule {
   createPlayer(options: object): string;
+  willReleasePlayer(playerId: string): boolean;
   releasePlayer(playerId: string): Promise<void>;
   load(playerId: string, source: object, options: object): Promise<object>;
   play(playerId: string): Promise<object>;

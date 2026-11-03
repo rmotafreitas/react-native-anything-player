@@ -118,6 +118,21 @@ test('an Expo project reads the plugin defaults', (t) => {
   assert.equal(byId(result.json, 'cast').source, 'default');
 });
 
+test('a car object is on unless both platforms are off, and add turns it on', (t) => {
+  const root = expoGood(t);
+  const appJson = JSON.parse(read(root, 'app.json'));
+  const carWith = (car) => {
+    appJson.expo.plugins = [['react-native-anything-player', { car }]];
+    write(root, 'app.json', JSON.stringify(appJson, null, 2));
+    return byId(runCli(['modules', '--json'], { cwd: root }).json, 'car');
+  };
+  assert.equal(carWith({ ios: false }).effective, true);
+  assert.equal(carWith({ ios: false, android: false }).effective, false);
+  const result = runCli(['add', 'car', '--yes'], { cwd: root });
+  assert.equal(result.status, 0);
+  assert.equal(JSON.parse(read(root, 'app.json')).expo.plugins[0][1].car, true);
+});
+
 test('plugin options win over the defaults, and say so', (t) => {
   const root = expoPluginOptions(t);
   const result = runCli(['modules', '--json'], { cwd: root });

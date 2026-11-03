@@ -139,6 +139,19 @@ data class SourceDescriptor(
       val lower = uri.lowercase()
       return lower.startsWith("http://") || lower.startsWith("https://")
     }
+
+  /**
+   * Whether [other] plays the same media: the same renditions (by file, in any
+   * order), else the same file. A voice or car pick of what is loaded is not
+   * opened again.
+   */
+  fun sameMedia(other: SourceDescriptor): Boolean {
+    val mine = renditions
+    val theirs = other.renditions
+    if (mine != null || theirs != null)
+      return mine != null && theirs != null && mine.map { it.uri }.toSet() == theirs.map { it.uri }.toSet()
+    return uri == other.uri
+  }
 }
 
 /** What the engine asks the driver to open. */

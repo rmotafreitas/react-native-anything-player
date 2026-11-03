@@ -258,7 +258,7 @@ internal class PlayerController(
 
   fun statusMap(): WritableMap {
     val (status, seq) = statusSnapshot
-    return statusToMap(status, seq)
+    return statusToMap(status, seq).apply { putDouble("instance", instance.toDouble()) }
   }
 
   fun progressMap(): WritableMap = progressToMap(progressSnapshot, AndroidClock.monotonicMs, AndroidClock.wallMs)
@@ -342,7 +342,7 @@ internal class PlayerController(
         if (!released && source === localDriver) {
           val waveform = Arguments.createArray()
           window.waveform.forEach { waveform.pushDouble(it.toDouble()) }
-          runtime.emit(
+          send(
             Arguments.createMap().apply {
               putString("playerId", id)
               putString("type", "audioSample")
@@ -364,7 +364,26 @@ internal class PlayerController(
     payload.putString("playerId", id)
     payload.putString("type", type)
     payload.putDouble("seq", eventSeq.toDouble())
-    runtime.emit(payload)
+    send(payload)
+  }
+
+  /**
+   * JS let go of this player ([AnythingPlayerRuntime.detach]): its id may
+   * already belong to a new one there, which must not get this one's events.
+   */
+  @Volatile var jsLetGo = false
+
+  /**
+   * This native player among all that ever had its id: on every status and
+   * event, so a JS player drops what a released one with the same id sent
+   * (events already on their way when JS let go of it).
+   */
+  val instance: Long = instances.incrementAndGet()
+
+  private fun send(event: WritableMap) {
+    if (jsLetGo) return
+    event.putDouble("instance", instance.toDouble())
+    runtime.emit(event)
   }
 
   // ── EngineDelegate (main thread) ──
@@ -377,7 +396,7 @@ internal class PlayerController(
     val event = statusToMap(status, eventSeq)
     event.putString("playerId", id)
     event.putString("type", "status")
-    runtime.emit(event)
+    send(event)
     updateTitleReader(status)
     // The song advances with the audio, not the wall clock.
     trackClock?.setRunning(status.state == PlaybackState.PLAYING, AndroidClock.monotonicMs)
@@ -633,3 +652,6 @@ internal class PlayerController(
     if (engine.accepts(generation)) picture?.positionJumped()
   }
 }
+
+/** Numbers [PlayerController.instance]. */
+private val instances = java.util.concurrent.atomic.AtomicLong()

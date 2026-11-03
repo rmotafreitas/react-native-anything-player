@@ -229,7 +229,7 @@ export function initSegment(config: AudioConfig): Uint8Array {
 export function mediaSegment(
   sequence: number,
   decodeTime: number,
-  frames: Frame[]
+  frames: Pick<Frame, 'data' | 'samples'>[]
 ): Uint8Array {
   // moof: header 8 + mfhd 16 + traf (8 + tfhd 16 + tfdt 20 + trun 20 + 8 per sample)
   const moofSize = 88 + 8 * frames.length;

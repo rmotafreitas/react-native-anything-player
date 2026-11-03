@@ -20,6 +20,8 @@ private const val TAG = "RNAP"
 private const val HANDLER_TIMEOUT_MS = 5_500L
 /** JS-provided items kept so a media item resolved from one can be loaded a moment later. */
 private const val ADHOC_CAPACITY = 8
+/** The catalog an app bundles (the Expo plugin's `catalog` option), in its assets. */
+private const val SEED_ASSET = "rnap/catalog-seed.json"
 
 /**
  * The voice side of the library: the persisted catalog, the search every entry
@@ -30,6 +32,13 @@ private const val ADHOC_CAPACITY = 8
  */
 internal object Voice {
   private val main = Handler(Looper.getMainLooper())
+
+  /**
+   * States that keep an opened source: a pick of it plays on instead of
+   * opening again (one still loading has not proved it opens: it is opened again).
+   */
+  private val HOLDS_SOURCE =
+    setOf(PlaybackState.BUFFERING, PlaybackState.PLAYING, PlaybackState.PAUSED, PlaybackState.STOPPED, PlaybackState.RECONNECTING)
   /** The catalog file is written off the main thread (the last-played mark is written on every request). */
   private val writes = Executors.newSingleThreadExecutor { Thread(it, "rnap-catalog") }
   private var store: CatalogStore? = null
@@ -37,6 +46,13 @@ internal object Voice {
 
   /** Whether the app answers what the catalog does not have (`setSearchHandler`). */
   @Volatile var handlerEnabled = false
+
+  /**
+   * An assistant request that came before the app could answer it (a fresh
+   * install it opened: no catalog, no search handler), waiting for the app's
+   * JavaScript to set a catalog or a search handler (#79). Main thread.
+   */
+  private var waiting: SearchRequest? = null
 
   private val pending = HashMap<String, (CatalogEntry?) -> Unit>()
   private var asked = 0
@@ -49,7 +65,12 @@ internal object Voice {
   fun attach(appContext: Context) {
     if (store != null) return
     context = appContext.applicationContext
-    store = CatalogStore(File(appContext.applicationContext.filesDir, "rnap/catalog.json"))
+    val app = appContext.applicationContext
+    store =
+      CatalogStore(File(app.filesDir, "rnap/catalog.json")) {
+        // The catalog the app bundles, if any (the Expo plugin's `catalog`).
+        runCatching { app.assets.open(SEED_ASSET).bufferedReader().use { it.readText() } }.getOrNull()
+      }
   }
 
   private fun store(): CatalogStore = store ?: error("Voice used before attach(context)")
@@ -66,7 +87,10 @@ internal object Voice {
   /** Replaces the catalog (persisted before this returns) and tells the media library. Any thread. */
   fun set(items: List<JSONObject>, playerId: String, playerOptions: JSONObject?, browse: JSONObject? = null) {
     store().replace(items, playerId, playerOptions, browse)
-    AnythingPlayerRuntime.post { AnythingPlayerRuntime.catalogChanged() }
+    AnythingPlayerRuntime.post {
+      AnythingPlayerRuntime.catalogChanged()
+      answerWaiting()
+    }
   }
 
   /** Replaces the ids of the Favorites folder (persisted before this returns) and tells the media library. Any thread. */
@@ -131,6 +155,7 @@ internal object Voice {
   /** The JS instance is gone: nobody will answer. Main thread. */
   fun jsDetached() {
     handlerEnabled = false
+    waiting = null
     pending.keys.toList().forEach { pending.remove(it)?.invoke(null) }
   }
 
@@ -146,7 +171,7 @@ internal object Voice {
     if (given != null) {
       return runtime.players[given]?.takeIf { !it.isReleased } ?: throw PlayerError(ErrorCode.PLAYER_RELEASED, "The player was released.", false)
     }
-    runtime.active?.takeIf { !it.isReleased }?.let { return it }
+    runtime.active?.takeIf { !it.isReleased && !it.jsLetGo }?.let { return it }
     val snapshot = store().snapshot()
     runtime.players[snapshot.playerId]?.takeIf { !it.isReleased }?.let { return it }
     val options = snapshot.playerOptions?.let { parseOptions(it.toReadableMap()) } ?: PlayerOptions()
@@ -161,7 +186,25 @@ internal object Voice {
    */
   fun load(controller: PlayerController, entry: CatalogEntry, request: SearchRequest, autoplay: Boolean, startSeconds: Double?, completion: LoadCompletion?) {
     val (descriptor, fields) = parseSource(entry.source.toReadableMap())
-    controller.load(descriptor, fields, autoplay, startSeconds, completion = completion)
+    val loaded = controller.engine.source?.takeIf { controller.status.state in HOLDS_SOURCE }
+    if (startSeconds == null && loaded?.sameMedia(descriptor) == true) {
+      // Already loaded (the app's own load, or an earlier pick): no gap, and
+      // the app's now-playing stays.
+      try {
+        if (autoplay) controller.engine.play()
+        completion?.settled(LoadOutcome.Ready)
+      } catch (error: PlayerError) {
+        // Audio focus refused (a call): reported like a failed load, as on iOS.
+        if (completion == null) Log.w("RNAP", "voice play failed: ${error.message}")
+        completion?.settled(LoadOutcome.Failed(error))
+        return
+      }
+    } else {
+      // The item's `quality`: an id, `'auto'` for automatic; absent: keep the pick.
+      val qualityGiven = entry.json.has("quality")
+      val quality = entry.json.optString("quality").takeIf { it.isNotEmpty() && it != "auto" }
+      controller.load(descriptor, fields, autoplay, startSeconds, qualityGiven = qualityGiven, quality = quality, completion = completion)
+    }
     store().let { s -> writes.execute { s.played(entry.id) } }
     AnythingPlayerRuntime.activate(controller)
     controller.emitEvent(
@@ -174,9 +217,16 @@ internal object Voice {
   }
 
   /** `playFromSearch()` and the assistants' intent: resolve, play, report. Main thread. */
-  fun playFromSearch(request: SearchRequest, playerId: String?, done: (Result<CatalogEntry?>) -> Unit) {
+  fun playFromSearch(
+    request: SearchRequest,
+    playerId: String?,
+    stillWanted: () -> Boolean = { true },
+    done: (Result<CatalogEntry?>) -> Unit,
+  ) {
     resolveOrAsk(request) { entry ->
       if (entry == null) return@resolveOrAsk done(Result.success(null))
+      // Asked late (a waiting request): the app's answer may come after the user chose.
+      if (!stillWanted()) return@resolveOrAsk done(Result.success(null))
       val controller =
         try {
           voicePlayer(playerId)
@@ -209,11 +259,64 @@ internal object Voice {
     return true
   }
 
-  /** An assistant started the app with a request: no JS is needed, no answer is expected. */
-  fun playFromAssistant(request: SearchRequest) {
-    playFromSearch(request, null) { result ->
+  /**
+   * The app can answer now (a catalog, or a search handler): the waiting
+   * request plays, unless something was loaded meanwhile (the user, or the
+   * app, chose already: a late answer must not replace it). Main thread.
+   */
+  fun answerWaiting() {
+    val request = waiting ?: return
+    waiting = null
+    if (somethingLoaded()) {
+      Log.d(TAG, "assistant request \"${request.query}\" dropped: something else is loaded")
+      return
+    }
+    playFromAssistant(request, stillWanted = { !somethingLoaded() }, waited = true)
+  }
+
+  /**
+   * Any player has something loaded (the lock screen's or not; one in error
+   * counts, it holds the user's choice). Wider than [nothingLoaded], which asks
+   * what a bare "play" on the lock screen would resume. Main thread.
+   */
+  private fun somethingLoaded(): Boolean =
+    AnythingPlayerRuntime.players.values.any { !it.isReleased && it.status.state != PlaybackState.IDLE }
+
+  /** An assistant started the app with a request: no JS is needed, no answer is expected. Main thread. */
+  fun playFromAssistant(request: SearchRequest, stillWanted: () -> Boolean = { true }, waited: Boolean = false) {
+    waiting = null
+    if (!hasItems() && !handlerEnabled) {
+      Log.d(TAG, "assistant request \"${request.query}\" waits for the app's catalog or search handler")
+      waiting = request
+      return
+    }
+    playFromSearch(request, null, stillWanted) { result ->
       result.onFailure { Log.w(TAG, "assistant request \"${request.query}\" failed: ${it.message}") }
-      result.onSuccess { if (it == null) Log.d(TAG, "assistant request \"${request.query}\" matched nothing") }
+      result.onSuccess { entry ->
+        if (entry != null) return@onSuccess
+        // The app's catalog came while its search handler was answering (it had
+        // nothing): the catalog's match, then. Nothing waits again: a reload or a
+        // catalog still to come ends the request.
+        // Waited requests only. Not a teardown: by the time jsDetached answers the
+        // handler's questions with null, the handler is off and JS is detached.
+        if (waited && !stillWanted()) {
+          Log.d(TAG, "assistant request \"${request.query}\" dropped: something else is loaded")
+          return@onSuccess
+        }
+        val late = if (waited && handlerEnabled && AnythingPlayerRuntime.hasJs) resolve(request) else null
+        if (late == null) {
+          Log.d(TAG, "assistant request \"${request.query}\" matched nothing")
+          return@onSuccess
+        }
+        val controller =
+          try {
+            voicePlayer(null)
+          } catch (error: PlayerError) {
+            Log.w(TAG, "assistant request \"${request.query}\" failed: ${error.message}")
+            return@onSuccess
+          }
+        load(controller, late, request, autoplay = true, startSeconds = null, completion = null)
+      }
     }
   }
 

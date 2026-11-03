@@ -32,10 +32,12 @@ import { cuesToVtt } from '../../core/subtitles/vtt';
 import type { CastMedia } from './CastDriver';
 import type { SubtitleCue } from '../../core/subtitles/types';
 import { AudioSampler } from './AudioSampler';
+import type { StreamAudio } from './DecodedTap';
 import type { CastService } from './CastService';
 import { browser, monotonicNow, type AudioElementLike } from './dom';
 import { ElementRoute } from './ElementRoute';
 import {
+  LOCAL_URI,
   MediaElementDriver,
   type DriverObserver,
   type PlayAttempt,
@@ -133,6 +135,8 @@ export class WebPlayerController
   private trackClock: TrackClock | null = null;
   private readonly pendingLoads = new Map<number, PendingLoad>();
   private released = false;
+  /** The item is a `blob:` or `data:` file (WebKit samples it through Web Audio). */
+  private localItem = false;
   private wakeupTimer: number | null = null;
   private progressTimer: number | null = null;
   /** Reads a live item every `LIVE_READ_MS` while it plays: `liveOffset` follows it. */
@@ -201,6 +205,7 @@ export class WebPlayerController
     quality?: string | null
   ): Promise<object> {
     this.sourceFields = fields;
+    this.localItem = LOCAL_URI.test(source.uri);
     this.overrides = NO_FIELDS;
     this.liveOffset.reset();
     this.trackClock = null;
@@ -521,7 +526,7 @@ export class WebPlayerController
     // The visualizer is audio's: a <video> is never routed through Web Audio.
     if (this.video) return;
     const element = this.driver.element;
-    this.sampler.update(element, this.driver.isStreamed);
+    this.sampler.update(element, this.driver.isStreamed, this.localItem);
     this.driver.tapped = this.sampler.isAttached(element);
   }
 
@@ -744,6 +749,10 @@ export class WebPlayerController
   private audioSwitched(element: AudioElementLike): void {
     this.elementRoute.attach(element);
     this.updateSampler();
+  }
+
+  onStreamAudio(element: AudioElementLike, audio: StreamAudio): void {
+    this.sampler.feed(element, audio);
   }
 
   onElementReplaced(element: AudioElementLike): void {

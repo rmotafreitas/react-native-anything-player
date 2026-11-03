@@ -27,6 +27,26 @@ await setCatalog(
 
 The catalog is stored on the device, so an assistant finds it when the app is not running. Call `setCatalog` again whenever the list changes; `[]` clears it. Each item has an `id` (unique, and not starting with `rnap:`, which the [browse tree](cars-and-watches.md#the-tree) keeps for its folders; `setCatalog` rejects it), a `title`, a `source` (anything `load()` accepts except a `Blob` or `File`: an item needs a URL), and optionally `artist`, `album`, `genre`, `artwork`, `keywords` (other names people say) and a `kind` (`station` by default, or `song`, `album`, `podcast`, `audiobook`, `other`). The lock screen shows the item's title, artist, album and artwork unless the source has its own `metadata`.
 
+An item whose source has `renditions` can say the `quality` it starts at (a rendition id, or `'auto'`), as `load(source, { quality })` does: a player that native code creates for a request, with no JavaScript running, has no pick of its own. Asking for what is already loaded (the same file, or the same renditions) plays on instead of opening it again: no gap, and the app's `updateNowPlaying` stays; `searchPlay` is still emitted. The loaded source's headers and DRM stay too.
+
+### A catalog the app bundles
+
+The catalog exists once the app has called `setCatalog`. On a fresh install, before the app was opened, a voice request or a car would find nothing. Bundle one for that time: a JSON file (say `catalog.json`, next to `app.json`) with what the app passes to `setCatalog`.
+
+```json
+{
+  "playerId": "main",
+  "items": [
+    { "id": "jazz", "title": "Jazz FM", "artwork": "https://cdn.example/jazz.png",
+      "source": { "uri": "https://stream.example/jazz", "live": true } }
+  ]
+}
+```
+
+**Expo**: `["react-native-anything-player", { "catalog": "./catalog.json" }]`. The prebuild checks it with `setCatalog`'s own rules (sources and artwork are URLs here: a JSON file has no `require()`) and fails on what `setCatalog` would reject. **Bare**: write the same file's stored form, `require('react-native-anything-player/plugin/catalogSeed').catalogSeed(json)`, to `android/app/src/main/assets/rnap/catalog-seed.json`, and add it to the iOS app target as `rnap-catalog-seed.json`.
+
+The bundled catalog is used until the app calls `setCatalog`, which replaces it for good. Until then, an app update that bundles a different one replaces the one in use (what played and the favorites stay, for the items still there), and removing the option leaves none. With the Expo plugin, the option owns the bundled file: a prebuild without it empties one written by hand.
+
 An item can also have a `group` (`"Jazz"`, or `"Podcasts/Daily"`), which files it in the browse tree that [cars and watches](cars-and-watches.md) show; `setCatalog`'s `browse` option and `setFavorites(ids)` add "Recently played" and "Favorites" folders. `searchCatalog({ query, group })` and `playFromSearch({ query, group })` search one group (and its subgroups) only. A pick in the car plays like a voice request and emits `searchPlay` with `origin: 'browse'`.
 
 ## Playing a request
@@ -113,6 +133,8 @@ Android's assistants, Google Assistant and Gemini, reach media apps two ways, an
 
 - the app's media session and media library (Media3), which is how they find the catalog and play from it, even when the app is not running;
 - a `MEDIA_PLAY_FROM_SEARCH` intent to the app's activity.
+
+An intent that comes before the app can answer it (a fresh install it opens: no catalog, no search handler) waits: it plays once the app's JavaScript calls `setCatalog` or `setSearchHandler` (when the handler has no answer, the catalog's match plays if the catalog came meanwhile), unless something was loaded meanwhile (the user's choice wins). It is dropped if that JavaScript goes away first, a reload included. A [bundled catalog](#a-catalog-the-app-bundles) answers it at once, with no JavaScript.
 
 **Expo**: nothing to configure (turn it off with `"assistant": false`). The plugin adds the intent filter and the two lines below.
 

@@ -43,6 +43,8 @@ export class FakeNative {
   statuses = new Map<string, FakeStatus>();
   metadata = new Map<string, unknown>();
   nextId = 0;
+  /** Like native: each native player a number, on its statuses (`instance`). */
+  nextInstance = 0;
   /** Set to make the next command reject with this native error shape. */
   rejectNext: { code: string; message: string; userInfo?: object } | null =
     null;
@@ -101,8 +103,13 @@ export class FakeNative {
     // Like native: an id that already exists attaches to that player.
     if (requested != null && this.statuses.has(requested)) return requested;
     const id = requested ?? `p${++this.nextId}`;
-    this.statuses.set(id, baseStatus());
+    this.statuses.set(id, baseStatus({ instance: ++this.nextInstance }));
     return id;
+  };
+  /** Like native: the id is free at once (the player goes later). */
+  willReleasePlayer = (id: string) => {
+    this.calls.push(['willReleasePlayer', id]);
+    return this.statuses.delete(id);
   };
   releasePlayer = (id: string) => {
     this.calls.push(['releasePlayer', id]);

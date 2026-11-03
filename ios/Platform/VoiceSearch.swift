@@ -34,6 +34,9 @@ final class VoiceSearch {
   private static let handlerTimeout: TimeInterval = 5.5
   /// How long Siri waits for audio before it is told the request failed.
   private static let siriStartTimeout: TimeInterval = 8
+  /// States that keep an opened source: a pick of it plays on instead of
+  /// opening again (one still loading has not proved it opens: it is opened again).
+  private static let holdsSource: Set<PlaybackState> = [.buffering, .playing, .paused, .stopped, .reconnecting]
 
   init(runtime: AnythingPlayerRuntime) {
     self.runtime = runtime
@@ -160,14 +163,17 @@ final class VoiceSearch {
   /// (created natively when it does not exist yet).
   private func voicePlayer(_ playerId: String?, completion: @escaping (PlayerController?) -> Void) {
     if let playerId { return completion(runtime.player(playerId)) }
-    if let active = runtime.active { return completion(active) }
+    // Not one JS let go of (its release is queued).
+    if let active = runtime.active, runtime.isCurrent(active), !active.isReleased { return completion(active) }
     let id = catalog.playerId
     if let existing = runtime.player(id) { return completion(existing) }
-    if runtime.claim(id) {
+    if let slot = runtime.claim(id) {
       var options = PlayerOptions(catalog.playerOptions as NSDictionary)
       // Voice playback is controlled from the lock screen.
       options.mediaSession = true
-      return completion(runtime.createPlayer(id: id, options: options, detachable: true))
+      let controller = runtime.createPlayer(id: id, options: options, detachable: true, slot: slot)
+      // JS attached to it and let go of it meanwhile: not one to play on.
+      return completion(runtime.isCurrent(controller) ? controller : nil)
     }
     // JS is creating it right now (its creation is queued on main): use it once it exists.
     DispatchQueue.main.async { [weak self] in completion(self?.runtime.player(id)) }
@@ -179,8 +185,26 @@ final class VoiceSearch {
   ) {
     let (descriptor, fields) = SourceDescriptor.parse((item["source"] as? NSDictionary) ?? [:])
     do {
-      try controller.load(descriptor, fields: fields, autoplay: true, start: nil) { result in
-        completion(result.map { _ in () })
+      if let loaded = controller.engine.source, Self.holdsSource.contains(controller.engine.state),
+        loaded.sameMedia(descriptor)
+      {
+        // Already loaded (the app's own load, or an earlier pick): no gap, and
+        // the app's now-playing stays.
+        let flowing = controller.engine.state == .playing || controller.engine.state == .buffering
+        try controller.engine.play()
+        completion(.success(()))
+        // Already playing: no status change follows, so a Siri request waiting
+        // for audio to start is told now.
+        if flowing { statusChanged(controller) }
+      } else {
+        // The item's `quality`: an id, `'auto'` for automatic; absent: keep the pick.
+        let quality = (item["quality"] as? String).flatMap { $0 == "auto" ? nil : $0 }
+        try controller.load(
+          descriptor, fields: fields, autoplay: true, start: nil, qualityGiven: item["quality"] is String,
+          quality: quality
+        ) { result in
+          completion(result.map { _ in () })
+        }
       }
     } catch let error as PlayerError {
       return completion(.failure(error))

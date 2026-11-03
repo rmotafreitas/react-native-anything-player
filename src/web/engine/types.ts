@@ -69,6 +69,21 @@ export interface SourceDescriptor {
   drm?: DrmDescriptor | null;
 }
 
+/**
+ * Whether two sources play the same media: the same renditions (by file, in
+ * any order), else the same file. A voice pick of what is loaded is not
+ * opened again.
+ */
+export function sameMedia(a: SourceDescriptor, b: SourceDescriptor): boolean {
+  if (a.renditions || b.renditions) {
+    if (!a.renditions || !b.renditions) return false;
+    const files = (list: Rendition[]) =>
+      [...new Set(list.map((r) => r.uri))].sort();
+    return files(a.renditions).join('\n') === files(b.renditions).join('\n');
+  }
+  return a.uri === b.uri;
+}
+
 /** A key system's license server. */
 export interface LicenseServer {
   licenseUrl: string;

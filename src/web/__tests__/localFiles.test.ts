@@ -175,6 +175,33 @@ describe('a File or Blob', () => {
     expect(world.elements).toHaveLength(1);
     await player.release();
   });
+
+  it.each([
+    ['in WebKit (a stream on a routed element plays as silence)', true],
+    ['not elsewhere (the routed element plays it)', false],
+  ])('plays a stream after it on a fresh element %s', async (_name, webkit) => {
+    const g = globalThis as Record<string, unknown>;
+    if (webkit) {
+      (g.navigator as { vendor: string }).vendor = 'Apple Computer, Inc.';
+      g.OfflineAudioContext = class {};
+    }
+    const player = new web.Player();
+    player.setAudioSampling({ enabled: true });
+    await loadReady(player, file(), { autoplay: true });
+    world.element().startPlaying();
+    await flush();
+    await jest.advanceTimersByTimeAsync(100);
+    const routed = world.element();
+    world.fetch.respond({ headers: { 'content-type': 'audio/mpeg' } });
+    player
+      .load('https://radio.example/live', { autoplay: true })
+      .catch(() => undefined);
+    await flush();
+    expect(world.element() !== routed).toBe(webkit);
+    expect(world.element().src.startsWith('blob:')).toBe(true);
+    await player.release();
+    delete g.OfflineAudioContext;
+  });
 });
 
 describe('blob: and data: URLs', () => {

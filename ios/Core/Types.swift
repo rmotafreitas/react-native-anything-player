@@ -162,6 +162,17 @@ struct SourceDescriptor: Equatable {
     let lower = uri.lowercased()
     return lower.hasPrefix("http://") || lower.hasPrefix("https://")
   }
+
+  /// Whether `other` plays the same media: the same renditions (by file, in
+  /// any order), else the same file. A voice or car pick of what is loaded is
+  /// not opened again.
+  func sameMedia(_ other: SourceDescriptor) -> Bool {
+    if renditions != nil || other.renditions != nil {
+      guard let mine = renditions, let theirs = other.renditions else { return false }
+      return Set(mine.map(\.uri)) == Set(theirs.map(\.uri))
+    }
+    return uri == other.uri
+  }
 }
 
 /// What the engine asks the driver to open.

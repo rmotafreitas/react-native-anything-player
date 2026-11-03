@@ -8,6 +8,7 @@ import { groupSegments } from './catalog';
 import { host } from './host';
 import { onModuleEvent } from './moduleEvents';
 import {
+  checkQuality,
   ensureSubscription,
   normalizeNowPlaying,
   normalizeSource,
@@ -179,6 +180,10 @@ function serializeItem(item: CatalogItem): Record<string, unknown> {
   const group = groupSegments(item.group).join('/');
   if (group !== '') out.group = group;
   if (shown.artwork != null) out.artwork = shown.artwork;
+  if (item.quality != null) {
+    checkQuality(item.quality, source.renditions);
+    out.quality = item.quality;
+  }
   return out;
 }
 
@@ -196,6 +201,7 @@ function deserializeItem(raw: unknown): CatalogItem {
   if (typeof item.genre === 'string') out.genre = item.genre;
   if (typeof item.group === 'string') out.group = item.group;
   if (typeof item.artwork === 'string') out.artwork = item.artwork;
+  if (typeof item.quality === 'string') out.quality = item.quality;
   return out;
 }
 
@@ -267,6 +273,18 @@ export async function setCatalog(
   items: CatalogItem[],
   options: CatalogOptions = {}
 ): Promise<void> {
+  const catalog = serializeCatalog(items, options);
+  await run(() => native().setCatalog(catalog.items, catalog.options));
+}
+
+/**
+ * @internal What `setCatalog` sends native: the items and options checked
+ * and serialized. Also builds the catalog an app bundles (`catalogSeed`).
+ */
+export function serializeCatalog(
+  items: CatalogItem[],
+  options: CatalogOptions = {}
+): { items: Record<string, unknown>[]; options: Record<string, unknown> } {
   if (!Array.isArray(items)) throw invalid('setCatalog expects an array.');
   const serialized = items.map(serializeItem);
   const ids = new Set(serialized.map((i) => i.id));
@@ -279,7 +297,7 @@ export async function setCatalog(
     nativeOptions.playerOptions = options.playerOptions;
   if (options.browse)
     nativeOptions.browse = serializeBrowse(options.browse, ids);
-  await run(() => native().setCatalog(serialized, nativeOptions));
+  return { items: serialized, options: nativeOptions };
 }
 
 /**
