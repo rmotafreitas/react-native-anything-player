@@ -7,6 +7,36 @@ and versions follow [Semantic Versioning](https://semver.org/): see
 change and how releases are made. Changes not released yet are listed in the
 open release pull request.
 
+## [1.4.0](https://github.com/rmotafreitas/react-native-anything-player/compare/v1.3.1...v1.4.0) (2026-11-03)
+
+Live quality switches that line up with what is heard, and voice and car playback on a fresh install. Nothing is removed or renamed. A few live-stream behaviours change, and an app that handled them itself may need to stop doing so: see **Upgrading**.
+
+### Added
+
+- **Live quality switches line up with what is heard.** A switch between live `renditions` (Icecast mounts at different bitrates, HLS or DASH renditions with program dates, live MPEG-TS sound channels) no longer repeats or skips audio. The new connection is played muted, a little faster or slower, until it reaches the same point in the program, then takes over: within about 0.3 s in Chromium, Firefox, WebKit and on Android, where switches used to land up to 18 s off. Sources that can never be lined up switch as before: a browser's plain `<audio>` (a stream without CORS), a live TS channel with a picture in a browser, and every live TS channel on iOS. iOS has the code for the rest but has not been recorded on a device yet. See [Live renditions](docs/playback.md#live-renditions).
+- **`liveOffset` is the whole delay behind live**: the server's burst, the buffer and the decoder. On a progressive stream (ICY, plain HTTP, live TS) it is measured from what has arrived, so it holds steady while audio plays, grows while paused or stalled, and carries on across a lined-up switch. HLS and DASH report their own clock.
+- **`liveOffsetSettled`** (on `getProgress()` and `progress`) turns `true` once the connect burst has arrived and `liveOffset` has held for 3 s, so a delay shown to the user, or lyrics placed against it, does not move. It turns `false` again after a `discontinuity` or a new load.
+- **`programDate`**: the epoch milliseconds that the stream's own clock gives what plays now (HLS `EXT-X-PROGRAM-DATE-TIME`, DASH), `null` without one. On iOS, DASH converted for AVPlayer now carries program dates too.
+- **`discontinuity` says why and by how much**: `reason` (`'reconnect'` or `'switch'`) and `jump` (seconds skipped, or heard again when negative; `null` when unknown).
+- **A catalog the app bundles**, for voice assistants and cars on a fresh install that was never opened. With Expo: `["react-native-anything-player", { "catalog": "./catalog.json" }]`, checked at prebuild with `setCatalog`'s rules. Bare apps write the same file into their assets. See [Voice assistants](docs/voice.md#a-catalog-the-app-bundles) ([#80](https://github.com/rmotafreitas/react-native-anything-player/issues/80)).
+- **A voice request or car pick for what is already loaded plays on**: no gap, and the app's `updateNowPlaying` fields, headers and DRM stay. A catalog item can set the `quality` it starts at.
+- **Cars for one platform**: the plugin's `car: { ios: false }` sets up Android Auto alone, and `{ android: false }` sets up CarPlay alone. CarPlay's scene is added in any plugin order, including with expo-build-properties' `ios.enableSceneSupport`.
+
+### Fixed
+
+- **A player released and created again with the same id is a new one.** A remount in the same tick used to attach to the player being released, which then ended it ("The player was released" on the next command). A released player's late commands, events and status never reach the new one either ([#90](https://github.com/rmotafreitas/react-native-anything-player/issues/90)).
+- After a JavaScript reload, the old runtime's late release can no longer end the new runtime's player.
+- On Android, an assistant request that opens a fresh install before the app has a catalog now waits for `setCatalog` and plays then, instead of opening the app idle ([#79](https://github.com/rmotafreitas/react-native-anything-player/issues/79)).
+- On Safari for iPhone and iPad, a live stream plays through MSE again. It had fallen back to the plain element, which meant no ICY titles and no visualizer.
+- The visualizer works for streams in Safari and every iOS browser. It used to draw a flat line, because WebKit reads silence from a stream played through MSE.
+
+### Upgrading
+
+- **A live switch that cannot be lined up is refused when it is optional.** A quality pick or an automatic step up that cannot be lined up (for example, the new mount has not settled) keeps the current quality and reports a non-fatal `QUALITY_SWITCH_FAILED`. Do not re-open the source when you get it: that brings back the gap this release removes. A switch the player needs, because the current connection stalled, still goes ahead and reports a `discontinuity` with `reason: 'switch'`.
+- **A lined-up switch reports no `discontinuity`, and positions carry on.** An app that keeps its own place in the station's timeline (a song's progress, lyrics) should place it again on `discontinuity`, not on every change of `status.quality`.
+- **`liveOffset` reads larger than before** on progressive streams (it now includes the whole delay) and can be `null` until there is something to measure. Wait for `liveOffsetSettled` before showing it.
+- **TypeScript**: progress readings gain `liveOffsetSettled` and `programDate`, and `discontinuity` gains `reason` and `jump`. Code that only reads them needs no change. A test fake that builds these objects needs the new fields.
+
 ## [1.3.1](https://github.com/rmotafreitas/react-native-anything-player/compare/v1.3.0...v1.3.1) (2026-10-30)
 
 Quality switching for audio players. This release adds features, so by Semantic Versioning it should have been 1.4.0: the release tool missed the commits that added them. Nothing is removed or renamed, so upgrading is safe.
