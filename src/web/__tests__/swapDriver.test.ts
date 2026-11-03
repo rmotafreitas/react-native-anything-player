@@ -812,6 +812,33 @@ describe('a live switch', () => {
     }
   });
 
+  it('lines up HLS or DASH renditions by their program dates: moved, held, taken over unheard', () => {
+    const real = MediaElementDriver.prototype.alignReading;
+    // The new rendition's timeline is 40 s behind the old one's on the stream's clock.
+    const spy = jest
+      .spyOn(MediaElementDriver.prototype, 'alignReading')
+      .mockImplementation(function (this: MediaElementDriver) {
+        const r = real.call(this);
+        const isNext = this.element === world.videos[1];
+        return r && { ...r, clock: isNext ? 1_000_040 : 1_000_000 };
+      });
+    try {
+      const { old, next, tick } = stations(1.6, 17);
+      for (let i = 0; i < 400 && driver.element === old; i++) tick(40);
+      expect(driver.element).toBe(next);
+      // What the old one played (50 s on) is at 10 s on the new one's timeline.
+      expect(next.currentTime).toBeCloseTo(old.currentTime - 40, 0);
+      expect(rec.of('onDiscontinuity')).toEqual([]);
+      expect(rec.of('onFailed')).toEqual([]);
+      const aligned = rec
+        .of('onNote')
+        .find((n) => n[1] === 'quality switch aligned');
+      expect(aligned).toBeDefined();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it('holds a new connection that is ahead until the old one gets there', () => {
     const { old, next, tick } = stations(17, 1.6);
     tick(10_000);
@@ -832,7 +859,7 @@ describe('a live switch', () => {
     expect(rec.of('onNote')).toContainEqual([
       2,
       'quality switch not aligned',
-      { reason: 'stalled' },
+      { reason: 'stalled', gap: expect.any(String) },
     ]);
     tick(40);
     expect(driver.element).toBe(next);

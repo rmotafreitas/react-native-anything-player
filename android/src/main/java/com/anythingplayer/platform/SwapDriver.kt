@@ -36,6 +36,9 @@ private const val RENDEZVOUS_TICK_MS = 40L
 /** What a muted ExoPlayer can do while a live switch lines up (Sonic runs it up to 4× here). */
 private val ALIGN_CAPS = LiveAligner.Caps(maxRate = 4.0, minRate = 0.5, jump = LiveAligner.Jump.NEVER, startLead = 0.1, jumpLead = 0.3)
 
+/** HLS or DASH by program dates: a seek within the live window is cheap (no new connection). */
+private val CLOCK_CAPS = ALIGN_CAPS.copy(jump = LiveAligner.Jump.ALWAYS, jumpLead = 0.5)
+
 /**
  * A player's local output: the ExoPlayer heard (and on screen), and a second
  * one that prepares a quality switch behind it (`open(swap = true)`, separate
@@ -294,12 +297,14 @@ internal class SwapDriver(
   private fun startAligning(waiting: Pending, next: ExoPlayerDriver) {
     current.resetAlignEdge()
     next.resetAlignEdge()
-    if (current.alignReading() == null || next.alignReading() == null) {
-      // Not a progressive stream on both sides (HLS, DASH): at once, as before.
+    val old = current.alignReading()
+    val new = next.alignReading()
+    if (old == null || new == null || (old.clock == null) != (new.clock == null)) {
+      // HLS or DASH without program dates, or renditions of different kinds: at once, as before.
       Log.d(TAG, "quality switch not aligned: adaptive")
       return next.play()
     }
-    waiting.aligner = LiveAligner(ALIGN_CAPS)
+    waiting.aligner = LiveAligner(if (new.clock != null) CLOCK_CAPS else ALIGN_CAPS)
     alignStep()
   }
 
@@ -356,7 +361,7 @@ internal class SwapDriver(
    * playing on (`QUALITY_SWITCH_FAILED`).
    */
   private fun unaligned(waiting: Pending, next: ExoPlayerDriver, reason: String) {
-    Log.d(TAG, "quality switch not aligned: $reason")
+    Log.d(TAG, "quality switch not aligned: $reason, gap ${waiting.aligner?.gap} s")
     main.removeCallbacks(alignTick)
     main.removeCallbacks(alignStart)
     if (!waiting.required) {

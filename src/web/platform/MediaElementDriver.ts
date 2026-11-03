@@ -12,6 +12,7 @@
 // browser cannot play it itself (`HlsStream`). Everything else, and any stream
 // MSE cannot take, plays as the element's own `src`.
 
+import * as liveClock from './liveClock';
 import type { PlayerError } from '../../errors';
 import {
   hlsConstructor,
@@ -425,32 +426,38 @@ export class MediaElementDriver implements EngineDriver {
       position,
       duration: Number.isFinite(duration) && duration > 0 && !this.isLive ? duration : null, // prettier-ignore
       buffered,
-      liveOffset: this.liveOffset(),
+      liveOffset: liveClock.nativeLiveOffset(this.liveSources()),
       isPlaying: !this._element.paused && this.flowed,
       rate: this._element.playbackRate,
       // A progressive live stream measures from what it received (`LiveOffset`).
       edge: progressive ? buffered : null,
-      programDate: this.hls?.programDate ?? this.dash?.programDate ?? null,
+      programDate: liveClock.programDateOf(this.liveSources()),
     };
   }
 
+  private liveSources(): liveClock.LiveSources {
+    const { hls, dash, nativeHls, _element: element } = this;
+    return { hls, dash, nativeHls, element, position: this.position() };
+  }
+
   /**
-   * What a live quality switch lines its audio up on (`LiveAligner`): only a
-   * progressive stream's buffered edge is the live edge (not HLS, DASH or a
-   * remux). `null`: not one.
+   * What a live quality switch lines up on (`LiveAligner`): a progressive
+   * stream's buffered edge, or an HLS or DASH stream's program dates. `null`:
+   * neither (a remux, HLS without program dates).
    */
   alignReading(): (AlignReading & { reconnects: number }) | null {
-    if (this.hls || this.dash || this.remux || this.hlsPending) return null;
-    if (this.dashPending || this.remuxPending) return null;
-    const ranges = this._element.buffered;
-    const element = this._element;
-    return {
-      position: this.position(),
-      edge: ranges.length > 0 ? ranges.end(ranges.length - 1) : null,
-      playing: !element.paused && this.flowed && element.readyState >= 3,
-      reconnecting: this.stream?.reconnecting === true,
-      reconnects: this.stream?.reconnects ?? 0,
-    };
+    if (this.remux || this.hlsPending || this.dashPending || this.remuxPending)
+      return null;
+    const e = this._element;
+    const playing = !e.paused && this.flowed && e.readyState >= 3;
+    const sources = this.liveSources();
+    if (this.hls || this.dash || this.nativeHls)
+      return liveClock.clockReading(
+        sources,
+        playing,
+        this.bufferedEnd(sources.position)
+      );
+    return liveClock.edgeReading(sources, playing, this.stream);
   }
 
   /** It plays from a MediaSource RNAP feeds: a seek within what it holds is exact. */
@@ -585,13 +592,6 @@ export class MediaElementDriver implements EngineDriver {
     const mbps = browser().navigator?.connection?.downlink;
     if (mbps != null && Number.isFinite(mbps) && mbps > 0)
       this.observer.onBandwidth?.(generation, mbps * 1_000_000);
-  }
-
-  /** The player's own reading behind live (HLS latency, a DASH presentation's clock). */
-  private liveOffset(): number | null {
-    if (this.hls?.live) return this.hls.liveOffset;
-    const date = this.dash?.programDate;
-    return date == null ? null : Math.max(0, (Date.now() - date) / 1000);
   }
 
   /** Whether hls.js has to play this: an HLS source on an element that cannot. */

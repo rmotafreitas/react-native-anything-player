@@ -39,11 +39,16 @@ final class LiveAligner {
     /// When the edge's audio arrived (ms, `t`'s clock), where the player
     /// knows: the reading's time otherwise.
     var edgeAt: Int64?
+    /// The stream's own clock (program dates): epoch seconds it gives
+    /// position 0 on this timeline, `programDate − position`. With one on
+    /// both sides the mapping is known at once, and followed as a live window slides.
+    var clock: Double?
 
     init(
       position: Double, edge: Double?, playing: Bool, reconnecting: Bool = false, ready: Bool = true,
-      edgeAt: Int64? = nil
+      edgeAt: Int64? = nil, clock: Double? = nil
     ) {
+      self.clock = clock
       self.position = position
       self.edge = edge
       self.playing = playing
@@ -174,6 +179,7 @@ final class LiveAligner {
     let elapsed = t - startedAt!
     if old.reconnecting || next.reconnecting { return fallback("reconnecting") }
     if !old.playing { return fallback("stalled") }
+    if let a = old.clock, let b = next.clock { k = a - b }
     if k == nil {
       if elapsed >= Self.settleBudgetMs { return fallback("unsettled") }
       measure(t, old: old, next: next)

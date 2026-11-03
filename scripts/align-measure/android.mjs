@@ -6,7 +6,7 @@
 //   node scripts/stream-server/server.mjs &
 //   yarn example start --port 8088 &
 //   PULSE_SINK=rnap_align emulator -avd <avd> (with audio) &
-//   node scripts/align-measure/android.mjs [serial]
+//   node scripts/align-measure/android.mjs [serial] [--hls]
 //
 // The emulator plays into the PulseAudio null sink `rnap_align` (start it
 // with PULSE_SINK=rnap_align, without -no-audio), or, with `--wav FILE`, into
@@ -22,6 +22,8 @@ import { jumps, readWav, seconds } from './analyze.mjs';
 
 const argv = process.argv.slice(2);
 const wavArg = argv.includes('--wav') ? argv[argv.indexOf('--wav') + 1] : null;
+// `--hls`: the live HLS renditions (program dates) instead of the Icecast mounts.
+const scenario = argv.includes('--hls') ? 'live-hls-renditions' : 'live-renditions';
 const serial = argv.find((a) => !a.startsWith('--') && a !== wavArg) ?? process.env.ANDROID_SERIAL ?? 'emulator-5556';
 const SINK = 'rnap_align';
 const adb = (...args) => execFileSync('adb', ['-s', serial, ...args], { encoding: 'utf8' });
@@ -29,6 +31,8 @@ const adb = (...args) => execFileSync('adb', ['-s', serial, ...args], { encoding
 const sinks = execFileSync('pactl', ['list', 'short', 'sinks'], { encoding: 'utf8' });
 if (!sinks.includes(SINK)) execFileSync('pactl', ['load-module', 'module-null-sink', `sink_name=${SINK}`]);
 adb('reverse', 'tcp:8081', 'tcp:8088');
+// The example's debug_http_host is localhost:8088 (docs/testing.md).
+adb('reverse', 'tcp:8088', 'tcp:8088');
 adb('reverse', 'tcp:8765', 'tcp:8765');
 // The device's wall clock against this machine's: SWITCH times are the device's.
 const before = Date.now();
@@ -46,10 +50,10 @@ adb('logcat', '-c');
 const logcat = spawn('adb', ['-s', serial, 'logcat', '-v', 'raw', 'ReactNativeJS:I', 'RNAP:D', '*:S']);
 const lines = [];
 logcat.stdout.on('data', (d) => lines.push(...d.toString().split('\n')));
-adb('shell', 'am', 'start', '-W', '-a', 'android.intent.action.VIEW', '-d', 'anythingplayer-example://test/live-renditions');
+adb('shell', 'am', 'start', '-W', '-a', 'android.intent.action.VIEW', '-d', `anythingplayer-example://test/${scenario}`);
 
 const deadline = Date.now() + 320_000;
-while (Date.now() < deadline && !lines.some((l) => /\[RNAPTest\] (PASS|FAIL) live-renditions/.test(l))) {
+while (Date.now() < deadline && !lines.some((l) => new RegExp(`\\[RNAPTest\\] (PASS|FAIL) ${scenario}\\b`).test(l))) {
   await new Promise((r) => setTimeout(r, 1000));
 }
 await new Promise((r) => setTimeout(r, 1000));
@@ -78,7 +82,7 @@ if (recorder) {
   writeFileSync(wav, Buffer.concat([head, data]));
 }
 
-const result = lines.find((l) => /\[RNAPTest\] (PASS|FAIL) live-renditions/.test(l)) ?? 'no result';
+const result = lines.find((l) => new RegExp(`\\[RNAPTest\\] (PASS|FAIL) ${scenario}\\b`).test(l)) ?? 'no result';
 // Where the recording's time 0 is on this machine's clock: when it started,
 // or (the wave writer) when the device started playing.
 const playing = lines.map((l) => /PLAYING at=(\d+)/.exec(l)).find(Boolean);

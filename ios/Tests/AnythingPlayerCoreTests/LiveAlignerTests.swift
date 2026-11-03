@@ -83,6 +83,9 @@ final class LiveAlignerTests: XCTestCase {
     let jitter = w["positionJitter"].map { number($0) } ?? 0
     let appRate = w["appRate"].map { number($0) } ?? 1
     let arrival = w["edgeArrival"] as? Bool ?? false
+    // The stream clock's epoch seconds at the old connection's live point at t 0.
+    let dates = w["programDates"] as? Bool ?? false
+    let epoch = 1_700_000_000.0
     let ticks = (w["ticksMs"] as? [NSNumber])?.map { $0.int64Value } ?? [tickMs]
     var i = 0
     let k = burst - oldPositionAt0 - oldLag
@@ -106,11 +109,12 @@ final class LiveAlignerTests: XCTestCase {
       let oldPosition = oldPositionAt0 + (appRate * Double(oldT)) / 1000
       let old = LiveAligner.Reading(
         position: oldPosition, edge: oldPositionAt0 + oldLag + Double(oldTq) / 1000, playing: !stalled,
-        reconnecting: reconnectingAt.map { t >= $0 } ?? false, edgeAt: arrival ? oldTq : nil)
+        reconnecting: reconnectingAt.map { t >= $0 } ?? false, edgeAt: arrival ? oldTq : nil,
+        clock: dates ? epoch - oldPositionAt0 - oldLag : nil)
       let moving = moveFrom.map { rate > 0 && t >= $0 && x < received } ?? false
       let next = LiveAligner.Reading(
         position: x + (i % 2 == 0 ? jitter : -jitter), edge: received, playing: moving, ready: readyAt.map { t >= $0 } ?? true,
-        edgeAt: arrival ? tq : nil)
+        edgeAt: arrival ? tq : nil, clock: dates ? epoch - burst : nil)
       let action = interruptAt.map { t >= $0 } == true ? aligner.interrupt() : aligner.step(t, old: old, next: next)
       lastT = t
       switch action {

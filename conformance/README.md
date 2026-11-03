@@ -216,7 +216,11 @@ three test harnesses run alike, every 40 ms:
 - `oldStallAt`, `oldReconnectingAt`, `interruptAt` (a discontinuity) and
   `nextReadyAt` (the new player cannot start before) are optional, in ms;
   `positionJitter` reads the new playhead that much off, alternately early
-  and late.
+  and late;
+- `programDates`: both readings carry the stream's clock (`clock`, HLS
+  program dates or a DASH presentation's), one epoch for the old
+  connection's live point at 0: the mapping is known at once, without the
+  edges settling.
 
 `expect` gives the `outcome` (`takeOver`, or `fallback:<reason>`), the time
 `at` (ms) it came, the kinds of `actions` in order (repeats collapsed), and

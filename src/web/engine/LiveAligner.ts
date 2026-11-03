@@ -40,6 +40,10 @@ export interface AlignReading {
   reconnecting?: boolean;
   /** It can start (default): one not ready yet is held, whatever the gap. */
   ready?: boolean;
+  /**
+   * The stream's own clock (program dates): epoch seconds it gives position 0 on this timeline, `programDate − position`. With one on both sides the mapping is known at once, and followed as a live window slides.
+   */
+  clock?: number | null;
 }
 
 /** What the new player can do while it is muted. */
@@ -190,6 +194,8 @@ export class LiveAligner {
     if (old.reconnecting === true || next.reconnecting === true)
       return this.fallback('reconnecting');
     if (!old.playing) return this.fallback('stalled');
+    if (old.clock != null && next.clock != null)
+      this.k = old.clock - next.clock;
     if (this.k == null) {
       if (elapsed >= Align.SETTLE_BUDGET_MS) return this.fallback('unsettled');
       this.measure(t, old, next);

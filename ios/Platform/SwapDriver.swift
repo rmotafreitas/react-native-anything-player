@@ -18,6 +18,8 @@ private let rendezvousTick: DispatchTimeInterval = .milliseconds(40)
 /// (the gate drops the burst's start instead, before AVPlayer reads it), a
 /// little slower, and it takes a while to be ready and to start.
 private let alignCaps = LiveAligner.Caps(maxRate: 1, minRate: 0.5, jump: .first, startLead: 0.4, jumpLead: 2)
+/// HLS by program dates: AVPlayer seeks within the live window any time (it still cannot run a live item faster).
+private let clockCaps = LiveAligner.Caps(maxRate: 1, minRate: 0.5, jump: .always, startLead: 0.4, jumpLead: 2)
 
 /// A player's local output: the AVPlayer heard (and on screen), and a second
 /// one that prepares a quality switch behind it (`open(swap: true)`,
@@ -273,11 +275,17 @@ final class SwapDriver: LocalOutput {
 
   private func alignStep() {
     alignTick = nil
-    guard let waiting = pending, let aligner = waiting.aligner, !waiting.fallback, let next = spare else { return }
-    guard let old = current.alignReading(), let reading = next.alignReading() else {
+    guard let waiting = pending, var aligner = waiting.aligner, !waiting.fallback, let next = spare else { return }
+    // An HLS item still loading: its program dates come with it.
+    if waiting.steps == 0, next.awaitsClock { return scheduleAlign(waiting) }
+    let old = current.alignReading()
+    let reading = next.alignReading()
+    let sameKind = waiting.steps > 0 || (old?.clock == nil) == (reading?.clock == nil)
+    guard let old, let reading, sameKind else {
       // A reading that went away (an item that changed kind): as before, reported.
       if waiting.steps > 0 { return apply(aligner.interrupt()) }
-      // Not a progressive stream on both sides (HLS, a remux): at once, as before.
+      // Not a progressive stream on both sides, nor HLS with program dates
+      // on both (a remux, renditions of different kinds): at once, as before.
       observer?.driverNote(
         generation: waiting.generation, event: "quality switch not aligned", details: ["reason": "adaptive"])
       waiting.aligner = nil
@@ -285,15 +293,26 @@ final class SwapDriver: LocalOutput {
       if waiting.ready { next.play() }
       return
     }
+    if waiting.steps == 0, reading.clock != nil {
+      aligner = LiveAligner(caps: clockCaps)
+      waiting.aligner = aligner
+    }
     waiting.steps += 1
     let action = aligner.step(SystemClock.shared.monotonicMs, old: old, next: reading)
-    // AVPlayer gets its audio once the mapping is known: from where the aligner moved it, or all of it.
-    if case .jump(let to) = action {
+    if case .jump(let to) = action, reading.clock != nil {
+      // HLS: moved by a seek.
+      next.seek(to: to, exact: true)
+    } else if case .jump(let to) = action {
+      // AVPlayer gets its audio once the mapping is known: from where the aligner moved it, or all of it.
       next.openBurst(from: to)
     } else if aligner.offset != nil {
       next.openBurst(from: 0)
     }
     apply(action)
+    scheduleAlign(waiting)
+  }
+
+  private func scheduleAlign(_ waiting: Pending) {
     guard pending === waiting, aligning else { return }
     let item = DispatchWorkItem { [weak self] in self?.alignStep() }
     alignTick = item
@@ -337,8 +356,9 @@ final class SwapDriver: LocalOutput {
   /// `discontinuity`, when the player needs it; else dropped, the current one
   /// playing on (`QUALITY_SWITCH_FAILED`).
   private func unaligned(_ waiting: Pending, _ next: AVPlayerDriver, reason: String) {
-    observer?.driverNote(
-      generation: waiting.generation, event: "quality switch not aligned", details: ["reason": reason])
+    var details = ["reason": reason]
+    if let gap = waiting.aligner?.gap { details["gap"] = String(format: "%.3f", gap) }
+    observer?.driverNote(generation: waiting.generation, event: "quality switch not aligned", details: details)
     alignTick?.cancel()
     alignTick = nil
     alignStart?.cancel()

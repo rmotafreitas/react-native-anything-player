@@ -38,7 +38,12 @@ interface World {
   ticksMs?: number[];
   /** Readings carry when each edge's audio arrived (`edgeAt`). */
   edgeArrival?: boolean;
+  /** Readings carry the stream's clock (`clock`: program dates, HLS/DASH). */
+  programDates?: boolean;
 }
+
+/** The stream clock's epoch seconds at the old connection's live point at `t` 0. */
+const EPOCH = 1_700_000_000;
 
 /** The time of the last chunk at `t`: chunks arrive every `every` ms from `phase`. */
 function lastChunk(t: number, every: number, phase: number): number {
@@ -109,6 +114,9 @@ export function simulate(caps: AlignCaps, world: World): Outcome {
       position: oldPosition,
       edge: world.oldPosition + world.oldLag + oldTq / 1000,
       ...(arrival ? { edgeAt: oldTq } : {}),
+      ...(world.programDates
+        ? { clock: EPOCH - world.oldPosition - world.oldLag }
+        : {}),
       playing: !stalled,
       reconnecting:
         world.oldReconnectingAt != null && t >= world.oldReconnectingAt,
@@ -118,6 +126,7 @@ export function simulate(caps: AlignCaps, world: World): Outcome {
       position: x + (i % 2 === 0 ? jitter : -jitter),
       edge: received,
       ...(arrival ? { edgeAt: tq } : {}),
+      ...(world.programDates ? { clock: EPOCH - world.burst } : {}),
       playing: rate > 0 && moveFrom != null && t >= moveFrom && x < received,
       ready: world.nextReadyAt == null || t >= world.nextReadyAt,
     };

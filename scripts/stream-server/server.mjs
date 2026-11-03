@@ -26,6 +26,11 @@
 //   ?status=503         answer with this HTTP status instead
 //   ?delay=MS           wait before sending headers
 //   ?noCors=1           omit CORS headers (browsers must fall back to <audio>)
+// HLS renditions: GET /radio-hls/320/live.m3u8, /192/…, /64/…  the renditions'
+//               program as live HLS of packed-MP3 segments of 2, 4 and 6 s,
+//               with EXT-X-PROGRAM-DATE-TIME on one clock: each window starts
+//               elsewhere in the program, so only program dates line a switch up
+//               (/radio-hls/N/seg-K.mp3: one segment)
 // HLS:          GET /hls/vod.m3u8   the program as 4.5 s packed-MP3 segments,
 //                                   with an ID3 title at the start of each
 //               GET /hls/live.m3u8  the same as a live sliding window
@@ -204,6 +209,15 @@ for (const kbps of [320, 192, 64]) {
   };
 }
 const fileSize = (name) => readFileSync(join(here, 'media', name)).length;
+/** The renditions' program as live HLS: whole MP3 frames per segment, 2, 4 and 6 s long. */
+const RADIO_HLS = {};
+for (const [kbps, seconds] of [[320, 2], [192, 4], [64, 6]]) {
+  const name = `radio-${kbps}.mp3`;
+  if (!existsSync(join(here, 'media', name))) continue;
+  const body = media(name);
+  const per = Math.round((seconds * 44_100) / 1152);
+  RADIO_HLS[kbps] = { body, frames: null, per, duration: (per * 1152) / 44_100 };
+}
 if (existsSync(join(here, 'media', 'radio-64aac.aac'))) {
   LIVE_STREAMS['/radio/64aac'] = {
     body: media('radio-64aac.aac'),
@@ -521,6 +535,44 @@ function playlist(first, last, ended) {
   return lines.join('\n') + '\n';
 }
 
+/** Program date of segment 0 of every rendition (10 minutes before the server started: always a full window). */
+const radioHlsEpoch = () => STARTED_AT - 600_000;
+
+function radioHls(req, res, url) {
+  const m = /^\/radio-hls\/(\d+)\/(?:live\.m3u8|seg-(\d+)\.mp3)$/.exec(url.pathname);
+  const r = m && RADIO_HLS[m[1]];
+  if (!r) {
+    res.writeHead(404);
+    return res.end('not found');
+  }
+  r.frames ??= mp3Frames(r.body);
+  let body;
+  let type = 'audio/mpeg';
+  if (m[2] == null) {
+    type = 'application/vnd.apple.mpegurl';
+    const edge = Math.floor((Date.now() - radioHlsEpoch()) / 1000 / r.duration) - 1;
+    const lines = ['#EXTM3U', '#EXT-X-VERSION:3', `#EXT-X-TARGETDURATION:${Math.ceil(r.duration)}`, `#EXT-X-MEDIA-SEQUENCE:${edge - 4}`];
+    for (let n = edge - 4; n <= edge; n++) {
+      const date = new Date(radioHlsEpoch() + n * r.duration * 1000).toISOString();
+      lines.push(`#EXT-X-PROGRAM-DATE-TIME:${date}`, `#EXTINF:${r.duration.toFixed(5)},`, `seg-${n}.mp3`);
+    }
+    body = lines.join('\n') + '\n';
+  } else {
+    // Segment n holds the program's frames from n × per on, looping.
+    const n = Number(m[2]);
+    const parts = [];
+    for (let i = 0; i < r.per; i++) {
+      const [at, length] = r.frames[(n * r.per + i) % r.frames.length];
+      parts.push(r.body.subarray(at, at + length));
+    }
+    body = Buffer.concat(parts);
+  }
+  stats.byPath[url.pathname] = (stats.byPath[url.pathname] ?? 0) + 1;
+  record({ kind: 'hls', path: url.pathname });
+  res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'no-cache', 'Content-Length': Buffer.byteLength(body) });
+  res.end(body);
+}
+
 /** The newest finished segment of the live window (it began 10 minutes ago, so there are always enough). */
 const liveEdge = () =>
   Math.floor((Date.now() - STARTED_AT + 600_000) / 1000 / SEGMENT_SECONDS) - 1;
@@ -626,6 +678,7 @@ const server = createServer((req, res) => {
   }
   if (LIVE_STREAMS[url.pathname]) return liveStream(req, res, url);
   if (url.pathname.startsWith('/hls/')) return hls(req, res, url);
+  if (url.pathname.startsWith('/radio-hls/')) return radioHls(req, res, url);
   if (FILES[url.pathname]) return staticFile(req, res, url);
   if (url.pathname === '/drm/clearkey') return clearKeyLicense(req, res, url);
   if (url.pathname === '/control') {

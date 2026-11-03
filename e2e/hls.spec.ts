@@ -131,3 +131,44 @@ test('recovers a live playlist from an outage under the engine’s backoff', asy
   await radio('/control?down=0');
   await expect.poll(() => state(page), { timeout: 60_000 }).toBe('playing');
 });
+
+test('lines a switch between live HLS renditions up by their program dates', async ({
+  page,
+}) => {
+  await page.mouse.click(1, 1);
+  await page.evaluate(async (stream) => {
+    const p = window.rnap.player;
+    // 2 s and 6 s segments: each playlist's window starts elsewhere in the program.
+    await p.load(
+      {
+        live: true,
+        renditions: ['64', '320'].map((id) => ({
+          id,
+          uri: `${stream}/radio-hls/${id}/live.m3u8`,
+          bitrate: Number(id) * 1000,
+        })),
+      },
+      { quality: '320' }
+    );
+    await p.play();
+  }, RADIO);
+  await expect.poll(() => state(page), { timeout: 20_000 }).toBe('playing');
+  expect(
+    await page.evaluate(() => window.rnap.player.getProgress().programDate)
+  ).toBeGreaterThan(Date.now() - 3_600_000);
+  await page.evaluate(() => window.rnap.player.selectQuality('64'));
+  await expect
+    .poll(() => page.evaluate(() => window.rnap.player.status.quality), {
+      timeout: 45_000,
+    })
+    .toBe('64');
+  const notes = await page.evaluate(() =>
+    window.rnap.player
+      .getDiagnostics()
+      .filter((d) => d.event.startsWith('quality switch'))
+      .map((d) => `${d.event} ${JSON.stringify(d.details)}`)
+  );
+  expect(notes.some((n) => n.startsWith('quality switch aligned'))).toBe(true);
+  expect(await events(page, 'discontinuity')).toHaveLength(0);
+  expect(await state(page)).toBe('playing');
+});

@@ -4,8 +4,10 @@
 //
 //   yarn prepare && node scripts/stream-server/server.mjs &
 //   node example-web/serve.mjs 4300 &
-//   node scripts/align-measure/web.mjs [chromium|firefox|webkit] [--plain] [--qualities 320,64,320,192,64,192]
+//   node scripts/align-measure/web.mjs [chromium|firefox|webkit] [--plain|--hls] [--qualities 320,64,320,192,64,192]
 //
+// `--hls` plays the live HLS renditions instead (/radio-hls: 2, 4 and 6 s
+// segments with program dates), lined up by their program dates.
 // `--plain` serves the mounts without CORS: the browser plays them on a plain
 // <audio> (no MediaSource), where the new element cannot be moved and is run
 // faster instead. Needs PulseAudio (`pactl`, `parecord`): the browser plays
@@ -21,6 +23,7 @@ import { jumps, seconds, readWav } from './analyze.mjs';
 const args = process.argv.slice(2);
 const browserName = args.find((a) => !a.startsWith('--') && !/^[\d,]+$/.test(a)) ?? 'chromium';
 const plain = args.includes('--plain');
+const hls = args.includes('--hls');
 const qualityArg = args[args.indexOf('--qualities') + 1];
 const qualities = (args.includes('--qualities') ? qualityArg : '320,64,320,192,64,192').split(',');
 const RADIO = process.env.RADIO ?? 'http://localhost:8765';
@@ -41,7 +44,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function main() {
   ensureSink();
   const dir = mkdtempSync(join(tmpdir(), 'rnap-align-'));
-  const wav = join(dir, `${browserName}${plain ? '-plain' : ''}.wav`);
+  const wav = join(dir, `${browserName}${plain ? '-plain' : ''}${hls ? '-hls' : ''}.wav`);
   const recorder = spawn('parecord', [`--device=${SINK}.monitor`, '--file-format=wav', '--channels=1', '--rate=44100', wav]);
   const recordStart = Date.now();
   const kind = { chromium, firefox, webkit }[browserName];
@@ -58,14 +61,14 @@ async function main() {
   // A click: the page has the user's activation (autoplay, unmuting).
   await page.mouse.click(5, 5);
   await page.evaluate(
-    async ({ radio, suffix, first, ids }) => {
+    async ({ radio, suffix, first, ids, hls }) => {
       const p = window.rnap.player;
       await p.load(
         {
           live: true,
           renditions: [...new Set(['64', '192', '320', ...ids])].map((id) => ({
             id,
-            uri: `${radio}/radio/${id}${suffix}`,
+            uri: hls ? `${radio}/radio-hls/${id}/live.m3u8` : `${radio}/radio/${id}${suffix}`,
             bitrate: parseInt(id, 10) * 1000 + (id.endsWith('aac') ? 1 : 0),
           })),
         },
@@ -73,7 +76,7 @@ async function main() {
       );
       await p.play();
     },
-    { radio: RADIO, suffix, first: qualities[0], ids: qualities }
+    { radio: RADIO, suffix, first: qualities[0], ids: qualities, hls }
   );
   await sleep(10_000);
   const switches = [];

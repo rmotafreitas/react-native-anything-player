@@ -505,7 +505,8 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
   /// buffered edge that is the live edge. While its burst is held, nothing
   /// has reached AVPlayer: the edge is what the gate holds. `nil`: not one.
   func alignReading() -> LiveAligner.Reading? {
-    guard relaysAudio, remuxSession == nil else { return nil }
+    guard remuxSession == nil else { return nil }
+    guard relaysAudio else { return clockReading() }
     if let held = burstGate?.heldSeconds {
       return LiveAligner.Reading(position: 0, edge: held, playing: false, ready: false)
     }
@@ -514,6 +515,27 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
       edge: liveEdge.map { burstDropped + $0 },
       playing: player.timeControlStatus == .playing,
       ready: item?.status == .readyToPlay)
+  }
+
+  /// HLS AVFoundation reads itself: lined up on its program dates
+  /// (`EXT-X-PROGRAM-DATE-TIME`), moved by a seek. `nil` without them.
+  private func clockReading() -> LiveAligner.Reading? {
+    guard proxied == nil, let item, item.status == .readyToPlay, let date = item.currentDate() else { return nil }
+    let position = currentPosition
+    var edge = bufferedEnd
+    for range in item.seekableTimeRanges {
+      let end = CMTimeRangeGetEnd(range.timeRangeValue).seconds
+      if end.isFinite { edge = max(edge, end) }
+    }
+    return LiveAligner.Reading(
+      position: position, edge: edge, playing: player.timeControlStatus == .playing, ready: true,
+      clock: date.timeIntervalSince1970 - position)
+  }
+
+  /// An item AVFoundation reads itself, still loading: whether it has program dates is not known yet.
+  var awaitsClock: Bool {
+    guard proxied == nil, remuxSession == nil, let item else { return false }
+    return item.status == .unknown
   }
 
   /// Lets a held burst through from `seconds` on its timeline (0: all of it).

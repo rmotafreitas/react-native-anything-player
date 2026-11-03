@@ -792,9 +792,7 @@ internal class ExoPlayerDriver(
     val duration = p.duration.takeIf { it != C.TIME_UNSET && it > 0 }?.let { it / 1000.0 }
     val offset = p.currentLiveOffset.takeIf { it != C.TIME_UNSET && it >= 0 }?.let { it / 1000.0 }
     val live = p.isCurrentMediaItemLive || (p.duration == C.TIME_UNSET && !p.isCurrentMediaItemSeekable)
-    // The live window's program date (HLS EXT-X-PROGRAM-DATE-TIME, DASH), when it has one.
-    val window = if (p.currentTimeline.isEmpty) null else p.currentTimeline.getWindow(p.currentMediaItemIndex, Timeline.Window())
-    val date = window?.windowStartTimeMs?.takeIf { it != C.TIME_UNSET }?.let { it + p.currentPosition }
+    val date = windowStartMs(p)?.let { it + p.currentPosition }
     return ProgressReading(
       p.currentPosition / 1000.0,
       p.bufferedPosition / 1000.0,
@@ -815,7 +813,18 @@ internal class ExoPlayerDriver(
    */
   fun alignReading(): LiveAligner.Reading? {
     val p = player ?: return null
-    if (p.currentManifest != null || p.mediaItemCount == 0) return null
+    if (p.mediaItemCount == 0) return null
+    if (p.currentManifest != null) {
+      // HLS or DASH: lined up on the stream's clock, the live window's
+      // program date (none: not lined up), and moved by a seek.
+      val start = windowStartMs(p) ?: return null
+      return LiveAligner.Reading(
+        position = p.currentPosition / 1000.0,
+        edge = p.bufferedPosition / 1000.0,
+        playing = p.isPlaying,
+        clock = start / 1000.0,
+      )
+    }
     val edge = p.bufferedPosition / 1000.0
     // An edge that fell: ExoPlayer restarted the stream after a load error,
     // a fresh connection with a burst of its own (reported for no item it has not played).
@@ -828,6 +837,13 @@ internal class ExoPlayerDriver(
       // A fresh connection is queued: this one ended, its edge stopped.
       reconnecting = restarted || p.mediaItemCount - p.currentMediaItemIndex > 1,
     )
+  }
+
+  /** Epoch ms of the live window's start (HLS EXT-X-PROGRAM-DATE-TIME, DASH), when it has one. */
+  private fun windowStartMs(p: ExoPlayer): Long? {
+    if (p.currentTimeline.isEmpty) return null
+    val window = p.currentTimeline.getWindow(p.currentMediaItemIndex, Timeline.Window())
+    return window.windowStartTimeMs.takeIf { it != C.TIME_UNSET }
   }
 
   /** The last edge [alignReading] saw (per open, and per alignment). */

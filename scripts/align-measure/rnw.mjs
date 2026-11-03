@@ -5,7 +5,7 @@
 //
 //   bash scripts/build-expo-web.sh && node example-web/serve.mjs 4400 example-expo/dist-web &
 //   node scripts/stream-server/server.mjs &
-//   node scripts/align-measure/rnw.mjs [chromium|firefox|webkit]
+//   node scripts/align-measure/rnw.mjs [chromium|firefox|webkit] [--hls]
 import { execFileSync, spawn } from 'node:child_process';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -13,7 +13,8 @@ import { join } from 'node:path';
 import { chromium, firefox, webkit } from 'playwright';
 import { jumps, readWav, seconds } from './analyze.mjs';
 
-const browserName = process.argv[2] ?? 'chromium';
+const browserName = process.argv.find((a, i) => i >= 2 && !a.startsWith('--')) ?? 'chromium';
+const scenario = process.argv.includes('--hls') ? 'live-hls-renditions' : 'live-renditions';
 const PAGE = process.env.PAGE ?? 'http://localhost:4400/';
 const SINK = 'rnap_align';
 
@@ -35,10 +36,10 @@ page.on('console', (m) => {
   if (text.startsWith('[RNAPTest]')) lines.push(text.slice('[RNAPTest] '.length));
 });
 // A click before it starts: the page may play (the user's activation).
-await page.goto(`${PAGE}?rnapTest=live-renditions&delay=2000`);
+await page.goto(`${PAGE}?rnapTest=${scenario}&delay=2000`);
 await page.mouse.click(5, 5);
 const deadline = Date.now() + 320_000;
-const done = () => lines.find((l) => /^(PASS|FAIL) live-renditions/.test(l));
+const done = () => lines.find((l) => new RegExp(`^(PASS|FAIL) ${scenario}\\b`).test(l));
 while (Date.now() < deadline && !done()) await new Promise((r) => setTimeout(r, 1000));
 await browser.close();
 recorder.kill('SIGINT');

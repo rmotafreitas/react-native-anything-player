@@ -43,6 +43,10 @@ class LiveAligner(private val caps: Caps) {
     val ready: Boolean = true,
     /** When the edge's audio arrived (ms, `t`'s clock), where the player knows: the reading's time otherwise. */
     val edgeAt: Long? = null,
+    /**
+     * The stream's own clock (program dates): epoch seconds it gives position 0 on this timeline, `programDate − position`. With one on both sides the mapping is known at once, and followed as a live window slides.
+     */
+    val clock: Double? = null,
   )
 
   /** Whether (and when) the new player can be moved forward within what it received. */
@@ -124,6 +128,7 @@ class LiveAligner(private val caps: Caps) {
     val elapsed = t - started
     if (old.reconnecting || next.reconnecting) return fallback("reconnecting")
     if (!old.playing) return fallback("stalled")
+    if (old.clock != null && next.clock != null) k = old.clock - next.clock
     if (k == null) {
       if (elapsed >= SETTLE_BUDGET_MS) return fallback("unsettled")
       measure(t, old, next)

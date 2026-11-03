@@ -882,40 +882,56 @@ SCENARIOS.push(
     name: 'live-renditions',
     manual: true,
     timeoutMs: 300_000,
+    run: (log) => liveRenditions(log, (id) => `${STREAM_HOST}/radio/${id}`),
+  },
+  {
+    // The same program as live HLS renditions (/radio-hls/…: 2, 4 and 6 s
+    // segments with program dates): lined up by their program dates.
+    name: 'live-hls-renditions',
+    manual: true,
+    timeoutMs: 300_000,
     run: (log) =>
-      withPlayer(async (p) => {
-        let jumps = 0;
-        const off = p.on('discontinuity', () => {
-          jumps += 1;
-        });
-        await p.load(
-          {
-            live: true,
-            renditions: ['64', '192', '320'].map((id) => ({
-              id,
-              uri: `${STREAM_HOST}/radio/${id}`,
-              bitrate: Number(id) * 1000,
-            })),
-          },
-          { quality: '320' }
-        );
-        await p.play();
-        await waitFor(p, (s) => s.state === 'playing', 20_000, 'playing');
-        log(`PLAYING at=${Date.now()}`);
-        await sleep(10_000);
-        for (const quality of ['64', '320', '192', '64', '192']) {
-          const asked = Date.now();
-          await p.selectQuality(quality);
-          await waitFor(p, (s) => s.quality === quality, 60_000, quality);
-          log(`SWITCH ${quality} asked=${asked} took=${Date.now()}`);
-          await sleep(8_000);
-        }
-        off();
-        log(`discontinuities ${jumps}`);
-        expect(jumps === 0, `${jumps} switch(es) not lined up`);
-      }),
+      liveRenditions(log, (id) => `${STREAM_HOST}/radio-hls/${id}/live.m3u8`),
   }
 );
+
+/** Five switches between a station's renditions, each logged as it takes over. */
+function liveRenditions(
+  log: (line: string) => void,
+  uri: (id: string) => string
+) {
+  return withPlayer(async (p) => {
+    let jumps = 0;
+    const off = p.on('discontinuity', () => {
+      jumps += 1;
+    });
+    await p.load(
+      {
+        live: true,
+        renditions: ['64', '192', '320'].map((id) => ({
+          id,
+          uri: uri(id),
+          bitrate: Number(id) * 1000,
+        })),
+      },
+      { quality: '320' }
+    );
+    await p.play();
+    await waitFor(p, (s) => s.state === 'playing', 20_000, 'playing');
+    log(`PLAYING at=${Date.now()}`);
+    await sleep(10_000);
+    for (const quality of ['64', '320', '192', '64', '192']) {
+      const asked = Date.now();
+      await p.selectQuality(quality);
+      await waitFor(p, (s) => s.quality === quality, 60_000, quality);
+      log(`SWITCH ${quality} asked=${asked} took=${Date.now()}`);
+      await sleep(8_000);
+    }
+    off();
+    log(`discontinuities ${jumps}`);
+    expect(jumps === 0, `${jumps} switch(es) not lined up`);
+  });
+}
 
 export async function runScenarios(
   names: string[] | 'all',

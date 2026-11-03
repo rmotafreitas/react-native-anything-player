@@ -132,6 +132,8 @@ interface Pending {
   jump: number | null;
   /** The new element plays at `WHISPER`, not muted. */
   whisper: boolean;
+  /** Lined up by program dates (HLS, DASH), not by edges. */
+  clocked: boolean;
   /** The rate the aligner asked of the new element (× the app's). */
   alignRate: number;
   /** A start the aligner timed between two ticks. */
@@ -327,6 +329,7 @@ export class SwapDriver implements LocalDriver {
       required: request.required === true,
       jump: null,
       whisper: false,
+      clocked: false,
       alignRate: 1,
       startTimer: null,
       reconnects: [0, 0],
@@ -454,32 +457,39 @@ export class SwapDriver implements LocalDriver {
   }
 
   /**
-   * Live: a stream RNAP reads (a MediaSource it feeds) is lined up. Sources
-   * that never can be switch whatever the reason: one on a plain `<audio>` (a
-   * station without CORS: a paused element stops loading, and its edge moves
-   * in steps of seconds) as a `discontinuity`, an adaptive source (HLS,
-   * DASH) at once, as before.
+   * Live: a stream RNAP reads (a MediaSource it feeds) is lined up by its
+   * edges, an HLS or DASH stream by its program dates. Sources that never
+   * can be switch whatever the reason: one on a plain `<audio>` (a station
+   * without CORS: a paused element stops loading, and its edge moves in steps
+   * of seconds) as a `discontinuity`; HLS or DASH without program dates (or
+   * renditions of different kinds) at once, as before.
    */
   private startAligning(pending: Pending, spare: MediaElementDriver): void {
-    if (this.current.alignReading() == null || spare.alignReading() == null) {
+    const old = this.current.alignReading();
+    const next = spare.alignReading();
+    if (
+      old == null ||
+      next == null ||
+      (old.clock == null) !== (next.clock == null)
+    ) {
+      // prettier-ignore
       this.note(pending, 'not aligned', { reason: 'adaptive' });
       spare.play();
       return;
     }
-    if (!spare.feedsItself)
+    pending.clocked = next.clock != null;
+    if (!pending.clocked && !spare.feedsItself)
       return this.unaligned(pending, spare, 'plain', true);
     const caps: AlignCaps = {
       maxRate: MAX_ALIGN_RATE,
       minRate: 0.5,
-      jump: isWebKit() ? 'never' : 'always',
+      // WebKit pauses a MediaSource element RNAP feeds after a seek; hls.js and Shaka seek it themselves.
+      jump: isWebKit() && !pending.clocked ? 'never' : 'always',
       startLead: 0.1,
       jumpLead: 0.3,
     };
     pending.aligner = new LiveAligner(caps);
-    pending.reconnects = [
-      this.current.alignReading()!.reconnects,
-      spare.alignReading()!.reconnects,
-    ];
+    pending.reconnects = [old.reconnects, next.reconnects];
     if (whispers(spare.element)) {
       pending.whisper = true;
       spare.setVolume(WHISPER);
@@ -501,7 +511,7 @@ export class SwapDriver implements LocalDriver {
     const replaced =
       old?.reconnects !== oldDrops ||
       next?.reconnects !== nextDrops ||
-      !this.spare!.feedsItself;
+      (!pending.clocked && !this.spare!.feedsItself);
     const action: AlignAction =
       old == null || next == null || replaced
         ? pending.aligner!.interrupt()
@@ -585,7 +595,12 @@ export class SwapDriver implements LocalDriver {
     reason: string,
     always = false
   ): void {
-    this.note(pending, 'not aligned', { reason });
+    this.note(pending, 'not aligned', {
+      reason,
+      ...(pending.aligner?.gap != null
+        ? { gap: pending.aligner.gap.toFixed(3) }
+        : {}),
+    });
     if (!pending.required && !always) {
       // The engine drops it (cancelSwap) and the app hears why.
       this.observer.onFailed(

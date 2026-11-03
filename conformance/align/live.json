@@ -160,5 +160,35 @@
     "caps": { "maxRate": 4, "minRate": 0.5, "jump": "never", "startLead": 0.1, "jumpLead": 0.3 },
     "world": { "oldPosition": 42.0, "oldLag": 17, "burst": 1.6, "burstSpeed": 8, "chunkMs": 100, "startLatencyMs": 80, "oldReconnectingAt": 4000 },
     "expect": { "outcome": "fallback:reconnecting", "at": 4000, "actions": ["fallback"] }
+  },
+  {
+    "name": "live HLS/DASH renditions with program dates: mapped at once, the new one moved just ahead, held, and started",
+    "caps": { "maxRate": 4, "minRate": 0.5, "jump": "always", "startLead": 0.1, "jumpLead": 0.3 },
+    "world": { "oldPosition": 42.0, "oldLag": 18, "burst": 20, "burstSpeed": 10, "chunkMs": 2000, "startLatencyMs": 200, "programDates": true },
+    "expect": { "outcome": "takeOver", "at": 3600, "actions": ["jump", "rate", "takeOver"], "maxResidual": 0.06 }
+  },
+  {
+    "name": "program dates where the new player cannot be moved (WebKit): run faster until it plays what is heard",
+    "caps": { "maxRate": 4, "minRate": 0.5, "jump": "never", "startLead": 0.1, "jumpLead": 0.3 },
+    "world": { "oldPosition": 42.0, "oldLag": 18, "burst": 20, "burstSpeed": 10, "chunkMs": 2000, "startLatencyMs": 200, "programDates": true },
+    "expect": { "outcome": "takeOver", "at": 6760, "actions": ["rate", "takeOver"], "maxResidual": 0.06 }
+  },
+  {
+    "name": "program dates on AVPlayer (no faster, a seek any time): moved ahead by its start-up delay, held, started",
+    "caps": { "maxRate": 1, "minRate": 0.5, "jump": "always", "startLead": 0.4, "jumpLead": 2 },
+    "world": { "oldPosition": 42.0, "oldLag": 18, "burst": 20, "burstSpeed": 10, "chunkMs": 2000, "startLatencyMs": 200, "programDates": true },
+    "expect": { "outcome": "takeOver", "at": 6000, "actions": ["jump", "rate", "takeOver"], "maxResidual": 0.06 }
+  },
+  {
+    "name": "program dates with the new player ahead: held until the old one gets there",
+    "caps": { "maxRate": 4, "minRate": 0.5, "jump": "always", "startLead": 0.1, "jumpLead": 0.3 },
+    "world": { "oldPosition": 42.0, "oldLag": 18, "burst": 14, "burstSpeed": 10, "chunkMs": 2000, "startLatencyMs": 200, "programDates": true },
+    "expect": { "outcome": "takeOver", "at": 5240, "actions": ["rate", "takeOver"], "maxResidual": 0.06 }
+  },
+  {
+    "name": "program dates map at once even where the edges never settle",
+    "caps": { "maxRate": 4, "minRate": 0.5, "jump": "always", "startLead": 0.1, "jumpLead": 0.3 },
+    "world": { "oldPosition": 42.0, "oldLag": 18, "burst": 20, "burstSpeed": 10, "chunkMs": 2000, "startLatencyMs": 200, "programDates": true, "endsAfterBurst": true },
+    "expect": { "outcome": "takeOver", "at": 3600, "actions": ["jump", "rate", "takeOver"], "maxResidual": 0.06 }
   }
 ]

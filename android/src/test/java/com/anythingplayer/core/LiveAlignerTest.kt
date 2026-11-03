@@ -71,6 +71,8 @@ class LiveAlignerTest {
     val jitter = w.optDouble("positionJitter", 0.0)
     val appRate = w.optDouble("appRate", 1.0)
     val arrival = w.optBoolean("edgeArrival", false)
+    // The stream clock's epoch seconds at the old connection's live point at t 0.
+    val dates = w.optBoolean("programDates", false)
     val ticks = w.optJSONArray("ticksMs")?.let { a -> (0 until a.length()).map { a.getLong(it) } } ?: listOf(TICK_MS)
     var i = 0
     val k = burst - oldPositionAt0 - oldLag
@@ -100,6 +102,7 @@ class LiveAlignerTest {
           playing = !stalled,
           reconnecting = reconnectingAt != null && t >= reconnectingAt,
           edgeAt = if (arrival) oldTq else null,
+          clock = if (dates) EPOCH - oldPositionAt0 - oldLag else null,
         )
       val moving = moveFrom
       val next =
@@ -109,6 +112,7 @@ class LiveAlignerTest {
           playing = rate > 0 && moving != null && t >= moving && x < received,
           ready = readyAt == null || t >= readyAt,
           edgeAt = if (arrival) tq else null,
+          clock = if (dates) EPOCH - burst else null,
         )
       val action = if (interruptAt != null && t >= interruptAt) aligner.interrupt() else aligner.step(t, old, next)
       lastT = t
@@ -147,6 +151,7 @@ class LiveAlignerTest {
   private fun lastChunk(t: Long, every: Long, phase: Long): Long = floor((t - phase).toDouble() / every).toLong() * every + phase
 
   private companion object {
+    private const val EPOCH = 1_700_000_000.0
     const val TICK_MS = 40L
     const val LIMIT_MS = 60_000L
   }
