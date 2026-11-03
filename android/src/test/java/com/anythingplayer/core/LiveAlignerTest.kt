@@ -74,6 +74,7 @@ class LiveAlignerTest {
     val arrival = w.optBoolean("edgeArrival", false)
     // The stream clock's epoch seconds at the old connection's live point at t 0.
     val dates = w.optBoolean("programDates", false)
+    val slides = w.optBoolean("nextWindowSlides", false)
     val ticks = w.optJSONArray("ticksMs")?.let { a -> (0 until a.length()).map { a.getLong(it) } } ?: listOf(TICK_MS)
     var i = 0
     val nextStart = w.optDouble("nextStartAt", 0.0)
@@ -116,7 +117,7 @@ class LiveAlignerTest {
           ready = readyAt == null || t >= readyAt,
           edgeAt = if (arrival) tq else null,
           clock = if (dates) EPOCH - burst - nextStart else null,
-          start = if (dates) w.optDouble("nextWindowStart", 0.0) else null,
+          start = if (dates) w.optDouble("nextWindowStart", 0.0) + (if (slides) t / 1000.0 else 0.0) else null,
         )
       val action = if (interruptAt != null && t >= interruptAt) aligner.interrupt() else aligner.step(t, old, next)
       lastT = t

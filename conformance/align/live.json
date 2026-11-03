@@ -220,5 +220,23 @@
     "caps": { "maxRate": 1, "minRate": 0.5, "jump": "always", "startLead": 0.4, "jumpLead": 2 },
     "world": { "oldPosition": 42.0, "oldLag": 70, "burst": 10, "burstSpeed": 10, "chunkMs": 2000, "startLatencyMs": 200, "programDates": true, "nextStartAt": 100, "nextWindowStart": 50 },
     "expect": { "outcome": "takeOver", "at": 13600, "actions": ["jump", "rate", "takeOver"], "maxResidual": 0.06, "maxJumps": 1 }
+  },
+  {
+    "name": "program dates, a sliding live window reaching part of the way back: moved back once, held the 22 s left as the window moves on",
+    "caps": { "maxRate": 4, "minRate": 0.5, "jump": "always", "startLead": 0.1, "jumpLead": 0.3 },
+    "world": { "oldPosition": 42.0, "oldLag": 70, "burst": 10, "burstSpeed": 10, "chunkMs": 2000, "startLatencyMs": 200, "programDates": true, "nextStartAt": 100, "nextWindowStart": 60, "nextWindowSlides": true },
+    "expect": { "outcome": "takeOver", "at": 23240, "actions": ["jump", "rate", "takeOver"], "maxResidual": 0.06, "maxJumps": 1 }
+  },
+  {
+    "name": "program dates on AVPlayer, a sliding live window reaching part of the way back: moved back once, held the rest",
+    "caps": { "maxRate": 1, "minRate": 0.5, "jump": "always", "startLead": 0.4, "jumpLead": 2 },
+    "world": { "oldPosition": 42.0, "oldLag": 70, "burst": 10, "burstSpeed": 10, "chunkMs": 2000, "startLatencyMs": 200, "programDates": true, "nextStartAt": 100, "nextWindowStart": 60, "nextWindowSlides": true },
+    "expect": { "outcome": "takeOver", "at": 23600, "actions": ["jump", "rate", "takeOver"], "maxResidual": 0.06, "maxJumps": 1 }
+  },
+  {
+    "name": "program dates with the new player 25 s ahead at its window's start: not moved, held, since that fits the budget",
+    "caps": { "maxRate": 4, "minRate": 0.5, "jump": "always", "startLead": 0.1, "jumpLead": 0.3 },
+    "world": { "oldPosition": 42.0, "oldLag": 70, "burst": 45, "burstSpeed": 10, "chunkMs": 2000, "startLatencyMs": 200, "programDates": true, "nextStartAt": 100, "nextWindowStart": 100 },
+    "expect": { "outcome": "takeOver", "at": 26240, "actions": ["rate", "takeOver"], "maxResidual": 0.06, "maxJumps": 0 }
   }
 ]

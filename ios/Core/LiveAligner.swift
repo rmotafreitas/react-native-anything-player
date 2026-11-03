@@ -278,13 +278,15 @@ final class LiveAligner {
     let short = first ? gap < lead : gap < -Self.toleranceS
     // Moved just ahead, then held: it never starts behind.
     if short && canJump { return .jump(to: landing(target, next)) }
-    // On a stream's clock it can go back too, within its live window.
+    // On a stream's clock it can go back too, within its live window: if
+    // the hold left after it fits the budget, else not at all (decided
+    // once, when it jumps; a held one is left to `holding`).
     if next.start != nil && caps.jump == .always && gap > lead + caps.jumpLead + Self.backS {
       let to = landing(target, next)
-      // As far back as it goes, still this far ahead: held, if in time.
-      let left = gap - (next.position - to)
-      if (left - lead) * 1000 > Double(Self.budgetMs - elapsed) { return fallback("ahead") }
-      if next.position - to > Self.backS { return .jump(to: to) }
+      if next.position - to > Self.backS {
+        if (to - target - lead) * 1000 > Double(Self.budgetMs - elapsed) { return fallback("ahead") }
+        return .jump(to: to)
+      }
     }
     if gap > lead || !next.ready { return holding(t, elapsed: elapsed, gap: gap, first: first, next: next) }
     if gap < -Self.toleranceS && caps.maxRate > 1 { return setRate(t, speedUp(gap), gap: gap, next: next) }
@@ -294,8 +296,9 @@ final class LiveAligner {
 
   /// Where a jump lands it: just ahead of what is heard, within what it holds and its live window.
   private func landing(_ target: Double, _ next: Reading) -> Double {
-    let to = min(target + lead + caps.jumpLead, next.edge ?? .infinity)
-    return next.start.map { max(to, $0 + Self.windowMarginS) } ?? to
+    let edge = next.edge ?? .infinity
+    let to = min(target + lead + caps.jumpLead, edge)
+    return next.start.map { min(max(to, $0 + Self.windowMarginS), edge) } ?? to
   }
 
   /// Ahead (or not ready): held until the old one gets there, if it gets there in time.

@@ -87,6 +87,7 @@ final class LiveAlignerTests: XCTestCase {
     let arrival = w["edgeArrival"] as? Bool ?? false
     // The stream clock's epoch seconds at the old connection's live point at t 0.
     let dates = w["programDates"] as? Bool ?? false
+    let slides = w["nextWindowSlides"] as? Bool ?? false
     let epoch = 1_700_000_000.0
     let ticks = (w["ticksMs"] as? [NSNumber])?.map { $0.int64Value } ?? [tickMs]
     var i = 0
@@ -119,7 +120,7 @@ final class LiveAlignerTests: XCTestCase {
       let next = LiveAligner.Reading(
         position: x + (i % 2 == 0 ? jitter : -jitter), edge: received, playing: moving, ready: readyAt.map { t >= $0 } ?? true,
         edgeAt: arrival ? tq : nil, clock: dates ? epoch - burst - nextStart : nil,
-        start: dates ? (w["nextWindowStart"].map { number($0) } ?? 0) : nil)
+        start: dates ? (w["nextWindowStart"].map { number($0) } ?? 0) + (slides ? Double(t) / 1000 : 0) : nil)
       let action = interruptAt.map { t >= $0 } == true ? aligner.interrupt() : aligner.step(t, old: old, next: next)
       lastT = t
       switch action {

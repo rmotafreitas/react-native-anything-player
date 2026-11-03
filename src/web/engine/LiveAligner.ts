@@ -316,19 +316,18 @@ export class LiveAligner {
     // Moved just ahead, then held: it never starts behind.
     if (short && canJump)
       return { kind: 'jump', to: this.landing(target, next) };
-    // On a stream's clock it can go back too, within its live window.
+    // On a stream's clock it can go back too, within its live window: if
+    // the hold left after it fits the budget, else not at all (decided
+    // once, when it jumps; a held one is left to `holding`).
     const landing = this.lead + this.caps.jumpLead;
-    if (
-      next.start != null &&
-      jump === 'always' &&
-      gap > landing + Align.BACK_S
-    ) {
+    const ahead = gap > landing + Align.BACK_S;
+    if (next.start != null && jump === 'always' && ahead) {
       const to = this.landing(target, next);
-      // As far back as it goes, still this far ahead: held, if in time.
-      const left = gap - (next.position - to);
-      if ((left - this.lead) * 1000 > Align.BUDGET_MS - elapsed)
-        return this.fallback('ahead');
-      if (next.position - to > Align.BACK_S) return { kind: 'jump', to };
+      if (next.position - to > Align.BACK_S) {
+        if ((to - target - this.lead) * 1000 > Align.BUDGET_MS - elapsed)
+          return this.fallback('ahead');
+        return { kind: 'jump', to };
+      }
     }
     if (gap > this.lead || next.ready === false)
       return this.holding(t, elapsed, gap, first, next);
@@ -340,8 +339,10 @@ export class LiveAligner {
 
   /** Where a jump lands it: just ahead of what is heard, within what it holds and its live window. */
   private landing(target: number, next: AlignReading): number {
-    const to = Math.min(target + this.lead + this.caps.jumpLead, next.edge ?? Infinity); // prettier-ignore
-    return next.start == null ? to : Math.max(to, next.start + Align.WINDOW_MARGIN_S); // prettier-ignore
+    const edge = next.edge ?? Infinity;
+    const to = Math.min(target + this.lead + this.caps.jumpLead, edge);
+    if (next.start == null) return to;
+    return Math.min(Math.max(to, next.start + Align.WINDOW_MARGIN_S), edge);
   }
 
   /** Ahead (or not ready): held until the old one gets there, if it gets there in time. */

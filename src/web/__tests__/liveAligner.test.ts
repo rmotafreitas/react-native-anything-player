@@ -44,6 +44,8 @@ interface World {
   nextStartAt?: number;
   /** Where the new player's live window starts (default 0): it cannot be moved back further. */
   nextWindowStart?: number;
+  /** The new player's window start moves on with the clock (1 s/s), as a live window does. */
+  nextWindowSlides?: boolean;
 }
 
 /** The stream clock's epoch seconds at the old connection's live point at `t` 0. */
@@ -142,7 +144,9 @@ export function simulate(caps: AlignCaps, world: World): Outcome {
       ...(world.programDates
         ? {
             clock: EPOCH - world.burst - nextStart,
-            start: world.nextWindowStart ?? 0,
+            start:
+              (world.nextWindowStart ?? 0) +
+              (world.nextWindowSlides ? t / 1000 : 0),
           }
         : {}),
       playing: rate > 0 && moveFrom != null && t >= moveFrom && x < received,

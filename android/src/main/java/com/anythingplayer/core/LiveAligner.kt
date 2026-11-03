@@ -218,13 +218,15 @@ class LiveAligner(private val caps: Caps) {
     val short = if (first) gap < lead else gap < -TOLERANCE_S
     // Moved just ahead, then held: it never starts behind.
     if (short && canJump) return Action.JumpTo(landing(target, next))
-    // On a stream's clock it can go back too, within its live window.
+    // On a stream's clock it can go back too, within its live window: if
+    // the hold left after it fits the budget, else not at all (decided
+    // once, when it jumps; a held one is left to `holding`).
     if (next.start != null && caps.jump == Jump.ALWAYS && gap > lead + caps.jumpLead + BACK_S) {
       val to = landing(target, next)
-      // As far back as it goes, still this far ahead: held, if in time.
-      val left = gap - (next.position - to)
-      if ((left - lead) * 1000 > BUDGET_MS - elapsed) return fallback("ahead")
-      if (next.position - to > BACK_S) return Action.JumpTo(to)
+      if (next.position - to > BACK_S) {
+        if ((to - target - lead) * 1000 > BUDGET_MS - elapsed) return fallback("ahead")
+        return Action.JumpTo(to)
+      }
     }
     if (gap > lead || !next.ready) return holding(t, elapsed, gap, first, next)
     if (gap < -TOLERANCE_S && caps.maxRate > 1) return setRate(t, speedUp(gap), gap, next)
@@ -234,8 +236,9 @@ class LiveAligner(private val caps: Caps) {
 
   /** Where a jump lands it: just ahead of what is heard, within what it holds and its live window. */
   private fun landing(target: Double, next: Reading): Double {
-    val to = minOf(target + lead + caps.jumpLead, next.edge ?: Double.POSITIVE_INFINITY)
-    return next.start?.let { maxOf(to, it + WINDOW_MARGIN_S) } ?: to
+    val edge = next.edge ?: Double.POSITIVE_INFINITY
+    val to = minOf(target + lead + caps.jumpLead, edge)
+    return next.start?.let { minOf(maxOf(to, it + WINDOW_MARGIN_S), edge) } ?: to
   }
 
   /** Ahead (or not ready): held until the old one gets there, if it gets there in time. */

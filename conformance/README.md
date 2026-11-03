@@ -223,7 +223,8 @@ three test harnesses run alike, every 40 ms:
   edges settling; the new reading also carries its window's `start` (0),
   so a new player ahead can be moved back (landing 2 s inside it).
   `nextStartAt` starts the new player that far along its own timeline,
-  `nextWindowStart` (default 0) is where its window starts.
+  `nextWindowStart` (default 0) is where its window starts, moving on at
+  1 s/s with `nextWindowSlides`.
 
 `expect` gives the `outcome` (`takeOver`, or `fallback:<reason>`), the time
 `at` (ms) it came, the kinds of `actions` in order (repeats collapsed), and
