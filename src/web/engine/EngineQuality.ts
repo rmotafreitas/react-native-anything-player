@@ -663,14 +663,21 @@ export abstract class EngineQuality extends EngineFades {
       this.renditions![swap.rendition]!,
       swap.rendition
     );
-    const outcome = cause ? 'failed' : 'timed out';
+    // A live switch that could wait and could not be lined up: refused, why in `cause`.
+    const refused = cause?.code === 'QUALITY_SWITCH_FAILED';
+    let outcome = cause ? 'failed' : 'timed out';
+    // The new file's own failure: its code, then its message.
+    let causeText = cause ? `${cause.code}: ${cause.message}` : reason;
+    if (refused) {
+      outcome = 'was refused';
+      causeText = cause.message;
+    }
     const error = engineError(
       'QUALITY_SWITCH_FAILED',
       `The switch to quality "${target}" ${outcome}; the current one plays on.`,
       true,
       {
-        // The new file's own failure: its code, then its message.
-        cause: cause ? `${cause.code}: ${cause.message}` : reason,
+        cause: causeText,
         ...(cause?.platformDomain != null
           ? { platformDomain: cause.platformDomain }
           : {}),

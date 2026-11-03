@@ -132,6 +132,12 @@
     "expect": { "outcome": "fallback:ahead", "at": 3000, "actions": ["fallback"] }
   },
   {
+    "name": "a new connection that does not start playing within its budget gives up (an optional switch is refused)",
+    "caps": { "maxRate": 4, "minRate": 0.5, "jump": "never", "startLead": 0.1, "jumpLead": 0.3 },
+    "world": { "oldPosition": 42.0, "oldLag": 1.6, "burst": 17, "burstSpeed": 8, "chunkMs": 100, "startLatencyMs": 60000 },
+    "expect": { "outcome": "fallback:starting", "at": 7040, "actions": ["rate", "fallback"] }
+  },
+  {
     "name": "the old player stalling while the new one is held switches as before",
     "caps": { "maxRate": 4, "minRate": 0.5, "jump": "never", "startLead": 0.1, "jumpLead": 0.3 },
     "world": { "oldPosition": 42.0, "oldLag": 17, "burst": 1.6, "burstSpeed": 8, "chunkMs": 100, "startLatencyMs": 80, "oldStallAt": 6000 },

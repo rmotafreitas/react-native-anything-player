@@ -117,6 +117,8 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
   private var packetClock: StreamDecoder?
   /// When relayed audio last arrived (monotonic ms; guarded by `feedLock`).
   private var packetClockFedAt: Int64 = 0
+  /// A progressive stream AVFoundation reads itself (a video, protected audio): no packet clock.
+  private var directProgressive = false
   private static let recentAudioLimit = 512 * 1024
   private var itemIsLive = false
   /// The next open is a live switch's new connection: its audio is held back
@@ -280,6 +282,7 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
       remuxURL = StreamProxy.shared.registerRemux(session)
     }
     // A video goes to AVFoundation directly: range requests, and no ICY to read.
+    directProgressive = remuxSession == nil && (video || request.source.drm != nil) && Self.proxies(url)
     if remuxSession == nil && !video && request.source.drm == nil && Self.proxies(url) {
       let gen = generation
       proxied = StreamProxy.shared.register(
@@ -480,13 +483,17 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
       let offset = Date().timeIntervalSince(date)
       reading.liveOffset = offset.isFinite && offset >= 0 && offset < 3600 ? offset : nil
       reading.programDate = Int64((date.timeIntervalSince1970 * 1000).rounded())
-    } else if itemIsLive, let edge = liveEdge {
+    } else if itemIsLive, let edge = receivedEdge {
       // A live progressive stream (no program dates): what the proxy has
-      // handed AVPlayer, which `LiveOffset` measures from. `loadedTimeRanges`
+      // handed AVPlayer, which `LiveOffset` measures from (an edge that stops
+      // moving, a stall, keeps the live point it gave). `loadedTimeRanges`
       // alone under-reads it right after connecting: it covers what AVPlayer
       // has parsed, not the whole connect burst it already holds (measured on
       // a 64 kbps AAC+ station: 11.6 s reported, 17 s heard behind the edge).
       reading.edge = max(edge, reading.buffered)
+    } else if itemIsLive, directProgressive {
+      // A live progressive video: what AVFoundation has loaded.
+      reading.edge = reading.buffered
     }
     reading.isPlaying = player.timeControlStatus == .playing
     reading.rate = Double(rate)
@@ -598,6 +605,11 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
       guard let clock = packetClock, SystemClock.shared.monotonicMs - packetClockFedAt < 3_000 else { return nil }
       return clock.parsedSeconds
     }
+  }
+
+  /// Stream time of the newest relayed audio, however long ago it came.
+  private var receivedEdge: Double? {
+    feedLock.sync { packetClock?.parsedSeconds }
   }
 
   private var bufferedEnd: Double {

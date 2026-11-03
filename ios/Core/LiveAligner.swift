@@ -225,7 +225,7 @@ final class LiveAligner {
     if !next.playing {
       // Starting, or out of audio.
       steadySince = nil
-      if t - runningSince! >= Self.startBudgetMs { return fallback("stalled") }
+      if t - runningSince! >= Self.startBudgetMs { return fallback("starting") }
       return .wait
     }
     if let startGap, next.position != startPosition {

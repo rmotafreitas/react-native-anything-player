@@ -66,7 +66,10 @@ export interface AlignCaps {
 
 export type AlignFallback =
   | 'unsettled'
+  /** The old player stalls (a switch the player needs). */
   | 'stalled'
+  /** The new player did not start playing within its budget. */
+  | 'starting'
   | 'reconnecting'
   | 'discontinuity'
   | 'timeout'
@@ -251,7 +254,7 @@ export class LiveAligner {
       // Starting, or out of audio.
       this.steadySince = null;
       if (t - this.runningSince! >= Align.START_BUDGET_MS)
-        return this.fallback('stalled');
+        return this.fallback('starting');
       return { kind: 'wait' };
     }
     if (this.startGap != null && next.position !== this.startPosition) {

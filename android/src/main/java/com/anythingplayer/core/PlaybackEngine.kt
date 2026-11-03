@@ -2771,14 +2771,21 @@ class PlaybackEngine(
     if (abrLevel == swap.rendition) abrLevel = currentRendition
     cancelSwap(reason)
     val target = renditions!![swap.rendition].idAt(swap.rendition)
-    val outcome = if (cause != null) "failed" else "timed out"
+    // A live switch that could wait and could not be lined up: refused, why in `cause`.
+    val refused = cause?.code == ErrorCode.QUALITY_SWITCH_FAILED
+    val outcome = if (refused) "was refused" else if (cause != null) "failed" else "timed out"
     val error =
       PlayerError(
         ErrorCode.QUALITY_SWITCH_FAILED,
         "The switch to quality \"$target\" $outcome; the current one plays on.",
         true,
         // The new file's own failure: its code, then its message.
-        causeDescription = if (cause != null) "${cause.code.wire}: ${cause.message}" else reason,
+        causeDescription =
+          when {
+            refused -> cause!!.message
+            cause != null -> "${cause.code.wire}: ${cause.message}"
+            else -> reason
+          },
         platformDomain = cause?.platformDomain,
         platformCode = cause?.platformCode,
       )

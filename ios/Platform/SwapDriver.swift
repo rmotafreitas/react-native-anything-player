@@ -277,8 +277,13 @@ final class SwapDriver: LocalOutput {
     guard let old = current.alignReading(), let reading = next.alignReading() else {
       // A reading that went away (an item that changed kind): as before, reported.
       if waiting.steps > 0 { return apply(aligner.interrupt()) }
-      // Not a progressive stream on both sides (HLS, a remux).
-      return unaligned(waiting, next, reason: "adaptive")
+      // Not a progressive stream on both sides (HLS, a remux): at once, as before.
+      observer?.driverNote(
+        generation: waiting.generation, event: "quality switch not aligned", details: ["reason": "adaptive"])
+      waiting.aligner = nil
+      next.openBurst(from: 0)
+      if waiting.ready { next.play() }
+      return
     }
     waiting.steps += 1
     let action = aligner.step(SystemClock.shared.monotonicMs, old: old, next: reading)

@@ -2767,12 +2767,15 @@ extension PlaybackEngine {
     if abrLevel == swap.rendition { abrLevel = currentRendition }
     cancelSwap(reason)
     let target = renditions![swap.rendition].id(at: swap.rendition)
+    // A live switch that could wait and could not be lined up: refused, why in `cause`.
+    let refused = cause?.code == .qualitySwitchFailed
+    let outcome = refused ? "was refused" : cause != nil ? "failed" : "timed out"
     var error = PlayerError.code(
       .qualitySwitchFailed,
-      "The switch to quality \"\(target)\" \(cause != nil ? "failed" : "timed out"); the current one plays on.",
+      "The switch to quality \"\(target)\" \(outcome); the current one plays on.",
       recoverable: true)
     // The new file's own failure: its code, then its message.
-    error.cause = cause.map { "\($0.code.rawValue): \($0.message)" } ?? reason
+    error.cause = cause.map { refused ? $0.message : "\($0.code.rawValue): \($0.message)" } ?? reason
     error.platformDomain = cause?.platformDomain
     error.platformCode = cause?.platformCode
     pendingEvents.append { [weak self] in self?.delegate?.engine(warning: error) }

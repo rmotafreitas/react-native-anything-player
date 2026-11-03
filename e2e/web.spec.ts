@@ -407,7 +407,7 @@ test('liveOffset of a live station holds steady once settled, and grows while pa
   expect(paused - later).toBeLessThan(3);
 });
 
-test('an optional live switch that cannot be lined up is refused: the current quality plays on', async ({
+test('a live switch on a station without CORS goes ahead, with a discontinuity: it never can be lined up', async ({
   page,
 }) => {
   await page.mouse.click(1, 1);
@@ -430,13 +430,16 @@ test('an optional live switch that cannot be lined up is refused: the current qu
   await expect.poll(() => state(page), { timeout: 15_000 }).toBe('playing');
   await page.evaluate(() => window.rnap.player.selectQuality('64'));
   await expect
-    .poll(async () => (await events(page, 'error')).map((e) => e.code), {
+    .poll(() => page.evaluate(() => window.rnap.player.status.quality), {
       timeout: 15_000,
     })
-    .toContain('QUALITY_SWITCH_FAILED');
-  expect(await page.evaluate(() => window.rnap.player.status.quality)).toBe(
-    '320'
+    .toBe('64');
+  const jumps = (await events(page, 'discontinuity')) as Array<{
+    reason?: string;
+  }>;
+  expect(jumps.map((e) => e.reason)).toEqual(['switch']);
+  expect((await events(page, 'error')).map((e) => e.code)).not.toContain(
+    'QUALITY_SWITCH_FAILED'
   );
-  expect(await events(page, 'discontinuity')).toHaveLength(0);
   expect(await state(page)).toBe('playing');
 });

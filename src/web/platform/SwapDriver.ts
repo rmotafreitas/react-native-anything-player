@@ -454,15 +454,20 @@ export class SwapDriver implements LocalDriver {
   }
 
   /**
-   * Live: a stream RNAP reads (a MediaSource it feeds) is lined up. One on a
-   * plain `<audio>` (a station without CORS) switches as before, and the app
-   * hears the jump: a paused element stops loading, and its edge moves in
-   * steps of seconds. An adaptive source (HLS, DASH) starts at once.
+   * Live: a stream RNAP reads (a MediaSource it feeds) is lined up. Sources
+   * that never can be switch whatever the reason: one on a plain `<audio>` (a
+   * station without CORS: a paused element stops loading, and its edge moves
+   * in steps of seconds) as a `discontinuity`, an adaptive source (HLS,
+   * DASH) at once, as before.
    */
   private startAligning(pending: Pending, spare: MediaElementDriver): void {
-    if (this.current.alignReading() == null || spare.alignReading() == null)
-      return this.unaligned(pending, spare, 'adaptive');
-    if (!spare.feedsItself) return this.unaligned(pending, spare, 'plain');
+    if (this.current.alignReading() == null || spare.alignReading() == null) {
+      this.note(pending, 'not aligned', { reason: 'adaptive' });
+      spare.play();
+      return;
+    }
+    if (!spare.feedsItself)
+      return this.unaligned(pending, spare, 'plain', true);
     const caps: AlignCaps = {
       maxRate: MAX_ALIGN_RATE,
       minRate: 0.5,
@@ -570,16 +575,18 @@ export class SwapDriver implements LocalDriver {
 
   /**
    * A live switch that cannot be lined up: switched anyway, as a
-   * `discontinuity`, when the player needs it; else dropped, the current
-   * one playing on (`QUALITY_SWITCH_FAILED`).
+   * `discontinuity`, when the player needs it (or `always`: a source that
+   * never can be); else dropped, the current one playing on
+   * (`QUALITY_SWITCH_FAILED`).
    */
   private unaligned(
     pending: Pending,
     spare: MediaElementDriver,
-    reason: string
+    reason: string,
+    always = false
   ): void {
     this.note(pending, 'not aligned', { reason });
-    if (!pending.required) {
+    if (!pending.required && !always) {
       // The engine drops it (cancelSwap) and the app hears why.
       this.observer.onFailed(
         pending.generation,

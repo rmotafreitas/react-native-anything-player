@@ -765,39 +765,31 @@ describe('a live switch', () => {
     expect(next.muted).toBe(false);
   });
 
-  it('switches a station on a plain <audio> anyway when the player needs it, and reports the jump', () => {
-    fed = false;
-    uninstall();
-    setup();
-    const { next, tick } = stations(1.6, 17, true);
-    expect(next.paused).toBe(false);
-    expect(rec.of('onNote')).toContainEqual([
-      2,
-      'quality switch not aligned',
-      { reason: 'plain' },
-    ]);
-    tick(40);
-    expect(driver.element).toBe(next);
-    // The position goes on from where the old one was.
-    expect(rec.of('onDiscontinuity')).toEqual([
-      [2, expect.closeTo(50, 0), 'switch', null],
-    ]);
-  });
-
-  it('drops an optional switch it cannot line up: the current one plays on', () => {
-    fed = false;
-    uninstall();
-    setup();
-    const { old, next } = stations(1.6, 17);
-    expect(next.paused).toBe(true);
-    const [failure] = rec.of('onFailed');
-    expect(failure![0]).toBe(2);
-    expect((failure![1] as { code: string }).code).toBe(
-      'QUALITY_SWITCH_FAILED'
-    );
-    expect(driver.element).toBe(old);
-    expect(rec.of('onDiscontinuity')).toEqual([]);
-  });
+  it.each([
+    ['the player needs it', true],
+    ['it could wait (it never can be lined up)', false],
+  ])(
+    'switches a station on a plain <audio> anyway when %s, and reports the jump',
+    (_why, required) => {
+      fed = false;
+      uninstall();
+      setup();
+      const { next, tick } = stations(1.6, 17, required);
+      expect(next.paused).toBe(false);
+      expect(rec.of('onNote')).toContainEqual([
+        2,
+        'quality switch not aligned',
+        { reason: 'plain' },
+      ]);
+      tick(40);
+      expect(driver.element).toBe(next);
+      expect(rec.of('onFailed')).toEqual([]);
+      // The position goes on from where the old one was.
+      expect(rec.of('onDiscontinuity')).toEqual([
+        [2, expect.closeTo(50, 0), 'switch', null],
+      ]);
+    }
+  );
 
   it('holds a new connection that is ahead until the old one gets there', () => {
     const { old, next, tick } = stations(17, 1.6);

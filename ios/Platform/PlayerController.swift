@@ -580,7 +580,9 @@ final class PlayerController: EngineDelegate, DriverObserver {
     return reading
   }
 
-  /// A live item is read while it plays, whatever `progressInterval` is: `liveOffset` follows it.
+  /// A live item is read while it plays, whatever `progressInterval` is:
+  /// `liveOffset` follows it, and a splice is reported (and measured afresh)
+  /// once it is heard.
   private func updateLiveReads(_ status: Status) {
     let wanted = status.isLive && status.state == .playing && !released
     guard wanted != (liveTimer != nil) else { return }
@@ -591,6 +593,7 @@ final class PlayerController: EngineDelegate, DriverObserver {
     timer.schedule(deadline: .now(), repeating: .milliseconds(500), leeway: .milliseconds(50))
     timer.setEventHandler { [weak self] in
       guard let self, !self.released else { return }
+      self.driver.reportHeardSplices()
       let reading = self.timedProgress()
       let clock = SystemClock.shared
       self.lock.sync { self.snapshotProgress = (reading, clock.monotonicMs, clock.wallMs) }
@@ -868,16 +871,19 @@ enum Serialization {
   }
 
   static func progress(_ r: ProgressReading, takenAt: Int64, now: Int64, wall: Int64) -> [String: Any] {
-    var position = r.position
-    if r.isPlaying { position += Double(max(0, now - takenAt)) / 1000 * r.rate }
-    if let d = r.duration { position = min(position, d) }
-    // While paused or stalled the live point moves on: the offset grows.
     let elapsed = Double(max(0, now - takenAt)) / 1000
-    let offset = r.liveOffset.map { r.isPlaying ? $0 : $0 + elapsed }
+    var position = r.position
+    if r.isPlaying { position += elapsed * r.rate }
+    if let d = r.duration { position = min(position, d) }
+    // The live point moves on with the clock, the playhead with what plays:
+    // the offset grows while paused, falls at a rate above 1.
+    let played = max(0, position - r.position)
+    let offset = r.liveOffset.map { max(0, $0 + elapsed - played) }
+    let programDate = r.programDate.map { $0 + Int64((played * 1000).rounded()) }
     return [
       "position": position, "duration": optional(r.duration), "buffered": max(r.buffered, position),
       "bufferedAhead": max(0, r.buffered - position), "liveOffset": optional(offset),
-      "liveOffsetSettled": r.liveOffsetSettled, "programDate": optional(r.programDate), "timestamp": wall,
+      "liveOffsetSettled": r.liveOffsetSettled, "programDate": optional(programDate), "timestamp": wall,
     ]
   }
 

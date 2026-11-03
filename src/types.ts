@@ -284,18 +284,20 @@ export interface Progress {
    * Live: seconds from the source's live point to what is heard now. A
    * progressive stream (ICY/Icecast, plain HTTP, a live MPEG-TS channel):
    * from what has arrived, at its freshest, so it holds steady while audio
-   * plays (no saw-tooth between chunks), grows while paused or stalled, and
-   * goes on across a quality switch; it is measured again after a
-   * `discontinuity`. HLS and DASH: the player's own reading (program dates, the
-   * live window). `null` for files, on Cast, and before there is anything to
-   * measure. `timestamp − liveOffset × 1000` is when (device clock) what is
+   * plays (no saw-tooth between chunks), grows while paused or stalled
+   * (however long), and goes on across a lined-up quality switch; it is
+   * measured again after a `discontinuity`. HLS and DASH: the player's own
+   * reading (program dates, the live window). `null` for files, on Cast, on a
+   * browser's plain `<audio>` (a stream without CORS), on Safari's own HLS
+   * player, and before there is anything to measure. `timestamp − liveOffset × 1000` is when (device clock) what is
    * heard was live.
    */
   liveOffset: number | null;
   /**
-   * `liveOffset` has settled: the connect burst has arrived and it has held
-   * for 3 s. Before that it can only read too low. `false` again after a
-   * `discontinuity`, and whenever `liveOffset` is `null`.
+   * `liveOffset` has settled: the connect burst has arrived and the live
+   * point it measures from has held for 3 s (a progressive stream reads too
+   * low before that). `false` again after a `discontinuity`, and whenever
+   * `liveOffset` is `null`.
    */
   liveOffsetSettled: boolean;
   /**
@@ -731,8 +733,9 @@ export interface PlayerEventMap {
    * Icecast/Shoutcast connection starts with the server's burst of recent
    * audio, so what is heard repeats or skips — no state change accompanies
    * it. Also reported when a live quality switch between separate mounts
-   * (`renditions`) could not be lined up with what is heard. Reported when
-   * the jump becomes audible.
+   * (`renditions`) that the player needed (the current one stalled), or on a
+   * source that never can be (a browser's plain `<audio>`), could not be
+   * lined up with what is heard. Reported when the jump becomes audible.
    */
   discontinuity: (event: Discontinuity) => void;
   /** `status.route` changed (AirPlay chosen, headphones unplugged, casting started…). */
@@ -894,8 +897,8 @@ export interface Discontinuity {
   position: number;
   /**
    * `reconnect`: a dropped connection was replaced; `switch`: a live
-   * quality switch the player needed could not be lined up with what is
-   * heard.
+   * quality switch the player needed (or on a plain `<audio>`) could not be
+   * lined up with what is heard.
    */
   reason: 'reconnect' | 'switch';
   /** Seconds of the source skipped (+) or heard again (−), when known; else `null`. */

@@ -172,7 +172,7 @@ class LiveAligner(private val caps: Caps) {
     if (!next.playing) {
       // Starting, or out of audio.
       steadySince = null
-      if (t - runningSince!! >= START_BUDGET_MS) return fallback("stalled")
+      if (t - runningSince!! >= START_BUDGET_MS) return fallback("starting")
       return Action.Wait
     }
     val started = startGap

@@ -294,7 +294,11 @@ internal class SwapDriver(
   private fun startAligning(waiting: Pending, next: ExoPlayerDriver) {
     current.resetAlignEdge()
     next.resetAlignEdge()
-    if (current.alignReading() == null || next.alignReading() == null) return unaligned(waiting, next, "adaptive")
+    if (current.alignReading() == null || next.alignReading() == null) {
+      // Not a progressive stream on both sides (HLS, DASH): at once, as before.
+      Log.d(TAG, "quality switch not aligned: adaptive")
+      return next.play()
+    }
     waiting.aligner = LiveAligner(ALIGN_CAPS)
     alignStep()
   }
