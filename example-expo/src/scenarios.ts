@@ -26,6 +26,8 @@ import { LOCAL_TONE, STREAM_HOST, serverControl, serverStats } from './config';
 
 type Scenario = {
   name: string;
+  /** Run only by name (`test/<name>`), not with `all`: it takes minutes. */
+  manual?: boolean;
   timeoutMs: number;
   run: (log: (m: string) => void) => Promise<void>;
 };
@@ -871,6 +873,47 @@ SCENARIOS.push(
     name: 'probe-release-closes',
     timeoutMs: 80_000,
     run: (log) => timeToClose(log, (p) => p.release()),
+  },
+  {
+    // One station as three Icecast mounts (the test server's /radio/…, each
+    // with a 64 KiB burst): every switch is lined up with what is heard.
+    // scripts/align-measure records the device and reads back what each
+    // switch did to the audio; this logs when each one took over.
+    name: 'live-renditions',
+    manual: true,
+    timeoutMs: 300_000,
+    run: (log) =>
+      withPlayer(async (p) => {
+        let jumps = 0;
+        const off = p.on('discontinuity', () => {
+          jumps += 1;
+        });
+        await p.load(
+          {
+            live: true,
+            renditions: ['64', '192', '320'].map((id) => ({
+              id,
+              uri: `${STREAM_HOST}/radio/${id}`,
+              bitrate: Number(id) * 1000,
+            })),
+          },
+          { quality: '320' }
+        );
+        await p.play();
+        await waitFor(p, (s) => s.state === 'playing', 20_000, 'playing');
+        log(`PLAYING at=${Date.now()}`);
+        await sleep(10_000);
+        for (const quality of ['64', '320', '192', '64', '192']) {
+          const asked = Date.now();
+          await p.selectQuality(quality);
+          await waitFor(p, (s) => s.quality === quality, 60_000, quality);
+          log(`SWITCH ${quality} asked=${asked} took=${Date.now()}`);
+          await sleep(8_000);
+        }
+        off();
+        log(`discontinuities ${jumps}`);
+        expect(jumps === 0, `${jumps} switch(es) not lined up`);
+      }),
   }
 );
 
@@ -880,7 +923,7 @@ export async function runScenarios(
 ): Promise<{ passed: number; failed: number }> {
   const selected =
     names === 'all'
-      ? SCENARIOS
+      ? SCENARIOS.filter((s) => s.manual !== true)
       : SCENARIOS.filter((s) => names.includes(s.name));
   let passed = 0;
   let failed = 0;

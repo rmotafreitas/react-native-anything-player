@@ -18,6 +18,19 @@ ffmpeg -loglevel error -y "${inputs[@]}" -filter_complex "${filters}concat=n=12:
 # The same program as ADTS AAC (64 kbps), for /live.aac: browsers that take AAC
 # only inside MP4 are fed a remux of it.
 ffmpeg -loglevel error -y -i media/program.mp3 -c:a aac -b:a 64k -ar 44100 -ac 2 -f adts media/program.aac
+# The live renditions' program (/radio/320, /radio/192, /radio/64: one
+# station as three Icecast mounts): 120 s in which every second starts with a
+# 4 ms click and holds a tone that names it (300 + 25 × (second mod 60) Hz)
+# until 100 ms of silence before the next. scripts/align-measure reads a
+# recording of it back to where in the program each second was heard.
+ffmpeg -loglevel error -y -f lavfi -i "aevalsrc='0.6*sin(2*PI*3000*t)*lt(mod(t,1),0.004)+0.25*sin(2*PI*(300+25*mod(floor(t),60))*t)*gte(mod(t,1),0.004)*lt(mod(t,1),0.9)':s=44100:d=120" \
+  -af "aformat=channel_layouts=stereo" -c:a pcm_s16le media/radio.wav
+for kbps in 320 192 64; do
+  ffmpeg -loglevel error -y -i media/radio.wav -c:a libmp3lame -b:a "${kbps}k" -ar 44100 -write_xing 0 -id3v2_version 0 "media/radio-${kbps}.mp3"
+done
+# The same program as ADTS AAC at 64 kbps (/radio/64aac): a switch between codecs.
+ffmpeg -loglevel error -y -i media/radio.wav -c:a aac -b:a 64k -f adts media/radio-64aac.aac
+rm media/radio.wav
 # 30 s file for VOD/seek tests and the bundled local asset.
 ffmpeg -loglevel error -y -f lavfi -i "sine=frequency=440:duration=30:sample_rate=44100" \
   -af "volume=0.25,aformat=channel_layouts=stereo" -c:a libmp3lame -b:a 96k media/file.mp3

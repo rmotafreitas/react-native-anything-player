@@ -1,0 +1,158 @@
+[
+  {
+    "name": "Android: 320 → 64 kbps (the new connection 15 s behind) runs it 4× faster, then takes over aligned",
+    "caps": { "maxRate": 4, "minRate": 0.5, "jump": "never", "startLead": 0.1, "jumpLead": 0.3 },
+    "world": { "oldPosition": 42.0, "oldLag": 1.6, "burst": 17, "burstSpeed": 8, "chunkMs": 100, "startLatencyMs": 80 },
+    "expect": { "outcome": "takeOver", "at": 14040, "actions": ["rate", "takeOver"], "maxResidual": 0.05 }
+  },
+  {
+    "name": "Android: 64 → 320 kbps (15 s ahead) holds it until the old one gets there",
+    "caps": { "maxRate": 4, "minRate": 0.5, "jump": "never", "startLead": 0.1, "jumpLead": 0.3 },
+    "world": { "oldPosition": 42.0, "oldLag": 17, "burst": 1.6, "burstSpeed": 8, "chunkMs": 100, "startLatencyMs": 80 },
+    "expect": { "outcome": "takeOver", "at": 15720, "actions": ["rate", "takeOver"], "maxResidual": 0.05 }
+  },
+  {
+    "name": "Android: 192 → 64 kbps with Icecast's 64 KiB burst (5.5 s behind)",
+    "caps": { "maxRate": 4, "minRate": 0.5, "jump": "never", "startLead": 0.1, "jumpLead": 0.3 },
+    "world": { "oldPosition": 42.0, "oldLag": 2.7, "burst": 8.2, "burstSpeed": 8, "chunkMs": 100, "startLatencyMs": 80 },
+    "expect": { "outcome": "takeOver", "at": 9400, "actions": ["rate", "takeOver"], "maxResidual": 0.05 }
+  },
+  {
+    "name": "Android: 64 → 192 kbps with Icecast's 64 KiB burst (5.5 s ahead)",
+    "caps": { "maxRate": 4, "minRate": 0.5, "jump": "never", "startLead": 0.1, "jumpLead": 0.3 },
+    "world": { "oldPosition": 42.0, "oldLag": 8.2, "burst": 2.7, "burstSpeed": 8, "chunkMs": 100, "startLatencyMs": 80 },
+    "expect": { "outcome": "takeOver", "at": 5800, "actions": ["rate", "takeOver"], "maxResidual": 0.05 }
+  },
+  {
+    "name": "Android: a start slower than its lead is made up by a slightly faster rate",
+    "caps": { "maxRate": 4, "minRate": 0.5, "jump": "never", "startLead": 0.1, "jumpLead": 0.3 },
+    "world": { "oldPosition": 42.0, "oldLag": 17, "burst": 1.6, "burstSpeed": 8, "chunkMs": 100, "startLatencyMs": 300 },
+    "expect": { "outcome": "takeOver", "at": 17400, "actions": ["rate", "takeOver"], "maxResidual": 0.05 }
+  },
+  {
+    "name": "Android: connections on different beats (the new one's chunks every 500 ms, the old one's every 100 ms) still line up: each one's freshest edge",
+    "caps": { "maxRate": 4, "minRate": 0.5, "jump": "never", "startLead": 0.1, "jumpLead": 0.3 },
+    "world": { "oldPosition": 42.0, "oldLag": 1.6, "burst": 17, "burstSpeed": 8, "chunkMs": 100, "startLatencyMs": 80, "nextChunkMs": 500, "nextPhaseMs": 230, "oldPhaseMs": 70 },
+    "expect": { "outcome": "takeOver", "at": 14360, "actions": ["rate", "takeOver"], "maxResidual": 0.05 }
+  },
+  {
+    "name": "Android: ExoPlayer's edges, in steps of a second (64 kbps) and 0.4 s (320 kbps), still settle and line up",
+    "caps": { "maxRate": 4, "minRate": 0.5, "jump": "never", "startLead": 0.1, "jumpLead": 0.3 },
+    "world": { "oldPosition": 42.0, "oldLag": 1.6, "burst": 8.2, "burstSpeed": 8, "chunkMs": 100, "startLatencyMs": 80, "nextChunkMs": 1000, "nextPhaseMs": 330, "oldChunkMs": 400, "oldPhaseMs": 120 },
+    "expect": { "outcome": "takeOver", "at": 9880, "actions": ["rate", "takeOver"], "maxResidual": 0.1 }
+  },
+  {
+    "name": "edges stamped with when their audio arrived take the tick's lag out of the mapping (ExoPlayer's steps)",
+    "caps": { "maxRate": 4, "minRate": 0.5, "jump": "never", "startLead": 0.1, "jumpLead": 0.3 },
+    "world": { "oldPosition": 42.0, "oldLag": 1.6, "burst": 8.2, "burstSpeed": 8, "chunkMs": 100, "startLatencyMs": 80, "nextChunkMs": 1000, "nextPhaseMs": 330, "oldChunkMs": 400, "oldPhaseMs": 120, "edgeArrival": true },
+    "expect": { "outcome": "takeOver", "at": 9720, "actions": ["rate", "takeOver"], "maxResidual": 0.06 }
+  },
+  {
+    "name": "Android: at the app's rate (0.9×) the new player is run at a multiple of it, and still lines up",
+    "caps": { "maxRate": 4, "minRate": 0.5, "jump": "never", "startLead": 0.1, "jumpLead": 0.3 },
+    "world": { "oldPosition": 42.0, "oldLag": 1.6, "burst": 17, "burstSpeed": 8, "chunkMs": 100, "startLatencyMs": 80, "appRate": 0.9 },
+    "expect": { "outcome": "takeOver", "at": 15000, "actions": ["rate", "takeOver"], "maxResidual": 0.05 }
+  },
+  {
+    "name": "Android: late timers (ticks of 25 and 70 ms in turn) still line up",
+    "caps": { "maxRate": 4, "minRate": 0.5, "jump": "never", "startLead": 0.1, "jumpLead": 0.3 },
+    "world": { "oldPosition": 42.0, "oldLag": 17, "burst": 1.6, "burstSpeed": 8, "chunkMs": 100, "startLatencyMs": 80, "ticksMs": [25, 70] },
+    "expect": { "outcome": "takeOver", "at": 15700, "actions": ["rate", "takeOver"], "maxResidual": 0.05 }
+  },
+  {
+    "name": "web: 320 → 64 kbps moves the new element just ahead and holds it",
+    "caps": { "maxRate": 4, "minRate": 0.5, "jump": "always", "startLead": 0.1, "jumpLead": 0.3 },
+    "world": { "oldPosition": 42.0, "oldLag": 1.6, "burst": 17, "burstSpeed": 8, "chunkMs": 100, "startLatencyMs": 120 },
+    "expect": { "outcome": "takeOver", "at": 4800, "actions": ["jump", "rate", "takeOver"], "maxResidual": 0.05 }
+  },
+  {
+    "name": "web: 64 → 320 kbps holds it",
+    "caps": { "maxRate": 4, "minRate": 0.5, "jump": "always", "startLead": 0.1, "jumpLead": 0.3 },
+    "world": { "oldPosition": 42.0, "oldLag": 17, "burst": 1.6, "burstSpeed": 8, "chunkMs": 100, "startLatencyMs": 120 },
+    "expect": { "outcome": "takeOver", "at": 15760, "actions": ["rate", "takeOver"], "maxResidual": 0.05 }
+  },
+  {
+    "name": "web: connections on different beats still line up",
+    "caps": { "maxRate": 4, "minRate": 0.5, "jump": "always", "startLead": 0.1, "jumpLead": 0.3 },
+    "world": { "oldPosition": 42.0, "oldLag": 17, "burst": 1.6, "burstSpeed": 8, "chunkMs": 250, "startLatencyMs": 120, "nextChunkMs": 100, "nextPhaseMs": 40, "oldPhaseMs": 190 },
+    "expect": { "outcome": "takeOver", "at": 15760, "actions": ["rate", "takeOver"], "maxResidual": 0.05 }
+  },
+  {
+    "name": "web: a playhead read coarsely (±40 ms) still takes over within 0.3 s",
+    "caps": { "maxRate": 4, "minRate": 0.5, "jump": "always", "startLead": 0.1, "jumpLead": 0.3 },
+    "world": { "oldPosition": 42.0, "oldLag": 1.6, "burst": 17, "burstSpeed": 8, "chunkMs": 100, "startLatencyMs": 120, "positionJitter": 0.04 },
+    "expect": { "outcome": "takeOver", "at": 5200, "actions": ["jump", "rate", "takeOver"], "maxResidual": 0.3 }
+  },
+  {
+    "name": "iOS: 320 → 64 kbps drops the burst's start before AVPlayer reads it, then holds",
+    "caps": { "maxRate": 1, "minRate": 0.5, "jump": "first", "startLead": 0.4, "jumpLead": 2 },
+    "world": { "oldPosition": 42.0, "oldLag": 1.6, "burst": 17, "burstSpeed": 8, "chunkMs": 100, "startLatencyMs": 250 },
+    "expect": { "outcome": "takeOver", "at": 7000, "actions": ["jump", "rate", "takeOver"], "maxResidual": 0.3 }
+  },
+  {
+    "name": "iOS: an AVPlayer that takes a while to be ready after the burst's start was dropped is held until it is",
+    "caps": { "maxRate": 1, "minRate": 0.5, "jump": "first", "startLead": 0.4, "jumpLead": 2 },
+    "world": { "oldPosition": 42.0, "oldLag": 1.6, "burst": 17, "burstSpeed": 8, "chunkMs": 100, "startLatencyMs": 250, "nextReadyAt": 5300 },
+    "expect": { "outcome": "takeOver", "at": 5920, "actions": ["jump", "rate", "takeOver"], "maxResidual": 0.3 }
+  },
+  {
+    "name": "iOS: an AVPlayer ready later than its jump lead falls behind and switches as before",
+    "caps": { "maxRate": 1, "minRate": 0.5, "jump": "first", "startLead": 0.4, "jumpLead": 2 },
+    "world": { "oldPosition": 42.0, "oldLag": 1.6, "burst": 17, "burstSpeed": 8, "chunkMs": 100, "startLatencyMs": 250, "nextReadyAt": 9000 },
+    "expect": { "outcome": "fallback:behind", "at": 9000, "actions": ["jump", "fallback"] }
+  },
+  {
+    "name": "iOS: 64 → 320 kbps holds it",
+    "caps": { "maxRate": 1, "minRate": 0.5, "jump": "first", "startLead": 0.4, "jumpLead": 2 },
+    "world": { "oldPosition": 42.0, "oldLag": 17, "burst": 1.6, "burstSpeed": 8, "chunkMs": 100, "startLatencyMs": 250 },
+    "expect": { "outcome": "takeOver", "at": 16800, "actions": ["rate", "takeOver"], "maxResidual": 0.3 }
+  },
+  {
+    "name": "iOS: a new connection a little behind is still moved ahead first",
+    "caps": { "maxRate": 1, "minRate": 0.5, "jump": "first", "startLead": 0.4, "jumpLead": 2 },
+    "world": { "oldPosition": 42.0, "oldLag": 2.0, "burst": 2.1, "burstSpeed": 8, "chunkMs": 100, "startLatencyMs": 250 },
+    "expect": { "outcome": "takeOver", "at": 6400, "actions": ["jump", "rate", "takeOver"], "maxResidual": 0.3 }
+  },
+  {
+    "name": "iOS: a start quicker than its lead is held again with the delay it learned",
+    "caps": { "maxRate": 1, "minRate": 0.5, "jump": "first", "startLead": 0.4, "jumpLead": 2 },
+    "world": { "oldPosition": 42.0, "oldLag": 17, "burst": 1.6, "burstSpeed": 8, "chunkMs": 100, "startLatencyMs": 0 },
+    "expect": { "outcome": "takeOver", "at": 15760, "actions": ["rate", "takeOver"], "maxResidual": 0.05 }
+  },
+  {
+    "name": "iOS: a start much slower than its lead cannot catch up and switches as before",
+    "caps": { "maxRate": 1, "minRate": 0.5, "jump": "first", "startLead": 0.4, "jumpLead": 2 },
+    "world": { "oldPosition": 42.0, "oldLag": 17, "burst": 1.6, "burstSpeed": 8, "chunkMs": 100, "startLatencyMs": 900 },
+    "expect": { "outcome": "fallback:behind", "at": 16240, "actions": ["rate", "fallback"] }
+  },
+  {
+    "name": "a new connection further ahead than the budget switches at once",
+    "caps": { "maxRate": 4, "minRate": 0.5, "jump": "never", "startLead": 0.1, "jumpLead": 0.3 },
+    "world": { "oldPosition": 42.0, "oldLag": 45, "burst": 1.6, "burstSpeed": 8, "chunkMs": 100, "startLatencyMs": 80 },
+    "expect": { "outcome": "fallback:ahead", "at": 3000, "actions": ["fallback"] }
+  },
+  {
+    "name": "the old player stalling while the new one is held switches as before",
+    "caps": { "maxRate": 4, "minRate": 0.5, "jump": "never", "startLead": 0.1, "jumpLead": 0.3 },
+    "world": { "oldPosition": 42.0, "oldLag": 17, "burst": 1.6, "burstSpeed": 8, "chunkMs": 100, "startLatencyMs": 80, "oldStallAt": 6000 },
+    "expect": { "outcome": "fallback:stalled", "at": 6000, "actions": ["fallback"] }
+  },
+  {
+    "name": "a burst that never settles at 1 s/s switches as before after 8 s",
+    "caps": { "maxRate": 4, "minRate": 0.5, "jump": "never", "startLead": 0.1, "jumpLead": 0.3 },
+    "world": { "oldPosition": 42.0, "oldLag": 1.6, "burst": 17, "burstSpeed": 8, "chunkMs": 100, "startLatencyMs": 80, "endsAfterBurst": true },
+    "expect": { "outcome": "fallback:unsettled", "at": 8000, "actions": ["fallback"] }
+  },
+  {
+    "name": "a discontinuity on either connection switches as before",
+    "caps": { "maxRate": 4, "minRate": 0.5, "jump": "never", "startLead": 0.1, "jumpLead": 0.3 },
+    "world": { "oldPosition": 42.0, "oldLag": 1.6, "burst": 17, "burstSpeed": 8, "chunkMs": 100, "startLatencyMs": 80, "interruptAt": 5000 },
+    "expect": { "outcome": "fallback:discontinuity", "at": 5000, "actions": ["rate", "fallback"] }
+  },
+  {
+    "name": "the old connection being replaced switches as before",
+    "caps": { "maxRate": 4, "minRate": 0.5, "jump": "never", "startLead": 0.1, "jumpLead": 0.3 },
+    "world": { "oldPosition": 42.0, "oldLag": 17, "burst": 1.6, "burstSpeed": 8, "chunkMs": 100, "startLatencyMs": 80, "oldReconnectingAt": 4000 },
+    "expect": { "outcome": "fallback:reconnecting", "at": 4000, "actions": ["fallback"] }
+  }
+]

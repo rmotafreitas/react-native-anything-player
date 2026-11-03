@@ -168,6 +168,34 @@ await player.selectQuality('192k'); // switches without a gap, and holds for the
 
 `status.qualities` lists them, `status.quality` is the one playing and `status.selectedQuality` the pick (`null`: automatic). Automatic starts at the highest (a sound's bitrates are small), or for a file at what the last bandwidth reading fits; it steps down on stalls and on a bandwidth that stays too low, and up after 30 s of headroom. Where nothing measures headroom (a live stream arrives at its own bitrate; Safari and Firefox read no bandwidth for a file), it tries one step up after two minutes without a stall. The background never changes it. A pick holds across loads by `id` (give each episode's files the same ids), and a switch that fails is a non-fatal `QUALITY_SWITCH_FAILED` error while the current file plays on. An HLS or DASH source's own variants are left to the platform on an audio player.
 
+### Live renditions
+
+One station's mounts at several bitrates (Icecast's `/64`, `/192`, `/320`) are renditions of one live source:
+
+```ts
+await player.load({
+  live: true,
+  renditions: [
+    { id: '64', uri: 'https://radio.example/64', bitrate: 64_000 },
+    { id: '192', uri: 'https://radio.example/192', bitrate: 192_000 },
+    { id: '320', uri: 'https://radio.example/320', bitrate: 320_000 },
+  ],
+});
+```
+
+Each connection to a mount starts with the server's burst of recent audio, and the burst is a byte count, so a lower bitrate starts further behind live: Icecast's default 64 KiB is 1.6 s at 320 kbps and 8 s at 64 kbps. Played as it arrives, a switch from 320 to 64 kbps would repeat those seconds, and back again would skip them. RNAP lines the new connection up with what is heard before it takes over. It waits for the new connection's burst to arrive, maps the two connections' timelines onto each other by their live edges, then plays the new one silently: held until the old one catches up, moved forward within what it holds, or run faster or slower, until it plays what is heard. The switch is then a change of volume, with no repeat and no skip. It takes a few seconds, longer when the new connection starts far ahead: up to 30 s, the difference between the two bursts.
+
+When it cannot line them up, it switches as before and reports a [`discontinuity`](events.md#events). That happens when the old connection stalls (as when stalls caused the step down), a connection is being replaced, the new connection's burst never settles, or the alignment would take more than 30 s. Positions go on across a live switch: `position` does not restart with the new connection. A switch that was lined up reports no `discontinuity`, so an app that keeps its own place in the station's timeline (a song's progress, lyrics) should place it again on `discontinuity`, not on every change of `quality`. The title playing is told again when the new connection takes over.
+
+| Measured (`scripts/align-measure`, the test station's 320, 192 and 64 kbps mounts with Icecast's burst, five switches each) | Before | Now |
+|---|---|---|
+| Android (emulator) | −13.2 s to +6.6 s | aligned, within 0.06 s |
+| Chromium (Playwright; also through Expo web) | the same | aligned, within 0.08 s |
+| Firefox (Playwright; also through Expo web) | the same | aligned, within 0.13 s |
+| Safari (Playwright WebKit) | the same | aligned, within 0.06 s |
+
+A minus sign is audio heard twice, a plus sign audio skipped. The recordings are of what the device played. How the new connection is brought into line depends on the platform. Android runs it faster or holds it. Chromium and Firefox move it within what it has received, then hold it (Firefox plays it at −80 dB, not muted: it stops a silent element's output, and its clock slips when the element is heard again). WebKit runs it faster: an element moved there is paused again, so its switches take about 10 s. On iOS, AVPlayer cannot run a live stream faster, so the stream proxy drops the start of the new connection's burst before AVPlayer reads it, then holds it. iOS is written, and its aligner and burst gate are tested, but it has not been recorded yet. In a browser, the station must send CORS headers so that RNAP reads the stream ([what to send](web.md#what-the-stream-server-must-send)). A station played on the plain `<audio>` element switches as before, with a `discontinuity`: a paused element stops loading, and what it has loaded moves in steps of seconds. Renditions that are HLS or DASH streams switch at once, as before.
+
 ## Several players
 
 Players are independent native engines. The lock screen shows the most recently started player with `mediaSession.enabled` (the default). Audio focus is per app on Android: all players share it, and a focus loss pauses every player that does not use `audio.mixWithOthers`.

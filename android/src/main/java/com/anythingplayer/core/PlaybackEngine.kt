@@ -339,7 +339,14 @@ class PlaybackEngine(
   }
 
   /** `info`: what the new file reported when ready, the item's facts once it takes over. */
-  private data class PendingSwap(val generation: Int, val rendition: Int, val startedAt: Long, var info: ReadyInfo? = null)
+  private data class PendingSwap(
+    val generation: Int,
+    val rendition: Int,
+    val startedAt: Long,
+    var info: ReadyInfo? = null,
+    /** When the new file was first ready: the time it has to take over counts from here. */
+    var readyAt: Long? = null,
+  )
 
   private data class PendingRefresh(
     val reason: RefreshReason,
@@ -757,7 +764,10 @@ class PlaybackEngine(
   fun onReady(generation: Int, info: ReadyInfo) {
     if (isSwapGeneration(generation)) {
       // A quality switch's file: its facts wait for it to take over.
-      pendingSwap?.info = info
+      pendingSwap?.let { swap ->
+        swap.info = info
+        if (swap.readyAt == null) swap.readyAt = now
+      }
       return swapNote("ready")
     }
     if (!accepts(generation)) return logStale("ready", generation)
@@ -2197,7 +2207,19 @@ class PlaybackEngine(
     detachedSince?.let { if (t - it >= RecoveryPolicy.VIEW_DETACH_GRACE_MS) noViewDue() }
     pendingRefresh?.let { if (it.deadline <= t) refreshTimedOut(it) }
     refreshAskAt?.let { if (it <= t) expiryDue() }
-    pendingSwap?.let { if (t - it.startedAt >= RecoveryPolicy.SWAP_TIMEOUT_MS) dropSwap(it, "timeout") }
+    pendingSwap?.let { if (t >= swapDeadline(it)) dropSwap(it, "timeout") }
+  }
+
+  /**
+   * When a switch is dropped: `SWAP_TIMEOUT_MS` to be ready (`SWAP_LIVE_READY_MS` live), then as long
+   * again to take over (`SWAP_ALIGN_TIMEOUT_MS` live, where the new audio is
+   * lined up with what is heard first).
+   */
+  private fun swapDeadline(swap: PendingSwap): Long {
+    val readyAt =
+      swap.readyAt
+        ?: return swap.startedAt + if (isLive) RecoveryPolicy.SWAP_LIVE_READY_MS else RecoveryPolicy.SWAP_TIMEOUT_MS
+    return readyAt + if (isLive) RecoveryPolicy.SWAP_ALIGN_TIMEOUT_MS else RecoveryPolicy.SWAP_TIMEOUT_MS
   }
 
   private fun videoWakeups(candidates: MutableList<Long>) {
@@ -2206,7 +2228,7 @@ class PlaybackEngine(
     if (detached != null && pictureMayGoOff) candidates.add(detached + RecoveryPolicy.VIEW_DETACH_GRACE_MS)
     pendingRefresh?.let { candidates.add(it.deadline) }
     refreshAskAt?.let { candidates.add(it) }
-    pendingSwap?.let { candidates.add(it.startedAt + RecoveryPolicy.SWAP_TIMEOUT_MS) }
+    pendingSwap?.let { candidates.add(swapDeadline(it)) }
   }
 
   /** The app came back (`appForegrounded`). */

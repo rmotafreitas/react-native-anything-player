@@ -328,6 +328,8 @@ final class PlaybackEngine {
     let startedAt: Int64
     /// What the new file reported when ready: the item's facts once it takes over.
     var info: ReadyInfo?
+    /// When the new file was first ready: the time it has to take over counts from here.
+    var readyAt: Int64?
   }
 
   private struct PendingRefresh {
@@ -694,6 +696,7 @@ final class PlaybackEngine {
     if isSwapGeneration(gen) {
       // A quality switch's file: its facts wait for it to take over.
       pendingSwap?.info = info
+      if pendingSwap?.readyAt == nil { pendingSwap?.readyAt = now }
       return swapNote("ready")
     }
     guard accepts(gen) else { return logStale("ready", gen) }
@@ -2199,9 +2202,20 @@ extension PlaybackEngine {
     if let since = detachedSince, t - since >= RecoveryPolicy.viewDetachGraceMs { noViewDue() }
     if let refresh = pendingRefresh, refresh.deadline <= t { refreshTimedOut(refresh) }
     if let ask = refreshAskAt, ask <= t { expiryDue() }
-    if let swap = pendingSwap, t - swap.startedAt >= RecoveryPolicy.swapTimeoutMs {
+    if let swap = pendingSwap, t >= swapDeadline(swap) {
       dropSwap(swap, reason: "timeout")
     }
+  }
+
+  /// When a switch is dropped: `swapTimeoutMs` to be ready (`swapLiveReadyMs`
+  /// live), then as long
+  /// again to take over (`swapAlignTimeoutMs` live, where the new audio is
+  /// lined up with what is heard first).
+  private func swapDeadline(_ swap: PendingSwap) -> Int64 {
+    guard let readyAt = swap.readyAt else {
+      return swap.startedAt + (isLive ? RecoveryPolicy.swapLiveReadyMs : RecoveryPolicy.swapTimeoutMs)
+    }
+    return readyAt + (isLive ? RecoveryPolicy.swapAlignTimeoutMs : RecoveryPolicy.swapTimeoutMs)
   }
 
   fileprivate func videoWakeups(_ candidates: inout [Int64]) {
@@ -2211,7 +2225,7 @@ extension PlaybackEngine {
     }
     if let refresh = pendingRefresh { candidates.append(refresh.deadline) }
     if let ask = refreshAskAt { candidates.append(ask) }
-    if let swap = pendingSwap { candidates.append(swap.startedAt + RecoveryPolicy.swapTimeoutMs) }
+    if let swap = pendingSwap { candidates.append(swapDeadline(swap)) }
   }
 
   /// The app came back (`appForegrounded`).

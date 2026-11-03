@@ -19,6 +19,7 @@ import {
   type HlsConstructor,
 } from '../../core/hls';
 import type { EngineDriver } from '../engine/PlaybackEngine';
+import type { AlignReading } from '../engine/LiveAligner';
 import type { StreamTitleFormat } from '../engine/StreamMetadata';
 import {
   engineError,
@@ -40,6 +41,7 @@ import { elementError } from './elementErrors';
 import type { HlsStream } from './HlsStream';
 import { MediaTracks } from './MediaTracks';
 import { TimedQueue } from './TimedQueue';
+import { createMediaElement } from './mediaElement';
 import { OwnSeeks } from './OwnSeeks';
 import { ItemFacts, elementReadyInfo } from './ItemFacts';
 import { isDashUri, shakaNamespace, type ShakaLike } from '../../core/shaka';
@@ -196,7 +198,7 @@ export class MediaElementDriver implements EngineDriver {
     private readonly titleFormat: StreamTitleFormat,
     readonly kind: MediaKind = 'audio'
   ) {
-    this._element = this.createElement();
+    this._element = createMediaElement(this.kind, this.loop);
   }
 
   get element(): AudioElementLike {
@@ -236,30 +238,6 @@ export class MediaElementDriver implements EngineDriver {
       this.dash?.live === true ||
       this.remux?.live === true
     );
-  }
-
-  private createElement(): AudioElementLike {
-    const document = browser().document!;
-    if (this.kind === 'video') {
-      const video = document.createElement('video');
-      video.preload = 'auto';
-      video.playsInline = true;
-      // iPhone Safari before `playsInline` was a property.
-      video.setAttribute('playsinline', '');
-      video.setAttribute('webkit-playsinline', '');
-      video.loop = this.loop;
-      Object.assign(video.style, {
-        width: '100%',
-        height: '100%',
-        display: 'block',
-        objectFit: 'contain',
-        backgroundColor: 'black',
-      });
-      return video;
-    }
-    const element = document.createElement('audio');
-    element.preload = 'auto';
-    return element;
   }
 
   // ── EngineDriver ──
@@ -454,6 +432,30 @@ export class MediaElementDriver implements EngineDriver {
     };
   }
 
+  /**
+   * What a live quality switch lines its audio up on (`LiveAligner`): only a
+   * progressive stream's buffered edge is the live edge (not HLS, DASH or a
+   * remux). `null`: not one.
+   */
+  alignReading(): (AlignReading & { reconnects: number }) | null {
+    if (this.hls || this.dash || this.remux || this.hlsPending) return null;
+    if (this.dashPending || this.remuxPending) return null;
+    const ranges = this._element.buffered;
+    const element = this._element;
+    return {
+      position: this.position(),
+      edge: ranges.length > 0 ? ranges.end(ranges.length - 1) : null,
+      playing: !element.paused && this.flowed && element.readyState >= 3,
+      reconnecting: this.stream?.reconnecting === true,
+      reconnects: this.stream?.reconnects ?? 0,
+    };
+  }
+
+  /** It plays from a MediaSource RNAP feeds: a seek within what it holds is exact. */
+  get feedsItself(): boolean {
+    return this.stream != null;
+  }
+
   destroy(): void {
     this.teardownItem();
     this.emptyElement();
@@ -636,7 +638,7 @@ export class MediaElementDriver implements EngineDriver {
       // A Web Audio-routed element plays a cross-origin source as silence:
       // continue on a fresh element (the old one stays with the sampler).
       this._element.pause();
-      this._element = this.createElement();
+      this._element = createMediaElement(this.kind, this.loop);
       this._element.volume = this.volume;
       this.applyRate();
       this.tapped = false;

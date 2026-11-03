@@ -110,6 +110,13 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
   private var packetClockFedAt: Int64 = 0
   private static let recentAudioLimit = 512 * 1024
   private var itemIsLive = false
+  /// The next open is a live switch's new connection: its audio is held back
+  /// (`BurstGate`) until the aligner says where it starts.
+  var holdBurst = false
+  private var burstGate: BurstGate?
+  /// The connection's audio the gate dropped, seconds: AVPlayer's time 0 is
+  /// here on the connection's timeline.
+  private var burstDropped = 0.0
   weak var observer: DriverObserver?
   private let titleFormat: StreamTitleFormat
 
@@ -226,6 +233,10 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
     pendingStart = request.startPosition.flatMap { $0 > 0 ? $0 : nil }
     if lastRequest?.source.uri != request.source.uri { forcedRemux = nil }
     lastRequest = request
+    let gate = holdBurst ? BurstGate() : nil
+    holdBurst = false
+    burstGate = nil
+    burstDropped = 0
 
     guard let url = Self.resolveURL(request.source.uri) else {
       let gen = generation
@@ -310,7 +321,9 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
           reconnect: request.allowReconnect,
           onRedirect: { [weak self] _ in
             DispatchQueue.main.async { self?.upstreamRedirected(gen) }
-          }))
+          },
+          gate: gate))
+      if proxied != nil { burstGate = gate }
     }
     itemIsLive = false
     feedLock.sync {
@@ -469,6 +482,29 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
     reading.isPlaying = player.timeControlStatus == .playing
     reading.rate = Double(rate)
     return reading
+  }
+
+  /// What a live quality switch lines its audio up on (`LiveAligner`), on the
+  /// connection's timeline: only a progressive stream the proxy relays has a
+  /// buffered edge that is the live edge. While its burst is held, nothing
+  /// has reached AVPlayer: the edge is what the gate holds. `nil`: not one.
+  func alignReading() -> LiveAligner.Reading? {
+    guard relaysAudio, remuxSession == nil else { return nil }
+    if let held = burstGate?.heldSeconds {
+      return LiveAligner.Reading(position: 0, edge: held, playing: false, ready: false)
+    }
+    return LiveAligner.Reading(
+      position: burstDropped + currentPosition,
+      edge: liveEdge.map { burstDropped + $0 },
+      playing: player.timeControlStatus == .playing,
+      ready: item?.status == .readyToPlay)
+  }
+
+  /// Lets a held burst through from `seconds` on its timeline (0: all of it).
+  func openBurst(from seconds: Double) {
+    guard let gate = burstGate, let proxied, gate.heldSeconds != nil else { return }
+    burstDropped = gate.requestOpen(from: seconds)
+    StreamProxy.shared.flushGate(proxied)
   }
 
   /// A quality switch's driver samples as `other` does (on or off is set apart).

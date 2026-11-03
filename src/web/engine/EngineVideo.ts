@@ -465,7 +465,7 @@ export abstract class EngineVideo extends EngineQuality {
     const ask = this.refreshAskAt;
     if (ask != null && ask <= t) this.expiryDue();
     const swap = this.pendingSwap;
-    if (swap != null && t - swap.startedAt >= RecoveryPolicy.SWAP_TIMEOUT_MS)
+    if (swap != null && t >= this.swapDeadline(swap))
       this.dropSwap(swap, 'timeout');
   }
 
@@ -478,8 +478,7 @@ export abstract class EngineVideo extends EngineQuality {
       candidates.push(this.pendingRefresh.deadline);
     if (this.refreshAskAt != null) candidates.push(this.refreshAskAt);
     const swap = this.pendingSwap;
-    if (swap != null)
-      candidates.push(swap.startedAt + RecoveryPolicy.SWAP_TIMEOUT_MS);
+    if (swap != null) candidates.push(this.swapDeadline(swap));
   }
 
   /** The app came back (`appForegrounded`). */

@@ -575,6 +575,85 @@
     ]
   },
   {
+    "name": "video: a switch's time to take over counts from its ready: 12 s more for a file",
+    "options": { "video": true },
+    "steps": [
+      { "view": {} },
+      { "call": "load", "uri": "https://cdn.example/ep01", "autoplay": true, "renditions": [{ "uri": "https://cdn.example/240.mp4", "height": 240, "bitrate": 400000 }, { "uri": "https://cdn.example/480.mp4", "height": 480, "bitrate": 1200000 }, { "uri": "https://cdn.example/720.mp4", "height": 720, "bitrate": 2500000 }] },
+      { "native": "ready", "duration": 600, "seekable": true },
+      { "native": "playing" },
+      { "call": "selectQuality", "id": "r2" },
+      { "advance": 5000 },
+      { "native": "ready", "gen": 2, "duration": 600, "seekable": true },
+      { "advance": 11999 },
+      { "expect": { "state": "playing", "gen": 1, "errors": [], "commands": ["open(gen=1,start=-,play=true,r=1)", "open(gen=2,start=0.0,play=true,r=2,swap)"] } },
+      { "advance": 1 },
+      { "expect": { "state": "playing", "gen": 1, "quality": "r1", "errors": ["QUALITY_SWITCH_FAILED:warning"], "commands": ["cancelSwap(gen=2)"] } }
+    ]
+  },
+  {
+    "name": "renditions: a live switch, which lines its audio up first, has 45 s from its ready to take over",
+    "steps": [
+      { "call": "load", "uri": "https://stream.example/", "live": true, "autoplay": true, "quality": "320", "renditions": [{ "id": "64", "uri": "https://stream.example/64", "bitrate": 64000 }, { "id": "192", "uri": "https://stream.example/192", "bitrate": 192000 }, { "id": "320", "uri": "https://stream.example/320", "bitrate": 320000 }] },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "call": "selectQuality", "id": "64" },
+      { "expect": { "state": "playing", "gen": 1, "quality": "320", "commands": ["open(gen=1,start=-,play=true,r=2)", "open(gen=2,start=-,play=true,r=0,swap)"] } },
+      { "advance": 11000 },
+      { "native": "ready", "gen": 2, "live": true },
+      { "advance": 44999 },
+      { "expect": { "state": "playing", "gen": 1, "quality": "320", "errors": [], "commands": [] } },
+      { "advance": 1 },
+      { "expect": { "state": "playing", "gen": 1, "quality": "320", "errors": ["QUALITY_SWITCH_FAILED:warning"], "commands": ["cancelSwap(gen=2)"] } }
+    ]
+  },
+  {
+    "name": "renditions: a live switch that has not been ready within 20 s is dropped (iOS holds its audio until the alignment knows where it starts)",
+    "steps": [
+      { "call": "load", "uri": "https://stream.example/", "live": true, "autoplay": true, "quality": "320", "renditions": [{ "id": "64", "uri": "https://stream.example/64", "bitrate": 64000 }, { "id": "192", "uri": "https://stream.example/192", "bitrate": 192000 }, { "id": "320", "uri": "https://stream.example/320", "bitrate": 320000 }] },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "call": "selectQuality", "id": "64" },
+      { "advance": 19999 },
+      { "expect": { "errors": [], "commands": ["open(gen=1,start=-,play=true,r=2)", "open(gen=2,start=-,play=true,r=0,swap)"] } },
+      { "advance": 1 },
+      { "expect": { "state": "playing", "gen": 1, "errors": ["QUALITY_SWITCH_FAILED:warning"], "commands": ["cancelSwap(gen=2)"] } }
+    ]
+  },
+  {
+    "name": "renditions: a pause while a live switch lines up its audio cancels it, and its late playing is stale",
+    "steps": [
+      { "call": "load", "uri": "https://stream.example/", "live": true, "autoplay": true, "quality": "320", "renditions": [{ "id": "64", "uri": "https://stream.example/64", "bitrate": 64000 }, { "id": "192", "uri": "https://stream.example/192", "bitrate": 192000 }, { "id": "320", "uri": "https://stream.example/320", "bitrate": 320000 }] },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "call": "selectQuality", "id": "64" },
+      { "native": "ready", "gen": 2, "live": true },
+      { "advance": 20000 },
+      { "call": "pause" },
+      { "expect": { "state": "paused", "gen": 1, "errors": [], "commands": ["open(gen=1,start=-,play=true,r=2)", "open(gen=2,start=-,play=true,r=0,swap)", "cancelSwap(gen=2)", "pause"] } },
+      { "native": "playing", "gen": 2 },
+      { "expect": { "state": "paused", "gen": 1, "quality": "320", "stats": { "qualitySwitches": 0 }, "commands": [] } }
+    ]
+  },
+  {
+    "name": "renditions: a quality picked while a live switch lines up replaces it; the replaced one's takeover is stale",
+    "steps": [
+      { "call": "load", "uri": "https://stream.example/", "live": true, "autoplay": true, "quality": "320", "renditions": [{ "id": "64", "uri": "https://stream.example/64", "bitrate": 64000 }, { "id": "192", "uri": "https://stream.example/192", "bitrate": 192000 }, { "id": "320", "uri": "https://stream.example/320", "bitrate": 320000 }] },
+      { "native": "ready", "live": true },
+      { "native": "playing" },
+      { "call": "selectQuality", "id": "64" },
+      { "native": "ready", "gen": 2, "live": true },
+      { "advance": 3000 },
+      { "call": "selectQuality", "id": "192" },
+      { "expect": { "state": "playing", "gen": 1, "quality": "320", "selectedQuality": "192", "commands": ["open(gen=1,start=-,play=true,r=2)", "open(gen=2,start=-,play=true,r=0,swap)", "cancelSwap(gen=2)", "open(gen=3,start=-,play=true,r=1,swap)"] } },
+      { "native": "playing", "gen": 2 },
+      { "expect": { "state": "playing", "gen": 1, "quality": "320", "stats": { "qualitySwitches": 0 }, "commands": [] } },
+      { "native": "ready", "gen": 3, "live": true },
+      { "native": "playing", "gen": 3 },
+      { "expect": { "state": "playing", "gen": 3, "quality": "192", "stats": { "qualitySwitches": 1 }, "errors": [], "commands": [] } }
+    ]
+  },
+  {
     "name": "video: a pause cancels a switch, its late events are stale, and the next open takes a fresh generation",
     "options": { "video": true },
     "steps": [

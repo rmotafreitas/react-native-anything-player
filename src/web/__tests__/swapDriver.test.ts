@@ -4,7 +4,7 @@
 // over on its first frame; a stalled picture, a late or failing file, an
 // abandoned switch and a released driver are handled on the same two elements.
 
-import { uninstall } from './FakeBrowser';
+import { ranges, uninstall } from './FakeBrowser';
 import {
   installVideo,
   recorder,
@@ -31,15 +31,22 @@ let shows: Array<[unknown, unknown]>;
 let proxy: DriverObserver;
 let driver: SwapDriver;
 
+/** The elements play from a MediaSource RNAP feeds (a stream it reads): `null` as they are. */
+let fed: boolean | null = null;
+
 function setup(optional = true): void {
   world = installVideo();
   rec = recorder(optional);
   shows = [];
+  const feeds = fed;
   driver = new SwapDriver(
     rec.observer,
     (observer) => {
       proxy = observer;
-      return new MediaElementDriver(observer, 'artist-title', 'video');
+      const made = new MediaElementDriver(observer, 'artist-title', 'video');
+      if (feeds != null)
+        Object.defineProperty(made, 'feedsItself', { get: () => feeds });
+      return made;
     },
     { show: (element, hidden) => shows.push([element, hidden]) }
   );
@@ -143,13 +150,22 @@ describe('a quality switch', () => {
     expect(shows).toHaveLength(3);
   });
 
-  it('starts the new file at once on a live stream', () => {
+  it('starts a live switch at once when what is heard has stalled', () => {
+    fed = true;
+    uninstall();
+    setup();
+    fed = null;
     playing();
     driver.open(swap(2, HD, null));
     const next = world.videos[1]!;
     next.becomeReady(Number.POSITIVE_INFINITY);
     expect(next.currentTime).toBe(0);
     expect(next.plays).toBe(1);
+    expect(rec.of('onNote')).toContainEqual([
+      2,
+      'quality switch not aligned',
+      { reason: 'stalled' },
+    ]);
   });
 
   it('starts the new file at once when the picture is stalled', () => {
@@ -236,8 +252,8 @@ describe('a quality switch', () => {
       (observer) => new MediaElementDriver(observer, 'artist-title', 'video'),
       { show: (element, hidden) => shows.push([element, hidden]) }
     );
-    playing();
-    driver.open(swap(2, HD, null));
+    playing().pause();
+    driver.open(swap(2, HD, 10));
     const next = world.videos[1]!;
     next.becomeReady(120);
     rec.calls.length = 0;
@@ -568,5 +584,251 @@ describe('what the elements report', () => {
     proxy.onReady(1, { duration: 5, isLive: false, seekable: true });
     expect(shows).toEqual([]);
     expect(rec.names()).toEqual(['onPlaying', 'onReady']);
+  });
+});
+
+/** The page runs in Firefox (or, `false`, in Chrome as the fake browser does). */
+function firefox(on = true): void {
+  (globalThis.navigator as unknown as { userAgent: string }).userAgent = on
+    ? 'Mozilla/5.0 (X11; Linux x86_64; rv:150.0) Gecko/20100101 Firefox/150.0'
+    : 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
+}
+
+describe('a live switch', () => {
+  beforeEach(() => {
+    uninstall();
+    fed = true;
+    setup();
+  });
+
+  afterEach(() => {
+    fed = null;
+  });
+
+  /**
+   * Two connections of one station on the fake elements: the old one heard
+   * (`oldLag` s behind its buffered edge), the new one with a burst of
+   * `burst` s arriving at 8× real time, then at real time. Each tick moves
+   * both playheads as the elements would and the clock by 40 ms.
+   */
+  function stations(oldLag: number, burst: number) {
+    const old = playing(SD, 50);
+    old.readyState = 4;
+    driver.open(swap(2, HD, null));
+    const next = world.videos[1]!;
+    let t = 0;
+    let flowing = false;
+    const update = () => {
+      old.plainBuffered = ranges([[0, old.currentTime + oldLag]]);
+      const received = Math.min(8 * t, burst + t);
+      next.plainBuffered = ranges([[0, received]]);
+      next.readyState = 4;
+    };
+    update();
+    next.becomeReady(Number.POSITIVE_INFINITY);
+    next.readyState = 4;
+    const tick = (ms = 40) => {
+      for (let done = 0; done < ms; done += 40) {
+        t += 0.04;
+        if (driver.element === old && !old.paused) old.currentTime += 0.04;
+        if (!next.paused) {
+          if (!flowing) next.startPlaying();
+          flowing = true;
+          next.currentTime += 0.04 * next.playbackRate;
+        } else {
+          flowing = false;
+        }
+        update();
+        jest.advanceTimersByTime(40);
+      }
+    };
+    return { old, next, tick };
+  }
+
+  it('moves a new connection that is behind within what it holds, holds it, and takes over by volume alone', () => {
+    firefox();
+    driver.setVolume(0.7);
+    const { old, next, tick } = stations(1.6, 17);
+    rec.calls.length = 0;
+    for (let i = 0; i < 400 && next.currentTime === 0; i++) tick(40);
+    // Lined up first: the burst settled, then it was moved just ahead and is held.
+    expect(next.currentTime).toBeGreaterThan(5);
+    expect(next.paused).toBe(true);
+    // Firefox: not muted but −80 dB (its clock slips when a silent element is heard again).
+    expect(next.muted).toBe(false);
+    expect(next.volume).toBe(0.0001);
+    expect(driver.element).toBe(old);
+    expect(rec.of('onPlaying')).toEqual([]);
+    const before = driver.sample().position;
+    for (let i = 0; i < 400 && driver.element !== next; i++) tick(40);
+    expect(driver.element).toBe(next);
+    expect(next.muted).toBe(false);
+    expect(next.volume).toBe(0.7);
+    expect(next.playbackRate).toBe(1);
+    // Muted at once (iPhone Safari ignores the volume), released once its
+    // last audio is out, and unmuted for the next switch.
+    expect(old.muted).toBe(true);
+    expect(old.paused).toBe(false);
+    jest.advanceTimersByTime(300);
+    expect(old.src).toBe('');
+    expect(old.paused).toBe(true);
+    expect(old.muted).toBe(false);
+    expect(rec.of('onPlaying')).toEqual([[2]]);
+    expect(rec.of('onDiscontinuity')).toEqual([]);
+    const aligned = rec
+      .of('onNote')
+      .find((call) => call[1] === 'quality switch aligned');
+    expect(aligned).toBeDefined();
+    // What the new one plays is what the old one did: k maps the timelines.
+    const details = aligned![2] as { residual: string; offset: string };
+    expect(Math.abs(Number(details.residual))).toBeLessThanOrEqual(0.05);
+    expect(Number(details.offset)).toBeCloseTo(17 - 50 - 1.6, 0);
+    // The position goes on (it does not jump to the new connection's time).
+    expect(driver.sample().position).toBeGreaterThan(before);
+    expect(driver.sample().position).toBeLessThan(before + 5);
+  });
+
+  it('runs a new connection that is behind faster in WebKit rather than moving it', () => {
+    (globalThis.navigator as unknown as { userAgent: string }).userAgent =
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15';
+    const { next, tick } = stations(1.6, 17);
+    for (let i = 0; i < 400 && next.paused; i++) tick(40);
+    expect(next.playbackRate).toBe(4);
+    expect(next.muted).toBe(true);
+    for (let i = 0; i < 600 && driver.element !== next; i++) tick(40);
+    expect(driver.element).toBe(next);
+    expect(rec.of('onDiscontinuity')).toEqual([]);
+  });
+
+  it('keeps catching up at its multiple of the app rate when the app changes it', () => {
+    (globalThis.navigator as unknown as { userAgent: string }).userAgent =
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15';
+    const { next, tick } = stations(1.6, 17);
+    for (let i = 0; i < 400 && next.paused; i++) tick(40);
+    expect(next.playbackRate).toBe(4);
+    driver.setRate(1.25);
+    expect(next.playbackRate).toBe(5);
+  });
+
+  it('tells the title the new element reached once it is heard', () => {
+    const { next, tick } = stations(17, 1.6);
+    tick(4_000);
+    const metadata = { title: 'Song B', artist: null, raw: {} } as never;
+    proxy.onStreamMetadata(2, metadata);
+    for (let i = 0; i < 600 && driver.element !== next; i++) tick(40);
+    expect(driver.element).toBe(next);
+    expect(rec.of('onStreamMetadata').at(-1)).toEqual([2, metadata]);
+  });
+
+  it('does not tell an older title again when the old element told a later one since', () => {
+    const { next, tick } = stations(17, 1.6);
+    tick(4_000);
+    const a = { title: 'Song A', artist: null, raw: {} } as never;
+    const b = { title: 'Song B', artist: null, raw: {} } as never;
+    proxy.onStreamMetadata(2, a);
+    proxy.onStreamMetadata(1, b);
+    for (let i = 0; i < 600 && driver.element !== next; i++) tick(40);
+    expect(driver.element).toBe(next);
+    expect(rec.of('onStreamMetadata').at(-1)).toEqual([1, b]);
+  });
+
+  it('mutes the new element outside Firefox', () => {
+    firefox(false);
+    const { next, tick } = stations(17, 1.6);
+    tick(5_000);
+    expect(next.muted).toBe(true);
+    for (let i = 0; i < 600 && driver.element !== next; i++) tick(40);
+    expect(driver.element).toBe(next);
+    expect(next.muted).toBe(false);
+  });
+
+  it('mutes the new element in Firefox too where the page may not play audible media yet', async () => {
+    firefox();
+    const { next, tick } = stations(1.6, 17);
+    // Audible playback needs the user's activation (WebKit): refused.
+    const play = next.play.bind(next);
+    next.play = () =>
+      next.muted
+        ? play()
+        : Promise.reject(
+            Object.assign(new Error('blocked'), { name: 'NotAllowedError' })
+          );
+    for (let i = 0; i < 400 && next.paused; i++) {
+      tick(40);
+      await Promise.resolve();
+      await Promise.resolve();
+    }
+    expect(next.muted).toBe(true);
+    expect(next.paused).toBe(false);
+    for (let i = 0; i < 400 && driver.element !== next; i++) tick(40);
+    expect(driver.element).toBe(next);
+    expect(next.muted).toBe(false);
+  });
+
+  it('switches a station on a plain <audio> as before, and reports the jump', () => {
+    fed = false;
+    uninstall();
+    setup();
+    const { next, tick } = stations(1.6, 17);
+    expect(next.paused).toBe(false);
+    expect(rec.of('onNote')).toContainEqual([
+      2,
+      'quality switch not aligned',
+      { reason: 'plain' },
+    ]);
+    tick(40);
+    expect(driver.element).toBe(next);
+    expect(rec.of('onDiscontinuity').map((call) => call[0])).toEqual([2]);
+  });
+
+  it('holds a new connection that is ahead until the old one gets there', () => {
+    const { old, next, tick } = stations(17, 1.6);
+    tick(10_000);
+    expect(next.paused).toBe(true);
+    expect(driver.element).toBe(old);
+    tick(10_000);
+    expect(driver.element).toBe(next);
+    expect(rec.of('onDiscontinuity')).toEqual([]);
+  });
+
+  it('takes over at once, as a discontinuity, when the old one stalls while it lines up', () => {
+    const { old, next, tick } = stations(17, 1.6);
+    tick(5_000);
+    expect(next.paused).toBe(true);
+    old.readyState = 2;
+    tick(40);
+    expect(next.paused).toBe(false);
+    expect(rec.of('onNote')).toContainEqual([
+      2,
+      'quality switch not aligned',
+      { reason: 'stalled' },
+    ]);
+    tick(40);
+    expect(driver.element).toBe(next);
+    expect(rec.of('onPlaying').at(-1)).toEqual([2]);
+    expect(rec.of('onDiscontinuity')).toHaveLength(1);
+    expect(rec.of('onDiscontinuity')[0]![0]).toBe(2);
+  });
+
+  it('gives up lining up when a connection jumps', () => {
+    const { next, tick } = stations(17, 1.6);
+    tick(5_000);
+    expect(next.paused).toBe(true);
+    proxy.onDiscontinuity(1, 40);
+    // Held: it plays at once and takes over on its first audio.
+    expect(next.paused).toBe(false);
+    tick(40);
+    expect(driver.element).toBe(next);
+    expect(rec.of('onDiscontinuity').map((call) => call[0])).toEqual([1, 2]);
+  });
+
+  it('is dropped with the switch: a pause cancels the lining up', () => {
+    const { old, next, tick } = stations(17, 1.6);
+    tick(5_000);
+    driver.cancelSwap(2);
+    tick(20_000);
+    expect(driver.element).toBe(old);
+    expect(next.src).toBe('');
+    expect(rec.of('onPlaying').filter((call) => call[0] === 2)).toEqual([]);
   });
 });

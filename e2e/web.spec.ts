@@ -325,3 +325,52 @@ test('the sleep timer fades out and pauses; fades never change the volume', asyn
   await expect.poll(() => state(page), { timeout: 5_000 }).toBe('paused');
   expect(await diagnostics(page)).toContain('fade-out');
 });
+
+test('lines a live switch between Icecast mounts up with what is heard', async ({
+  page,
+}) => {
+  test.skip(!(await mseMp3(page)), NO_MSE);
+  // A click: the page may play, and raise the new element's volume, at once.
+  await page.mouse.click(1, 1);
+  await page.evaluate(async (stream) => {
+    const p = window.rnap.player;
+    await p.load(
+      {
+        live: true,
+        renditions: ['64', '192', '320'].map((id) => ({
+          id,
+          uri: `${stream}/radio/${id}`,
+          bitrate: Number(id) * 1000,
+        })),
+      },
+      { quality: '320' }
+    );
+    await p.play();
+  }, 'http://localhost:8765');
+  await expect.poll(() => state(page), { timeout: 15_000 }).toBe('playing');
+  const quality = () => page.evaluate(() => window.rnap.player.status.quality);
+  const position = () =>
+    page.evaluate(() => window.rnap.player.getProgress().position);
+  const aligned = async () =>
+    (await diagnostics(page)).filter((e) => e === 'quality switch aligned')
+      .length;
+  await page.waitForTimeout(2_000);
+
+  // 320 → 64 kbps: the new connection starts 6.5 s further behind live (the
+  // test server's 64 KiB burst); it is moved ahead and held, then takes over.
+  const before = await position();
+  await page.evaluate(() => window.rnap.player.selectQuality('64'));
+  await expect.poll(quality, { timeout: 30_000 }).toBe('64');
+  expect(await aligned()).toBe(1);
+  // The position goes on: it does not restart with the new connection.
+  const after = await position();
+  expect(after).toBeGreaterThan(before);
+  expect(after - before).toBeLessThan(30);
+
+  // 64 → 320 kbps: the new connection is ahead; it is held until what is heard gets there.
+  await page.evaluate(() => window.rnap.player.selectQuality('320'));
+  await expect.poll(quality, { timeout: 40_000 }).toBe('320');
+  expect(await aligned()).toBe(2);
+  expect(await events(page, 'discontinuity')).toHaveLength(0);
+  expect(await diagnostics(page)).not.toContain('quality switch not aligned');
+});

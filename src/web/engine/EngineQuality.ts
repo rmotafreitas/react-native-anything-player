@@ -32,6 +32,8 @@ interface PendingSwap {
   generation: number;
   rendition: number;
   startedAt: number;
+  /** When the new file was first ready: the time it has to take over counts from here. */
+  readyAt: number | null;
   /** What the new file reported when ready: the item's facts once it takes over. */
   info: ReadyInfo | null;
 }
@@ -264,8 +266,32 @@ export abstract class EngineQuality extends EngineFades {
   }
 
   protected swapReady(info: ReadyInfo): void {
-    if (this.pendingSwap != null) this.pendingSwap.info = info;
+    const swap = this.pendingSwap;
+    if (swap != null) {
+      swap.info = info;
+      swap.readyAt ??= this.now;
+    }
     this.swapNote('ready');
+  }
+
+  /**
+   * When a switch is dropped: `SWAP_TIMEOUT_MS` to be ready
+   * (`SWAP_LIVE_READY_MS` live), then `SWAP_TIMEOUT_MS`
+   * again to take over (`SWAP_ALIGN_TIMEOUT_MS` live, where the new audio is
+   * lined up with what is heard first).
+   */
+  protected swapDeadline(swap: PendingSwap): number {
+    if (swap.readyAt == null)
+      return (
+        swap.startedAt +
+        (this.isLive
+          ? RecoveryPolicy.SWAP_LIVE_READY_MS
+          : RecoveryPolicy.SWAP_TIMEOUT_MS)
+      );
+    const takeOver = this.isLive
+      ? RecoveryPolicy.SWAP_ALIGN_TIMEOUT_MS
+      : RecoveryPolicy.SWAP_TIMEOUT_MS;
+    return swap.readyAt + takeOver;
   }
 
   protected cancelSwap(reason: string): void {
@@ -601,6 +627,7 @@ export abstract class EngineQuality extends EngineFades {
       generation,
       rendition: target,
       startedAt: this.now,
+      readyAt: null,
       info: null,
     };
     this.log('quality switch', { to: `r${target}`, cause });

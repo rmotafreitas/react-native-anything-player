@@ -17,6 +17,12 @@
 //   ?dropAfter=S        destroy the socket after S s
 //   ?endAfter=S         end the response cleanly after S s
 //   ?slow=BYTES_PER_S   throttle below the bitrate (buffering forever)
+// Renditions:   GET /radio/320, /radio/192, /radio/64  one station as three
+//               Icecast mounts (MP3, generated; /radio/64aac: the same as
+//               ADTS AAC): every connection starts
+//               with the most recent 64 KiB like Icecast's burst, so it is
+//               further behind live at a lower bitrate; the same controls
+//   ?burst=BYTES        the burst's size instead
 //   ?status=503         answer with this HTTP status instead
 //   ?delay=MS           wait before sending headers
 //   ?noCors=1           omit CORS headers (browsers must fall back to <audio>)
@@ -183,6 +189,30 @@ const LIVE_STREAMS = {
       }
     : {}),
 };
+/** One station as three Icecast mounts (generate-media.sh), on one on-air timeline. */
+for (const kbps of [320, 192, 64]) {
+  const name = `radio-${kbps}.mp3`;
+  if (!existsSync(join(here, 'media', name))) continue;
+  const body = media(name);
+  LIVE_STREAMS[`/radio/${kbps}`] = {
+    body,
+    type: 'audio/mpeg',
+    // The file's own pace (120 s): every mount stays on one on-air timeline.
+    rate: body.length / 120,
+    burst: 65_536,
+    frames: null,
+  };
+}
+const fileSize = (name) => readFileSync(join(here, 'media', name)).length;
+if (existsSync(join(here, 'media', 'radio-64aac.aac'))) {
+  LIVE_STREAMS['/radio/64aac'] = {
+    body: media('radio-64aac.aac'),
+    type: 'audio/aac',
+    rate: fileSize('radio-64aac.aac') / 120,
+    burst: 65_536,
+    frames: null,
+  };
+}
 const TICK_MS = 100;
 const MAX_DELAY_MS = 60_000;
 const STARTED_AT = Date.now();
@@ -229,8 +259,9 @@ function metadataBlock(text, charset, malformed, host) {
 
 function liveStream(req, res, url) {
   const q = url.searchParams;
-  const { body: program, type: contentType, rate: bitrate } =
-    LIVE_STREAMS[url.pathname];
+  const mount = LIVE_STREAMS[url.pathname];
+  const { body: program, type: contentType, rate: bitrate } = mount;
+  const burst = mount.burst == null ? null : Number(q.get('burst') ?? mount.burst);
   const status = Number(q.get('status') ?? 200);
   const delay = Number(q.get('delay') ?? state.delay);
   if (!Number.isFinite(delay) || delay < 0 || delay > MAX_DELAY_MS) {
@@ -263,7 +294,8 @@ function liveStream(req, res, url) {
     titleEvery <= 0 ||
     !Number.isFinite(rate) ||
     rate <= 0 ||
-    rate > bitrate
+    rate > bitrate ||
+    (burst != null && (!Number.isSafeInteger(burst) || burst < 0 || burst > program.length / 2))
   ) {
     res.writeHead(400);
     res.end('invalid stream controls');
@@ -310,6 +342,18 @@ function liveStream(req, res, url) {
     const openedAt = Date.now();
     // Prefill ~2 s like real servers do (fast start), then real time.
     let budget = bitrate * 2;
+    if (burst != null) {
+      // Icecast: the most recent `burst` bytes at once (from a frame), then
+      // real time. The live point stays where it is: the connection starts
+      // that much behind it.
+      mount.frames ??= (contentType === 'audio/aac' ? adtsFrames(program) : mp3Frames(program).map(([at]) => at));
+      const want = (offset - burst + program.length) % program.length;
+      const start = mount.frames.find((at) => at >= want) ?? 0;
+      budget = (offset - start + program.length) % program.length;
+      offset = start;
+      // Where in the program it starts: what a recording of it is checked against.
+      record({ kind: 'burst', id: conn.id, programStart: offset / bitrate, burstSeconds: budget / bitrate });
+    }
 
     const timer = setInterval(() => {
       const elapsed = (Date.now() - openedAt) / 1000;
@@ -411,6 +455,25 @@ function mp3Frames(buffer) {
     }
     const length = Math.floor((144 * bitrate) / rate) + ((buffer[at + 2] >> 1) & 1);
     frames.push([at, length]);
+    at += length;
+  }
+  return frames;
+}
+
+/** Frame offsets of an ADTS AAC file. */
+function adtsFrames(buffer) {
+  const frames = [];
+  for (let at = 0; at + 7 <= buffer.length; ) {
+    if (buffer[at] !== 0xff || (buffer[at + 1] & 0xf6) !== 0xf0) {
+      at += 1;
+      continue;
+    }
+    const length = ((buffer[at + 3] & 3) << 11) | (buffer[at + 4] << 3) | (buffer[at + 5] >> 5);
+    if (length < 7) {
+      at += 1;
+      continue;
+    }
+    frames.push(at);
     at += length;
   }
   return frames;

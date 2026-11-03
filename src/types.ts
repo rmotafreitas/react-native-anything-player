@@ -711,7 +711,9 @@ export interface PlayerEventMap {
    * the same source (a dropped connection replaced without stopping). A new
    * Icecast/Shoutcast connection starts with the server's burst of recent
    * audio, so what is heard repeats or skips — no state change accompanies
-   * it. Reported when the jump becomes audible.
+   * it. Also reported when a live quality switch between separate mounts
+   * (`renditions`) could not be lined up with what is heard. Reported when
+   * the jump becomes audible.
    */
   discontinuity: (event: Discontinuity) => void;
   /** `status.route` changed (AirPlay chosen, headphones unplugged, casting started…). */

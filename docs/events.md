@@ -44,7 +44,7 @@ off(); // unsubscribe
 | `progress` | `Progress` | every `progressInterval` ms while playing, only when that option is set |
 | `routeChange` | `(route, previous)` | `status.route` changed: AirPlay or Bluetooth chosen, headphones unplugged, casting started or ended |
 | `searchPlay` | `{ request, item }` | a voice assistant or `playFromSearch()` started a catalog item on this player ([Voice assistants](voice.md)) |
-| `discontinuity` | `{ position, timestamp }` | a live stream's audio jumped: playback moved onto a fresh connection of the same source, with no state change. Reported when it becomes audible |
+| `discontinuity` | `{ position, timestamp }` | a live stream's audio jumped: playback moved onto a fresh connection of the same source, or a live quality switch could not be lined up with what is heard ([live renditions](playback.md#live-renditions)), with no state change. Reported when it becomes audible |
 | `sleep` | `{ reason: 'fired', timestamp }` | the sleep timer ran out: the player paused (if it was playing) and `status.sleepAt` is back to `null` ([Sleep timer](playback.md#sleep-timer)) |
 | `cues` | `SubtitleCue[]` | video: the subtitles on screen changed ([Subtitles](subtitles.md#drawing-them-yourself)) |
 | `firstFrame` | – | video: the first frame of the source was shown |

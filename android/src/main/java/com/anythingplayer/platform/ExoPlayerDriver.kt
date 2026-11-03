@@ -37,6 +37,7 @@ import androidx.media3.extractor.metadata.id3.TextInformationFrame
 import com.anythingplayer.core.EngineDriver
 import com.anythingplayer.core.ErrorCode
 import com.anythingplayer.core.InterruptionReason
+import com.anythingplayer.core.LiveAligner
 import com.anythingplayer.core.MediaTrack
 import com.anythingplayer.core.OpenRequest
 import com.anythingplayer.core.PlaybackSample
@@ -574,6 +575,7 @@ internal class ExoPlayerDriver(
   // ── EngineDriver ──
 
   override fun open(request: OpenRequest) {
+    alignEdge = 0.0
     val p = ensurePlayer()
     // Close the previous item's sockets now, even a read blocked on a dead one.
     cancelCallsExcept(emptySet())
@@ -789,6 +791,44 @@ internal class ExoPlayerDriver(
       rate.toDouble(),
     )
   }
+
+  /**
+   * What a live quality switch lines its audio up on ([LiveAligner]): only a
+   * progressive stream's buffered edge is the live edge (an HLS or DASH
+   * source has a manifest). `null`: not one, or nothing loaded.
+   */
+  fun alignReading(): LiveAligner.Reading? {
+    val p = player ?: return null
+    if (p.currentManifest != null || p.mediaItemCount == 0) return null
+    val edge = p.bufferedPosition / 1000.0
+    // An edge that fell: ExoPlayer restarted the stream after a load error,
+    // a fresh connection with a burst of its own (reported for no item it has not played).
+    val restarted = edge < alignEdge - 0.5
+    alignEdge = edge
+    return LiveAligner.Reading(
+      position = p.currentPosition / 1000.0,
+      edge = edge,
+      playing = p.isPlaying,
+      // A fresh connection is queued: this one ended, its edge stopped.
+      reconnecting = restarted || p.mediaItemCount - p.currentMediaItemIndex > 1,
+    )
+  }
+
+  /** The last edge [alignReading] saw (per open, and per alignment). */
+  private var alignEdge = 0.0
+
+  /** An alignment starts: an edge from before it says nothing. */
+  fun resetAlignEdge() {
+    alignEdge = 0.0
+  }
+
+  /** A progressive stream (no HLS or DASH manifest, whose live window moves its position by segments). */
+  val isProgressive: Boolean
+    get() = player?.currentManifest == null
+
+  /** The item playing: a live stream's reconnection is a new one, its position from 0 again. */
+  val currentItemId: String?
+    get() = player?.currentMediaItem?.mediaId
 
   /** Destroys the native player (frees codecs, sockets and wake locks). */
   fun destroy() {
