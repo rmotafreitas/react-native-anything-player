@@ -173,9 +173,6 @@ final class LiveAligner {
   /// The last gap read (new − old, seconds): what a switch now would skip (+) or repeat (−).
   private(set) var gap: Double?
 
-  /// Whether it answered take over or fall back.
-  var finished: Bool { done }
-
   /// A connection jumped (either player): the mapping no longer holds.
   func interrupt() -> Action { fallback("discontinuity") }
 

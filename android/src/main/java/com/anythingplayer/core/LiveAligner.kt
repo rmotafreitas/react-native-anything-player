@@ -116,10 +116,6 @@ class LiveAligner(private val caps: Caps) {
   var gap: Double? = null
     private set
 
-  /** Whether it answered take over or fall back. */
-  val finished: Boolean
-    get() = done
-
   /** A connection jumped (either player): the mapping no longer holds. */
   fun interrupt(): Action = fallback("discontinuity")
 

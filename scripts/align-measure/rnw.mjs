@@ -5,7 +5,7 @@
 //
 //   bash scripts/build-expo-web.sh && node example-web/serve.mjs 4400 example-expo/dist-web &
 //   node scripts/stream-server/server.mjs &
-//   node scripts/align-measure/rnw.mjs [chromium|firefox|webkit] [--hls]
+//   node scripts/align-measure/rnw.mjs [chromium|firefox|webkit] [--hls|--ts]
 import { execFileSync, spawn } from 'node:child_process';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -14,7 +14,7 @@ import { chromium, firefox, webkit } from '@playwright/test';
 import { jumps, readWav, seconds } from './analyze.mjs';
 
 const browserName = process.argv.find((a, i) => i >= 2 && !a.startsWith('--')) ?? 'chromium';
-const scenario = process.argv.includes('--hls') ? 'live-hls-renditions' : 'live-renditions';
+const scenario = process.argv.includes('--hls') ? 'live-hls-renditions' : process.argv.includes('--ts') ? 'live-ts-renditions' : 'live-renditions';
 const PAGE = process.env.PAGE ?? 'http://localhost:4400/';
 const SINK = 'rnap_align';
 

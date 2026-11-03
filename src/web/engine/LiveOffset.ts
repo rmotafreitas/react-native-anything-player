@@ -19,8 +19,9 @@
 // not risen for `SETTLE_MS` (the connect burst has arrived) and has been read
 // that long. For a reading with a clock that point is `playhead + offset −
 // time`, the playhead on the stream's clock (`programDate`) when it has one:
-// it holds still while paused, at any rate, and as a live window slides. Twins: `ios/Core/LiveOffset.swift`,
-// `android/.../core/LiveOffset.kt`, against `conformance/align/offset.json`.
+// it holds still while paused, at any rate, and as a live window slides.
+// Twins: `ios/Core/LiveOffset.swift`, `android/.../core/LiveOffset.kt`,
+// against `conformance/align/offset.json`.
 
 /** One reading of the player, on its reported timeline (seconds). */
 export interface OffsetReading {

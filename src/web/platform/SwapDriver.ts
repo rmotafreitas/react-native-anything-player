@@ -429,20 +429,12 @@ export class SwapDriver implements LocalDriver {
   private rendezvous(): void {
     const { pending, spare } = this;
     if (pending == null || spare == null || !pending.ready) return;
-    if (pending.target == null) return this.startAligning(pending, spare);
-    const reading = this.current.progress();
     const target = pending.target;
-    // Live, a stalled picture, or one already past it: no reason to wait.
-    if (
-      target == null ||
-      !reading.isPlaying ||
-      reading.position >= target - 0.04
-    ) {
-      if (
-        target != null &&
-        reading.position > target + 0.3 &&
-        reading.isPlaying
-      ) {
+    if (target == null) return this.startAligning(pending, spare);
+    const reading = this.current.progress();
+    // A stalled picture, or one already past it: no reason to wait.
+    if (!reading.isPlaying || reading.position >= target - 0.04) {
+      if (reading.position > target + 0.3 && reading.isPlaying) {
         // Too slow to open: try again a little further ahead.
         pending.target = reading.position + LOOKAHEAD_S;
         spare.seek(pending.target, true);
@@ -497,7 +489,6 @@ export class SwapDriver implements LocalDriver {
       next == null ||
       (old.clock == null) !== (next.clock == null)
     ) {
-      // prettier-ignore
       this.note(pending, 'not aligned', { reason: 'adaptive' });
       spare.play();
       return;

@@ -21,7 +21,8 @@ package com.anythingplayer.core
  * not risen for [SETTLE_MS] (the connect burst has arrived) and has been read
  * that long. For a reading with a clock that point is `playhead + offset −
  * time`, the playhead on the stream's clock (`programDate`) when it has one:
- * it holds still while paused, at any rate, and as a live window slides. Twin of `src/web/engine/LiveOffset.ts` and `ios/Core/LiveOffset.swift`,
+ * it holds still while paused, at any rate, and as a live window slides.
+ * Twin of `src/web/engine/LiveOffset.ts` and `ios/Core/LiveOffset.swift`,
  * against `conformance/align/offset.json`.
  */
 class LiveOffset {

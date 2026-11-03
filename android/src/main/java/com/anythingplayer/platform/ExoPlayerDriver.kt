@@ -807,9 +807,9 @@ internal class ExoPlayerDriver(
   }
 
   /**
-   * What a live quality switch lines its audio up on ([LiveAligner]): only a
-   * progressive stream's buffered edge is the live edge (an HLS or DASH
-   * source has a manifest). `null`: not one, or nothing loaded.
+   * What a live quality switch lines its audio up on ([LiveAligner]): a
+   * progressive stream's buffered edge (the live edge), or an HLS or DASH
+   * live window's program date. `null`: neither, or nothing loaded.
    */
   fun alignReading(): LiveAligner.Reading? {
     val p = player ?: return null

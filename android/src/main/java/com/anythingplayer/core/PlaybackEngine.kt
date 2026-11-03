@@ -2211,9 +2211,9 @@ class PlaybackEngine(
   }
 
   /**
-   * When a switch is dropped: `SWAP_TIMEOUT_MS` to be ready (`SWAP_LIVE_READY_MS` live), then as long
-   * again to take over (`SWAP_ALIGN_TIMEOUT_MS` live, where the new audio is
-   * lined up with what is heard first).
+   * When a switch is dropped: `SWAP_TIMEOUT_MS` to be ready (`SWAP_LIVE_READY_MS`
+   * live), then as long again to take over (`SWAP_ALIGN_TIMEOUT_MS` live,
+   * where the new audio is lined up with what is heard first).
    */
   private fun swapDeadline(swap: PendingSwap): Long {
     val readyAt =

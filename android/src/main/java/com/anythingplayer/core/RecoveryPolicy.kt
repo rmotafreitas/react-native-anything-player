@@ -78,8 +78,8 @@ object RecoveryPolicy {
 
   /**
    * Once ready, a live switch takes over within this: it first lines its
-   * audio up with what is heard (the driver gives up and switches anyway
-   * sooner, `LiveAligner.BUDGET_MS`).
+   * audio up with what is heard (the driver gives up sooner, `LiveAligner.BUDGET_MS`:
+   * a switch the player needs then goes ahead, one that can wait is refused).
    */
   const val SWAP_ALIGN_TIMEOUT_MS = 45_000L
 

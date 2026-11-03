@@ -2208,9 +2208,8 @@ extension PlaybackEngine {
   }
 
   /// When a switch is dropped: `swapTimeoutMs` to be ready (`swapLiveReadyMs`
-  /// live), then as long
-  /// again to take over (`swapAlignTimeoutMs` live, where the new audio is
-  /// lined up with what is heard first).
+  /// live), then as long again to take over (`swapAlignTimeoutMs` live,
+  /// where the new audio is lined up with what is heard first).
   private func swapDeadline(_ swap: PendingSwap) -> Int64 {
     guard let readyAt = swap.readyAt else {
       return swap.startedAt + (isLive ? RecoveryPolicy.swapLiveReadyMs : RecoveryPolicy.swapTimeoutMs)

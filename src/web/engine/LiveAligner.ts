@@ -71,15 +71,21 @@ export interface AlignCaps {
 }
 
 export type AlignFallback =
+  /** The edges never settled (the connect burst still arriving). */
   | 'unsettled'
   /** The old player stalls (a switch the player needs). */
   | 'stalled'
   /** The new player did not start playing within its budget. */
   | 'starting'
+  /** A dropped connection is being replaced. */
   | 'reconnecting'
+  /** A connection jumped (`interrupt`). */
   | 'discontinuity'
+  /** Not lined up within `BUDGET_MS`. */
   | 'timeout'
+  /** The new player is further ahead than a hold within the budget. */
   | 'ahead'
+  /** The new player is behind and cannot catch up (no faster rate, no jump). */
   | 'behind';
 
 export type AlignAction =
@@ -180,11 +186,6 @@ export class LiveAligner {
   /** The last gap read (new − old, seconds): what a switch now would skip (+) or repeat (−). */
   get gap(): number | null {
     return this.lastGap;
-  }
-
-  /** Whether it answered `takeOver` or `fallback`. */
-  get finished(): boolean {
-    return this.done;
   }
 
   /** A connection jumped (either player): the mapping no longer holds. */

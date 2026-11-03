@@ -49,10 +49,12 @@ private val CLOCK_CAPS = ALIGN_CAPS.copy(jump = LiveAligner.Jump.ALWAYS, jumpLea
  *
  * A live stream has no shared timeline: each connection starts with its
  * server's burst of recent audio. There the new player is lined up with what
- * is heard first ([LiveAligner]): held, or run faster or slower, muted, until
- * it plays what the old one plays; then it takes over by volume alone. When it
- * cannot be lined up, it takes over as before and the app hears a
- * `discontinuity`. Positions stay continuous across a live switch.
+ * is heard first ([LiveAligner]), by its buffered edge (a progressive stream)
+ * or its program dates (HLS, DASH: moved by a seek too): held, or run faster
+ * or slower, muted, until it plays what the old one plays; then it takes over
+ * by volume alone. One that cannot be lined up goes ahead with a
+ * `discontinuity` when the player needs it, else is refused. Positions stay
+ * continuous across a live switch.
  */
 internal class SwapDriver(
   private val observer: DriverObserver,
@@ -271,12 +273,11 @@ internal class SwapDriver(
     val waiting = pending ?: return
     val next = spare ?: return
     if (!waiting.ready) return
-    if (waiting.target == null) return startAligning(waiting, next)
+    val target = waiting.target ?: return startAligning(waiting, next)
     val reading = current.progress()
-    val target = waiting.target
-    // Live, a stalled picture, or one already at the point: no reason to wait.
-    if (target == null || !reading.isPlaying || reading.position >= target - 0.04) {
-      if (target != null && reading.isPlaying && reading.position > target + 0.3) {
+    // A stalled picture, or one already at the point: no reason to wait.
+    if (!reading.isPlaying || reading.position >= target - 0.04) {
+      if (reading.isPlaying && reading.position > target + 0.3) {
         // Too slow to open: try again a little further ahead.
         waiting.target = reading.position + LOOKAHEAD_S
         next.seek(waiting.target!!, true)
@@ -293,7 +294,7 @@ internal class SwapDriver(
   private val aligning: Boolean
     get() = pending?.let { it.aligner != null && !it.fallback } ?: false
 
-  /** Live: a progressive stream on both sides is lined up; anything else starts at once. */
+  /** Live: a progressive stream, or HLS / DASH with program dates, on both sides is lined up; anything else starts at once. */
   private fun startAligning(waiting: Pending, next: ExoPlayerDriver) {
     current.resetAlignEdge()
     next.resetAlignEdge()

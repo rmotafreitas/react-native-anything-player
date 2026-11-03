@@ -33,10 +33,11 @@ private let clockWaitMs: Int64 = 3_000
 /// A live stream has no shared timeline: each connection starts with its
 /// server's burst of recent audio. There the new player is lined up with
 /// what is heard first (`LiveAligner`): the start of its burst dropped before
-/// AVPlayer reads it (`BurstGate`), held, or run a little slower, muted,
-/// until it plays what the old one plays; then it takes over by volume
-/// alone. When it cannot be lined up, it takes over as before and the app
-/// hears a `discontinuity`. Positions stay continuous across a live switch.
+/// AVPlayer reads it (`BurstGate`), or, for HLS with program dates, moved by
+/// a seek; held, or run a little slower, muted, until it plays what the old
+/// one plays; then it takes over by volume alone. One that cannot be lined up
+/// goes ahead with a `discontinuity` when the player needs it, else is
+/// refused. Positions stay continuous across a live switch.
 final class SwapDriver: LocalOutput {
   private final class Pending {
     let generation: Int
@@ -247,7 +248,7 @@ final class SwapDriver: LocalOutput {
       return
     }
     let reading = current.progress()
-    // Live, a stalled picture, or one already at the point: no reason to wait.
+    // A stalled picture, or one already at the point: no reason to wait.
     if let target = waiting.target, reading.isPlaying {
       if reading.position > target + 0.3 {
         // Too slow to open: try again a little further ahead.

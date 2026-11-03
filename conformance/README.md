@@ -217,6 +217,11 @@ three test harnesses run alike, every 40 ms:
   `nextReadyAt` (the new player cannot start before) are optional, in ms;
   `positionJitter` reads the new playhead that much off, alternately early
   and late;
+- `edgeArrival`: the readings carry when each edge's audio arrived
+  (`edgeAt`, the last chunk's time) instead of the tick's; `appRate` is the
+  app's rate (both players run at it, the new one at the aligner's rate ×
+  it); `ticksMs` lists the ticks' lengths in turn (late timers) instead of
+  every 40 ms;
 - `programDates`: both readings carry the stream's clock (`clock`, HLS
   program dates or a DASH presentation's), one epoch for the old
   connection's live point at 0: the mapping is known at once, without the
@@ -231,6 +236,15 @@ three test harnesses run alike, every 40 ms:
 for a takeover the largest `maxResidual` (s) between what the two play;
 `maxJumps` bounds how many jumps it took, repeats included; a jump past
 the edge the new reading gave fails the case.
+
+`align/offset.json` specifies `LiveOffset` (`src/web/engine/LiveOffset.ts`,
+`ios/Core/LiveOffset.swift`, `android/.../core/LiveOffset.kt`): how far what
+is heard trails the live point (`Progress.liveOffset`, `liveOffsetSettled`).
+Each case's `steps` are readings fed in order, at `t` (ms): `position`,
+`edge` (where what was received ends, a progressive stream; `null`
+otherwise), `native` (the player's own offset, a stream with a clock;
+`null` otherwise), `live`, and optionally `programDate` (epoch ms). A step
+with `expect` checks the `offset` (s, or `null`) and whether it `settled`.
 
 ## Subtitles and tracks (`subtitles/`, `tracks/`)
 

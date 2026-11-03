@@ -290,7 +290,10 @@ enum DashToHls {
       let count = Int(ceil(total / length - 0.0001))
       for i in 0..<count {
         let last = i == count - 1 ? total - length * Double(i) : length
-        list.append(Segment(url: url(media, number: start + i, time: Int(Double(i) * d)), duration: last))
+        // Numbered segments follow each other from the period's start.
+        list.append(
+          Segment(
+            url: url(media, number: start + i, time: Int(Double(i) * d)), duration: last, start: length * Double(i)))
       }
       return (initialization, start, list)
     }

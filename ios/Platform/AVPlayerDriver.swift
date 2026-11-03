@@ -481,7 +481,7 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
     }
     if let date = item?.currentDate() {
       let offset = Date().timeIntervalSince(date)
-      reading.liveOffset = offset.isFinite && offset >= 0 && offset < 3600 ? offset : nil
+      reading.liveOffset = offset.isFinite && offset >= 0 ? offset : nil
       reading.programDate = Int64((date.timeIntervalSince1970 * 1000).rounded())
     } else if itemIsLive, let edge = receivedEdge {
       // A live progressive stream (no program dates): what the proxy has

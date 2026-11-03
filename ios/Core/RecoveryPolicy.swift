@@ -79,8 +79,8 @@ enum RecoveryPolicy {
   /// within this again, or the switch is dropped.
   static let swapTimeoutMs: Int64 = 12_000
   /// Once ready, a live switch takes over within this: it first lines its
-  /// audio up with what is heard (the driver gives up and switches anyway
-  /// sooner, `LiveAligner.budgetMs`).
+  /// audio up with what is heard (the driver gives up sooner, `LiveAligner.budgetMs`:
+  /// a switch the player needs then goes ahead, one that can wait is refused).
   static let swapAlignTimeoutMs: Int64 = 45_000
   /// A live switch's new connection must be ready within this: its audio
   /// waits in the stream proxy until the alignment knows where it starts

@@ -60,17 +60,18 @@ Supported: the current and previous version of each browser. Radio titles on iPh
 | Sleep timer (`sleep`, `status.sleepAt`) | ✓ | ✓ | ◐ ⁷ | ◐ ⁷ | ◐ ⁷ | ◐ ⁷ |
 | Fades on play, pause and stop, `fadeTo` | ✓ | ✓ | ◐ ⁷ | ◐ ⁷ | ◐ ⁷ | – ⁶ |
 | Separate quality files (`renditions`) switched with no gap, a pick that holds across loads | ✓ † | ✓ † | ✓ | ✓ | ✓ | ✓ † |
-| Live renditions (one station's mounts, a live MPEG-TS sound channel, or HLS / DASH with program dates) switched in step with what is heard, no repeat or skip | ◐ † ⁸ | ✓ | ◐ ⁵ ⁸ | ◐ ⁵ ⁸ | ◐ ⁵ ⁸ | ◐ ⁵ † ⁸ |
+| Live renditions (one station's mounts, a live MPEG-TS sound channel, or HLS / DASH with program dates) switched in step with what is heard, no repeat or skip | ◐ † ⁸ | ✓ † | ◐ ⁸ ⁹ | ◐ ⁸ ⁹ | ◐ ⁸ ⁹ | ◐ † ⁸ ⁹ |
 | Queue (next / previous, gapless) | – | – | – | – | – | – |
 
 1. Leave it out with `rnapHls=false`.
 2. The browser's own HLS where it has one (Chrome on Android), else [hls.js](web.md#hls), registered with `configureHls`.
 3. `file://` URLs and paths; Android also takes `content://`.
 4. `File` / `Blob`, `blob:` and `data:` URLs.
-5. When RNAP reads the stream itself (MSE, hls.js, Shaka), not on the plain `<audio>` element; HLS with program dates also on Safari's own player. On iPhone and iPad, from iOS 17.1.
+5. When RNAP reads the stream itself (MSE, hls.js, Shaka), not on the plain `<audio>` element. On iPhone and iPad, from iOS 17.1.
 6. The system fixes the volume: `setVolume` has no effect, `setMuted` works. Fades have no effect either; the sleep timer pauses without one.
 7. In a hidden tab the browser runs timers less often: fades move in larger steps and the sleep timer can fire late.
 8. A live MPEG-TS channel switches at once, as before, on iOS, and in a browser when it has a picture ([live renditions](playback.md#live-renditions)).
+9. When RNAP reads the stream itself (MSE, hls.js, Shaka; HLS with program dates also on Safari's own player), not on the plain `<audio>` element, where a switch goes ahead with a `discontinuity`. On iPhone and iPad, from iOS 17.1.
 
 A queue is planned: see the [roadmap](roadmap.md).
 

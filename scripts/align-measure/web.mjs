@@ -4,14 +4,15 @@
 //
 //   yarn prepare && node scripts/stream-server/server.mjs &
 //   node example-web/serve.mjs 4300 &
-//   node scripts/align-measure/web.mjs [chromium|firefox|webkit] [--plain|--hls] [--qualities 320,64,320,192,64,192]
+//   node scripts/align-measure/web.mjs [chromium|firefox|webkit] [--plain|--hls|--ts] [--qualities 320,64,320,192,64,192]
 //
 // `--hls` plays the live HLS renditions instead (/radio-hls: 2, 4 and 6 s
 // segments with program dates), lined up by their program dates; `--ts` the
 // live MPEG-TS channel (/radio-ts/192.ts, /96.ts, /48.ts), remuxed in the page.
 // `--plain` serves the mounts without CORS: the browser plays them on a plain
-// <audio> (no MediaSource), where the new element cannot be moved and is run
-// faster instead. Needs PulseAudio (`pactl`, `parecord`): the browser plays
+// <audio> (no MediaSource), which cannot be lined up: each switch goes ahead
+// with a discontinuity. `64aac` in `--qualities` is the program as ADTS AAC
+// (/radio/64aac): a switch between codecs. Needs PulseAudio (`pactl`, `parecord`): the browser plays
 // into a null sink whose monitor is recorded, so the recording is what would
 // be heard. Prints a JSON summary; the recording is kept in the temp dir.
 import { execFileSync, spawn } from 'node:child_process';
