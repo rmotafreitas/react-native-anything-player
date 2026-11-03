@@ -136,6 +136,8 @@ class LiveAlignerTest {
         is LiveAligner.Action.JumpTo -> {
           note("jump")
           jumps += 1
+          // Never past what it holds (the edge it was given).
+          if (action.to > received + 1e-9) return Outcome("jump past the edge: ${action.to} > $received", t, actions, null, jumps)
           x = minOf(action.to, received)
         }
         is LiveAligner.Action.TakeOver -> {

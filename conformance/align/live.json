@@ -234,9 +234,15 @@
     "expect": { "outcome": "takeOver", "at": 23600, "actions": ["jump", "rate", "takeOver"], "maxResidual": 0.06, "maxJumps": 1 }
   },
   {
-    "name": "program dates with the new player 25 s ahead at its window's start: not moved, held, since that fits the budget",
+    "name": "program dates with the new player 29.4 s ahead at its window's start: not moved, held, since that fits the budget",
     "caps": { "maxRate": 4, "minRate": 0.5, "jump": "always", "startLead": 0.1, "jumpLead": 0.3 },
-    "world": { "oldPosition": 42.0, "oldLag": 70, "burst": 45, "burstSpeed": 10, "chunkMs": 2000, "startLatencyMs": 200, "programDates": true, "nextStartAt": 100, "nextWindowStart": 100 },
-    "expect": { "outcome": "takeOver", "at": 26240, "actions": ["rate", "takeOver"], "maxResidual": 0.06, "maxJumps": 0 }
+    "world": { "oldPosition": 42.0, "oldLag": 70, "burst": 41.5, "burstSpeed": 10, "chunkMs": 2000, "startLatencyMs": 200, "programDates": true, "nextStartAt": 100, "nextWindowStart": 100 },
+    "expect": { "outcome": "takeOver", "at": 29680, "actions": ["rate", "takeOver"], "maxResidual": 0.06, "maxJumps": 0 }
+  },
+  {
+    "name": "program dates with a live window that starts within 2 s of what the new player holds: the jump lands at its edge, not past it",
+    "caps": { "maxRate": 4, "minRate": 0.5, "jump": "always", "startLead": 0.1, "jumpLead": 0.3 },
+    "world": { "oldPosition": 42.0, "oldLag": 1.6, "burst": 2.1, "burstSpeed": 10, "chunkMs": 2000, "startLatencyMs": 200, "programDates": true, "nextStartAt": 100, "nextWindowStart": 102.5 },
+    "expect": { "outcome": "takeOver", "at": 7200, "actions": ["jump", "rate", "takeOver"], "maxResidual": 0.3, "maxJumps": 1 }
   }
 ]

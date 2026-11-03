@@ -277,7 +277,10 @@ final class LiveAligner {
     // from a hold); later only a player that fell behind.
     let short = first ? gap < lead : gap < -Self.toleranceS
     // Moved just ahead, then held: it never starts behind.
-    if short && canJump { return .jump(to: landing(target, next)) }
+    // One at the edge of what it holds waits for more (a jump there would not move it).
+    let forward = landing(target, next)
+    if short && canJump && forward <= next.position + Self.toleranceS { return .wait }
+    if short && canJump { return .jump(to: forward) }
     // On a stream's clock it can go back too, within its live window: if
     // the hold left after it fits the budget, else not at all (decided
     // once, when it jumps; a held one is left to `holding`).

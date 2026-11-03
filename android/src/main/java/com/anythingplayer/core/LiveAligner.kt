@@ -217,7 +217,10 @@ class LiveAligner(private val caps: Caps) {
     // from a hold); later only a player that fell behind.
     val short = if (first) gap < lead else gap < -TOLERANCE_S
     // Moved just ahead, then held: it never starts behind.
-    if (short && canJump) return Action.JumpTo(landing(target, next))
+    // One at the edge of what it holds waits for more (a jump there would not move it).
+    val forward = landing(target, next)
+    if (short && canJump && forward <= next.position + TOLERANCE_S) return Action.Wait
+    if (short && canJump) return Action.JumpTo(forward)
     // On a stream's clock it can go back too, within its live window: if
     // the hold left after it fits the budget, else not at all (decided
     // once, when it jumps; a held one is left to `holding`).

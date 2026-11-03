@@ -174,6 +174,8 @@ export function simulate(caps: AlignCaps, world: World): Outcome {
       case 'jump':
         note('jump');
         jumps += 1;
+        // Never past what it holds (the edge it was given).
+        if (action.to > received + 1e-9) return { outcome: `jump past the edge: ${action.to} > ${received}`, at: t, actions, residual: null, jumps }; // prettier-ignore
         x = Math.min(action.to, received);
         break;
       case 'takeOver':

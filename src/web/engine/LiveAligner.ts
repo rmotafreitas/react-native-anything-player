@@ -313,28 +313,45 @@ export class LiveAligner {
     // At first anything short of the lead is moved (the start is then always
     // from a hold); later only a player that fell behind.
     const short = first ? gap < this.lead : gap < -Align.TOLERANCE_S;
-    // Moved just ahead, then held: it never starts behind.
-    if (short && canJump)
-      return { kind: 'jump', to: this.landing(target, next) };
-    // On a stream's clock it can go back too, within its live window: if
-    // the hold left after it fits the budget, else not at all (decided
-    // once, when it jumps; a held one is left to `holding`).
-    const landing = this.lead + this.caps.jumpLead;
-    const ahead = gap > landing + Align.BACK_S;
-    if (next.start != null && jump === 'always' && ahead) {
-      const to = this.landing(target, next);
-      if (next.position - to > Align.BACK_S) {
-        if ((to - target - this.lead) * 1000 > Align.BUDGET_MS - elapsed)
-          return this.fallback('ahead');
-        return { kind: 'jump', to };
-      }
-    }
+    if (short && canJump) return this.moveForward(target, next);
+    const back = this.moveBack(elapsed, target, gap, next);
+    if (back != null) return back;
     if (gap > this.lead || next.ready === false)
       return this.holding(t, elapsed, gap, first, next);
     if (gap < -Align.TOLERANCE_S && maxRate > 1)
       return this.setRate(t, this.speedUp(gap), gap, next);
     if (gap < -Align.ACCEPT_S) return this.fallback('behind');
     return this.setRate(t, 1, gap, next);
+  }
+
+  /**
+   * Moved just ahead, then held: it never starts behind. One at the edge of
+   * what it holds waits for more (a jump there would not move it).
+   */
+  private moveForward(target: number, next: AlignReading): AlignAction {
+    const to = this.landing(target, next);
+    if (to <= next.position + Align.TOLERANCE_S) return { kind: 'wait' };
+    return { kind: 'jump', to };
+  }
+
+  /**
+   * On a stream's clock it can go back too, within its live window: if the
+   * hold left after it fits the budget, else not at all (decided once, when
+   * it jumps; a held one is left to `holding`). `null`: not moved back.
+   */
+  private moveBack(
+    elapsed: number,
+    target: number,
+    gap: number,
+    next: AlignReading
+  ): AlignAction | null {
+    if (next.start == null || this.caps.jump !== 'always') return null;
+    if (gap <= this.lead + this.caps.jumpLead + Align.BACK_S) return null;
+    const to = this.landing(target, next);
+    if (next.position - to <= Align.BACK_S) return null;
+    if ((to - target - this.lead) * 1000 > Align.BUDGET_MS - elapsed)
+      return this.fallback('ahead');
+    return { kind: 'jump', to };
   }
 
   /** Where a jump lands it: just ahead of what is heard, within what it holds and its live window. */

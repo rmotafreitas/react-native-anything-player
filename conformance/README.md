@@ -229,7 +229,8 @@ three test harnesses run alike, every 40 ms:
 `expect` gives the `outcome` (`takeOver`, or `fallback:<reason>`), the time
 `at` (ms) it came, the kinds of `actions` in order (repeats collapsed), and
 for a takeover the largest `maxResidual` (s) between what the two play;
-`maxJumps` bounds how many jumps it took, repeats included.
+`maxJumps` bounds how many jumps it took, repeats included; a jump past
+the edge the new reading gave fails the case.
 
 ## Subtitles and tracks (`subtitles/`, `tracks/`)
 

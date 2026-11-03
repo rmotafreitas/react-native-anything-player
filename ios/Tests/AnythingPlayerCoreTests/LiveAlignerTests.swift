@@ -137,6 +137,10 @@ final class LiveAlignerTests: XCTestCase {
       case .jump(let to):
         note("jump")
         jumps += 1
+        // Never past what it holds (the edge it was given).
+        if to > received + 1e-9 {
+          return Outcome(outcome: "jump past the edge: \(to) > \(received)", at: t, actions: actions, residual: nil, jumps: jumps)
+        }
         x = min(to, received)
       case .takeOver:
         note("takeOver")
