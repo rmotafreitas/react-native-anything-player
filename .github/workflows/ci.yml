@@ -20,10 +20,12 @@ permissions:
   contents: read
   actions: read
 
-# A newer push cancels a PR's run, not main's: every main commit keeps its
-# results, which the app reuses for the commit it pins (scripts/ci-results.mjs).
+# A newer push cancels a PR's older run. Every other run is a group of its own:
+# a shared group keeps one pending run and drops the rest, and every main commit
+# keeps its results, which the app reuses for the commit it pins
+# (scripts/ci-results.mjs).
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:

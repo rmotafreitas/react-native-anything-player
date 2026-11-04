@@ -75,6 +75,24 @@ export function runner(env = process.env) {
   return /\.[cm]?js$/.test(execPath) ? [process.execPath, execPath] : [execPath];
 }
 
+/** The steps running now, each a process group of its own; the signal that stopped verify. */
+const running = new Set();
+let stoppedBy = null;
+const SIGNAL_EXIT = { SIGINT: 130, SIGTERM: 143 };
+
+/** Ctrl-C or a pipeline abort: start nothing more, and stop what runs (its whole tree). */
+function stop(signal) {
+  if (stoppedBy) return;
+  stoppedBy = signal;
+  for (const child of running) {
+    try {
+      process.kill(-child.pid, signal);
+    } catch {
+      // Already gone.
+    }
+  }
+}
+
 /** Runs one step; its output goes live to the terminal, or is kept to print whole. */
 function run(step, live) {
   const [command, ...prefix] = runner();
@@ -82,15 +100,19 @@ function run(step, live) {
   return new Promise((resolve) => {
     const env = process.stdout.isTTY ? { ...process.env, FORCE_COLOR: "1" } : process.env;
     const child = spawn(command, [...prefix, "run", step.script], {
-      stdio: live ? "inherit" : ["ignore", "pipe", "pipe"],
+      stdio: live ? ["ignore", "inherit", "inherit"] : ["ignore", "pipe", "pipe"],
+      // Its own process group, so stop() reaches everything it starts.
+      detached: true,
       env,
     });
+    running.add(child);
     const output = [];
     child.stdout?.on("data", (chunk) => output.push(chunk));
     child.stderr?.on("data", (chunk) => output.push(chunk));
     // A command that could not start prints nothing itself.
     child.on("error", (error) => output.push(Buffer.from(`  ${command}: ${error.message}\n`)));
     child.on("close", (status) => {
+      running.delete(child);
       resolve({ ok: status === 0, seconds: Math.round((Date.now() - started) / 1000), output: Buffer.concat(output) });
     });
   });
@@ -100,7 +122,7 @@ function run(step, live) {
 async function pool(items, limit, task) {
   const queue = [...items];
   const worker = async () => {
-    for (let item = queue.shift(); item; item = queue.shift()) await task(item);
+    for (let item = queue.shift(); item && !stoppedBy; item = queue.shift()) await task(item);
   };
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
 }
@@ -111,10 +133,12 @@ async function main(args) {
     console.error("usage: yarn verify [--fast] [--no-secrets] [--serial]");
     return 2;
   }
+  for (const signal of Object.keys(SIGNAL_EXIT)) process.on(signal, () => stop(signal));
   const limit = concurrency(args);
   const live = limit === 1;
   const results = new Map();
   for (const stage of stages(steps)) {
+    if (stoppedBy) break;
     await pool(stage, limit, async (step) => {
       const header = `\n▶ ${step.label} (${step.script})`;
       if (live) console.log(header);
@@ -126,6 +150,11 @@ async function main(args) {
       }
       results.set(step, result);
     });
+  }
+
+  if (stoppedBy) {
+    console.error(`\nverify stopped by ${stoppedBy}.`);
+    return SIGNAL_EXIT[stoppedBy];
   }
 
   console.log("\nverify summary");
