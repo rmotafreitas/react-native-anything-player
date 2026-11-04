@@ -301,7 +301,7 @@ export class Player {
   readonly id: string;
   private _status: NativeStatus;
   /** The native player behind this one (see `NativeStatus`), when native says. */
-  private nativeInstance: number | undefined;
+  private readonly nativeInstance: number | undefined;
   private _metadata: MediaMetadata | null = null;
   private readonly listeners = new Map<PlayerEvent, Set<AnyListener>>();
   private released = false;

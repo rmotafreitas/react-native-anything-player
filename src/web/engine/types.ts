@@ -77,8 +77,11 @@ export interface SourceDescriptor {
 export function sameMedia(a: SourceDescriptor, b: SourceDescriptor): boolean {
   if (a.renditions || b.renditions) {
     if (!a.renditions || !b.renditions) return false;
+    // By UTF-16 units, as the default sort: two different URIs never tie.
     const files = (list: Rendition[]) =>
-      [...new Set(list.map((r) => r.uri))].sort();
+      [...new Set(list.map((r) => r.uri))].sort(
+        (x, y) => Number(x > y) - Number(x < y)
+      );
     return files(a.renditions).join('\n') === files(b.renditions).join('\n');
   }
   return a.uri === b.uri;

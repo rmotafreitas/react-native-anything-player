@@ -18,6 +18,7 @@ import com.anythingplayer.platform.AnythingPlayerRuntime
 import com.anythingplayer.platform.EventSink
 import com.anythingplayer.platform.LicenseRequests
 import com.anythingplayer.platform.PlayerController
+import com.anythingplayer.platform.QualityPick
 import com.anythingplayer.platform.SearchRequest
 import com.anythingplayer.platform.Voice
 import com.anythingplayer.platform.errorToMap
@@ -214,8 +215,7 @@ class AnythingPlayerModule(reactContext: ReactApplicationContext) : NativeAnythi
     val autoplay = options.optBoolean("autoplay")
     val start = options.optDouble("startPosition")
     // `quality`: an id, `'auto'` for automatic; absent: keep the pick.
-    val qualityGiven = options.hasKey("quality")
-    val quality = options.optString("quality")?.takeIf { it != "auto" }
+    val quality = if (options.hasKey("quality")) QualityPick(options.optString("quality")?.takeIf { it != "auto" }) else null
     val target = AnythingPlayerRuntime.target(owner, playerId)
     main.post {
       val controller = target?.takeUnless { it.isReleased }
@@ -224,7 +224,7 @@ class AnythingPlayerModule(reactContext: ReactApplicationContext) : NativeAnythi
         return@post
       }
       try {
-        controller.load(descriptor, fields, autoplay, start, parts, qualityGiven, quality) { outcome ->
+        controller.load(descriptor, fields, autoplay, start, parts, quality) { outcome ->
           when (outcome) {
             is LoadOutcome.Failed -> reject(promise, outcome.error)
             else -> promise.resolve(controller.statusMap())
