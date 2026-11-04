@@ -473,7 +473,7 @@ export class Player {
     normalized: Record<string, unknown>
   ): void {
     this.loads += 1;
-    this.refreshSource = source?.refresh ?? null;
+    this.refreshSource = source?.refresh?.bind(source) ?? null;
     this.licenseHook = source?.drm?.getLicense?.bind(source.drm) ?? null;
     this.sourceHeaders = { ...source?.headers };
     this.thumbnails =

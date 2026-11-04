@@ -1125,6 +1125,25 @@ describe('Player video', () => {
       });
     });
 
+    it('calls a refresh written as a method on its source', async () => {
+      const source = {
+        uri,
+        signed: 'https://cdn.example/movie.mp4?sig=new',
+        async refresh() {
+          return { uri: this.signed };
+        },
+      };
+      const p = videoPlayer();
+      await p.load(source);
+      ask(p.id, 'unauthorized', 5);
+      await flush();
+      expect(videoCommands().at(-1)).toEqual({
+        op: 'refreshed',
+        loadId: 5,
+        source: { uri: 'https://cdn.example/movie.mp4?sig=new' },
+      });
+    });
+
     it("hands license requests to a refreshed source's getLicense, unless another load came first", async () => {
       const drm = (getLicense: () => Promise<Uint8Array>) => ({
         widevine: { licenseUrl: 'https://lic.example/w' },
