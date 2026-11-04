@@ -431,10 +431,10 @@ internal class SwapDriver(
 
   private fun switching(generation: Int) = pending?.generation == generation
 
-  /** Forwards both drivers' events; the switch's ready starts the rendezvous, its playing takes over first. */
   /**
-   * What the drivers tell, passed on to [observer]: only what a switch
-   * changes is overridden here.
+   * Forwards both drivers' events to [observer] (delegated: only what a switch
+   * changes is overridden). The switch's ready starts the rendezvous, its
+   * playing takes over first.
    */
   private inner class Proxy : DriverObserver by observer {
     override fun onReady(generation: Int, info: ReadyInfo) {
