@@ -1012,6 +1012,25 @@ describe('Player video', () => {
       });
     });
 
+    it('calls a getLicense written as a method on its drm object', async () => {
+      const drm = {
+        widevine: { licenseUrl: 'https://lic.example/w' },
+        license: new Uint8Array([4, 5, 6]),
+        async getLicense() {
+          return this.license;
+        },
+      };
+      const p = videoPlayer();
+      await p.load({ uri, drm });
+      fake.emit(request(p.id));
+      await flush();
+      expect(videoCommands().at(-1)).toEqual({
+        op: 'license',
+        requestId: 7,
+        license: 'BAUG',
+      });
+    });
+
     it('is answered with the error when the app fails', async () => {
       const p = videoPlayer();
       await p.load({

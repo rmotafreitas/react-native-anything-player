@@ -473,7 +473,7 @@ export class Player {
   ): void {
     this.loads += 1;
     this.refreshSource = source?.refresh ?? null;
-    this.licenseHook = source?.drm?.getLicense ?? null;
+    this.licenseHook = source?.drm?.getLicense?.bind(source.drm) ?? null;
     this.sourceHeaders = { ...source?.headers };
     this.thumbnails =
       source?.thumbnails != null
@@ -777,7 +777,7 @@ export class Player {
     // source was loaded meanwhile).
     const drm = source != null ? (next as Source).drm : undefined;
     if (drm != null && this.loads === load) {
-      this.licenseHook = drm.getLicense ?? null;
+      this.licenseHook = drm.getLicense?.bind(drm) ?? null;
     }
     const command =
       source != null
