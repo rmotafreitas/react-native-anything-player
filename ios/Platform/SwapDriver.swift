@@ -518,8 +518,12 @@ final class SwapDriver: LocalOutput {
       target?.driverNote(generation: generation, event: event, details: details)
       // Either connection was replaced (the proxy spliced a fresh upstream):
       // its edge, and the mapping, no longer hold.
-      if event == "upstream spliced", let owner, owner.aligning, let aligner = owner.pending?.aligner {
+      guard event == "upstream spliced", let owner else { return }
+      if owner.aligning, let aligner = owner.pending?.aligner {
         owner.apply(aligner.interrupt())
+      } else if let waiting = owner.pending, waiting.fallback {
+        // Given up already, not taken over yet: its jump was read before this one.
+        waiting.jump = nil
       }
     }
     func driverDiscontinuity(generation: Int, position: Double, reason: String, jump: Double?) {
@@ -527,7 +531,12 @@ final class SwapDriver: LocalOutput {
       let shifted = generation == owner.generation ? position - owner.shift : position
       target?.driverDiscontinuity(generation: generation, position: shifted, reason: reason, jump: jump)
       // Either connection jumped: the two no longer line up.
-      if owner.aligning, let aligner = owner.pending?.aligner { owner.apply(aligner.interrupt()) }
+      if owner.aligning, let aligner = owner.pending?.aligner {
+        owner.apply(aligner.interrupt())
+      } else if let waiting = owner.pending, waiting.fallback {
+        // Given up already, not taken over yet: its jump was read before this one.
+        waiting.jump = nil
+      }
     }
     var isOffline: Bool { target?.isOffline ?? false }
     func driverVideoInfo(generation: Int, info: VideoInfo) { target?.driverVideoInfo(generation: generation, info: info) }

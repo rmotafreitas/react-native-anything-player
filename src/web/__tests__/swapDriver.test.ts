@@ -904,6 +904,23 @@ describe('a live switch', () => {
     expect(calls[1]![3]).toBeNull();
   });
 
+  it('drops the jump of a switch already given up when a connection jumps before it takes over', () => {
+    const { old, next, tick } = stations(17, 1.6);
+    tick(5_000);
+    expect(next.paused).toBe(true);
+    // The old one stalls: given up and needed, it plays to take over on its first audio.
+    old.pause();
+    tick(40);
+    expect(next.paused).toBe(false);
+    expect(driver.element).toBe(old);
+    proxy.onDiscontinuity(2, 40);
+    tick(40);
+    expect(driver.element).toBe(next);
+    const calls = rec.of('onDiscontinuity');
+    expect(calls.at(-1)![2]).toBe('switch');
+    expect(calls.at(-1)![3]).toBeNull();
+  });
+
   it('gives up an optional switch when a connection jumps: the current one plays on', () => {
     const { old, tick } = stations(17, 1.6);
     tick(5_000);

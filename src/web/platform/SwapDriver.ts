@@ -407,6 +407,8 @@ export class SwapDriver implements LocalDriver {
         const shifted =
           g === this.generation ? position - this.shift : position;
         f.onDiscontinuity(g, shifted, reason, jump);
+        // Given up already, not taken over yet: its jump was read before this one.
+        if (this.pending?.fallback) this.pending.jump = null;
         // Either connection jumped: the two no longer line up.
         if (this.aligning) this.apply(this.pending!.aligner!.interrupt());
       },

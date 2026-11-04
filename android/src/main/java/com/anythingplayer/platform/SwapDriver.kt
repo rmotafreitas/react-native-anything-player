@@ -485,7 +485,12 @@ internal class SwapDriver(
       if (current) rebase()
       observer.onDiscontinuity(generation, if (current) maxOf(0.0, position - shift) else position, reason, jump)
       // Either connection jumped: the two no longer line up.
-      if (aligning) pending?.aligner?.let { apply(it.interrupt()) }
+      if (aligning) {
+        pending?.aligner?.let { apply(it.interrupt()) }
+      } else if (pending?.fallback == true) {
+        // Given up already, not taken over yet: its jump was read before this one.
+        pending?.jump = null
+      }
     }
 
     override fun isOffline(): Boolean = observer.isOffline()
