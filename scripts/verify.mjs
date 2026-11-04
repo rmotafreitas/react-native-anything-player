@@ -12,7 +12,8 @@
  *        yarn verify --no-secrets  every step but the history scan (as check:quality)
  */
 import { spawnSync } from "node:child_process";
-import { pathToFileURL } from "node:url";
+import { realpathSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 /** A package script; `slow` steps are skipped by `--fast`, `history` ones by `--no-secrets`. */
 export const STEPS = [
@@ -76,4 +77,7 @@ function main(args) {
   return failed.length ? 1 : 0;
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) process.exit(main(process.argv.slice(2)));
+// Run as a script (not imported by its test), however the path reached it:
+// through a symlink, process.argv[1] is the link and import.meta.url the file.
+const invoked = process.argv[1] ? realpathSync(process.argv[1]) : "";
+if (invoked === fileURLToPath(import.meta.url)) process.exit(main(process.argv.slice(2)));

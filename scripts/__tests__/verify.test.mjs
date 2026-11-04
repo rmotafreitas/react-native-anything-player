@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync, symlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { plan, runner, STEPS } from "../verify.mjs";
 
@@ -35,4 +39,20 @@ test("steps run under the package manager that started verify", () => {
   assert.deepEqual(runner({ npm_execpath: "/x/pnpm.cjs" }), [process.execPath, "/x/pnpm.cjs"]);
   assert.deepEqual(runner({ npm_execpath: "/tmp/xfs-1/yarn" }), ["/tmp/xfs-1/yarn"]);
   assert.deepEqual(runner({}), ["yarn"]);
+});
+
+test("run as a script, it runs, through a symlink too (an unknown flag exits 2)", () => {
+  const script = fileURLToPath(new URL("../verify.mjs", import.meta.url));
+  const dir = mkdtempSync(join(tmpdir(), "verify-"));
+  try {
+    const link = join(dir, "verify.mjs");
+    symlinkSync(script, link);
+    for (const path of [script, link]) {
+      const run = spawnSync(process.execPath, [path, "--bogus"], { encoding: "utf8" });
+      assert.equal(run.status, 2, path);
+      assert.match(run.stderr, /usage: yarn verify/);
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

@@ -22,8 +22,13 @@ and Jenkins call, is the same script, so a local run and CI cannot drift apart:
   with SonarJS production-code rules (`lint:eslint`), oxlint's type-aware rules
   run by tsgolint, the app's rule set (`lint:types`), and knip for unused files,
   exports and dependencies plus sherif for the workspaces' package.json files
-  (`lint:deps`). Tests may use Jest's and Playwright's `any` (the `no-unsafe-*`
-  rules are off there), and fakes may reject as the APIs they stand in for do.
+  (`lint:deps`). In tests (`__tests__/`, `*.test.*`, `e2e/`) a few
+  rules are off: the `no-unsafe-*` family (Jest's and Playwright's `any`),
+  `prefer-promise-reject-errors` and `only-throw-error` (fakes reject and throw
+  as the APIs they stand in for do, the Cast SDK with string codes),
+  `unbound-method` (`expect(obj.method)`, prototype patches), `no-deprecated`
+  (tests cover deprecated aliases and patch deprecated DOM overloads) and
+  `await-thenable`; every other rule applies to them too.
   A finding oxlint gets wrong (a flag set in a callback or across an await,
   which TypeScript's narrowing does not follow; a check of what a JS caller
   passes) is disabled on its line with the reason:
