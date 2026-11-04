@@ -733,9 +733,10 @@ export interface PlayerEventMap {
    * Icecast/Shoutcast connection starts with the server's burst of recent
    * audio, so what is heard repeats or skips — no state change accompanies
    * it. Also reported when a live quality switch between separate mounts
-   * (`renditions`) that the player needed (the current one stalled), or on a
-   * source that never can be (a browser's plain `<audio>`), could not be
-   * lined up with what is heard. Reported when the jump becomes audible.
+   * (`renditions`) went ahead without being lined up with what is heard: one
+   * the player needed (the current one stalled), any switch while the app
+   * holds a pick (`selectQuality`), or one on a source that never can be (a
+   * browser's plain `<audio>`). Reported when the jump becomes audible.
    */
   discontinuity: (event: Discontinuity) => void;
   /** `status.route` changed (AirPlay chosen, headphones unplugged, casting started…). */
@@ -897,8 +898,9 @@ export interface Discontinuity {
   position: number;
   /**
    * `reconnect`: a dropped connection was replaced; `switch`: a live
-   * quality switch the player needed (or on a plain `<audio>`) could not be
-   * lined up with what is heard.
+   * quality switch went ahead without being lined up with what is heard (one
+   * the player needed, any switch while the app holds a pick, or one on a
+   * plain `<audio>`).
    */
   reason: 'reconnect' | 'switch';
   /** Seconds of the source skipped (+) or heard again (−), when known; else `null`. */

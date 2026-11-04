@@ -39,6 +39,9 @@ private let clockWaitMs: Int64 = 3_000
 /// goes ahead with a `discontinuity` when the player needs it, else is
 /// refused. Positions stay continuous across a live switch.
 final class SwapDriver: LocalOutput {
+  /// Fallbacks after which the aligner's last gap belongs to a mapping that no longer holds.
+  private static let staleGap: Set<String> = ["reconnecting", "discontinuity"]
+
   private final class Pending {
     let generation: Int
     var target: Double?
@@ -378,7 +381,8 @@ final class SwapDriver: LocalOutput {
     case .fallback(let reason):
       // The old one stalls: the player needs the switch now.
       if reason == "stalled" { waiting.required = true }
-      waiting.jump = waiting.aligner?.gap
+      // A connection replaced or jumped: the last gap read is the old mapping's.
+      waiting.jump = Self.staleGap.contains(reason) ? nil : waiting.aligner?.gap
       unaligned(waiting, next, reason: reason)
     }
   }
@@ -514,8 +518,12 @@ final class SwapDriver: LocalOutput {
       target?.driverNote(generation: generation, event: event, details: details)
       // Either connection was replaced (the proxy spliced a fresh upstream):
       // its edge, and the mapping, no longer hold.
-      if event == "upstream spliced", let owner, owner.aligning, let aligner = owner.pending?.aligner {
+      guard event == "upstream spliced", let owner else { return }
+      if owner.aligning, let aligner = owner.pending?.aligner {
         owner.apply(aligner.interrupt())
+      } else if let waiting = owner.pending, waiting.fallback {
+        // Given up already, not taken over yet: its jump was read before this one.
+        waiting.jump = nil
       }
     }
     func driverDiscontinuity(generation: Int, position: Double, reason: String, jump: Double?) {
@@ -523,7 +531,12 @@ final class SwapDriver: LocalOutput {
       let shifted = generation == owner.generation ? position - owner.shift : position
       target?.driverDiscontinuity(generation: generation, position: shifted, reason: reason, jump: jump)
       // Either connection jumped: the two no longer line up.
-      if owner.aligning, let aligner = owner.pending?.aligner { owner.apply(aligner.interrupt()) }
+      if owner.aligning, let aligner = owner.pending?.aligner {
+        owner.apply(aligner.interrupt())
+      } else if let waiting = owner.pending, waiting.fallback {
+        // Given up already, not taken over yet: its jump was read before this one.
+        waiting.jump = nil
+      }
     }
     var isOffline: Bool { target?.isOffline ?? false }
     func driverVideoInfo(generation: Int, info: VideoInfo) { target?.driverVideoInfo(generation: generation, info: info) }

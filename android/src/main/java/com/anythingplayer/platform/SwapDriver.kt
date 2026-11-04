@@ -39,6 +39,9 @@ private val ALIGN_CAPS = LiveAligner.Caps(maxRate = 4.0, minRate = 0.5, jump = L
 /** HLS or DASH by program dates: a seek within the live window is cheap (no new connection). */
 private val CLOCK_CAPS = ALIGN_CAPS.copy(jump = LiveAligner.Jump.ALWAYS, jumpLead = 0.5)
 
+/** Fallbacks after which the aligner's last gap belongs to a mapping that no longer holds. */
+private val STALE_GAP = setOf("reconnecting", "discontinuity")
+
 /**
  * A player's local output: the ExoPlayer heard (and on screen), and a second
  * one that prepares a quality switch behind it (`open(swap = true)`, separate
@@ -350,7 +353,8 @@ internal class SwapDriver(
       is LiveAligner.Action.Fallback -> {
         // The old one stalls: the player needs the switch now.
         if (action.reason == "stalled") waiting.required = true
-        waiting.jump = waiting.aligner?.gap
+        // A connection replaced or jumped: the last gap read is the old mapping's.
+        waiting.jump = if (action.reason in STALE_GAP) null else waiting.aligner?.gap
         unaligned(waiting, next, action.reason)
       }
     }
@@ -481,7 +485,12 @@ internal class SwapDriver(
       if (current) rebase()
       observer.onDiscontinuity(generation, if (current) maxOf(0.0, position - shift) else position, reason, jump)
       // Either connection jumped: the two no longer line up.
-      if (aligning) pending?.aligner?.let { apply(it.interrupt()) }
+      if (aligning) {
+        pending?.aligner?.let { apply(it.interrupt()) }
+      } else if (pending?.fallback == true) {
+        // Given up already, not taken over yet: its jump was read before this one.
+        pending?.jump = null
+      }
     }
 
     override fun isOffline(): Boolean = observer.isOffline()
