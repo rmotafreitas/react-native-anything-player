@@ -150,6 +150,7 @@ export function stopCasting(): Promise<void> {
 const RESERVED_ID_PREFIX = 'rnap:';
 
 function serializeItem(item: CatalogItem): Record<string, unknown> {
+  // oxlint-disable-next-line typescript/no-unnecessary-condition -- validates what a JS caller passes, whatever its type says
   if (!item || typeof item.id !== 'string' || item.id.trim() === '')
     throw invalid('A catalog item needs a non-empty `id`.');
   if (item.id.startsWith(RESERVED_ID_PREFIX))
@@ -210,6 +211,7 @@ export type SearchInput = string | Omit<SearchRequest, 'origin'>;
 
 function serializeRequest(input: SearchInput): Record<string, unknown> {
   const request = typeof input === 'string' ? { query: input } : input;
+  // oxlint-disable-next-line typescript/no-unnecessary-condition -- validates what a JS caller passes, whatever its type says
   if (!request || typeof request.query !== 'string')
     throw invalid('A search request needs a `query` string (it may be empty).');
   const out: Record<string, unknown> = { query: request.query };
@@ -309,8 +311,12 @@ export function serializeCatalog(
 export async function setFavorites(ids: readonly string[]): Promise<void> {
   if (!Array.isArray(ids))
     throw invalid('setFavorites expects an array of ids.');
+  // Array.isArray widens it to any[]: a JS caller's ids, checked one by one.
+  const given: readonly unknown[] = ids;
   const unique = [
-    ...new Set(ids.filter((id) => typeof id === 'string' && id !== '')),
+    ...new Set(
+      given.filter((id): id is string => typeof id === 'string' && id !== '')
+    ),
   ];
   await run(() => native().setFavorites(unique));
 }
@@ -373,6 +379,7 @@ async function answer(
       throw error;
     }, 0);
   } finally {
+    // oxlint-disable-next-line typescript/no-unnecessary-condition -- set in the race's executor, which TypeScript does not follow
     if (timer != null) clearTimeout(timer);
   }
   native().resolveSearchRequest(requestId, { item });

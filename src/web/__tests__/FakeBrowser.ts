@@ -388,6 +388,7 @@ export class FakeAudio extends FakeEvents {
         return new Promise<void>((resolve, reject) => {
           this.pendingPlays.push({ resolve, reject });
         });
+      case 'start':
       default:
         this.paused = false;
         return Promise.resolve();
@@ -491,7 +492,7 @@ export class FakeBody {
     return {
       read: (): Promise<{ done: boolean; value?: Uint8Array }> => {
         if (this.chunks.length > 0) {
-          const item = this.chunks.shift()!;
+          const item = this.chunks.shift();
           if (item instanceof Error) return Promise.reject(item);
           return Promise.resolve(
             item ? { done: false, value: item } : { done: true }

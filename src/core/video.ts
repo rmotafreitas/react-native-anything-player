@@ -46,6 +46,7 @@ export function normalizeRenditions(
     throw invalid('`renditions` must be a non-empty array.');
   const ids = new Set<string>();
   return list.map((r, i) => {
+    // oxlint-disable-next-line typescript/no-unnecessary-condition -- validates what a JS caller passes, whatever its type says
     if (!r || typeof r.uri !== 'string' || r.uri.trim() === '')
       throw invalid(`renditions[${i}] needs a non-empty \`uri\`.`);
     if (r.id != null && (typeof r.id !== 'string' || r.id === ''))
@@ -88,6 +89,7 @@ export function subtitleTracks(
 ): Array<{ info: SubtitleTrackInfo; source: SubtitleSource }> {
   if (!Array.isArray(list)) throw invalid('`subtitles` must be an array.');
   return list.map((s, i) => {
+    // oxlint-disable-next-line typescript/no-unnecessary-condition -- validates what a JS caller passes, whatever its type says
     if (!s || (typeof s.uri !== 'string' && typeof s.text !== 'string'))
       throw invalid(`subtitles[${i}] needs a \`uri\` or a \`text\`.`);
     return {

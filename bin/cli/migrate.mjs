@@ -1458,7 +1458,7 @@ export async function runMigrate({
 }) {
   if (from && !SOURCES[from]) {
     stdout.write(
-      `rnap: unknown migration \`--from ${from}\`. Use one of: ${MIGRATION_NAMES.join(', ')}.\n`
+      `rnap: unknown migration \`--from ${String(from)}\`. Use one of: ${MIGRATION_NAMES.join(', ')}.\n`
     );
     return 2;
   }

@@ -23,6 +23,7 @@ declare global {
 
 async function open(page: Page): Promise<void> {
   await page.goto('/video.html');
+  // oxlint-disable-next-line typescript/no-unnecessary-condition -- set by the page once it has loaded
   await page.waitForFunction(() => window.videoTest != null);
 }
 
@@ -76,8 +77,8 @@ test('taken out of its view, the player plays on: its element waits in the page 
     () => window.videoTest.player.getProgress().position
   );
   await page.waitForTimeout(1000);
-  expect(await video!.evaluate((v) => v.isConnected)).toBe(true);
-  expect(await video!.evaluate((v) => (v as HTMLVideoElement).paused)).toBe(
+  expect(await video.evaluate((v) => v.isConnected)).toBe(true);
+  expect(await video.evaluate((v) => (v as HTMLVideoElement).paused)).toBe(
     false
   );
   expect((await status(page)).playWhenReady).toBe(true);
@@ -658,9 +659,8 @@ test.describe('DRM', () => {
 test('an audio player has no picture to attach', async ({ page }) => {
   await open(page);
   const code = await page.evaluate(async () => {
-    const { Player: AudioPlayer } = await import(
-      'react-native-anything-player/web' as string
-    );
+    const { Player: AudioPlayer } =
+      await import('react-native-anything-player/web');
     const audio = new AudioPlayer();
     try {
       audio.attachTo(document.body);

@@ -614,6 +614,7 @@ export class RemuxStream implements HlsTracks {
     buffer.abort();
     buffer.remove(0, Number.POSITIVE_INFINITY);
     await this.idle();
+    // oxlint-disable-next-line typescript/no-unnecessary-condition -- close() may come during the await
     if (this.closed) return;
     if (mime !== this.mime) buffer.changeType!(mime);
     this.mime = mime;

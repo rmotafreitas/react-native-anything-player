@@ -148,7 +148,7 @@ test('refuses a blob: URL it was not given the bytes of, as a failed load', asyn
       })
       .then(
         () => null,
-        (e: { code: string }) => e.code
+        (e: unknown) => (e as { code: string }).code
       )
   );
   // It passes validation (it is a web URL); the browser cannot open it.

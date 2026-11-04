@@ -458,7 +458,7 @@ describe('commands', () => {
         cause: 'call',
       },
     };
-    const error = await p.play().catch((e) => e);
+    const error = await p.play().catch((e: unknown) => e);
     expect(isPlayerError(error)).toBe(true);
     expect(error).toMatchObject({
       code: 'AUDIO_FOCUS_DENIED',

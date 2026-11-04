@@ -279,7 +279,12 @@ export function searchCatalog(
     album: tokenize(request.album ?? ''),
     genre: tokenize(request.genre ?? ''),
   };
-  const hasStructured = Object.values(structured).some((t) => t.length > 0);
+  const hasStructured = [
+    structured.title,
+    structured.artist,
+    structured.album,
+    structured.genre,
+  ].some((t) => t.length > 0);
   const scored: Array<{ index: number; score: number }> = [];
   const inScope = groupSegments(request.group).length > 0;
   items.forEach((raw, index) => {

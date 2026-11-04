@@ -29,7 +29,7 @@ export async function main(
 ) {
   const options = parseArgs(argv);
   if (options.error) {
-    stderr.write(`rnap: ${options.error}\n\n${USAGE}`);
+    stderr.write(`rnap: ${String(options.error)}\n\n${USAGE}`);
     return 2;
   }
   if (options.version) {

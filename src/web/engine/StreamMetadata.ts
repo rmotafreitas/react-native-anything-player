@@ -171,7 +171,7 @@ export const IcyParser = {
     format: StreamTitleFormat
   ): [string | null, string | null] {
     const trimmed = raw.trim();
-    if ([...trimmed].every((c) => SEPARATOR_CHARS.includes(c)))
+    if (Array.from(trimmed).every((c) => SEPARATOR_CHARS.includes(c)))
       return [null, null];
     if (format === 'title') return [null, trimmed];
     for (const separator of SEPARATORS) {

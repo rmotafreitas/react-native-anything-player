@@ -35,6 +35,7 @@ export const nativeSoundBackend: SoundBackend = {
   },
   acceptsBlobs: false,
   unavailableMessage: NOT_BUILT_IN,
+  // oxlint-disable-next-line typescript/no-unnecessary-condition -- React Native Web's Image has no resolveAssetSource
   resolveAsset: (module) => Image.resolveAssetSource?.(module)?.uri ?? null,
   async configure(configuration) {
     await native().configure(configuration);

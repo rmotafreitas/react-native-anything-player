@@ -177,10 +177,9 @@ export function usePlayerEvent<E extends PlayerEvent>(
     ref.current = handler;
   }, [handler]);
   useEffect(() => {
-    const unsubscribe = player.on(event, ((...args: unknown[]) =>
-      (ref.current as (...a: unknown[]) => void)(
-        ...args
-      )) as PlayerEventMap[E]);
+    const unsubscribe = player.on(event, (...args: unknown[]) =>
+      (ref.current as (...a: unknown[]) => void)(...args)
+    );
     return () => unsubscribe();
   }, [player, event]);
 }

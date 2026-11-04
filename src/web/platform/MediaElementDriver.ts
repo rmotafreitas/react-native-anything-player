@@ -311,16 +311,17 @@ export class MediaElementDriver implements EngineDriver {
     const attempt = (async () => this._element.play())();
     this.lastPlayAttempt = attempt.then(
       (): PlayAttempt => 'started',
-      (error: { name?: string }): PlayAttempt => {
+      (error: unknown): PlayAttempt => {
+        const name = (error as { name?: unknown } | null | undefined)?.name;
         // Replaced by a newer item or paused before it started: not a failure.
         // A newer play() took over: its outcome is the one that counts.
         if (
           generation !== this.generation ||
           token !== this.playToken ||
-          error?.name === 'AbortError'
+          name === 'AbortError'
         )
           return 'started';
-        if (error?.name === 'NotAllowedError') {
+        if (name === 'NotAllowedError') {
           this.observer.onPausedExternally(generation, 'autoplay-blocked');
           return 'blocked';
         }
@@ -907,7 +908,7 @@ export class MediaElementDriver implements EngineDriver {
     // Opened right after hls.js was registered (or hls.js came from a
     // <script> tag): the glue is still loading.
     this.hlsPending = true;
-    this.loadHls(source, generation, ctor, this.itemSerial);
+    void this.loadHls(source, generation, ctor, this.itemSerial);
   }
 
   /**

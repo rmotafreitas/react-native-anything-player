@@ -107,6 +107,7 @@ function setup(
   features: Parameters<typeof installVideo>[1] = {},
   cast = false
 ) {
+  // oxlint-disable-next-line typescript/no-unnecessary-condition -- unset before the first test
   controller?.release();
   world = installVideo({}, features);
   events = [];
@@ -397,14 +398,14 @@ describe('remote commands', () => {
 describe('the video commands', () => {
   it('loops, seeks and refreshes the source', async () => {
     const video = await playing(null, { refreshable: true });
-    controller.videoCommand({ op: 'loop', value: true });
+    void controller.videoCommand({ op: 'loop', value: true });
     expect(video.loop).toBe(true);
-    controller.videoCommand({ op: 'loop', value: false });
+    void controller.videoCommand({ op: 'loop', value: false });
     expect(video.loop).toBe(false);
 
-    controller.videoCommand({ op: 'seek', position: 60, exact: true });
+    void controller.videoCommand({ op: 'seek', position: 60, exact: true });
     expect(video.currentTime).toBe(60);
-    controller.videoCommand({ op: 'seek', position: 80 });
+    void controller.videoCommand({ op: 'seek', position: 80 });
     expect(video.currentTime).toBe(80);
 
     const loadId = controller.engine.loadId;
@@ -415,13 +416,13 @@ describe('the video commands', () => {
     expect(ofType('refreshRequest')).toEqual([
       expect.objectContaining({ loadId, reason: 'unauthorized' }),
     ]);
-    controller.videoCommand({
+    void controller.videoCommand({
       op: 'refreshed',
       loadId,
       source: { uri: 'https://cdn.example/fresh.mp4', headers: {} },
     });
     expect(video.src).toBe('https://cdn.example/fresh.mp4');
-    controller.videoCommand({ op: 'refreshFailed', loadId });
+    void controller.videoCommand({ op: 'refreshFailed', loadId });
   });
 
   it('hands the app\u2019s license to the request that waits for it', async () => {
@@ -434,7 +435,7 @@ describe('the video commands', () => {
       licenseUrl: null,
       headers: {},
     });
-    controller.videoCommand({ op: 'license', requestId, license: 'AQI=' });
+    void controller.videoCommand({ op: 'license', requestId, license: 'AQI=' });
     await expect(license).resolves.toEqual(new Uint8Array([1, 2]));
   });
 
@@ -446,24 +447,24 @@ describe('the video commands', () => {
       'track:a:1',
       'track:t:0',
     ]);
-    controller.videoCommand({ op: 'selectAudioTrack', id: 'track:a:1' });
+    void controller.videoCommand({ op: 'selectAudioTrack', id: 'track:a:1' });
     expect(controller.status.video!.audioTrack).toBe('track:a:1');
     expect(world.video().audioTracks![1]!.enabled).toBe(true);
-    controller.videoCommand({ op: 'selectTextTrack', id: 'track:t:0' });
+    void controller.videoCommand({ op: 'selectTextTrack', id: 'track:t:0' });
     expect(controller.status.video!.textTrack).toBe('track:t:0');
-    controller.videoCommand({ op: 'selectTextTrack' });
+    void controller.videoCommand({ op: 'selectTextTrack' });
     expect(controller.status.video!.textTrack).toBeNull();
-    controller.videoCommand({ op: 'selectQuality', id: null });
+    void controller.videoCommand({ op: 'selectQuality', id: null });
     expect(controller.status.selectedQuality).toBeNull();
   });
 
   it('delays the subtitles and listens to the sound alone', async () => {
     await playing();
-    controller.videoCommand({ op: 'subtitleDelay', seconds: 1.5 });
+    void controller.videoCommand({ op: 'subtitleDelay', seconds: 1.5 });
     expect(controller.status.video!.subtitleDelay).toBe(1.5);
-    controller.videoCommand({ op: 'listenOnly', value: true });
+    void controller.videoCommand({ op: 'listenOnly', value: true });
     expect(controller.status.video!.audioOnly).toBe('listen');
-    controller.videoCommand({ op: 'listenOnly', value: false });
+    void controller.videoCommand({ op: 'listenOnly', value: false });
     expect(controller.status.video!.audioOnly).toBeNull();
   });
 
@@ -485,7 +486,7 @@ describe('the video commands', () => {
         },
       ],
     });
-    controller.videoCommand({
+    void controller.videoCommand({
       op: 'addSubtitles',
       tracks: [
         { id: 'fr', kind: 'captions', language: 'fr', label: 'Français' },
@@ -522,14 +523,19 @@ describe('the video commands', () => {
       ],
     });
     const cues = [vttCue(0, 20_000, '', 'Hello')!];
-    controller.videoCommand({
+    void controller.videoCommand({
       op: 'cues',
       session: 'other',
       trackId: 'en',
       cues,
     });
-    controller.videoCommand({ op: 'cues', session: 's1', trackId: 'en', cues });
-    controller.videoCommand({ op: 'selectTextTrack', id: 'en' });
+    void controller.videoCommand({
+      op: 'cues',
+      session: 's1',
+      trackId: 'en',
+      cues,
+    });
+    void controller.videoCommand({ op: 'selectTextTrack', id: 'en' });
     expect(ofType('cues').at(-1)).toMatchObject({ cues });
   });
 
@@ -608,7 +614,7 @@ describe('what the driver reports', () => {
     setup({ video: true }, TRACKS);
     await playing();
     const g = controller.engine.generation;
-    controller.videoCommand({ op: 'selectTextTrack', id: 'track:t:0' });
+    void controller.videoCommand({ op: 'selectTextTrack', id: 'track:t:0' });
     const cues = [vttCue(0, 5000, '', 'Hi')!];
     controller.onSourceCues(g, cues);
     expect(ofType('cues').at(-1)).toMatchObject({ cues });
@@ -742,19 +748,19 @@ describe('the Cast receiver', () => {
         track('late', 'subtitles', 'Not loaded yet'),
       ],
     });
-    controller.videoCommand({
+    void controller.videoCommand({
       op: 'cues',
       session: 's1',
       trackId: 'en',
       cues: [vttCue(1000, 2500, '', 'Hello')!],
     });
-    controller.videoCommand({
+    void controller.videoCommand({
       op: 'cues',
       session: 's1',
       trackId: 'cc',
       cues: [vttCue(0, 1000, '', 'Door slams')!],
     });
-    controller.videoCommand({ op: 'selectTextTrack', id: 'cc' });
+    void controller.videoCommand({ op: 'selectTextTrack', id: 'cc' });
     controller.routing.switchOutput('cast:tv');
 
     const media = castMedia!() as {
@@ -784,13 +790,13 @@ describe('the Cast receiver', () => {
       session: 's1',
       subtitles: [track('en', 'subtitles', 'English')],
     });
-    controller.videoCommand({
+    void controller.videoCommand({
       op: 'cues',
       session: 's1',
       trackId: 'en',
       cues: [vttCue(1000, 2000, '', 'Hello')!],
     });
-    controller.videoCommand({ op: 'subtitleDelay', seconds: 2 });
+    void controller.videoCommand({ op: 'subtitleDelay', seconds: 2 });
     controller.routing.switchOutput('cast:tv');
     const media = castMedia!() as { subtitles: Array<{ vtt: string }> };
     expect(media.subtitles[0]!.vtt).toContain('00:00:03.000 --> 00:00:04.000');

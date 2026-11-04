@@ -39,6 +39,7 @@ function labelFor(ctx) {
       return 'Expo';
     case 'both':
       return 'Expo with native projects';
+    case 'bare':
     default:
       return 'bare React Native';
   }

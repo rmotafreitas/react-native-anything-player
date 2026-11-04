@@ -90,6 +90,7 @@ export function audioFrameSamples(track: RemuxTrack, data: Uint8Array): number {
       return opusSamples(data) || 960;
     case 'fLaC':
       return flacSamples(data) ?? 4096;
+    case null:
     default:
       return 1024;
   }
@@ -244,7 +245,9 @@ export class Remuxer {
     for (const t of this.tracks)
       if (t.kind !== 'text' && t.unsupported == null && t.codec == null)
         t.unsupported = 'no data';
-    const choice = (this.options.choose ?? defaultChoice)(this.tracks);
+    const choice = this.options.choose
+      ? this.options.choose(this.tracks)
+      : defaultChoice(this.tracks);
     const pick = (id: number | null, kind: 'video' | 'audio') =>
       this.tracks.find((t) => t.id === id && t.kind === kind && playable(t));
     const video = pick(choice.video, 'video');

@@ -70,7 +70,7 @@ function start(
   ctor: unknown = RichHls
 ) {
   const stream = new HlsStream(
-    element as never,
+    element,
     { uri: URI, headers: {}, liveHint: null, ...source },
     asHls(ctor),
     l
@@ -312,7 +312,7 @@ describe('renditions', () => {
 
   it('are empty before hls.js runs and after it is gone', () => {
     const stream = new HlsStream(
-      element as never,
+      element,
       { uri: URI, headers: {}, liveHint: null },
       asHls(RichHls),
       listener().listener

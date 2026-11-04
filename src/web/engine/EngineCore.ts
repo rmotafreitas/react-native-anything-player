@@ -750,8 +750,11 @@ export abstract class EngineCore {
       case 'ended':
         this.restartFromEnd(cause);
         break;
+      case 'buffering':
+      case 'playing':
+      case 'reconnecting':
       default:
-        // buffering, playing, reconnecting: already on its way.
+        // Already on its way.
         break;
     }
   }
@@ -791,6 +794,11 @@ export abstract class EngineCore {
       case 'loading':
         this.log('paused while loading', {});
         break;
+      case 'ended':
+      case 'error':
+      case 'idle':
+      case 'paused':
+      case 'stopped':
       default:
         break;
     }
