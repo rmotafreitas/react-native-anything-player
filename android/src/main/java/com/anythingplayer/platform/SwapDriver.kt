@@ -391,9 +391,10 @@ internal class SwapDriver(
     observer.onPlaying(waiting.generation)
     // The engine took the switch's generation: the new file's tracks are the ones now.
     current.mappedTracks?.let { observer.onTracks(waiting.generation, it.tracks, it.variants) }
+    // A fallback's jump first: the title told next is heard after it.
+    if (waiting.fallback) observer.onDiscontinuity(waiting.generation, sample().position, "switch", waiting.jump)
     // What it reached while it lined up was the pending generation's: told now.
     waiting.metadata?.let { if (waiting.metadataAt > toldCurrent) observer.onStreamMetadata(waiting.generation, it) }
-    if (waiting.fallback) observer.onDiscontinuity(waiting.generation, sample().position, "switch", waiting.jump)
   }
 
   /** The new file plays: it is the picture and the sound now. */

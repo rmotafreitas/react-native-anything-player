@@ -72,7 +72,7 @@ A paused live stream keeps downloading audio that resuming will never play, so i
 
 ## Several bitrates of one station
 
-Give a station's mounts as `renditions` of one source, and `selectQuality` switches between them behind what is heard ([Qualities](playback.md#qualities)). Each mount's connection starts at the oldest audio of its connect burst, a byte count, so a low bitrate's starts many seconds further back. Every platform lines a live switch up first: the new connection is held, moved or run faster, muted, until it plays what is heard, and takes over there, neither repeating nor skipping. A switch the player needs (the current one stalls) that cannot be lined up goes ahead with a `discontinuity` event; one that can wait (a pick, a step up) is refused and the current mount plays on ([live renditions](playback.md#live-renditions)). In a browser the station must send CORS headers.
+Give a station's mounts as `renditions` of one source, and `selectQuality` switches between them behind what is heard ([Qualities](playback.md#qualities)). Each mount's connection starts at the oldest audio of its connect burst, a byte count, so a low bitrate's starts many seconds further back. Every platform lines a live switch up first: the new connection is held, moved or run faster, muted, until it plays what is heard, and takes over there, neither repeating nor skipping. A switch the player needs (the current one stalls) or the app picked that cannot be lined up goes ahead with a `discontinuity` event; an automatic step up, which can wait, is refused and the current mount plays on ([live renditions](playback.md#live-renditions)). In a browser the station must send CORS headers.
 
 ## Recovery
 

@@ -639,7 +639,11 @@ export abstract class EngineQuality extends EngineFades {
       allowReconnect: this.options.reconnect,
       swap: true,
       rendition: target,
-      required: this._state === 'buffering',
+      // While the app holds a pick, a live switch goes ahead even when it cannot
+      // be lined up (as a `discontinuity`); only automatic quality waits for one that can.
+      required:
+        this._state === 'buffering' ||
+        (this.isLive && this.selectedQuality != null),
     });
   }
 

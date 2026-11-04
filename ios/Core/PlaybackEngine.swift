@@ -2751,11 +2751,13 @@ extension PlaybackEngine {
     let gen = issueGeneration()
     pendingSwap = PendingSwap(generation: gen, rendition: target, startedAt: now)
     log("quality switch", ["to": "r\(target)", "cause": cause])
+    // While the app holds a pick, a live switch goes ahead even when it cannot be
+    // lined up (as a `discontinuity`); only automatic quality waits for one that can.
     driver.open(
       OpenRequest(
         generation: gen, source: renditionSource(target), startPosition: position,
         playWhenReady: true, allowReconnect: options.reconnect, swap: true, rendition: target,
-        required: state == .buffering))
+        required: state == .buffering || (isLive && selectedQuality != nil)))
   }
 
   /// A switch that failed or timed out: its file sits out a while, and the

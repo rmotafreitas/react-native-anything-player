@@ -663,9 +663,7 @@ export class SwapDriver implements LocalDriver {
     f.onPlaying(generation);
     // The engine took the switch's generation: the new file's tracks are the ones now.
     f.onTracks?.(generation, this.current.sourceTracks);
-    // What it reached while it lined up was the pending generation's: told now.
-    if (pending.metadata && pending.metadataAt > this.toldCurrent)
-      f.onStreamMetadata(generation, pending.metadata);
+    // A fallback's jump first: the title told next is heard after it.
     if (fallback)
       f.onDiscontinuity(
         generation,
@@ -673,6 +671,9 @@ export class SwapDriver implements LocalDriver {
         'switch',
         pending.jump
       );
+    // What it reached while it lined up was the pending generation's: told now.
+    if (pending.metadata && pending.metadataAt > this.toldCurrent)
+      f.onStreamMetadata(generation, pending.metadata);
   }
 
   /** The new file plays: it is the picture and the sound now. */

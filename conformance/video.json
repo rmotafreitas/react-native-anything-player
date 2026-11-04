@@ -598,7 +598,7 @@
       { "native": "ready", "live": true },
       { "native": "playing" },
       { "call": "selectQuality", "id": "64" },
-      { "expect": { "state": "playing", "gen": 1, "quality": "320", "commands": ["open(gen=1,start=-,play=true,r=2)", "open(gen=2,start=-,play=true,r=0,swap)"] } },
+      { "expect": { "state": "playing", "gen": 1, "quality": "320", "commands": ["open(gen=1,start=-,play=true,r=2)", "open(gen=2,start=-,play=true,r=0,swap,required)"] } },
       { "advance": 11000 },
       { "native": "ready", "gen": 2, "live": true },
       { "advance": 44999 },
@@ -615,7 +615,7 @@
       { "native": "playing" },
       { "call": "selectQuality", "id": "64" },
       { "advance": 19999 },
-      { "expect": { "errors": [], "commands": ["open(gen=1,start=-,play=true,r=2)", "open(gen=2,start=-,play=true,r=0,swap)"] } },
+      { "expect": { "errors": [], "commands": ["open(gen=1,start=-,play=true,r=2)", "open(gen=2,start=-,play=true,r=0,swap,required)"] } },
       { "advance": 1 },
       { "expect": { "state": "playing", "gen": 1, "errors": ["QUALITY_SWITCH_FAILED:warning"], "commands": ["cancelSwap(gen=2)"] } }
     ]
@@ -630,7 +630,7 @@
       { "native": "ready", "gen": 2, "live": true },
       { "advance": 20000 },
       { "call": "pause" },
-      { "expect": { "state": "paused", "gen": 1, "errors": [], "commands": ["open(gen=1,start=-,play=true,r=2)", "open(gen=2,start=-,play=true,r=0,swap)", "cancelSwap(gen=2)", "pause"] } },
+      { "expect": { "state": "paused", "gen": 1, "errors": [], "commands": ["open(gen=1,start=-,play=true,r=2)", "open(gen=2,start=-,play=true,r=0,swap,required)", "cancelSwap(gen=2)", "pause"] } },
       { "native": "playing", "gen": 2 },
       { "expect": { "state": "paused", "gen": 1, "quality": "320", "stats": { "qualitySwitches": 0 }, "commands": [] } }
     ]
@@ -645,7 +645,7 @@
       { "native": "ready", "gen": 2, "live": true },
       { "advance": 3000 },
       { "call": "selectQuality", "id": "192" },
-      { "expect": { "state": "playing", "gen": 1, "quality": "320", "selectedQuality": "192", "commands": ["open(gen=1,start=-,play=true,r=2)", "open(gen=2,start=-,play=true,r=0,swap)", "cancelSwap(gen=2)", "open(gen=3,start=-,play=true,r=1,swap)"] } },
+      { "expect": { "state": "playing", "gen": 1, "quality": "320", "selectedQuality": "192", "commands": ["open(gen=1,start=-,play=true,r=2)", "open(gen=2,start=-,play=true,r=0,swap,required)", "cancelSwap(gen=2)", "open(gen=3,start=-,play=true,r=1,swap,required)"] } },
       { "native": "playing", "gen": 2 },
       { "expect": { "state": "playing", "gen": 1, "quality": "320", "stats": { "qualitySwitches": 0 }, "commands": [] } },
       { "native": "ready", "gen": 3, "live": true },

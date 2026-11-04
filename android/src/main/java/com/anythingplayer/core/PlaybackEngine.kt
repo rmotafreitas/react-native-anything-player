@@ -2756,7 +2756,9 @@ class PlaybackEngine(
         allowReconnect = options.reconnect,
         swap = true,
         rendition = target,
-        required = state == PlaybackState.BUFFERING,
+        // While the app holds a pick, a live switch goes ahead even when it cannot
+        // be lined up (as a `discontinuity`); only automatic quality waits for one that can.
+        required = state == PlaybackState.BUFFERING || (isLive && selectedQuality != null),
       ),
     )
   }
