@@ -421,13 +421,14 @@ final class SwapDriver: LocalOutput {
     // The engine took the switch's generation: the new file's tracks are the ones now.
     let media = current.mapped
     observer?.driverTracks(generation: waiting.generation, tracks: media.tracks, variants: media.variants)
-    // What it reached while it lined up was the pending generation's: told now.
-    if let metadata = waiting.metadata, waiting.metadataAt > toldCurrent {
-      observer?.driverMetadata(generation: waiting.generation, metadata: metadata)
-    }
+    // A fallback's jump first: the title told next is heard after it.
     if waiting.fallback {
       observer?.driverDiscontinuity(
         generation: waiting.generation, position: sample().position, reason: "switch", jump: waiting.jump)
+    }
+    // What it reached while it lined up was the pending generation's: told now.
+    if let metadata = waiting.metadata, waiting.metadataAt > toldCurrent {
+      observer?.driverMetadata(generation: waiting.generation, metadata: metadata)
     }
   }
 

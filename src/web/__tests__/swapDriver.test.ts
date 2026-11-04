@@ -868,6 +868,24 @@ describe('a live switch', () => {
     expect(rec.of('onDiscontinuity')[0]![0]).toBe(2);
   });
 
+  it('tells a fallback’s jump before the title the new connection reached, which is heard after it', () => {
+    const { old, next, tick } = stations(17, 1.6);
+    tick(4_000);
+    const metadata = { title: 'Song B', artist: null, raw: {} } as never;
+    proxy.onStreamMetadata(2, metadata);
+    tick(1_000);
+    rec.calls.length = 0;
+    old.readyState = 2;
+    tick(80);
+    expect(driver.element).toBe(next);
+    const told = rec.calls
+      .map((c) => c.name)
+      .filter(
+        (name) => name === 'onDiscontinuity' || name === 'onStreamMetadata'
+      );
+    expect(told).toEqual(['onDiscontinuity', 'onStreamMetadata']);
+  });
+
   it('gives up lining up when a connection jumps: switched anyway when needed, the jump measured', () => {
     const { next, tick } = stations(17, 1.6, true);
     tick(5_000);
