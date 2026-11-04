@@ -34,6 +34,8 @@ export default defineConfig([
       'lib/',
       'example-expo/',
       'coverage/',
+      // typedoc clears and rewrites it beside the lint (yarn verify).
+      'docs/api/',
       '**/build/',
       'ios/.build/',
       'scripts/stream-server/media/',

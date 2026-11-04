@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
-import { plan, runner, STEPS } from "../verify.mjs";
+import { concurrency, plan, stepEnv, runner, stages, STEPS } from "../verify.mjs";
 
 const scripts = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8")).scripts;
 const labels = (steps) => steps.map((step) => step.label);
@@ -55,4 +55,29 @@ test("run as a script, it runs, through a symlink too (an unknown flag exits 2)"
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("stages run in order, every step in one; half the cores at a time, one with --serial", () => {
+  const order = stages(plan([])).map((stage) => stage[0].stage ?? 0);
+  assert.deepEqual(order, [...order].sort((a, b) => a - b));
+  assert.equal(stages(plan([])).flat().length, STEPS.length);
+  assert.equal(concurrency([], 12, {}), 6);
+  assert.equal(concurrency([], 2, {}), 2);
+  assert.equal(concurrency(["--serial"], 12, {}), 1);
+});
+
+test("the build runs before every step that may read lib/", () => {
+  const [firstStage, ...later] = stages(plan([]));
+  assert.ok(firstStage.some((step) => step.script === "prepare"));
+  for (const script of ["test:tooling", "test:coverage", "typecheck", "doctor:gate", "docs:api", "lint:deps"])
+    assert.ok(later.flat().some((step) => step.script === script), script);
+});
+
+test("VERIFY_JOBS sets the count; a verify a step starts gets at most 2", () => {
+  assert.equal(concurrency([], 12, { VERIFY_JOBS: "3" }), 3);
+  assert.equal(concurrency([], 12, { VERIFY_JOBS: "x" }), 6);
+  assert.equal(stepEnv(6, {}, false).VERIFY_JOBS, "2");
+  assert.equal(stepEnv(1, {}, false).VERIFY_JOBS, "1");
+  assert.equal(stepEnv(6, {}, false).VERIFY_RUNNING, "1");
+  assert.equal(stepEnv(1, {}, false).VERIFY_RUNNING, undefined);
 });
