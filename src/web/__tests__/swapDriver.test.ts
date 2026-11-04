@@ -886,7 +886,7 @@ describe('a live switch', () => {
     expect(told).toEqual(['onDiscontinuity', 'onStreamMetadata']);
   });
 
-  it('gives up lining up when a connection jumps: switched anyway when needed, the jump measured', () => {
+  it('gives up lining up when a connection jumps: switched anyway when needed, the jump unknown', () => {
     const { next, tick } = stations(17, 1.6, true);
     tick(5_000);
     expect(next.paused).toBe(true);
@@ -900,8 +900,8 @@ describe('a live switch', () => {
       [1, undefined],
       [2, 'switch'],
     ]);
-    // Held ahead: switching now skips what lies between.
-    expect(calls[1]![3]).toBeGreaterThan(0);
+    // The gap read before the jump belongs to a mapping that no longer holds.
+    expect(calls[1]![3]).toBeNull();
   });
 
   it('gives up an optional switch when a connection jumps: the current one plays on', () => {

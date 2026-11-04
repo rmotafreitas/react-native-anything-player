@@ -39,6 +39,9 @@ private let clockWaitMs: Int64 = 3_000
 /// goes ahead with a `discontinuity` when the player needs it, else is
 /// refused. Positions stay continuous across a live switch.
 final class SwapDriver: LocalOutput {
+  /// Fallbacks after which the aligner's last gap belongs to a mapping that no longer holds.
+  private static let staleGap: Set<String> = ["reconnecting", "discontinuity"]
+
   private final class Pending {
     let generation: Int
     var target: Double?
@@ -378,7 +381,8 @@ final class SwapDriver: LocalOutput {
     case .fallback(let reason):
       // The old one stalls: the player needs the switch now.
       if reason == "stalled" { waiting.required = true }
-      waiting.jump = waiting.aligner?.gap
+      // A connection replaced or jumped: the last gap read is the old mapping's.
+      waiting.jump = Self.staleGap.contains(reason) ? nil : waiting.aligner?.gap
       unaligned(waiting, next, reason: reason)
     }
   }

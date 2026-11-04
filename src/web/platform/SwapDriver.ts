@@ -120,6 +120,12 @@ function whispers(element: AudioElementLike): boolean {
 /** How long a new HLS or DASH item may go without a program date before it is taken to have none. */
 const CLOCK_WAIT_MS = 3_000;
 
+/** Fallbacks after which the aligner's last gap belongs to a mapping that no longer holds. */
+const STALE_GAP: ReadonlySet<string> = new Set([
+  'reconnecting',
+  'discontinuity',
+]);
+
 interface Pending {
   generation: number;
   /** The media time the new file waits at (`null`: live). */
@@ -561,7 +567,10 @@ export class SwapDriver implements LocalDriver {
       case 'fallback':
         // The old one stalls: the player needs the switch now.
         if (action.reason === 'stalled') pending.required = true;
-        pending.jump = pending.aligner!.gap;
+        // A connection replaced or jumped: the last gap read is the old mapping's.
+        pending.jump = STALE_GAP.has(action.reason)
+          ? null
+          : pending.aligner!.gap;
         return this.unaligned(pending, spare, action.reason);
     }
   }
