@@ -78,7 +78,8 @@ export function concurrency(args, cores = availableParallelism(), env = process.
 export function stepEnv(limit, env = process.env, tty = process.stdout.isTTY) {
   return {
     ...env,
-    VERIFY_RUNNING: "1",
+    // The test runners take half the cores only beside other steps.
+    ...(limit > 1 ? { VERIFY_RUNNING: "1" } : {}),
     VERIFY_JOBS: String(Math.min(2, limit)),
     ...(tty ? { FORCE_COLOR: "1" } : {}),
   };
@@ -100,9 +101,19 @@ const running = new Set();
 let stoppedBy = null;
 const SIGNAL_EXIT = { SIGINT: 130, SIGTERM: 143 };
 
-/** Ctrl-C or a pipeline abort: start nothing more, and stop what runs (its whole tree). */
+/** Ctrl-C or a pipeline abort: start nothing more, and stop what runs (its whole tree); a second one kills it. */
 function stop(signal) {
-  if (stoppedBy) return;
+  if (stoppedBy) {
+    // Again: a step that ignores the first signal does not get to hang verify.
+    for (const child of running) {
+      try {
+        process.kill(-child.pid, "SIGKILL");
+      } catch {
+        // Already gone.
+      }
+    }
+    process.exit(SIGNAL_EXIT[stoppedBy]);
+  }
   stoppedBy = signal;
   for (const child of running) {
     try {

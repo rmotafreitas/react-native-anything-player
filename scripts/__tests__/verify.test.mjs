@@ -79,4 +79,5 @@ test("VERIFY_JOBS sets the count; a verify a step starts gets at most 2", () => 
   assert.equal(stepEnv(6, {}, false).VERIFY_JOBS, "2");
   assert.equal(stepEnv(1, {}, false).VERIFY_JOBS, "1");
   assert.equal(stepEnv(6, {}, false).VERIFY_RUNNING, "1");
+  assert.equal(stepEnv(1, {}, false).VERIFY_RUNNING, undefined);
 });
