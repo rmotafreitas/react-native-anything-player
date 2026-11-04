@@ -49,8 +49,9 @@ increase. LCOV (`coverage/lcov.info`) feeds SonarQube, and `CI=true` also emits
 The web engine's browser layer is JavaScript, so it counts toward the floors like
 the rest: it is unit-tested against a scripted fake browser (`src/web/__tests__`).
 
-The `e2e-web` GitHub Actions job runs `yarn test:web`: Playwright in Chromium,
-Firefox and WebKit against the test radio: the plain-web example, the React
+The `e2e-web` GitHub Actions jobs run `yarn test:web`, one job a browser
+(`--project=chromium`, `firefox`, `webkit`) side by side, each with its own test
+radio: the plain-web example, the React
 example (Vite), a scripted Cast receiver, and the integration scenarios on the
 Expo example's web export (see [Testing](testing.md#web-end-to-end)).
 
