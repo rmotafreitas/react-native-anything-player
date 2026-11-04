@@ -7,6 +7,22 @@ and versions follow [Semantic Versioning](https://semver.org/): see
 change and how releases are made. Changes not released yet are listed in the
 open release pull request.
 
+## [1.5.0](https://github.com/rmotafreitas/react-native-anything-player/compare/v1.4.0...v1.5.0) (2026-11-04)
+
+A live quality pick that cannot be lined up goes ahead instead of being refused, and an app that keeps its own place in the station's timeline hears of the jump before the title. Nothing is removed or renamed. One documented live-stream behaviour changes: see **Upgrading**.
+
+### Added
+
+- **A live quality pick that cannot be lined up goes ahead.** A live switch the app picked with `selectQuality` used to be refused (`QUALITY_SWITCH_FAILED`) when it could not be lined up with what is heard, and tried again a minute later. A pick that can never be lined up, such as a new connection behind what is heard on iOS (AVPlayer cannot run a live stream faster), then never landed. While the app holds a pick, a live switch is now lined up when it can be, and otherwise goes ahead at once with a `discontinuity` (`reason: 'switch'`), as a switch the player needs already did. Automatic quality (a step up) still waits for one that can be lined up. See [Live renditions](docs/playback.md#live-renditions) ([a4f6ac5](https://github.com/rmotafreitas/react-native-anything-player/commit/a4f6ac5c1254566cbee33d3ca3ca41d4421e861a)).
+
+### Fixed
+
+- **A switch that went ahead without being lined up reports its `discontinuity` before the title the new connection reached.** The title came first, so an app that places its song again on `discontinuity` took it for a song change heard at the song's start. Now the title told after the `discontinuity` is known to be partway into its song. On iOS, Android and the web ([2c7e5f9](https://github.com/rmotafreitas/react-native-anything-player/commit/2c7e5f9feef5946f4f6d3a4a0b847994b7f3a554)).
+
+### Upgrading
+
+- **A pick is no longer refused when it cannot be lined up.** It goes ahead with a `discontinuity` instead. An app that re-opened the source on `QUALITY_SWITCH_FAILED` to force its pick through can stop doing so, and should place its position again on `discontinuity`, as 1.4.0 already advised. `QUALITY_SWITCH_FAILED` now means a pick that was not ready in time or whose connection failed (it sits out a minute and is tried again), or an automatic step up that was refused.
+
 ## [1.4.0](https://github.com/rmotafreitas/react-native-anything-player/compare/v1.3.1...v1.4.0) (2026-11-03)
 
 Live quality switches that line up with what is heard, and voice and car playback on a fresh install. Nothing is removed or renamed. A few live-stream behaviours change, and an app that handled them itself may need to stop doing so: see **Upgrading**.
