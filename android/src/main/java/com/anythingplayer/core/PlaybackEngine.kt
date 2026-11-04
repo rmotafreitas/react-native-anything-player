@@ -2519,7 +2519,7 @@ class PlaybackEngine(
 
   /** The quality the status reports as playing. */
   private fun currentQualityId(): String? {
-    val table = renditions ?: return videoInfo?.variantId
+    val table: List<Rendition> = renditions ?: return videoInfo?.variantId
     return currentRendition?.let { table[it].idAt(it) }
   }
 
@@ -2784,9 +2784,9 @@ class PlaybackEngine(
         // The new file's own failure: its code, then its message.
         causeDescription =
           when {
-            refused -> cause!!.message
-            cause != null -> "${cause.code.wire}: ${cause.message}"
-            else -> reason
+            cause == null -> reason
+            refused -> cause.message
+            else -> "${cause.code.wire}: ${cause.message}"
           },
         platformDomain = cause?.platformDomain,
         platformCode = cause?.platformCode,

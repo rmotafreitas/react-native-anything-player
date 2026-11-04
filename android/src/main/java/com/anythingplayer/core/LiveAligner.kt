@@ -213,25 +213,38 @@ class LiveAligner(private val caps: Caps) {
     // At first anything short of the lead is moved (the start is then always
     // from a hold); later only a player that fell behind.
     val short = if (first) gap < lead else gap < -TOLERANCE_S
-    // Moved just ahead, then held: it never starts behind.
-    // One at the edge of what it holds waits for more (a jump there would not move it).
-    val forward = landing(target, next)
-    if (short && canJump && forward <= next.position + TOLERANCE_S) return Action.Wait
-    if (short && canJump) return Action.JumpTo(forward)
-    // On a stream's clock it can go back too, within its live window: if
-    // the hold left after it fits the budget, else not at all (decided
-    // once, when it jumps; a held one is left to `holding`).
-    if (next.start != null && caps.jump == Jump.ALWAYS && gap > lead + caps.jumpLead + BACK_S) {
-      val to = landing(target, next)
-      if (next.position - to > BACK_S) {
-        if ((to - target - lead) * 1000 > BUDGET_MS - elapsed) return fallback("ahead")
-        return Action.JumpTo(to)
-      }
-    }
+    if (short && canJump) return moveForward(target, next)
+    moveBack(elapsed, target, gap, next)?.let { return it }
     if (gap > lead || !next.ready) return holding(t, elapsed, gap, first, next)
     if (gap < -TOLERANCE_S && caps.maxRate > 1) return setRate(t, speedUp(gap), gap, next)
     if (gap < -ACCEPT_S) return fallback("behind")
     return setRate(t, 1.0, gap, next)
+  }
+
+  /**
+   * Moved just ahead, then held: it never starts behind. One at the edge of
+   * what it holds waits for more (a jump there would not move it).
+   */
+  private fun moveForward(target: Double, next: Reading): Action {
+    val to = landing(target, next)
+    return if (to <= next.position + TOLERANCE_S) Action.Wait else Action.JumpTo(to)
+  }
+
+  /**
+   * On a stream's clock it can go back too, within its live window: if the
+   * hold left after it fits the budget, else not at all (decided once, when
+   * it jumps; a held one is left to `holding`). `null`: not moved back.
+   */
+  private fun moveBack(elapsed: Long, target: Double, gap: Double, next: Reading): Action? {
+    if (next.start == null || caps.jump != Jump.ALWAYS) return null
+    // Written as "more than", so a NaN gap or position never moves it.
+    if (gap > lead + caps.jumpLead + BACK_S) {
+      val to = landing(target, next)
+      if (next.position - to > BACK_S) {
+        return if ((to - target - lead) * 1000 > BUDGET_MS - elapsed) fallback("ahead") else Action.JumpTo(to)
+      }
+    }
+    return null
   }
 
   /** Where a jump lands it: just ahead of what is heard, within what it holds and its live window. */

@@ -41,7 +41,7 @@ describe('DecodedTap', () => {
     await flush();
     // 0.4 s batches: two decoded, the second led by the first's last two frames.
     expect(decode).toHaveBeenCalledTimes(2);
-    expect(new Uint8Array(decode.mock.calls[1]![0]).length).toBe(
+    expect(new Uint8Array(decode.mock.calls[1]![0])).toHaveLength(
       18 * FRAME_BYTES
     );
     for (const frame of [3, 15, 16, 17, 30]) {

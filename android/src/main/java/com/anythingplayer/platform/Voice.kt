@@ -201,9 +201,9 @@ internal object Voice {
       }
     } else {
       // The item's `quality`: an id, `'auto'` for automatic; absent: keep the pick.
-      val qualityGiven = entry.json.has("quality")
-      val quality = entry.json.optString("quality").takeIf { it.isNotEmpty() && it != "auto" }
-      controller.load(descriptor, fields, autoplay, startSeconds, qualityGiven = qualityGiven, quality = quality, completion = completion)
+      val quality =
+        if (entry.json.has("quality")) QualityPick(entry.json.optString("quality").takeIf { it.isNotEmpty() && it != "auto" }) else null
+      controller.load(descriptor, fields, autoplay, startSeconds, quality = quality, completion = completion)
     }
     store().let { s -> writes.execute { s.played(entry.id) } }
     AnythingPlayerRuntime.activate(controller)
@@ -292,32 +292,35 @@ internal object Voice {
     }
     playFromSearch(request, null, stillWanted) { result ->
       result.onFailure { Log.w(TAG, "assistant request \"${request.query}\" failed: ${it.message}") }
-      result.onSuccess { entry ->
-        if (entry != null) return@onSuccess
-        // The app's catalog came while its search handler was answering (it had
-        // nothing): the catalog's match, then. Nothing waits again: a reload or a
-        // catalog still to come ends the request.
-        // Waited requests only. Not a teardown: by the time jsDetached answers the
-        // handler's questions with null, the handler is off and JS is detached.
-        if (waited && !stillWanted()) {
-          Log.d(TAG, "assistant request \"${request.query}\" dropped: something else is loaded")
-          return@onSuccess
-        }
-        val late = if (waited && handlerEnabled && AnythingPlayerRuntime.hasJs) resolve(request) else null
-        if (late == null) {
-          Log.d(TAG, "assistant request \"${request.query}\" matched nothing")
-          return@onSuccess
-        }
-        val controller =
-          try {
-            voicePlayer(null)
-          } catch (error: PlayerError) {
-            Log.w(TAG, "assistant request \"${request.query}\" failed: ${error.message}")
-            return@onSuccess
-          }
-        load(controller, late, request, autoplay = true, startSeconds = null, completion = null)
-      }
+      result.onSuccess { entry -> if (entry == null) playLateMatch(request, stillWanted, waited) }
     }
+  }
+
+  /**
+   * The app's catalog came while its search handler was answering (it had
+   * nothing): the catalog's match, then. Nothing waits again: a reload or a
+   * catalog still to come ends the request.
+   */
+  private fun playLateMatch(request: SearchRequest, stillWanted: () -> Boolean, waited: Boolean) {
+    // Waited requests only. Not a teardown: by the time jsDetached answers the
+    // handler's questions with null, the handler is off and JS is detached.
+    if (waited && !stillWanted()) {
+      Log.d(TAG, "assistant request \"${request.query}\" dropped: something else is loaded")
+      return
+    }
+    val late = if (waited && handlerEnabled && AnythingPlayerRuntime.hasJs) resolve(request) else null
+    if (late == null) {
+      Log.d(TAG, "assistant request \"${request.query}\" matched nothing")
+      return
+    }
+    val controller =
+      try {
+        voicePlayer(null)
+      } catch (error: PlayerError) {
+        Log.w(TAG, "assistant request \"${request.query}\" failed: ${error.message}")
+        return
+      }
+    load(controller, late, request, autoplay = true, startSeconds = null, completion = null)
   }
 
 }
