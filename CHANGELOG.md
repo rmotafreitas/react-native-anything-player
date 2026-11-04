@@ -7,6 +7,18 @@ and versions follow [Semantic Versioning](https://semver.org/): see
 change and how releases are made. Changes not released yet are listed in the
 open release pull request.
 
+## [1.5.0](https://github.com/rmotafreitas/react-native-anything-player/compare/v1.4.0...v1.5.0) (2026-11-04)
+
+
+### Added
+
+* a live quality pick that cannot be lined up goes ahead, with a discontinuity ([a4f6ac5](https://github.com/rmotafreitas/react-native-anything-player/commit/a4f6ac5c1254566cbee33d3ca3ca41d4421e861a))
+
+
+### Fixed
+
+* a switch that could not be lined up reports its discontinuity before the title it reached ([2c7e5f9](https://github.com/rmotafreitas/react-native-anything-player/commit/2c7e5f9feef5946f4f6d3a4a0b847994b7f3a554))
+
 ## [1.4.0](https://github.com/rmotafreitas/react-native-anything-player/compare/v1.3.1...v1.4.0) (2026-11-03)
 
 Live quality switches that line up with what is heard, and voice and car playback on a fresh install. Nothing is removed or renamed. A few live-stream behaviours change, and an app that handled them itself may need to stop doing so: see **Upgrading**.
