@@ -9,12 +9,12 @@ open release pull request.
 
 ## [1.5.1](https://github.com/rmotafreitas/react-native-anything-player/compare/v1.5.0...v1.5.1) (2026-11-04)
 
+A fix for the `jump` a live quality switch reports, and corrected docs and notes after 1.5.0. Nothing is removed or renamed; upgrading needs no change.
 
 ### Fixed
 
-* a switch already given up drops its jump when a connection jumps before it takes over ([cc3f815](https://github.com/rmotafreitas/react-native-anything-player/commit/cc3f81562616c34d12175b35681a46f3fe573432))
-* a switch given up after a connection jumped reports no jump; docs and notes after 1.5.0 ([9375695](https://github.com/rmotafreitas/react-native-anything-player/commit/937569553065f655ce1f850db055e3b19ad63e04))
-* a switch given up after a connection jumped reports no jump; docs and notes after 1.5.0 ([d7e8560](https://github.com/rmotafreitas/react-native-anything-player/commit/d7e8560059474ea6a0065f66a0a3aa965cd3c10b))
+- **A switch's `jump` is `null` when a connection jumped first.** A live quality switch that could not be lined up because a connection was replaced or jumped reported, as its `discontinuity`'s `jump`, a gap measured before that jump: a precise-looking wrong number. It is now `null` (not known). The same applies to a switch already given up for another reason when a connection jumps before it takes over. On iOS, Android and the web.
+- **The docs describe 1.5.0's rule everywhere.** The `discontinuity` TSDoc, [Events](docs/events.md) and [Internet radio](docs/internet-radio.md) say that any live switch while the app holds a pick can go ahead with a `discontinuity`. [Playback](docs/playback.md)'s WebKit measurement says it was taken under 1.4.0's refusal rule. 1.5.0's notes now say why it is a minor, that a pick goes ahead once lining it up is given up (within 30 s), and that `QUALITY_SWITCH_FAILED` has other causes too ([Errors](docs/errors.md)).
 
 ## [1.5.0](https://github.com/rmotafreitas/react-native-anything-player/compare/v1.4.0...v1.5.0) (2026-11-04)
 
