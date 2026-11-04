@@ -1,0 +1,62 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  // An export the module also uses itself is API kept for tests and callers.
+  "ignoreExportsUsedInFile": true,
+  "workspaces": {
+    ".": {
+      // The package's entry points (package.json "exports" source
+      // condition, "bin"), the Expo config plugin, and what runs on its own:
+      // tooling, benchmarks, the browser tests and the web examples.
+      "entry": [
+        "src/{web,react,video}/index.ts",
+        "src/sound/{index,web}.ts",
+        // Metro picks a module's .web variant by platform.
+        "src/**/*.web.ts",
+        "plugin/**/*.{js,ts}",
+        "bin/rnap.mjs",
+        "scripts/**/*.{mjs,sh}",
+        "benchmarks/**/*.mjs",
+        "e2e/playwright.config.ts",
+        "example-web/*.{js,mjs}",
+        "example-react/src/main.tsx",
+        "example-react/vite.config.mjs",
+        "src/**/__tests__/**/*.test.{ts,tsx}"
+      ],
+      "project": ["**/*.{js,mjs,cjs,ts,tsx}"],
+      // The Expo example: its own npm project and CI job.
+      "ignore": ["example-expo/**"],
+      "ignoreDependencies": [
+        // Extended by name through FlatCompat (eslint.config.mjs), with the
+        // plugin it expects.
+        "@react-native/eslint-config",
+        "eslint-plugin-ft-flow",
+        // The plugin requires it from the app's own Expo install.
+        "@expo/plist",
+        "expo",
+        // Loaded by name: the web examples' pages take hls.js and Shaka from
+        // node_modules, `rnap migrate` takes @babel/parser from the project
+        // it migrates, and Jest names its CI reporter.
+        "hls.js",
+        "shaka-player",
+        "@babel/parser",
+        "jest-junit"
+      ],
+      // test:ios runs the Swift package's tests; the measurement and diagram
+      // scripts drive adb, PulseAudio and Java on the developer's machine.
+      "ignoreBinaries": ["swift", "adb", "pactl", "parecord", "java"]
+    },
+    "example": {
+      "ignoreDependencies": [
+        // The React Native template's Babel and TypeScript setup.
+        "@babel/preset-env",
+        "@babel/runtime",
+        "@react-native/typescript-config",
+        "metro-config"
+      ]
+    },
+    "website": {
+      // VitePress's DocSearch peers.
+      "ignoreDependencies": ["@algolia/client-search", "algoliasearch", "search-insights"]
+    }
+  }
+}
