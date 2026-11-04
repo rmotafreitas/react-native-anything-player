@@ -6,10 +6,13 @@
 import type { ImageRequireSource } from 'react-native';
 
 /** An output device: a screen with a triangle (AirPlay-style). */
-export const OUTPUT_ICON: ImageRequireSource = require('./assets/output.png');
+export const OUTPUT_ICON: ImageRequireSource =
+  require('./assets/output.png') as ImageRequireSource;
 
 /** Google Cast, not connected. */
-export const CAST_ICON: ImageRequireSource = require('./assets/cast.png');
+export const CAST_ICON: ImageRequireSource =
+  require('./assets/cast.png') as ImageRequireSource;
 
 /** Google Cast, connected. */
-export const CAST_CONNECTED_ICON: ImageRequireSource = require('./assets/cast-connected.png');
+export const CAST_CONNECTED_ICON: ImageRequireSource =
+  require('./assets/cast-connected.png') as ImageRequireSource;

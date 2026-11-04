@@ -55,7 +55,7 @@ export class IcyTitleReader {
 
   private loop(delay: number): void {
     const startedAt = monotonicNow();
-    this.connect().then((outcome) => {
+    void this.connect().then((outcome) => {
       if (this.stopped || outcome === 'unsupported') return;
       const stable = monotonicNow() - startedAt >= STABLE_MS;
       const wait = stable ? RETRY_START_MS : delay;

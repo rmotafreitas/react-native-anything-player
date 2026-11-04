@@ -23,6 +23,8 @@ const SONARJS_DISABLED = new Set([
 export default {
   files: ["src/**/*.{ts,tsx}"],
   ignores: ["src/**/__tests__/**", "src/**/*.test.{ts,tsx}", "src/**/*.d.ts"],
-  ...sonarjs.configs.recommended,
+  name: sonarjs.configs.recommended.name,
+  plugins: sonarjs.configs.recommended.plugins,
+  settings: sonarjs.configs.recommended.settings,
   rules: Object.fromEntries(Object.keys(sonarjs.configs.recommended.rules).map(rule => [rule, SONARJS_DISABLED.has(rule) ? "off" : "error"])),
 };

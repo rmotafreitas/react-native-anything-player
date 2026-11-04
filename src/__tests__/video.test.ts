@@ -162,7 +162,9 @@ describe('subtitleTracks', () => {
 });
 
 describe('normalizeVideoSource', () => {
-  const art = jest.fn((a: unknown) => (a === 'none' ? null : `art:${a}`));
+  const art = jest.fn((a: unknown) =>
+    a === 'none' ? null : `art:${String(a)}`
+  );
   const uri = 'https://x.example/a.mp4';
 
   it('is empty for an audio source', () => {
@@ -663,7 +665,11 @@ describe('Player video', () => {
       });
       await flush();
       const cues = videoCommands().filter((c) => c.op === 'cues');
-      expect(cues.map((c) => c.trackId).sort()).toEqual(['en', 'inline']);
+      expect(
+        cues
+          .map((c) => c.trackId)
+          .sort((x, y) => String(x).localeCompare(String(y)))
+      ).toEqual(['en', 'inline']);
       expect(cues[0]).toMatchObject({
         session: expect.stringMatching(/^s\d+$/),
         cues: [expect.objectContaining({ start: 1, end: 2.5 })],

@@ -68,6 +68,7 @@ export function catalogSeed(
     items: CatalogItem[];
   } & CatalogOptions
 ): Record<string, unknown> {
+  // oxlint-disable-next-line typescript/no-unnecessary-condition -- validates what a JS caller passes, whatever its type says
   if (input == null || typeof input !== 'object' || Array.isArray(input))
     throw new TypeError(
       'The catalog must be an object: { items, playerId?, playerOptions?, browse? }.'

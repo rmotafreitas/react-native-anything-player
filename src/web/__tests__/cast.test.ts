@@ -42,7 +42,9 @@ const status = (id: string) => module.getStatus(id) as Snapshot;
 const notes = (id: string) =>
   (module.getDiagnostics(id) as Array<{ event: string }>).map((d) => d.event);
 const castStates = () =>
-  ofType('castState').map((e) => `${e.state}:${e.device ?? ''}`);
+  ofType('castState').map(
+    (e) => `${e.state as string}:${(e.device as string | undefined) ?? ''}`
+  );
 
 const ICY = {
   'content-type': 'audio/mpeg',

@@ -4,5 +4,6 @@ import { Image } from 'react-native';
 import { createWebSoundBackend } from '../web/platform/WebSound';
 
 export const soundBackend = createWebSoundBackend({
+  // oxlint-disable-next-line typescript/no-unnecessary-condition -- React Native Web's Image has no resolveAssetSource
   resolveAsset: (module) => Image.resolveAssetSource?.(module)?.uri ?? null,
 });

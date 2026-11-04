@@ -49,6 +49,7 @@ export function protect(
         },
         onNote: (event, details) => observer.onNote(generation, event, details),
       });
+      // oxlint-disable-next-line typescript/no-unnecessary-condition -- closed during the await
       if ((await drm.start()) && !closed) ready();
     })
     .catch(() => undefined);

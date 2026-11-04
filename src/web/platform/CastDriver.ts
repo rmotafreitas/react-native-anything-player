@@ -466,6 +466,7 @@ export class CastDriver implements EngineDriver {
       case 'IDLE':
         this.idle(generation);
         break;
+      case null:
       default:
         break;
     }

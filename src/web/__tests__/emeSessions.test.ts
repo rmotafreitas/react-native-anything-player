@@ -934,7 +934,7 @@ describe("the app's answer in time (licenseRequests)", () => {
     const pending = requestLicense((e) => events.push(e), challengeRequest);
     const outcome = pending.then(
       () => null,
-      (error: PlayerError) => error
+      (error: unknown) => error as PlayerError
     );
     await jest.advanceTimersByTimeAsync(29_999);
     expect(jest.getTimerCount()).toBe(1);

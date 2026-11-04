@@ -206,6 +206,7 @@ export class LiveAligner {
     if (this.k == null) {
       if (elapsed >= Align.SETTLE_BUDGET_MS) return this.fallback('unsettled');
       this.measure(t, old, next);
+      // oxlint-disable-next-line typescript/no-unnecessary-condition -- measure() sets it, which TypeScript does not follow
       if (this.k == null) return { kind: 'wait' };
     }
     if (elapsed >= Align.BUDGET_MS) return this.fallback('timeout');

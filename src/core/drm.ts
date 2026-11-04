@@ -73,6 +73,7 @@ function clearkey(c: NonNullable<DrmConfig['clearkey']>, hook: boolean) {
 
 /** The `drm` part of a source as the engine module takes it; throws INVALID_ARGUMENT for a malformed one. */
 export function normalizeDrm(drm: DrmConfig): Record<string, unknown> {
+  // oxlint-disable-next-line typescript/no-unnecessary-condition -- validates what a JS caller passes, whatever its type says
   if (drm == null || typeof drm !== 'object')
     throw invalid('drm must be an object of key systems.');
   if (drm.getLicense != null && typeof drm.getLicense !== 'function')

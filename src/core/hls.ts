@@ -25,7 +25,8 @@ export interface HlsLevelDetails {
 export interface HlsMetadataSample {
   /** Seconds on the media timeline. */
   pts: number;
-  data: Uint8Array;
+  /** Missing on a sample hls.js could not read. */
+  data?: Uint8Array;
   type?: string;
 }
 

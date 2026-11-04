@@ -4,7 +4,6 @@
 // a scripted hls.js (`FakeHls`).
 
 import { configureHls, hlsConstructor } from '../../core/hls';
-import type { HlsConstructor } from '../../core/hls';
 import { FakeHls } from './FakeHls';
 import { install, uninstall, type FakeWorld } from './FakeBrowser';
 import { id3TextTag } from './audioFixtures';
@@ -51,7 +50,7 @@ async function open(uri = URI, headers: Record<string, string> = {}) {
 beforeEach(() => {
   jest.useFakeTimers({ doNotFake: ['queueMicrotask', 'nextTick'] });
   FakeHls.reset();
-  configureHls(FakeHls as unknown as HlsConstructor);
+  configureHls(FakeHls);
   setup();
 });
 
@@ -70,7 +69,7 @@ describe('configureHls', () => {
     const global = class {};
     (globalThis as { Hls?: unknown }).Hls = global;
     expect(hlsConstructor()).toBe(global);
-    configureHls(FakeHls as unknown as HlsConstructor);
+    configureHls(FakeHls);
     expect(hlsConstructor()).toBe(FakeHls);
   });
 });
@@ -412,7 +411,7 @@ describe('loading the hls.js glue', () => {
     await jest.isolateModulesAsync(async () => {
       const { WebModule: Fresh } = require('../platform/WebModule');
       const hls = require('../../core/hls');
-      hls.configureHls(FakeHls as unknown as HlsConstructor);
+      hls.configureHls(FakeHls);
       try {
         result = await run({ module: new Fresh() });
       } finally {
@@ -454,7 +453,7 @@ describe('loading the hls.js glue', () => {
     await freshModules(async ({ module: fresh }) => {
       const id = fresh.createPlayer({});
       fresh.load(id, { uri: URI }, {}).catch(() => undefined);
-      fresh.releasePlayer(id);
+      void fresh.releasePlayer(id);
       await flush();
       expect(FakeHls.instances).toHaveLength(0);
     });

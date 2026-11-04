@@ -218,6 +218,7 @@ export class FakeCast {
                 resolve(undefined);
               })
             );
+          case 'accept':
           default:
             this.finishLoad(load);
             return Promise.resolve(undefined);
@@ -300,7 +301,7 @@ function namespacesOf(fake: FakeCast): { cast: object; chrome: object } {
   class RemotePlayerController extends Emitter {
     constructor(readonly player: RemotePlayer) {
       super();
-      fake.controllers.push(this as unknown as FakeController);
+      fake.controllers.push(this);
     }
     playOrPause() {
       fake.playOrPauses += 1;

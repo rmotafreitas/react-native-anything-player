@@ -690,6 +690,7 @@ export class MseStream {
     if (this.closed) return false;
     this.evict();
     await this.idle();
+    // oxlint-disable-next-line typescript/no-unnecessary-condition -- close() may come during the await
     if (this.closed) return false;
     try {
       this.buffer!.appendBuffer(audio);

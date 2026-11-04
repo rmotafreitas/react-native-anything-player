@@ -399,7 +399,7 @@ test.describe('the browser’s output picker', () => {
     await page.addInitScript(() => {
       const audios: EventTarget[] = [];
       const create = document.createElement.bind(document);
-      document.createElement = ((
+      document.createElement = (
         tag: string,
         options?: ElementCreationOptions
       ) => {
@@ -414,7 +414,7 @@ test.describe('the browser’s output picker', () => {
           });
         }
         return element;
-      }) as typeof document.createElement;
+      };
       (window as unknown as { __audios: EventTarget[] }).__audios = audios;
     });
     await page.goto('/');

@@ -60,11 +60,13 @@ export class ElementRoute {
     this.element = element;
     const listeners = new (browser().AbortController)();
     this.listeners = listeners;
-    const on = (type: string, handler: (event: any) => void) =>
+    const on = (type: string, handler: (event: Event) => void) =>
       element.addEventListener(type, handler, { signal: listeners.signal });
     on('webkitcurrentplaybacktargetiswirelesschanged', () => this.onChange());
     on('webkitplaybacktargetavailabilitychanged', (event) => {
-      this.airplayTargets = event.availability === 'available';
+      // WebKitPlaybackTargetAvailabilityEvent (Safari only).
+      const { availability } = event as Event & { availability?: string };
+      this.airplayTargets = availability === 'available';
       this.onChange();
     });
     const remote = element.remote;
