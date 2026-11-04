@@ -7,6 +7,15 @@ and versions follow [Semantic Versioning](https://semver.org/): see
 change and how releases are made. Changes not released yet are listed in the
 open release pull request.
 
+## [1.5.1](https://github.com/rmotafreitas/react-native-anything-player/compare/v1.5.0...v1.5.1) (2026-11-04)
+
+
+### Fixed
+
+* a switch already given up drops its jump when a connection jumps before it takes over ([cc3f815](https://github.com/rmotafreitas/react-native-anything-player/commit/cc3f81562616c34d12175b35681a46f3fe573432))
+* a switch given up after a connection jumped reports no jump; docs and notes after 1.5.0 ([9375695](https://github.com/rmotafreitas/react-native-anything-player/commit/937569553065f655ce1f850db055e3b19ad63e04))
+* a switch given up after a connection jumped reports no jump; docs and notes after 1.5.0 ([d7e8560](https://github.com/rmotafreitas/react-native-anything-player/commit/d7e8560059474ea6a0065f66a0a3aa965cd3c10b))
+
 ## [1.5.0](https://github.com/rmotafreitas/react-native-anything-player/compare/v1.4.0...v1.5.0) (2026-11-04)
 
 A live quality pick that cannot be lined up goes ahead instead of being refused, and an app that keeps its own place in the station's timeline hears of the jump before the title. Nothing is removed or renamed. One documented live-stream behaviour changes: see **Upgrading**. By [what a version number promises](docs/releases.md#what-a-version-number-promises) that would call for a major; it is a minor because 1.4.0 had been out for a few hours, the change only lets a pick through that was refused, and an app that follows 1.4.0's advice needs no change.
