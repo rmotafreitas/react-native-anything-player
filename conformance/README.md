@@ -75,6 +75,11 @@ Each file holds an array of scenarios:
 | `{"fullscreen": true}` | fullscreen started / ended |
 | `{"native": "failed", …, "httpStatus": 403}` | a failure with the server's status |
 | `{"platformReset": true}` | media services were reset |
+| `{"call": "queueSet", "items": ["a", {"id": "radio", "uri": "…", "live": true}], "start": 0, "position": 30, "autoplay": true}` | `engine.queueSet` (an item `"a"` plays `https://cdn.example/a.mp3`) |
+| `{"call": "queueAdd", "items": […], "index": 1}` / `{"call": "queueRemove", "ids": ["a"]}` / `{"call": "queueMove", "from": 0, "to": 2}` / `{"call": "queueClear"}` | queue edits |
+| `{"call": "queueSkipTo", "id": "b", "position": 30}` / `{"call": "queueNext"}` / `{"call": "queuePrevious"}` | queue navigation |
+| `{"call": "repeat", "value": "off" \| "one" \| "all"}` / `{"call": "shuffle", "value": true, "seed": 3}` | repeat and shuffle (`seed`: the shared xorshift32 generator's) |
+| `{"native": "advanced", "gen": 2, "playing": true}` | the driver started the prepared item itself as the current one ended (`onAdvanced`) |
 | `{"advance": 1500}` | advance the clock, firing due wake-ups in order |
 | `{"expect": {...}}` | assertions (below) |
 
@@ -109,6 +114,9 @@ happened since the previous one.
 | `refreshes` | refresh requests since the previous expect, `loadId:reason` |
 | `gen` | the current generation |
 | `stats` | the listed fields of `engine.stats` (`startupMs`, `rebufferCount`, `rebufferMs`, `qualitySwitches`, `audioOnlySwitches`) |
+| `loadId` | `status.loadId` |
+| `queue` | the listed fields of `engine.queueState`: `current` (id or `null`), `index`, `ids`, `order`, `repeat`, `shuffle` |
+| `queueEvents` | `engineQueueChanged` calls since the previous expect |
 
 Command formats: `open(gen=N,start=-|S.S,play=B)`, `play`, `pause`,
 `seek(S.S)`, `release`, `unload`, `volume(V.VV)`, `rate(R.RR)`,
@@ -116,7 +124,10 @@ Command formats: `open(gen=N,start=-|S.S,play=B)`, `play`, `pause`,
 quality switch prepared behind the current item; `,swap,required` when the
 current item is stalling: one that cannot be lined up switches anyway), `seek(S.S,exact)`,
 `video(on|off)`, `quality(maxH=H|-,maxBps=B|-,pin=ID|-,audioOnly=B)`,
-`loop(B)`, `cancelSwap(gen=N)`, `tracks(audio=ID|-,text=ID|-)`. The fake driver's playhead freezes on
+`loop(B)`, `cancelSwap(gen=N)`, `tracks(audio=ID|-,text=ID|-)`; for the queue
+`prepareNext(gen=N)` (the next item opened behind the current one under its
+own generation), `cancelNext(gen=N)` and `advance(gen=N)` (start it now: its
+playhead starts at 0). The fake driver's playhead freezes on
 `switchOutput`. A swap's `open` leaves the current playhead alone; the swap's
 `playing` makes its start position the playhead.
 
@@ -302,3 +313,18 @@ and `android/.../core/Types.kt`.
 
 The fake jitter source returns 0.5, so backoff delays are exactly
 1000, 2000, 4000, 8000, 16000, 30000 ms.
+
+## Queue (`queue.json`, `queue/model.json`)
+
+`queue/model.json` holds the queue's decisions alone (`QueueModel`: next and
+previous with positions, repeat, shuffle with the shared xorshift32
+generator, edits around the current item): steps `set`, `add`, `remove`,
+`move`, `clear`, `skipTo`, `repeat`, `shuffle`, `next` (`"auto": true`: the
+item ended on its own), `previous` (`"position"`: seconds into the item), each
+with an optional `"result"`; expectations `current`, `index`, `items`,
+`order`, `next`, `nextAuto`, `previous`. `queue.json` holds the engine to the
+queue: the next item prepared under its own generation, taking over (by the
+driver, `advanced`, or the engine, `advance`) with no `ended`, items that fail
+on their own skipped, repeat `one` as the engine's loop, and what a plain
+`load` does to the queue.
+

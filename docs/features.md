@@ -61,7 +61,9 @@ Supported: the current and previous version of each browser. Radio titles on iPh
 | Fades on play, pause and stop, `fadeTo` | ✓ | ✓ | ◐ ⁷ | ◐ ⁷ | ◐ ⁷ | – ⁶ |
 | Separate quality files (`renditions`) switched with no gap, a pick that holds across loads | ✓ † | ✓ † | ✓ | ✓ | ✓ | ✓ † |
 | Live renditions (one station's mounts, a live MPEG-TS sound channel, or HLS / DASH with program dates) switched in step with what is heard, no repeat or skip | ◐ † ⁸ | ✓ † | ◐ ⁸ ⁹ | ◐ ⁸ ⁹ | ◐ ⁸ ⁹ | ◐ † ⁸ ⁹ |
-| Queue (next / previous, gapless) | – | – | – | – | – | – |
+| Queue: next / previous, repeat, shuffle, run while JS is frozen | ✓ † | ✓ | ✓ | ✓ | ✓ | ✓ † |
+| The queue's next item started without a gap | ◐ † ¹⁰ | ✓ | ◐ ¹⁰ | ◐ ¹⁰ | ◐ ¹⁰ | ◐ † ¹⁰ ¹¹ |
+| Playlist files (M3U, PLS, XSPF) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 
 1. Leave it out with `rnapHls=false`.
 2. The browser's own HLS where it has one (Chrome on Android), else [hls.js](web.md#hls), registered with `configureHls`.
@@ -72,8 +74,8 @@ Supported: the current and previous version of each browser. Radio titles on iPh
 7. In a hidden tab the browser runs timers less often: fades move in larger steps and the sleep timer can fire late.
 8. A live MPEG-TS channel switches at once, as before, on iOS, and in a browser when it has a picture ([live renditions](playback.md#live-renditions)).
 9. When RNAP reads the stream itself (MSE, hls.js, Shaka; HLS with program dates also on Safari's own player), not on the plain `<audio>` element, where a switch goes ahead with a `discontinuity`. On iPhone and iPad, from iOS 17.1.
-
-A queue is planned: see the [roadmap](roadmap.md).
+10. Near-gapless: the next item is opened and buffered on a second player and started when the current one ends (a few milliseconds), not sample-exact as ExoPlayer's playlist on Android. See [Queue](queue.md#advancing).
+11. Once the page has had a tap on a control that calls the player.
 
 ## Internet radio
 

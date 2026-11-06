@@ -84,6 +84,12 @@ export const SECTIONS: DocSection[] = [
           'Load URLs, assets and local files, control playback, read progress and run several players at once with the RNAP React Native audio API.',
       },
       {
+        link: '/docs/queue',
+        text: 'Queue & playlists',
+        description:
+          'A native queue for React Native and the web: next and previous, repeat and shuffle, the next item started without a gap, playlist files (M3U, PLS, XSPF).',
+      },
+      {
         link: '/docs/internet-radio',
         text: 'Internet radio & ICY',
         description:
