@@ -158,7 +158,7 @@ A `Player` with a picture ([guide](video.md), [subtitles](subtitles.md)).
 | DRM: license servers, Clear Key keys in the source, or the app's `getLicense` | ◐ ² ⁹ | ✓ ¹ ¹⁰ | ✓ ¹¹ | ✓ ¹¹ | ◐ ⁹ † | ◐ ⁹ † |
 
 1. Opt-in: a build option (`video` in the Expo plugin, `npx rnap add video`). Tried on the Android emulator (a file, separate quality files with SubRip, HLS with two audio languages and WebVTT subtitles, Picture in Picture, fullscreen, controls); not yet on a device †.
-2. Opt-in, as on Android. Written and compiled in CI; not yet run on a simulator or device †.
+2. Opt-in, as on Android. Run on the iOS 27 simulator: files (MP4, HEVC, MOV), HLS and DASH with their qualities, Matroska and MPEG-TS with their audio languages and subtitles, subtitle files, fullscreen and AVKit's controls. Not yet on a device †, nor Picture in Picture (the simulator has none) or FairPlay.
 3. HLS with hls.js ([`configureHls`](web.md#hls)); a video player takes it over Chromium's own HLS, which lists no tracks or qualities.
 4. Safari's own HLS picks its quality itself: no caps or pins there. Separate quality files are RNAP's to switch, under every cap.
 5. iPhone Safari's fullscreen is the system player, with its own controls and captions.
