@@ -133,6 +133,10 @@ data class SourceDescriptor(
   val expiresAt: Long? = null,
   /** The source is encrypted: its key systems and license servers (`null`: clear). */
   val drm: DrmDescriptor? = null,
+  /** Cache it as it plays (`null`: the cache's setting). The platform's cache reads it; the engine does not. */
+  val cache: Boolean? = null,
+  /** Its identity in the cache (default: the URL without its fragment). */
+  val cacheKey: String? = null,
 ) {
   val isNetwork: Boolean
     get() {

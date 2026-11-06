@@ -157,6 +157,7 @@ internal object AnythingPlayerRuntime : FocusListener {
     if (initialized) return
     initialized = true
     appContext = context.applicationContext
+    MediaCache.attach(appContext)
     Voice.attach(appContext)
     focus = AudioFocusCoordinator(appContext, this)
     network =

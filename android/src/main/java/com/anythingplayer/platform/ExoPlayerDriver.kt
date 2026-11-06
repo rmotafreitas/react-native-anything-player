@@ -717,7 +717,8 @@ internal class ExoPlayerDriver(
     var extractors = DefaultExtractorsFactory().setConstantBitrateSeekingEnabled(true)
     if (video) extractors = VideoSupport.subtitles(extractors)
     val factory =
-      DefaultMediaSourceFactory(DefaultDataSource.Factory(context, http), extractors)
+      // A download, else the cache, else the network (MediaCache).
+      DefaultMediaSourceFactory(DefaultDataSource.Factory(context, MediaCache.dataSourceFactory(http, request.source)), extractors)
         .setLoadErrorHandlingPolicy(AnythingPlayerLoadErrorPolicy())
     sourceDrm?.let { drm -> factory.setDrmSessionManagerProvider { drm.manager } }
     return factory.createMediaSource(MediaItem.Builder().setUri(resolveUri(request.source.uri)).setMediaId(mediaId).build())

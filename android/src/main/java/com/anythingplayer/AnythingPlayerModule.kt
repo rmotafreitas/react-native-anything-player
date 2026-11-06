@@ -19,6 +19,7 @@ import com.anythingplayer.platform.ActivitySource
 import com.anythingplayer.platform.AnythingPlayerRuntime
 import com.anythingplayer.platform.EventSink
 import com.anythingplayer.platform.LicenseRequests
+import com.anythingplayer.platform.MediaCache
 import com.anythingplayer.platform.PlayerController
 import com.anythingplayer.platform.SearchRequest
 import com.anythingplayer.platform.Voice
@@ -112,6 +113,50 @@ class AnythingPlayerModule(reactContext: ReactApplicationContext) : NativeAnythi
   }
 
   // ── Queue ──
+
+  // ── Cache (app-global; disk work off the main thread) ──
+
+  private val cacheWork = java.util.concurrent.Executors.newSingleThreadExecutor()
+
+  override fun cacheCommand(command: ReadableMap, promise: Promise) {
+    val op = command.optString("op")
+    val source = command.optMap("source")?.let { parseSource(it).first }
+    cacheWork.execute {
+      try {
+        val result: WritableMap =
+          when (op) {
+            "configure" -> {
+              MediaCache.configure(command.optBoolean("enabled"), command.optDouble("maxSizeBytes")?.toLong())
+              Arguments.createMap()
+            }
+            "preload" ->
+              MediaCache.preload(needSource(source), command.optDouble("bytes")?.toLong(), command.optBoolean("all") == true)
+            "download" -> MediaCache.download(needSource(source), command.optString("id"))
+            "downloads" -> Arguments.createMap().apply { putArray("downloads", Arguments.makeNativeArray(MediaCache.downloadsArray())) }
+            "removeDownload" -> {
+              MediaCache.removeDownload(command.optString("id") ?: "")
+              Arguments.createMap()
+            }
+            "info" -> MediaCache.info(needSource(source))
+            "usage" -> MediaCache.usage()
+            "clear" -> {
+              MediaCache.clear()
+              Arguments.createMap()
+            }
+            else -> throw PlayerError(ErrorCode.INVALID_ARGUMENT, "Unknown cache command \"$op\".", false)
+          }
+        promise.resolve(result)
+      } catch (error: PlayerError) {
+        reject(promise, error)
+      } catch (error: Exception) {
+        val failure = PlayerError(ErrorCode.NETWORK_ERROR, error.message ?: error.javaClass.simpleName, true)
+        reject(promise, failure)
+      }
+    }
+  }
+
+  private fun needSource(source: com.anythingplayer.core.SourceDescriptor?) =
+    source ?: throw PlayerError(ErrorCode.INVALID_ARGUMENT, "A cache command needs a source.", false)
 
   override fun queueCommand(playerId: String, command: ReadableMap, promise: Promise) =
     command(playerId, promise) { it.queueCommand(command) }

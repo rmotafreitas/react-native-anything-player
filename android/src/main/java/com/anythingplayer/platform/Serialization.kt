@@ -252,6 +252,8 @@ internal fun parseSource(map: ReadableMap): Pair<SourceDescriptor, NowPlayingFie
       refreshable = map.optBoolean("refreshable") ?: false,
       expiresAt = map.optDouble("expiresAt")?.toLong(),
       drm = map.optMap("drm")?.let(::parseDrm),
+      cache = map.optBoolean("cache"),
+      cacheKey = map.optString("cacheKey"),
     )
   return descriptor to parseNowPlaying(map.optMap("metadata"))
 }
