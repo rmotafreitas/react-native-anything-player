@@ -213,8 +213,11 @@ describe('WebCache', () => {
     served['https://cdn.example/a.mp3'] = { bytes: MB };
     const cache = new WebCache();
     await cache.command({ op: 'configure', enabled: true });
-    cache.played(descriptor('https://cdn.example/a.mp3'));
-    cache.played({ ...descriptor('https://cdn.example/b.mp3'), cache: false });
+    cache.played(descriptor('https://cdn.example/a.mp3'), 'p1');
+    cache.played(
+      { ...descriptor('https://cdn.example/b.mp3'), cache: false },
+      'p2'
+    );
     await jest.advanceTimersByTimeAsync(5_000);
     await jest.advanceTimersByTimeAsync(600);
     expect(requests.map((r) => r.url)).toEqual(['https://cdn.example/a.mp3']);
@@ -232,5 +235,143 @@ describe('WebCache', () => {
     await expect(
       cache.command({ op: 'download', ...src('https://cdn.example/a.mp3') })
     ).rejects.toMatchObject({ code: 'CACHE_UNAVAILABLE' });
+  });
+
+  it('a download asked for while the file is being cached finishes as that download', async () => {
+    served['https://cdn.example/a.mp3'] = { bytes: 2 * MB };
+    const cache = new WebCache();
+    const events: Array<Record<string, unknown>> = [];
+    cache.onEvent((e) => events.push(e));
+    const filling = cache.command({
+      op: 'preload',
+      ...src('https://cdn.example/a.mp3'),
+      all: true,
+    });
+    await cache.command({
+      op: 'download',
+      ...src('https://cdn.example/a.mp3'),
+      id: 'd',
+    });
+    await filling;
+    expect(events.at(-1)).toMatchObject({ id: 'd', state: 'completed' });
+    expect(
+      await cache.command({ op: 'info', ...src('https://cdn.example/a.mp3') })
+    ).toMatchObject({ state: 'complete', downloaded: true });
+  });
+
+  it('drops an entry whose stored bytes are gone, and plays from the network then', async () => {
+    served['https://cdn.example/a.mp3'] = { bytes: MB };
+    const cache = new WebCache();
+    await cache.command({
+      op: 'preload',
+      ...src('https://cdn.example/a.mp3'),
+      all: true,
+    });
+    store.entries.delete(
+      [...store.entries.keys()].find((k) => k.includes('/media/'))!
+    );
+    await expect(
+      cache.blobFor(descriptor('https://cdn.example/a.mp3'))
+    ).rejects.toBeTruthy();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(
+      await cache.command({ op: 'info', ...src('https://cdn.example/a.mp3') })
+    ).toMatchObject({ state: 'none' });
+  });
+
+  it('answers a page that just opened once its index is read', async () => {
+    served['https://cdn.example/a.mp3'] = { bytes: MB };
+    const first = new WebCache();
+    await first.command({
+      op: 'download',
+      ...src('https://cdn.example/a.mp3'),
+      id: 'a',
+    });
+    await new Promise((r) => setTimeout(r, 600));
+    const page = new WebCache();
+    const url = page.blobFor(descriptor('https://cdn.example/a.mp3'));
+    const other = page.blobFor(descriptor('https://cdn.example/other.mp3'));
+    expect(url).not.toBeNull();
+    await expect(url).resolves.toMatch(/^blob:/);
+    // Not held: the element plays the network URL.
+    await expect(other).rejects.toBeTruthy();
+    expect(
+      page.blobFor(descriptor('https://cdn.example/other.mp3'))
+    ).toBeNull();
+  });
+
+  it('a removed download stops, and leaves no bytes behind', async () => {
+    served['https://cdn.example/big.mp3'] = { bytes: 8 * MB };
+    const cache = new WebCache();
+    await cache.command({
+      op: 'download',
+      ...src('https://cdn.example/big.mp3'),
+      id: 'big',
+    });
+    await cache.command({ op: 'removeDownload', id: 'big' });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(
+      [...store.entries.keys()].filter((k) => k.includes('/media/'))
+    ).toEqual([]);
+    expect(await cache.command({ op: 'downloads' })).toEqual({ downloads: [] });
+  });
+
+  it('does not fetch a file larger than the whole cache, nor a skipped item', async () => {
+    jest.useFakeTimers({
+      doNotFake: ['queueMicrotask', 'nextTick', 'setImmediate'],
+    });
+    served['https://cdn.example/huge.mp4'] = { bytes: 20 * MB };
+    served['https://cdn.example/a.mp3'] = { bytes: MB };
+    served['https://cdn.example/b.mp3'] = { bytes: MB };
+    const cache = new WebCache();
+    await cache.command({
+      op: 'configure',
+      enabled: true,
+      maxSizeBytes: 10 * MB,
+    });
+    cache.played(descriptor('https://cdn.example/a.mp3'), 'p');
+    await jest.advanceTimersByTimeAsync(1_000);
+    cache.played(descriptor('https://cdn.example/b.mp3'), 'p');
+    await jest.advanceTimersByTimeAsync(6_000);
+    expect(requests.map((r) => r.url)).toEqual(['https://cdn.example/b.mp3']);
+    jest.useRealTimers();
+    await cache.command({
+      op: 'preload',
+      ...src('https://cdn.example/huge.mp4'),
+      all: true,
+    });
+    expect(
+      await cache.command({
+        op: 'info',
+        ...src('https://cdn.example/huge.mp4'),
+      })
+    ).toMatchObject({ state: 'none' });
+  });
+
+  it("keeps another page's downloads in the index it writes", async () => {
+    served['https://cdn.example/a.mp3'] = { bytes: MB };
+    served['https://cdn.example/b.mp3'] = { bytes: MB };
+    const a = new WebCache();
+    const b = new WebCache();
+    await a.command({ op: 'usage' });
+    await b.command({
+      op: 'download',
+      ...src('https://cdn.example/b.mp3'),
+      id: 'b',
+    });
+    await new Promise((r) => setTimeout(r, 600));
+    await a.command({
+      op: 'download',
+      ...src('https://cdn.example/a.mp3'),
+      id: 'a',
+    });
+    await new Promise((r) => setTimeout(r, 600));
+    const third = new WebCache();
+    const ids = (
+      (await third.command({ op: 'downloads' })) as {
+        downloads: Array<{ id: string }>;
+      }
+    ).downloads.map((d) => d.id);
+    expect(ids.sort()).toEqual(['a', 'b']);
   });
 });

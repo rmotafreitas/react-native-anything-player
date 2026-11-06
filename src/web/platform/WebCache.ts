@@ -8,7 +8,7 @@
 // keeps part of a file: `preload` warms it).
 
 import { engineError, type SourceDescriptor } from '../engine/types';
-import { browser } from './dom';
+import { browser, type AbortControllerLike } from './dom';
 
 type DownloadState = 'queued' | 'downloading' | 'completed' | 'failed';
 
@@ -33,7 +33,15 @@ interface BodyStream {
     read(): Promise<{ done: boolean; value?: { byteLength: number } }>;
   };
   tee(): [BodyStream, BodyStream];
+  pipeThrough?(transform: unknown): unknown;
 }
+
+type TransformConstructor = new (transformer: {
+  transform(
+    chunk: { byteLength: number },
+    controller: { enqueue(chunk: unknown): void }
+  ): void;
+}) => unknown;
 
 interface StoredResponse {
   readonly ok: boolean;
@@ -56,7 +64,12 @@ interface Globals {
     body: unknown,
     init?: { headers?: Record<string, string> }
   ) => unknown;
-  navigator?: { storage?: { persist?(): Promise<boolean> } };
+  navigator?: {
+    storage?: { persist?(): Promise<boolean> };
+    locks?: {
+      request(name: string, task: () => Promise<void>): Promise<void>;
+    };
+  };
   fetch(url: string, init: object): Promise<StoredResponse>;
 }
 
@@ -101,17 +114,27 @@ export function cacheable(source: SourceDescriptor): boolean {
 export class WebCache {
   private readonly index = new Map<string, Entry>();
   private store: Promise<CacheLike> | null = null;
-  private loaded: Promise<void>;
+  private readonly loaded: Promise<void>;
+  private isLoaded = false;
   private enabled = false;
   private maxSize = DEFAULT_MAX;
-  /** Blob URLs of complete files, most recently used last. */
+  /** Blob URLs of complete files, most recently used last (kept from eviction). */
   private readonly blobs = new Map<string, Promise<string>>();
-  /** Fills in flight, by key. */
-  private readonly filling = new Map<string, Promise<void>>();
-  private readonly timers = new Map<string, number>();
+  /** Fills in flight, by key, and how to stop them. */
+  private readonly filling = new Map<
+    string,
+    { work: Promise<void>; stop: AbortControllerLike }
+  >();
+  /** A player's pending write of what it plays (`played`), by player. */
+  private readonly timers = new Map<string, { key: string; timer: number }>();
+  /** Keys this page removed: another page's index does not bring them back. */
+  private readonly removed = new Set<string>();
   private listener: ((event: Record<string, unknown>) => void) | null = null;
+  private saving: number | null = null;
 
   constructor() {
+    // No Cache Storage (an insecure page, an old browser): nothing to wait for.
+    this.isLoaded = g().caches == null;
     this.loaded = this.load();
   }
 
@@ -165,11 +188,44 @@ export class WebCache {
 
   /**
    * A complete file's `blob:` URL (the element plays it at once, offline
-   * too), or `null` when the source is not held whole. Synchronous: the
-   * index is in memory.
+   * too), or `null` when the source is not held whole. Before the index is
+   * read (a page just opened), a promise that settles once it is: rejected
+   * when the file is not held, and the element plays the network URL.
    */
   blobFor(source: SourceDescriptor): Promise<string> | null {
     if (!cacheable(source)) return null;
+    if (!this.isLoaded) {
+      return this.loaded.then(
+        () => this.blobForLoaded(source) ?? Promise.reject(notHeld())
+      );
+    }
+    return this.blobForLoaded(source);
+  }
+
+  /**
+   * A player began an item: with the cache on, the file is written once it
+   * has had a few seconds (a skipped item is not fetched). The player's
+   * previous item, if not written yet, no longer is.
+   */
+  played(source: SourceDescriptor, player: string): void {
+    const pending = this.timers.get(player);
+    if (pending != null) {
+      browser().clearTimeout(pending.timer);
+      this.timers.delete(player);
+    }
+    const key = cacheKeyOf(source);
+    const wanted = source.cache ?? this.enabled;
+    if (!wanted || !cacheable(source) || this.index.get(key)?.complete) return;
+    const timer = browser().setTimeout(() => {
+      this.timers.delete(player);
+      this.fill(source, null).catch(() => undefined);
+    }, CACHE_AFTER_MS);
+    this.timers.set(player, { key, timer });
+  }
+
+  // ── Internals ──
+
+  private blobForLoaded(source: SourceDescriptor): Promise<string> | null {
     const entry = this.index.get(cacheKeyOf(source));
     if (entry == null || !entry.complete) return null;
     entry.lastUsed = Date.now();
@@ -178,10 +234,11 @@ export class WebCache {
     let url = this.blobs.get(key);
     if (url == null) {
       url = this.body(key).then((blob) => {
-        if (blob == null) throw unavailable();
-        return browser().URL.createObjectURL(blob);
+        if (blob != null) return browser().URL.createObjectURL(blob);
+        // The index outlived the body (cleared storage, another page): it goes.
+        this.drop(key).catch(() => undefined);
+        throw notHeld();
       });
-      // A failed read (the store was cleared under us): the next play fetches.
       url.catch(() => this.blobs.delete(key));
     } else {
       this.blobs.delete(key);
@@ -191,28 +248,13 @@ export class WebCache {
     return url;
   }
 
-  /** An item began playing: with the cache on, it is written once it played for a while. */
-  played(source: SourceDescriptor): void {
-    const wanted = source.cache ?? this.enabled;
-    const key = cacheKeyOf(source);
-    if (!wanted || !cacheable(source) || this.index.get(key)?.complete) return;
-    if (this.timers.has(key)) return;
-    const timer = browser().setTimeout(() => {
-      this.timers.delete(key);
-      this.fill(source, null).catch(() => undefined);
-    }, CACHE_AFTER_MS);
-    this.timers.set(key, timer);
-  }
-
-  // ── Internals ──
-
   private source(command: Record<string, unknown>): SourceDescriptor {
     const map = (command.source ?? {}) as Record<string, unknown>;
     return {
       uri: String(map.uri ?? ''),
       headers: (map.headers as Record<string, string> | undefined) ?? {},
       liveHint: typeof map.live === 'boolean' ? map.live : null,
-      cacheKey: typeof map.cacheKey === 'string' ? map.cacheKey : undefined,
+      cacheKey: typeof map.cacheKey === 'string' ? map.cacheKey : null,
       drm: (map.drm as SourceDescriptor['drm']) ?? null,
     };
   }
@@ -224,31 +266,32 @@ export class WebCache {
     return this.store;
   }
 
+  private async readStored(): Promise<Entry[]> {
+    const store = await this.open();
+    const stored = await store.match(INDEX_KEY);
+    return stored ? ((await stored.json()) as Entry[]) : [];
+  }
+
   private async load(): Promise<void> {
     try {
-      const store = await this.open();
-      const stored = await store.match(INDEX_KEY);
-      const list = stored ? ((await stored.json()) as Entry[]) : [];
-      for (const entry of list) this.index.set(entry.key, entry);
-      // A download the page left half-way goes on.
-      for (const entry of list) {
-        if (
-          entry.downloadId != null &&
-          entry.state !== 'completed' &&
-          entry.state !== 'failed'
-        ) {
-          entry.state = 'queued';
-          this.fill(entryAsSource(entry), entry.downloadId).catch(
-            () => undefined
-          );
-        }
+      for (const entry of await this.readStored())
+        this.index.set(entry.key, entry);
+      // A download a page left half-way starts again (the web cannot resume a file).
+      for (const entry of this.index.values()) {
+        const unfinished =
+          entry.state === 'queued' || entry.state === 'downloading';
+        if (entry.downloadId == null || !unfinished) continue;
+        entry.state = 'queued';
+        this.fill(entryAsSource(entry), entry.downloadId).catch(
+          () => undefined
+        );
       }
     } catch {
       // No Cache Storage: commands report CACHE_UNAVAILABLE.
+    } finally {
+      this.isLoaded = true;
     }
   }
-
-  private saving: number | null = null;
 
   private saveSoon(): void {
     if (this.saving != null) return;
@@ -258,22 +301,47 @@ export class WebCache {
     }, 500);
   }
 
+  /**
+   * Writes the index, merged with what another page of this site wrote
+   * since (its downloads stay listed), one page at a time where the browser
+   * has Web Locks.
+   */
   private async save(): Promise<void> {
-    const Response = g().Response;
-    if (Response == null) return;
-    const store = await this.open();
-    await store.put(
-      INDEX_KEY,
-      new Response(JSON.stringify([...this.index.values()]), {
-        headers: { 'Content-Type': 'application/json' },
-      })
-    );
+    const write = async () => {
+      const Response = g().Response;
+      if (Response == null) return;
+      for (const entry of await this.readStored()) {
+        if (!this.index.has(entry.key) && !this.removed.has(entry.key))
+          this.index.set(entry.key, entry);
+      }
+      const store = await this.open();
+      await store.put(
+        INDEX_KEY,
+        new Response(JSON.stringify([...this.index.values()]), {
+          headers: { 'Content-Type': 'application/json' },
+        })
+      );
+    };
+    const locks = g().navigator?.locks;
+    if (locks != null) await locks.request(INDEX_KEY, write);
+    else await write();
   }
 
   private async body(key: string): Promise<unknown> {
     const store = await this.open();
     const stored = await store.match(mediaKey(key));
     return stored ? stored.blob() : null;
+  }
+
+  /** The one record of a key: a download and a fill of the same file share it. */
+  private entryFor(key: string, source: SourceDescriptor): Entry {
+    let entry = this.index.get(key);
+    if (entry == null) {
+      entry = blankEntry(key, source);
+      this.index.set(key, entry);
+      this.removed.delete(key);
+    }
+    return entry;
   }
 
   private async preload(
@@ -286,23 +354,18 @@ export class WebCache {
       return this.info(source);
     }
     const key = cacheKeyOf(source);
-    const existing = this.index.get(key);
-    if (existing?.complete) return this.info(source);
+    if (this.index.get(key)?.complete) return this.info(source);
     // Part of a file: into the browser's HTTP cache, which the element reads from.
     const bytes =
       typeof command.bytes === 'number' ? command.bytes : DEFAULT_PRELOAD;
-    const response = await g().fetch(source.uri, {
-      headers: { ...source.headers, Range: `bytes=0-${bytes - 1}` },
-      mode: 'cors',
+    const response = await fetchFile(source, {
+      Range: `bytes=0-${bytes - 1}`,
     });
-    if (!response.ok) throw httpError(response.status);
     const got = await drain(response);
-    this.index.set(key, {
-      ...(existing ?? blankEntry(key, source)),
-      bytes: Math.max(existing?.bytes ?? 0, got),
-      totalBytes: totalOf(response) ?? existing?.totalBytes ?? null,
-      lastUsed: Date.now(),
-    });
+    const entry = this.entryFor(key, source);
+    entry.bytes = Math.max(entry.bytes, got);
+    entry.totalBytes = totalOf(response) ?? entry.totalBytes;
+    entry.lastUsed = Date.now();
     this.saveSoon();
     return this.info(source);
   }
@@ -320,20 +383,24 @@ export class WebCache {
     }
     await this.open();
     const key = cacheKeyOf(source);
-    const entry: Entry = {
-      ...(this.index.get(key) ?? blankEntry(key, source)),
-      downloadId: id ?? source.uri,
-    };
+    const name = id ?? source.uri;
+    // An id names one download: given again for another file, it moves there.
+    const other = [...this.index.values()].find(
+      (e) => e.downloadId === name && e.key !== key
+    );
+    if (other != null) await this.drop(other.key);
+    const entry = this.entryFor(key, source);
+    entry.downloadId = name;
+    entry.headers = source.headers;
     entry.state = entry.complete ? 'completed' : 'queued';
     entry.error = null;
-    this.index.set(key, entry);
     this.saveSoon();
     // Ask the browser not to evict what the user downloaded.
     g()
       .navigator?.storage?.persist?.()
       .catch(() => undefined);
-    if (!entry.complete)
-      this.fill(source, entry.downloadId).catch(() => undefined);
+    // A fill already running for this file finishes as this download.
+    if (!entry.complete) this.fill(source, name).catch(() => undefined);
     this.emitDownload(entry);
     return downloadMap(entry);
   }
@@ -345,90 +412,121 @@ export class WebCache {
   ): Promise<void> {
     const key = cacheKeyOf(source);
     const running = this.filling.get(key);
-    if (running) return running;
-    const work = this.fetchWhole(source, key, downloadId).finally(() =>
+    if (running) return running.work;
+    const stop = new (browser().AbortController)();
+    const work = this.fetchWhole(source, key, downloadId, stop).finally(() =>
       this.filling.delete(key)
     );
-    this.filling.set(key, work);
+    this.filling.set(key, { work, stop });
     return work;
   }
 
   private async fetchWhole(
     source: SourceDescriptor,
     key: string,
-    downloadId: string | null
+    downloadId: string | null,
+    stop: AbortControllerLike
   ): Promise<void> {
-    const entry = this.index.get(key) ?? blankEntry(key, source);
+    const entry = this.entryFor(key, source);
     if (downloadId != null) entry.downloadId = downloadId;
-    this.index.set(key, entry);
     try {
       const store = await this.open();
       const Response = g().Response;
-      const response = await g().fetch(source.uri, {
-        headers: source.headers,
-        mode: 'cors',
-      });
-      if (!response.ok || response.body == null || Response == null)
-        throw httpError(response.status);
-      entry.totalBytes = totalOf(response);
-      entry.state = entry.downloadId != null ? 'downloading' : entry.state;
-      const [stored, counted] = response.body.tee();
+      const response = await fetchFile(source, {}, stop.signal);
+      if (response.body == null || Response == null) throw httpError(0);
+      const total = totalOf(response);
+      // Larger than the whole cache: not fetched only to be evicted.
+      if (entry.downloadId == null && total != null && total > this.maxSize) {
+        stop.abort();
+        this.index.delete(key);
+        return;
+      }
+      entry.totalBytes = total;
+      if (entry.downloadId != null) entry.state = 'downloading';
       const type = response.headers.get('Content-Type');
-      const put = store.put(
+      await store.put(
         mediaKey(key),
-        new Response(stored, { headers: type ? { 'Content-Type': type } : {} })
+        new Response(this.counted(response.body, entry), {
+          headers: type ? { 'Content-Type': type } : {},
+        })
       );
-      await this.count(counted, entry);
-      await put;
+      if (this.index.get(key) !== entry) {
+        // Removed while it arrived: its bytes go too.
+        await store.delete(mediaKey(key));
+        return;
+      }
       entry.complete = true;
       entry.lastUsed = Date.now();
       if (entry.downloadId != null) entry.state = 'completed';
       this.emitDownload(entry);
       await this.evict();
     } catch (error) {
-      entry.bytes = entry.complete ? entry.bytes : 0;
-      if (entry.downloadId != null) {
-        entry.state = 'failed';
-        const e = error as {
-          code?: string;
-          message?: string;
-          recoverable?: boolean;
-        };
-        entry.error = {
-          code: e.code ?? 'NETWORK_ERROR',
-          message: String(e.message ?? error),
-          recoverable: e.recoverable ?? true,
-        };
-        this.emitDownload(entry);
-      }
-      // A fill for the cache that failed leaves nothing behind.
-      if (entry.downloadId == null && !entry.complete) this.index.delete(key);
+      if (stop.signal.aborted || this.index.get(key) !== entry) return;
+      this.fillFailed(entry, error);
       throw error;
     } finally {
       this.saveSoon();
     }
   }
 
-  private async count(body: BodyStream, entry: Entry): Promise<void> {
-    const reader = body.getReader();
+  /** A download that failed says why; a fill for the cache leaves nothing behind. */
+  private fillFailed(entry: Entry, error: unknown): void {
+    if (entry.downloadId == null) {
+      if (!entry.complete) this.index.delete(entry.key);
+      return;
+    }
+    const e = error as {
+      code?: string;
+      message?: string;
+      recoverable?: boolean;
+    };
+    entry.state = 'failed';
+    entry.error = {
+      code: e.code ?? 'NETWORK_ERROR',
+      message: String(e.message ?? error),
+      recoverable: e.recoverable ?? true,
+    };
+    this.emitDownload(entry);
+  }
+
+  /**
+   * The body as it is stored, counting its bytes on the way (a download's
+   * progress). Through a transform where there is one: no second copy of
+   * the file waits in memory.
+   */
+  private counted(body: BodyStream, entry: Entry): unknown {
+    const Transform = (
+      globalThis as unknown as { TransformStream?: TransformConstructor }
+    ).TransformStream;
     let told = 0;
     entry.bytes = 0;
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) return;
-      entry.bytes += value?.byteLength ?? 0;
+    const tick = (bytes: number) => {
+      entry.bytes += bytes;
       const now = Date.now();
       if (entry.downloadId != null && now - told >= PROGRESS_MS) {
         told = now;
         this.emitDownload(entry);
       }
+    };
+    if (Transform != null && body.pipeThrough != null) {
+      return body.pipeThrough(
+        new Transform({
+          transform(chunk, controller) {
+            tick(chunk.byteLength);
+            controller.enqueue(chunk);
+          },
+        })
+      );
     }
+    const [stored, counting] = body.tee();
+    drain(counting, tick).catch(() => undefined);
+    return stored;
   }
 
   private async removeDownload(id: string): Promise<void> {
-    const entry = [...this.index.values()].find((e) => e.downloadId === id);
-    if (entry == null) return;
-    await this.drop(entry.key);
+    for (const entry of [...this.index.values()]) {
+      if (entry.downloadId === id) await this.drop(entry.key);
+    }
     this.saveSoon();
   }
 
@@ -462,13 +560,19 @@ export class WebCache {
     this.saveSoon();
   }
 
-  /** The least recently played go until the cache fits (downloads stay). */
+  /**
+   * The least recently played go until the cache fits. Downloads stay, and
+   * so do the files players hold as `blob:` URLs (one may be playing).
+   */
   private async evict(): Promise<void> {
-    const cached = [...this.index.values()]
-      .filter((e) => e.downloadId == null && e.complete)
-      .sort((a, b) => a.lastUsed - b.lastUsed);
+    const cached = [...this.index.values()].filter(
+      (e) => e.downloadId == null && e.complete
+    );
     let total = cached.reduce((sum, e) => sum + e.bytes, 0);
-    for (const entry of cached) {
+    const candidates = cached
+      .filter((e) => !this.blobs.has(e.key))
+      .sort((a, b) => a.lastUsed - b.lastUsed);
+    for (const entry of candidates) {
       if (total <= this.maxSize) break;
       total -= entry.bytes;
       await this.drop(entry.key);
@@ -477,12 +581,15 @@ export class WebCache {
   }
 
   private async drop(key: string): Promise<void> {
+    this.filling.get(key)?.stop.abort();
     this.index.delete(key);
+    this.removed.add(key);
     const url = this.blobs.get(key);
     this.blobs.delete(key);
     url?.then((u) => browser().URL.revokeObjectURL(u)).catch(() => undefined);
     const store = await this.open();
     await store.delete(mediaKey(key));
+    this.saveSoon();
   }
 
   private trimBlobs(): void {
@@ -550,6 +657,35 @@ function totalOf(response: StoredResponse): number | null {
   return Number.isFinite(total) && total > 0 ? total : null;
 }
 
+function notHeld(): Error {
+  return engineError('NO_SOURCE', 'The cache does not hold this file.', true);
+}
+
+/** Fetches a file with CORS; a refused or failed request as RNAP's error. */
+async function fetchFile(
+  source: SourceDescriptor,
+  extra: Record<string, string>,
+  signal?: unknown
+): Promise<StoredResponse> {
+  let response: StoredResponse;
+  try {
+    response = await g().fetch(source.uri, {
+      headers: { ...source.headers, ...extra },
+      mode: 'cors',
+      ...(signal != null ? { signal } : {}),
+    });
+  } catch (error) {
+    if ((error as { name?: string }).name === 'AbortError') throw error;
+    throw engineError(
+      'NETWORK_ERROR',
+      'The file could not be fetched (offline, or its server sends no CORS headers: the page cannot read its bytes).',
+      true
+    );
+  }
+  if (!response.ok) throw httpError(response.status);
+  return response;
+}
+
 function httpError(status: number): Error {
   return engineError(
     status === 404 || status === 410 ? 'SOURCE_NOT_FOUND' : 'HTTP_ERROR',
@@ -559,14 +695,20 @@ function httpError(status: number): Error {
   );
 }
 
-async function drain(response: StoredResponse): Promise<number> {
-  const reader = response.body?.getReader();
+async function drain(
+  source: StoredResponse | BodyStream,
+  tick?: (bytes: number) => void
+): Promise<number> {
+  const body = 'getReader' in source ? source : source.body;
+  const reader = body?.getReader();
   if (reader == null) return 0;
   let bytes = 0;
   for (;;) {
     const { done, value } = await reader.read();
     if (done) return bytes;
-    bytes += value?.byteLength ?? 0;
+    const n = value?.byteLength ?? 0;
+    bytes += n;
+    tick?.(n);
   }
 }
 

@@ -40,7 +40,7 @@ export interface CacheInfo {
 
 /** `Cache.usage()`. */
 export interface CacheUsage {
-  /** Bytes in the cache written as items play and by `preload`. */
+  /** Bytes of complete files in the cache written as items play and by `preload`. */
   cacheBytes: number;
   /** Bytes kept by downloads. */
   downloadBytes: number;

@@ -105,8 +105,6 @@ onHlsConfigured(() => {
   loadHlsParts().catch(() => undefined);
 });
 
-// MediaError codes.
-
 const MEDIA_ERR_ABORTED = 1;
 const MEDIA_ERR_SRC_NOT_SUPPORTED = 4;
 

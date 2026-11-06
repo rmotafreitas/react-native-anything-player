@@ -115,3 +115,43 @@ test('a downloaded file plays with the network off', async ({
     )
   ).toMatchObject({ state: 'none' });
 });
+
+test('a page that just opened plays a downloaded file with the network off', async ({
+  page,
+  context,
+  browserName,
+}) => {
+  test.skip(
+    browserName === 'webkit',
+    "Playwright's WebKit empties Cache Storage on a reload (Safari keeps it)"
+  );
+  await page.evaluate(async (radio) => {
+    const { Cache } = window.rnap;
+    const done = new Promise<void>((resolve) => {
+      const stop = Cache.addListener('download', (d) => {
+        if (d.state === 'completed' || d.state === 'failed') {
+          stop();
+          resolve();
+        }
+      });
+    });
+    await Cache.download({ uri: `${radio}/program.mp3` }, { id: 'program' });
+    await done;
+  }, RADIO);
+  // The index is written a moment later.
+  await page.waitForTimeout(800);
+  await page.reload();
+  await context.setOffline(true);
+  // At once: the index may still be being read.
+  await page.evaluate(
+    (radio) =>
+      window.rnap.player.load(
+        { uri: `${radio}/program.mp3`, live: false },
+        { autoplay: true }
+      ),
+    RADIO
+  );
+  await expect.poll(() => state(page), { timeout: 15_000 }).toBe('playing');
+  await context.setOffline(false);
+  await page.evaluate(() => window.rnap.Cache.removeDownload('program'));
+});

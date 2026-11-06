@@ -211,7 +211,7 @@ export class WebPlayerController
     this.runtime.beforeLoad(this, source, autoplay);
     this.beginItem(source.uri, fields, parts);
     this.engine.load(source, autoplay, start, quality);
-    webCache().played(source);
+    webCache().played(source, this.id);
     if (this.video && parts && parts.subtitles.length > 0)
       this.engine.setAppTracks(parts.subtitles);
     // The replaced item is gone from the element: nothing can ask for it again.
@@ -674,7 +674,7 @@ export class WebPlayerController
     // An item a Cast receiver cannot play comes back to this device first.
     if (opens && source != null)
       this.runtime.beforeLoad(this, source.source, null);
-    if (source != null) webCache().played(source.source);
+    if (source != null) webCache().played(source.source, this.id);
     const parts = this.queue.get(id);
     if (parts == null) return;
     this.beginItem(source?.source.uri ?? '', parts.fields, parts.video);
