@@ -409,10 +409,7 @@ export class WebCache {
     }
   }
 
-  private async count(
-    body: BodyStream,
-    entry: Entry
-  ): Promise<void> {
+  private async count(body: BodyStream, entry: Entry): Promise<void> {
     const reader = body.getReader();
     let told = 0;
     entry.bytes = 0;

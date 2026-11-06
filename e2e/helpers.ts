@@ -1,6 +1,6 @@
 // Helpers shared by the web end-to-end specs.
 import type { Page } from '@playwright/test';
-import type { Player } from '../src/web/index';
+import type { Cache, Player } from '../src/web/index';
 
 // The plain-web example exposes its player as `window.rnap`.
 export interface Recorded {
@@ -14,6 +14,7 @@ declare global {
       player: Player;
       events: Recorded[];
       stopCasting: () => Promise<void>;
+      Cache: typeof Cache;
     };
   }
 }

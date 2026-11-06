@@ -4,14 +4,6 @@ import { RADIO, events, state } from './helpers';
 // The queue and the media cache in real browsers: the next item takes over
 // with no `ended` in between, and a downloaded file plays with the network off.
 
-declare global {
-  interface Window {
-    rnap: Window['rnap'] & {
-      Cache: typeof import('../src/web/index').Cache;
-    };
-  }
-}
-
 test.beforeEach(async ({ page }) => {
   await page.goto('/');
 });
