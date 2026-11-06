@@ -363,7 +363,16 @@ final class MediaCache: NSObject {
     for d in list { downloads[d.id] = d }
     // An unfinished file download goes on; HLS ones are resumed by their background session.
     for d in list where d.type == "file" && (d.state == "queued" || d.state == "downloading") { start(d) }
-    _ = assetSession
+    // An HLS download whose task the system no longer has will not finish: it failed.
+    assetSession.getAllTasks { [weak self] tasks in
+      self?.queue.async {
+        guard let self else { return }
+        let alive = Set(tasks.compactMap(\.taskDescription))
+        for d in self.downloads.values where d.type == "hls" && d.state == "downloading" && !alive.contains(d.id) {
+          self.fail(d.id, PlayerError.code(.networkError, "The download stopped while the app was not running.", recoverable: true))
+        }
+      }
+    }
   }
 
   // MARK: - Helpers
@@ -532,6 +541,10 @@ extension MediaCache: URLSessionDataDelegate {
       }
       guard var d = downloads[id] else { return }
       d.state = job.store.isComplete(job.key) || d.totalBytes == nil ? "completed" : "failed"
+      if d.state == "failed" {
+        d.error = "The connection ended before the whole file arrived."
+        d.errorCode = "NETWORK_ERROR"
+      }
       d.bytes = job.store.heldBytes(job.key)
       downloads[id] = d
       // The same bytes are not kept twice.

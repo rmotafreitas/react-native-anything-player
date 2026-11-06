@@ -704,8 +704,9 @@ final class StreamProxy {
     }
     let length = Int(min(Int64(Self.storedChunk), end - offset))
     guard let data = store.read(key, offset: offset, length: length), !data.isEmpty else {
-      // Evicted under us: the connection ends; AVPlayer asks again and the
-      // request goes upstream.
+      // Evicted under us, or the file went (storage cleared): the index lets
+      // go of it, the connection ends, and AVPlayer's next request goes upstream.
+      if !store.fileExists(key) || !store.contains(key, offset..<(offset + Int64(length))) { store.remove(key) }
       return close(downstream)
     }
     downstream.connection.send(

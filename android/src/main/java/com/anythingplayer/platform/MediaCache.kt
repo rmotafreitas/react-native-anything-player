@@ -61,6 +61,8 @@ internal object MediaCache {
   /** Downloads can be fetched again: kept out of Auto Backup. */
   private val kept: SimpleCache by lazy { SimpleCache(File(context.noBackupFilesDir, "rnap-downloads"), NoOpCacheEvictor(), database) }
   private val work = Executors.newFixedThreadPool(2)
+  /** Removals, resizes and the index, in order, never behind a running download. */
+  private val admin = Executors.newSingleThreadExecutor()
   private val downloads = ConcurrentHashMap<String, Download>()
   private val running = ConcurrentHashMap<String, Future<*>>()
   @Volatile private var enabled = false
@@ -168,7 +170,7 @@ internal object MediaCache {
     }
     maxSizeBytes?.let {
       prefs.putLong("maxSizeBytes", it)
-      work.execute { evictor.resize(play, it) }
+      admin.execute { evictor.resize(play, it) }
     }
     prefs.apply()
   }
@@ -222,14 +224,27 @@ internal object MediaCache {
     }
     val name = id ?: source.uri
     val key = keyOf(source)
+    val existing = downloads[name]?.takeIf { it.key == key }
     // Asked again: the download that is there (going, or done) answers.
-    downloads[name]?.takeIf { it.key == key && it.state != "failed" }?.let { return downloadMap(it) }
-    // One download per id, and per file: another one with either goes.
-    downloads.values.filter { it.id == name || it.key == key }.forEach { removeDownload(it.id) }
+    if (existing != null && existing.state != "failed") return downloadMap(existing)
+    if (existing != null) {
+      // A failed one goes on from what it has (the cache keeps the bytes that arrived).
+      existing.state = "queued"
+      existing.error = null
+      admin.execute { writeIndex() }
+      start(existing)
+      return downloadMap(existing)
+    }
+    // One download per id, and per file: another one with either goes first.
+    val replaced = downloads.values.filter { it.id == name || it.key == key }
+    replaced.forEach { downloads.remove(it.id); running.remove(it.id)?.cancel(true) }
     val download = Download(name, source.uri, key, source.headers, typeOf(source.uri) ?: "file", "queued")
     downloads[name] = download
-    writeIndex()
-    start(download)
+    admin.execute {
+      replaced.forEach { runCatching { downloaderFor(it).remove() } }
+      writeIndex()
+      start(download)
+    }
     return downloadMap(download)
   }
 
@@ -238,7 +253,7 @@ internal object MediaCache {
   fun removeDownload(id: String) {
     val download = downloads.remove(id) ?: return
     running.remove(id)?.cancel(true)
-    work.execute {
+    admin.execute {
       runCatching { downloaderFor(download).remove() }
       writeIndex()
     }
@@ -306,6 +321,8 @@ internal object MediaCache {
         } catch (_: InterruptedException) {
           if (download.error == null) return@submit
           download.state = "failed"
+          // A stream that never ends keeps nothing.
+          runCatching { kept.removeResource(download.key) }
         } catch (error: Exception) {
           if (!current()) return@submit
           download.state = "failed"

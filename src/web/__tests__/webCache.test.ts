@@ -441,4 +441,39 @@ describe('WebCache', () => {
     const third = new WebCache();
     expect(await third.command({ op: 'downloads' })).toEqual({ downloads: [] });
   });
+
+  it('does not cache a file its server asks not to store, but downloads it', async () => {
+    const cache = new WebCache();
+    const globals2 = globalThis as unknown as Record<string, unknown>;
+    const before = globals2.fetch;
+    globals2.fetch = async () =>
+      new Response(new Uint8Array(100), {
+        status: 200,
+        headers: { 'Content-Length': '100', 'Cache-Control': 'no-store' },
+      });
+    await cache.command({
+      op: 'preload',
+      ...src('https://cdn.example/private.mp3'),
+      all: true,
+    });
+    expect(
+      await cache.command({
+        op: 'info',
+        ...src('https://cdn.example/private.mp3'),
+      })
+    ).toMatchObject({ state: 'none' });
+    await cache.command({
+      op: 'download',
+      ...src('https://cdn.example/private.mp3'),
+      id: 'p',
+    });
+    await new Promise((r) => setTimeout(r, 20));
+    globals2.fetch = before;
+    expect(
+      await cache.command({
+        op: 'info',
+        ...src('https://cdn.example/private.mp3'),
+      })
+    ).toMatchObject({ state: 'complete', downloaded: true });
+  });
 });

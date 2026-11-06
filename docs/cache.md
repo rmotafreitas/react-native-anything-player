@@ -65,7 +65,7 @@ player.load({ uri: signedUrl, cacheKey: 'episode-42' });
 
 | | Cache | Downloads |
 |---|---|---|
-| Android | the app's cache directory (`rnap-media`); the system may clear it when storage runs low | the app's files directory (`rnap-downloads`) |
+| Android | the app's cache directory (`rnap-media`); the system may clear it when storage runs low | the app's no-backup files directory (`rnap-downloads`, out of Auto Backup) |
 | iOS | `Caches/rnap-media` (the system may clear it) | `Application Support/rnap-downloads`, excluded from iCloud backup; HLS packages where `AVAssetDownloadURLSession` puts them |
 | Web | Cache Storage (`rnap-media-v1`), evictable by the browser | the same, with `navigator.storage.persist()` asked for with each download |
 
