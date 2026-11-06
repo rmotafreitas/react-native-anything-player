@@ -16,12 +16,8 @@ import type {
 } from '../types';
 import { normalizeDrm } from './drm';
 import { host } from './host';
+import { parsers, vtt } from './subtitleParsers';
 import type { SubtitleCue } from './subtitles/types';
-
-// The parsers load with the first subtitle or thumbnail file: a web bundler
-// splits them off, so a page without subtitles never downloads them.
-const parsers = () => import('./subtitles/parse');
-const vtt = () => import('./subtitles/vtt');
 
 function invalid(message: string): PlayerError {
   return new PlayerError({
