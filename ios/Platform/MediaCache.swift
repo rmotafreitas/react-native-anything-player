@@ -146,7 +146,7 @@ final class MediaCache: NSObject {
       downloads.values.first { $0.key == key && $0.type == "hls" && $0.state == "completed" }?.package
     }
     guard let package else { return nil }
-    let url = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(package)
+    let url = Self.packageURL(package)
     // The package went (storage cleared): the download failed, and the network plays.
     guard FileManager.default.fileExists(atPath: url.path) else {
       queue.async {
@@ -273,6 +273,8 @@ final class MediaCache: NSObject {
     var d = download
     d.state = "downloading"
     downloads[d.id] = d
+    // Kept as going: after a relaunch it reads so, and one whose task the system lost fails.
+    save()
     emit(d)
     if d.type == "hls" {
       let asset = AVURLAsset(url: url, options: ["AVURLAssetHTTPHeaderFieldsKey": d.headers])
@@ -316,7 +318,7 @@ final class MediaCache: NSObject {
       assetSession.getAllTasks { tasks in tasks.filter { $0.taskDescription == id }.forEach { $0.cancel() } }
     }
     if let package = download.package {
-      try? FileManager.default.removeItem(at: URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(package))
+      try? FileManager.default.removeItem(at: Self.packageURL(package))
     }
     kept.remove(download.key)
     save()
@@ -324,6 +326,8 @@ final class MediaCache: NSObject {
 
   private func info(_ source: SourceDescriptor) -> [String: Any] {
     let key = self.key(of: source)
+    // The index outlived the file (storage cleared by the system): the entry goes, as when it is opened.
+    for store in [kept, play] where store.heldBytes(key) > 0 && !store.fileExists(key) { store.remove(key) }
     // A downloaded file whose bytes are gone (storage cleared): it failed.
     if let gone = downloads.values.first(where: { $0.key == key && $0.type == "file" && $0.state == "completed" }),
       !kept.isComplete(key) || !kept.fileExists(key)
@@ -367,7 +371,7 @@ final class MediaCache: NSObject {
 
   private func packageBytes() -> Int64 {
     downloads.values.compactMap(\.package).reduce(0) { sum, path in
-      sum + Self.directorySize(URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(path))
+      sum + Self.directorySize(Self.packageURL(path))
     }
   }
 
@@ -439,6 +443,21 @@ final class MediaCache: NSObject {
     // the container by the extension).
     default: return "mp3"
     }
+  }
+
+  /// A path in the app's container, from its home (the container moves on updates). The
+  /// system can name it from elsewhere (`/.nofollow/…`, `/private/var/…`): the part after
+  /// the container's own directory is kept.
+  private static func homeRelative(_ path: String) -> String {
+    let container = "/" + (NSHomeDirectory() as NSString).lastPathComponent + "/"
+    guard let range = path.range(of: container) else { return path }
+    return String(path[range.upperBound...])
+  }
+
+  private static func packageURL(_ package: String) -> URL {
+    let path = homeRelative(package)
+    return path.hasPrefix("/")
+      ? URL(fileURLWithPath: path) : URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(path)
   }
 
   private static func directorySize(_ url: URL) -> Int64 {
@@ -604,11 +623,14 @@ extension MediaCache: AVAssetDownloadDelegate {
     _ session: URLSession, assetDownloadTask: AVAssetDownloadTask, didFinishDownloadingTo location: URL
   ) {
     // After a relaunch the task is not in `assetTasks`: its description names the download.
-    guard let id = assetTasks[assetDownloadTask.taskIdentifier] ?? assetDownloadTask.taskDescription,
-      var d = downloads[id]
-    else { return }
-    let home = NSHomeDirectory()
-    d.package = location.path.hasPrefix(home) ? String(location.path.dropFirst(home.count + 1)) : location.path
+    let id = assetTasks[assetDownloadTask.taskIdentifier] ?? assetDownloadTask.taskDescription
+    // Removed, or replaced by a new download of that id, while it ran: its package goes too.
+    guard let id, var d = downloads[id], downloadTasks[id].map({ $0.task == assetDownloadTask.taskIdentifier }) ?? true
+    else {
+      try? FileManager.default.removeItem(at: Self.packageURL(location.path))
+      return
+    }
+    d.package = Self.homeRelative(location.path)
     d.bytes = Self.directorySize(location)
     d.totalBytes = d.bytes
     downloads[d.id] = d
