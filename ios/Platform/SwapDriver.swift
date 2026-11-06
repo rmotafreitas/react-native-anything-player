@@ -159,6 +159,7 @@ final class SwapDriver: LocalOutput {
     player.setRate(rate)
     player.setLoop(false)
     player.setVideoEnabled(videoOn)
+    if let quality { player.setQuality(quality) }
     player.holdBurst = false
     stage?.show(current: current, hidden: player)
     player.open(
@@ -181,15 +182,16 @@ final class SwapDriver: LocalOutput {
     guard waiting.onSpare, spare != nil else {
       self.generation = generation
       shift = 0
-      var request = waiting.request
-      request = OpenRequest(
-        generation: request.generation, source: request.source, startPosition: nil, playWhenReady: true,
-        allowReconnect: request.allowReconnect)
-      current.open(request)
+      let request = waiting.request
+      current.open(
+        OpenRequest(
+          generation: request.generation, source: request.source, startPosition: nil, playWhenReady: true,
+          allowReconnect: request.allowReconnect))
       return
     }
     takeOver(generation: generation, live: false)
     current.setLoop(loop)
+    if let quality { current.setQuality(quality) }
     if let tracks { current.selectTracks(audio: tracks.audio, text: tracks.text) }
     current.play()
   }

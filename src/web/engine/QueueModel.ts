@@ -209,6 +209,7 @@ export class QueueModel<T extends QueueEntry = QueueEntry> {
     if (current == null) return null;
     if (auto && this.repeatMode === 'one') return this.current;
     const pos = this.playOrder.indexOf(current);
+    if (pos < 0) return null;
     const wraps = this.repeatMode !== 'off';
     let id = this.playOrder[pos + 1];
     if (id == null && wraps) id = this.playOrder[0];
@@ -220,6 +221,7 @@ export class QueueModel<T extends QueueEntry = QueueEntry> {
     const current = this.currentId;
     if (current == null) return null;
     const pos = this.playOrder.indexOf(current);
+    if (pos < 0) return null;
     const wraps = this.repeatMode !== 'off';
     let id = pos > 0 ? this.playOrder[pos - 1] : undefined;
     if (id == null && wraps) id = this.playOrder[this.playOrder.length - 1];

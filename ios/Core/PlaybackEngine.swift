@@ -2116,7 +2116,12 @@ extension PlaybackEngine {
       driver.advance(generation: p.generation)
       takeOver(p, item: next, playing: false)
     } else {
-      try? loadItem(next, autoplay: playWhenReady, startPosition: nil)
+      do {
+        try loadItem(next, autoplay: playWhenReady, startPosition: nil)
+      } catch {
+        // A load only throws on a released engine; nothing to play then.
+        log("advance failed", ["error": "\(error)"])
+      }
     }
     return true
   }
@@ -2137,7 +2142,11 @@ extension PlaybackEngine {
       self.queue.next(auto: false)
       self.queueDirty = true
       self.log("skipped", ["code": error.code.rawValue])
-      try? self.loadItem(next, autoplay: wanted, startPosition: nil)
+      do {
+        try self.loadItem(next, autoplay: wanted, startPosition: nil)
+      } catch {
+        self.log("skip failed", ["error": "\(error)"])
+      }
     }
   }
 

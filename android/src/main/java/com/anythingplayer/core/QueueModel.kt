@@ -154,6 +154,7 @@ class QueueModel<T : QueueEntry>(seed: Long = System.currentTimeMillis()) {
     val current = currentId ?: return null
     if (auto && repeat == RepeatMode.ONE) return this.current
     val pos = playOrder.indexOf(current)
+    if (pos < 0) return null
     val id =
       when {
         pos + 1 < playOrder.size -> playOrder[pos + 1]
@@ -166,6 +167,7 @@ class QueueModel<T : QueueEntry>(seed: Long = System.currentTimeMillis()) {
   fun peekPrevious(): T? {
     val current = currentId ?: return null
     val pos = playOrder.indexOf(current)
+    if (pos < 0) return null
     val id =
       when {
         pos > 0 -> playOrder[pos - 1]

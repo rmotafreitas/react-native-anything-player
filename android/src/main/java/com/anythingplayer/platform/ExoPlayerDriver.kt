@@ -309,8 +309,15 @@ internal class ExoPlayerDriver(
         // A continuation took over seamlessly: drop the finished item.
         val p = player ?: return
         val nextRequest = prepared
-        if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO && nextRequest != null && currentGeneration(p) == nextRequest.generation) {
+        val now = currentGeneration(p)
+        if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO && nextRequest != null && now == nextRequest.generation) {
           adoptPrepared(p, nextRequest)
+        } else if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO && now != null && now == cancelledNext) {
+          // ExoPlayer moved onto it before the cancel reached it: the engine
+          // hears it went on (its current item ended) and opens what is next now.
+          cancelledNext = null
+          val playing = p.isPlaying
+          report { observer.onAdvanced(now, playing) }
         }
         if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO && p.currentMediaItemIndex > 0) {
           p.removeMediaItems(0, p.currentMediaItemIndex)
@@ -602,6 +609,7 @@ internal class ExoPlayerDriver(
     cancelCallsExcept(emptySet())
     // The playlist starts over: a prepared next item goes with it.
     prepared = null
+    cancelledNext = null
     generation = request.generation
     currentRequest = request
     continuationCount = 0
@@ -748,6 +756,8 @@ internal class ExoPlayerDriver(
 
   /** The queue's next item, appended to the playlist behind the current one. */
   private var prepared: OpenRequest? = null
+  /** The last prepared item the engine dropped (ExoPlayer may move onto it before the removal lands). */
+  private var cancelledNext: Int? = null
 
   override val preparesNext: Boolean
     get() = true
@@ -765,6 +775,8 @@ internal class ExoPlayerDriver(
     if (prepared?.generation != generation) return
     player?.let { removePrepared(it) }
     prepared = null
+    // Still in the playlist (ExoPlayer is moving onto it): told when it does.
+    cancelledNext = generation
   }
 
   override fun advance(generation: Int) {
@@ -781,7 +793,7 @@ internal class ExoPlayerDriver(
       }
       // A skip to it before the current item ended: it is buffered already.
       p.seekTo(index, 0)
-      if (p.currentMediaItemIndex > 0) p.removeMediaItems(0, p.currentMediaItemIndex)
+      if (index > 0) p.removeMediaItems(0, index)
       cancelCallsExcept((0 until p.mediaItemCount).map { p.getMediaItemAt(it).mediaId }.toSet())
     }
     adoptPrepared(p, request)
