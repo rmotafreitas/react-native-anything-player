@@ -824,8 +824,10 @@ internal class ExoPlayerDriver(
         // Exact matches first: the current item's own URL (the same URL queued
         // twice) is the current item's; the prepared item's is the prepared one's.
         if (current != null && ownRequest(current, uri)) return false
-        if (ownRequest(request, uri) || besideManifest(request, uri)) return true
-        return false
+        if (ownRequest(request, uri)) return true
+        // Beside the prepared manifest only; beside both, it is not told apart (below).
+        if (besideManifest(request, uri) && (current == null || !besideManifest(current, uri))) return true
+        break
       }
       cause = cause.cause
     }
@@ -847,7 +849,6 @@ internal class ExoPlayerDriver(
     val adaptive = path.endsWith(".m3u8", ignoreCase = true) || path.endsWith(".mpd", ignoreCase = true)
     return adaptive && failed.substringBefore('#').startsWith(path.substringBeforeLast('/') + "/")
   }
-
 
   private fun preparedIndex(p: ExoPlayer, request: OpenRequest): Int {
     val id = "$MEDIA_ID_PREFIX${request.generation}"
