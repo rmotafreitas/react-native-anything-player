@@ -326,7 +326,10 @@ export class WebCache {
     const entry = this.index.get(key);
     if (entry == null) return;
     if (!stored.has(key) && this.known.has(key)) this.index.delete(key);
-    else stored.set(key, entry);
+    else {
+      adoptComplete(entry, stored.get(key));
+      stored.set(key, entry);
+    }
   }
 
   /** A key leaves the index (and the stored one, at the next write). */
@@ -362,7 +365,9 @@ export class WebCache {
       this.deleted.clear();
       // What other pages wrote and this page has not: it sees it too.
       for (const [key, entry] of stored) {
-        if (!this.index.has(key)) this.index.set(key, entry);
+        const local = this.index.get(key);
+        if (local == null) this.index.set(key, entry);
+        else adoptComplete(local, entry);
       }
       // What another page removed (and this one did not touch) goes here too.
       for (const key of [...this.index.keys()]) {
@@ -850,4 +855,20 @@ export function webCache(): WebCache {
 /** @internal Tests: a fresh cache. */
 export function resetWebCache(): void {
   shared = null;
+}
+
+/**
+ * A file another page stored whole stays whole: this page's stale view of it
+ * (`queued`, part of it) is never written over it.
+ */
+function adoptComplete(local: Entry, stored: Entry | undefined): void {
+  if (stored == null || local === stored || !stored.complete || local.complete)
+    return;
+  local.complete = true;
+  local.bytes = stored.bytes;
+  local.totalBytes = stored.totalBytes;
+  if (local.downloadId != null) {
+    local.state = 'completed';
+    local.error = null;
+  }
 }

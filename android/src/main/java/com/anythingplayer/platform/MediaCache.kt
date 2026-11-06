@@ -82,8 +82,8 @@ internal object MediaCache {
     /** HLS / DASH: the one quality kept (period, group, stream). */
     @Volatile var keys: List<StreamKey> = emptyList(),
   ) {
-    /** Down when its task has ended (a removal waits for it: no write after it). */
-    val ended = java.util.concurrent.CountDownLatch(1)
+    /** Down when its latest task has ended (a removal waits for it: no write after it); new for each start. */
+    @Volatile var ended = java.util.concurrent.CountDownLatch(1)
   }
 
   /** Main thread, at runtime start: settings and unfinished downloads come back. */
@@ -300,8 +300,9 @@ internal object MediaCache {
     val playedBytes = play.getCachedBytes(key, 0, C.LENGTH_UNSET.toLong())
     val length = ContentMetadata.getContentLength(kept.getContentMetadata(key)).takeIf { it > 0 }
       ?: ContentMetadata.getContentLength(play.getContentMetadata(key)).takeIf { it > 0 }
-    // A downloaded file whose bytes are gone (storage cleared): it failed.
-    if (download != null && download.state == "completed" && download.type == "file" && length != null && keptBytes < length) {
+    // A downloaded file whose bytes are gone (storage cleared, its metadata too): it failed.
+    val wanted = length ?: download?.totalBytes
+    if (download != null && download.state == "completed" && download.type == "file" && wanted != null && keptBytes < wanted) {
       download.state = "failed"
       download.error = PlayerError(ErrorCode.SOURCE_NOT_FOUND, "The downloaded file is gone from the device.", true)
       admin.execute { writeIndex() }
@@ -331,12 +332,14 @@ internal object MediaCache {
   // ── Downloads ──
 
   private fun start(download: Download) {
+    // A restart (a failed download asked again) has a task of its own to wait for.
+    val ended = if (download.ended.count == 0L) java.util.concurrent.CountDownLatch(1).also { download.ended = it } else download.ended
     running[download.id] =
       work.submit {
         // Removed or replaced while it ran: nothing of it is told or written.
         val current = { downloads[download.id] === download }
         if (!current()) {
-          download.ended.countDown()
+          ended.countDown()
           return@submit
         }
         try {
@@ -376,7 +379,7 @@ internal object MediaCache {
           if (current()) running.remove(download.id)
           // A cancel left this pool thread interrupted: the next work on it must not fail.
           Thread.interrupted()
-          download.ended.countDown()
+          ended.countDown()
         }
         if (!current()) return@submit
         writeIndex()

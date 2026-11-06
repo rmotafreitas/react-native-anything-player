@@ -379,6 +379,40 @@ describe('WebCache', () => {
     expect(ids.sort()).toEqual(['a', 'b']);
   });
 
+  it("a page's stale 'queued' never goes over a file another page stored whole", async () => {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((r) => (release = r));
+    const before = globals.fetch as (...args: unknown[]) => Promise<Response>;
+    served['https://cdn.example/slow.mp3'] = { bytes: MB };
+    globals.fetch = async (...args: unknown[]) => {
+      await gate;
+      return before(...args);
+    };
+    const a = new WebCache();
+    const b = new WebCache();
+    await b.command({ op: 'usage' });
+    await a.command({
+      op: 'download',
+      ...src('https://cdn.example/slow.mp3'),
+      id: 's',
+    });
+    await new Promise((r) => setTimeout(r, 300));
+    // a holds the file's fetch lock (its index write is due); b asks for the same download.
+    await b.command({
+      op: 'download',
+      ...src('https://cdn.example/slow.mp3'),
+      id: 's',
+    });
+    await new Promise((r) => setTimeout(r, 50));
+    release();
+    await new Promise((r) => setTimeout(r, 1300));
+    globals.fetch = before;
+    const third = new WebCache();
+    expect(await third.command({ op: 'downloads' })).toMatchObject({
+      downloads: [{ id: 's', state: 'completed' }],
+    });
+  });
+
   it('a download of a source with no length fails, and says why', async () => {
     const cache = new WebCache();
     const events: Array<Record<string, unknown>> = [];
