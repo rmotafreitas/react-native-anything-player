@@ -201,10 +201,15 @@ internal object MediaCache {
     if (type == null) {
       val spec = DataSpec.Builder().setUri(Uri.parse(source.uri)).setLength(budget).setKey(keyOf(source)).build()
       var writer: CacheWriter? = null
+      var endless = false
       writer =
-        CacheWriter(factory.createDataSource(), spec, null) { requestLength, _, _ ->
-          // No length: a stream that never ends (a live source without `live: true`).
-          if (requestLength == C.LENGTH_UNSET.toLong()) writer?.cancel()
+        CacheWriter(factory.createDataSource(), spec, null) { requestLength, _, newBytes ->
+          // Still no length once bytes arrive: a stream that never ends (a live source
+          // without `live: true`). The first call comes before the request, with no length yet.
+          if (requestLength == C.LENGTH_UNSET.toLong() && newBytes > 0) {
+            endless = true
+            writer?.cancel()
+          }
         }
       try {
         writer.cache()
@@ -215,6 +220,8 @@ internal object MediaCache {
       } finally {
         Thread.interrupted()
       }
+      // A stream with no length keeps nothing.
+      if (endless) play.removeResource(keyOf(source))
     } else {
       // HLS / DASH: its first segments, one quality.
       val downloader = downloader(factory, source.uri, keyOf(source), type, streamKeys(source, type))
