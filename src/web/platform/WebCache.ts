@@ -358,10 +358,22 @@ export class WebCache {
     // Part of a file: into the browser's HTTP cache, which the element reads from.
     const bytes =
       typeof command.bytes === 'number' ? command.bytes : DEFAULT_PRELOAD;
-    const response = await fetchFile(source, {
-      Range: `bytes=0-${bytes - 1}`,
-    });
-    const got = await drain(response);
+    const stop = new (browser().AbortController)();
+    const response = await fetchFile(
+      source,
+      { Range: `bytes=0-${bytes - 1}` },
+      stop.signal
+    );
+    // A server that ignores the range sends the whole file: enough at the budget.
+    let got = 0;
+    try {
+      await drain(response, (n) => {
+        got += n;
+        if (got >= bytes) stop.abort();
+      });
+    } catch {
+      // Stopped at the budget.
+    }
     const entry = this.entryFor(key, source);
     entry.bytes = Math.max(entry.bytes, got);
     entry.totalBytes = totalOf(response) ?? entry.totalBytes;
@@ -391,6 +403,7 @@ export class WebCache {
     if (other != null) await this.drop(other.key);
     const entry = this.entryFor(key, source);
     entry.downloadId = name;
+    // Kept to start it again at the next visit (a download's only).
     entry.headers = source.headers;
     entry.state = entry.complete ? 'completed' : 'queued';
     entry.error = null;
@@ -435,8 +448,20 @@ export class WebCache {
       const response = await fetchFile(source, {}, stop.signal);
       if (response.body == null || Response == null) throw httpError(0);
       const total = totalOf(response);
-      // Larger than the whole cache: not fetched only to be evicted.
-      if (entry.downloadId == null && total != null && total > this.maxSize) {
+      const noStore = /no-store/i.test(
+        response.headers.get('Cache-Control') ?? ''
+      );
+      // No length: a stream that never ends (a live source without `live: true`).
+      if (total == null) {
+        stop.abort();
+        throw engineError(
+          'UNSUPPORTED_FORMAT',
+          'The source has no length: a live stream cannot be kept.',
+          false
+        );
+      }
+      // Larger than the whole cache, or a server that asks not to be stored: not for the cache.
+      if (entry.downloadId == null && (total > this.maxSize || noStore)) {
         stop.abort();
         this.index.delete(key);
         return;
@@ -617,7 +642,8 @@ function blankEntry(key: string, source: SourceDescriptor): Entry {
   return {
     key,
     uri: source.uri,
-    headers: source.headers,
+    // Stored only for a download (it is started again from them).
+    headers: {},
     bytes: 0,
     totalBytes: null,
     complete: false,

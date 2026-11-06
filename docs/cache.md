@@ -11,7 +11,7 @@ The platform does the work (Media3's cache on Android, the stream proxy and `AVA
 ```ts
 import { Cache, Player } from 'react-native-anything-player';
 
-Cache.configure({ enabled: true, maxSizeBytes: 512 * 1024 * 1024 }); // the cache as items play
+await Cache.configure({ enabled: true, maxSizeBytes: 512 * 1024 * 1024 }); // the cache as items play
 
 await Cache.preload({ uri: 'https://cdn.example/ep1.mp3' });          // the first 1 MB
 await Cache.preload({ uri: 'https://cdn.example/ep1.mp3' }, { all: true });
@@ -52,7 +52,7 @@ player.load({ uri: signedUrl, cacheKey: 'episode-42' });
 | DRM | – | – | – |
 
 1. A video file is cached when it is downloaded or preloaded whole (AVFoundation fetches a video's ranges itself; a file held whole is opened from the device).
-2. With CORS from the file's server (its bytes are read by the page). A complete file plays from a `blob:` URL made from the stored bytes; on iPhone and iPad, the very first play of a player from the cache may need a second tap (the stored bytes are read before the element gets them).
+2. With CORS from the file's server (its bytes are read by the page), and a length. A complete file plays from a `blob:` URL made from the stored bytes; on iPhone and iPad, the very first play of a player from the cache may need a second tap (the stored bytes are read before the element gets them). As items play, the page fetches the file a second time, at its own pace, to store it (the element's own requests cannot be read); `Cache-Control: no-store` is honoured.
 3. Part of a file goes into the browser's own HTTP cache; `Cache.info` reports it as `partial`, but the browser decides how long it keeps it and whether the element's own requests are served from it.
 4. AVFoundation fetches HLS itself. Download it instead.
 5. hls.js, dash.js and Shaka read their segments themselves.
@@ -73,7 +73,8 @@ player.load({ uri: signedUrl, cacheKey: 'episode-42' });
 
 - A download left half-way goes on at the next launch: from where it stopped on iOS and Android (HLS downloads on iOS go on in the background, the system's own), from the start on the web (a page cannot resume a file it stores). One that failed stays `failed`: ask for it again.
 - Progress comes at most once a second (`download` events). An HLS download on iOS reports a share of 1,000 (`bytes` / `totalBytes`) until it completes: AVFoundation does not say its size.
-- `Cache.download` of an item that is already in the cache moves nothing; a finished download removes the item's copy from the cache, so the same bytes are not kept twice.
+- A finished download of a file removes its copy from the cache (Android, iOS), so the same bytes are not kept twice. On the web a file the cache holds whole becomes the download without being fetched again; on Android and iOS a download fetches the file anew.
+- A source with no length (a live stream without `live: true`) is never cached or downloaded.
 - A download keeps its source's request headers (to resume it), in the app's storage. A download is an app's data, not the user's account: on sign-out, remove the downloads (`Cache.downloads()`, then `removeDownload`) and `Cache.clear()` the cache.
 
 ## Offline
