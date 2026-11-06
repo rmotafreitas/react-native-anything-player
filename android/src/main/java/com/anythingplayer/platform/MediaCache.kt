@@ -8,9 +8,11 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.StreamKey
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.database.StandaloneDatabaseProvider
+import androidx.media3.datasource.DataSink
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.cache.Cache
+import androidx.media3.datasource.cache.CacheDataSink
 import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.cache.CacheEvictor
 import androidx.media3.datasource.cache.CacheKeyFactory
@@ -56,7 +58,8 @@ internal object MediaCache {
   private val database by lazy { StandaloneDatabaseProvider(context) }
   private val evictor = ResizableLruEvictor(DEFAULT_MAX)
   private val play: SimpleCache by lazy { SimpleCache(File(context.cacheDir, "rnap-media"), evictor, database) }
-  private val kept: SimpleCache by lazy { SimpleCache(File(context.filesDir, "rnap-downloads"), NoOpCacheEvictor(), database) }
+  /** Downloads can be fetched again: kept out of Auto Backup. */
+  private val kept: SimpleCache by lazy { SimpleCache(File(context.noBackupFilesDir, "rnap-downloads"), NoOpCacheEvictor(), database) }
   private val work = Executors.newFixedThreadPool(2)
   private val downloads = ConcurrentHashMap<String, Download>()
   private val running = ConcurrentHashMap<String, Future<*>>()
@@ -69,10 +72,12 @@ internal object MediaCache {
     val key: String,
     val headers: Map<String, String>,
     val type: String,
-    var state: String,
-    var bytes: Long = 0,
-    var totalBytes: Long? = null,
-    var error: PlayerError? = null,
+    @Volatile var state: String,
+    @Volatile var bytes: Long = 0,
+    @Volatile var totalBytes: Long? = null,
+    @Volatile var error: PlayerError? = null,
+    /** HLS / DASH: the one quality kept (period, group, stream). */
+    @Volatile var keys: List<StreamKey> = emptyList(),
   )
 
   /** Main thread, at runtime start: settings and unfinished downloads come back. */
@@ -83,8 +88,12 @@ internal object MediaCache {
     val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
     enabled = prefs.getBoolean("enabled", false)
     evictor.maxBytes = prefs.getLong("maxSizeBytes", DEFAULT_MAX)
+    // Before any command: a download asked for now must not overwrite the list.
+    readIndex()
     work.execute {
-      readIndex()
+      // The caches read their indexes here, not on the main thread at the first play.
+      play
+      kept
       downloads.values.filter { it.state == "queued" || it.state == "downloading" }.forEach { start(it) }
     }
   }
@@ -94,6 +103,16 @@ internal object MediaCache {
   /** Whether a source may go in the cache as it plays: finite, over HTTP(S), its own `cache` or the setting. */
   private fun writes(source: SourceDescriptor): Boolean =
     source.liveHint != true && source.drm == null && source.isNetwork && (source.cache ?: enabled)
+
+  /** A downloaded HLS / DASH item's quality: ExoPlayer plays the one that was kept. */
+  fun streamKeysFor(source: SourceDescriptor): List<StreamKey> {
+    if (!initialized) return emptyList()
+    val key = keyOf(source)
+    return downloads.values.firstOrNull { it.key == key && it.state == "completed" }?.keys.orEmpty()
+  }
+
+  /** The play cache's writer, which never keeps a manifest (a live one would be served stale). */
+  private fun playSink(): DataSink.Factory = ManifestsUncached(CacheDataSink.Factory().setCache(play))
 
   fun keyOf(source: SourceDescriptor): String = source.cacheKey ?: source.uri.substringBefore('#')
 
@@ -109,6 +128,7 @@ internal object MediaCache {
         CacheDataSource.Factory()
           .setCache(play)
           .setUpstreamDataSourceFactory(upstream)
+          .setCacheWriteDataSinkFactory(playSink())
           .setCacheKeyFactory(keys)
           .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR or CacheDataSource.FLAG_IGNORE_CACHE_FOR_UNSET_LENGTH_REQUESTS)
       } else {
@@ -158,12 +178,28 @@ internal object MediaCache {
     if (source.liveHint == true || !source.isNetwork) return info(source)
     val upstream = http(source.headers)
     val factory =
-      CacheDataSource.Factory().setCache(play).setUpstreamDataSourceFactory(upstream).setCacheKeyFactory(keyFactory(source))
+      CacheDataSource.Factory()
+        .setCache(play)
+        .setUpstreamDataSourceFactory(upstream)
+        .setCacheWriteDataSinkFactory(playSink())
+        .setCacheKeyFactory(keyFactory(source))
     val type = typeOf(source.uri)
     val budget = if (all) C.LENGTH_UNSET.toLong() else (bytes ?: DEFAULT_PRELOAD)
     if (type == null) {
       val spec = DataSpec.Builder().setUri(Uri.parse(source.uri)).setLength(budget).setKey(keyOf(source)).build()
-      CacheWriter(factory.createDataSource(), spec, null, null).cache()
+      var writer: CacheWriter? = null
+      writer =
+        CacheWriter(factory.createDataSource(), spec, null) { requestLength, _, _ ->
+          // No length: a stream that never ends (a live source without `live: true`).
+          if (requestLength == C.LENGTH_UNSET.toLong()) writer?.cancel()
+        }
+      try {
+        writer.cache()
+      } catch (_: InterruptedException) {
+        // Stopped: not a file.
+      } catch (_: java.io.InterruptedIOException) {
+        // Stopped: not a file.
+      }
     } else {
       // HLS / DASH: its first segments, one quality.
       val downloader = downloader(factory, source.uri, keyOf(source), type, streamKeys(source, type))
@@ -184,10 +220,14 @@ internal object MediaCache {
     if (source.liveHint == true || !source.isNetwork) {
       throw PlayerError(ErrorCode.UNSUPPORTED_FORMAT, "Downloads are finite sources over HTTP(S), not live streams or local files.", false)
     }
-    val download =
-      Download(id ?: source.uri, source.uri, keyOf(source), source.headers, typeOf(source.uri) ?: "file", "queued")
-    downloads[download.id]?.let { running.remove(it.id)?.cancel(true) }
-    downloads[download.id] = download
+    val name = id ?: source.uri
+    val key = keyOf(source)
+    // Asked again: the download that is there (going, or done) answers.
+    downloads[name]?.takeIf { it.key == key && it.state != "failed" }?.let { return downloadMap(it) }
+    // One download per id, and per file: another one with either goes.
+    downloads.values.filter { it.id == name || it.key == key }.forEach { removeDownload(it.id) }
+    val download = Download(name, source.uri, key, source.headers, typeOf(source.uri) ?: "file", "queued")
+    downloads[name] = download
     writeIndex()
     start(download)
     return downloadMap(download)
@@ -239,12 +279,19 @@ internal object MediaCache {
   private fun start(download: Download) {
     running[download.id] =
       work.submit {
+        // Removed or replaced while it ran: nothing of it is told or written.
+        val current = { downloads[download.id] === download }
         try {
           download.state = "downloading"
           emit(download)
           var told = 0L
           val downloader = downloaderFor(download)
           downloader.download { contentLength, bytesDownloaded, _ ->
+            // A file with no length: a stream that never ends.
+            if (download.type == "file" && contentLength == C.LENGTH_UNSET.toLong() && bytesDownloaded > 0) {
+              download.error = PlayerError(ErrorCode.UNSUPPORTED_FORMAT, "The source has no length: a live stream cannot be downloaded.", false)
+              downloader.cancel()
+            }
             download.bytes = bytesDownloaded
             if (contentLength > 0) download.totalBytes = contentLength
             val now = android.os.SystemClock.elapsedRealtime()
@@ -257,24 +304,29 @@ internal object MediaCache {
           // The same bytes are not kept twice.
           if (download.type == "file") play.removeResource(download.key)
         } catch (_: InterruptedException) {
-          return@submit
-        } catch (error: Exception) {
+          if (download.error == null) return@submit
           download.state = "failed"
-          download.error = mapDownloadError(error)
+        } catch (error: Exception) {
+          if (!current()) return@submit
+          download.state = "failed"
+          if (download.error == null) download.error = mapDownloadError(error)
         } finally {
-          running.remove(download.id)
+          if (current()) running.remove(download.id)
         }
+        if (!current()) return@submit
         writeIndex()
         emit(download)
       }
   }
+
 
   private fun downloaderFor(d: Download): Downloader {
     val factory = CacheDataSource.Factory().setCache(kept).setUpstreamDataSourceFactory(http(d.headers))
     val source = SourceDescriptor(d.uri, d.headers, liveHint = false, cacheKey = d.key)
     factory.setCacheKeyFactory(keyFactory(source))
     val type = if (d.type == "file") null else d.type
-    return downloader(factory, d.uri, d.key, type, if (type == null) emptyList() else streamKeys(source, type))
+    if (type != null && d.keys.isEmpty()) d.keys = streamKeys(source, type)
+    return downloader(factory, d.uri, d.key, type, d.keys)
   }
 
   private fun downloader(
@@ -322,7 +374,7 @@ internal object MediaCache {
     return PlayerError(ErrorCode.NETWORK_ERROR, error.message ?: error.javaClass.simpleName, true)
   }
 
-  private fun indexFile() = File(context.filesDir, "rnap-downloads.json")
+  private fun indexFile() = File(context.noBackupFilesDir, "rnap-downloads.json")
 
   @Synchronized
   private fun writeIndex() {
@@ -337,7 +389,9 @@ internal object MediaCache {
           .put("state", d.state)
           .put("bytes", d.bytes)
           .put("totalBytes", d.totalBytes ?: JSONObject.NULL)
-          .put("headers", JSONObject(d.headers)),
+          .put("headers", JSONObject(d.headers))
+          .put("keys", JSONArray(d.keys.map { JSONArray(listOf(it.periodIndex, it.groupIndex, it.streamIndex)) }))
+          .put("error", d.error?.message ?: JSONObject.NULL),
       )
     }
     indexFile().writeText(list.toString())
@@ -354,6 +408,11 @@ internal object MediaCache {
         Download(o.getString("id"), o.getString("uri"), o.getString("key"), headers, o.getString("type"), o.getString("state"))
       d.bytes = o.optLong("bytes")
       d.totalBytes = if (o.isNull("totalBytes")) null else o.getLong("totalBytes")
+      val keys = o.optJSONArray("keys")
+      if (keys != null) {
+        d.keys = (0 until keys.length()).map { k -> keys.getJSONArray(k).let { StreamKey(it.getInt(0), it.getInt(1), it.getInt(2)) } }
+      }
+      if (!o.isNull("error") && o.has("error")) d.error = PlayerError(ErrorCode.NETWORK_ERROR, o.getString("error"), true)
       downloads[d.id] = d
     }
   }
@@ -406,20 +465,37 @@ internal object MediaCache {
 
   /** A multivariant playlist's highest-bandwidth variant and its first audio rendition (none: a media playlist). */
   internal fun hlsKeys(text: String): List<StreamKey> {
-    val variants = mutableListOf<Long>()
-    var audio = 0
+    // Media3's indexes: variants by distinct URL, in order (group 0); audio
+    // renditions with a URL, in order (group 1).
+    val variants = LinkedHashMap<String, Pair<Long, String?>>()
+    val audios = mutableListOf<String?>()
+    var pending: String? = null
     for (line in text.lineSequence().map { it.trim() }) {
-      if (line.startsWith("#EXT-X-STREAM-INF:")) {
-        variants.add(Regex("[:,]BANDWIDTH=(\\d+)").find(line)?.groupValues?.get(1)?.toLong() ?: 0)
-      } else if (line.startsWith("#EXT-X-MEDIA:") && line.contains("TYPE=AUDIO") && line.contains("URI=")) {
-        audio += 1
+      when {
+        line.startsWith("#EXT-X-STREAM-INF:") -> pending = line
+        line.startsWith("#EXT-X-MEDIA:") && line.contains("TYPE=AUDIO") && line.contains("URI=") ->
+          audios.add(attributeOf(line, "GROUP-ID"))
+        pending != null && line.isNotEmpty() && !line.startsWith("#") -> {
+          val info = pending
+          pending = null
+          if (line !in variants) {
+            val bandwidth = Regex("[:,]BANDWIDTH=(\\d+)").find(info)?.groupValues?.get(1)?.toLong() ?: 0
+            variants[line] = bandwidth to attributeOf(info, "AUDIO")
+          }
+        }
       }
     }
     if (variants.isEmpty()) return emptyList()
-    val best = variants.indices.maxByOrNull { variants[it] } ?: 0
-    // Media3's group indexes: variants 0, audio renditions 1 (HlsMultivariantPlaylist).
-    return listOf(StreamKey(0, best)) + if (audio > 0) listOf(StreamKey(1, 0)) else emptyList()
+    val list = variants.values.toList()
+    val best = list.indices.maxByOrNull { list[it].first } ?: 0
+    val group = list[best].second
+    val audio = audios.indexOfFirst { group == null || it == group }
+    return listOf(StreamKey(0, best)) + if (audio >= 0) listOf(StreamKey(1, audio)) else emptyList()
   }
+
+  private fun attributeOf(line: String, name: String): String? =
+    Regex("[:,]$name=\"?([^\",]*)").find(line)?.groupValues?.get(1)
+
 
   /** Per period: the highest-bandwidth representation of the first video set, and the first of the first audio set. */
   internal fun dashKeys(text: String): List<StreamKey> {
@@ -503,4 +579,28 @@ internal class ResizableLruEvictor(@Volatile var maxBytes: Long) : CacheEvictor 
       cache.removeSpan(spans.first())
     }
   }
+}
+
+/** A cache writer that leaves manifests out (a live HLS / DASH playlist must always be read fresh). */
+@OptIn(UnstableApi::class)
+internal class ManifestsUncached(private val inner: DataSink.Factory) : DataSink.Factory {
+  override fun createDataSink(): DataSink =
+    object : DataSink {
+      private val sink = inner.createDataSink()
+      private var skip = false
+
+      override fun open(dataSpec: DataSpec) {
+        val path = dataSpec.uri.toString().substringBefore('#').substringBefore('?').lowercase()
+        skip = path.endsWith(".m3u8") || path.endsWith(".mpd")
+        if (!skip) sink.open(dataSpec)
+      }
+
+      override fun write(buffer: ByteArray, offset: Int, length: Int) {
+        if (!skip) sink.write(buffer, offset, length)
+      }
+
+      override fun close() {
+        if (!skip) sink.close()
+      }
+    }
 }

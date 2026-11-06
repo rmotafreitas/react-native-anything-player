@@ -721,7 +721,14 @@ internal class ExoPlayerDriver(
       DefaultMediaSourceFactory(DefaultDataSource.Factory(context, MediaCache.dataSourceFactory(http, request.source)), extractors)
         .setLoadErrorHandlingPolicy(AnythingPlayerLoadErrorPolicy())
     sourceDrm?.let { drm -> factory.setDrmSessionManagerProvider { drm.manager } }
-    return factory.createMediaSource(MediaItem.Builder().setUri(resolveUri(request.source.uri)).setMediaId(mediaId).build())
+    // A downloaded HLS / DASH item plays the quality that was kept (offline, the others are not there).
+    val item =
+      MediaItem.Builder()
+        .setUri(resolveUri(request.source.uri))
+        .setMediaId(mediaId)
+        .setStreamKeys(MediaCache.streamKeysFor(request.source))
+        .build()
+    return factory.createMediaSource(item)
   }
 
   /**

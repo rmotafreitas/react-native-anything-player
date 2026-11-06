@@ -116,13 +116,14 @@ class AnythingPlayerModule(reactContext: ReactApplicationContext) : NativeAnythi
 
   // ── Cache (app-global; disk work off the main thread) ──
 
-  private val cacheWork = java.util.concurrent.Executors.newSingleThreadExecutor()
+  /** A long preload does not hold up `info` or `usage`. */
+  private val cacheWork = java.util.concurrent.Executors.newFixedThreadPool(3)
 
   override fun cacheCommand(command: ReadableMap, promise: Promise) {
     val op = command.optString("op")
-    val source = command.optMap("source")?.let { parseSource(it).first }
     cacheWork.execute {
       try {
+        val source = command.optMap("source")?.let { parseSource(it).first }
         val result: WritableMap =
           when (op) {
             "configure" -> {

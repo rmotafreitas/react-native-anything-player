@@ -21,6 +21,20 @@ class MediaCacheTest {
       mid.m3u8
       """.trimIndent()
     assertEquals(listOf(StreamKey(0, 1), StreamKey(1, 0)), MediaCache.hlsKeys(text))
+    // Variants with one URL count once (as Media3 reads them); the best one's own audio group.
+    val groups =
+      """
+      #EXTM3U
+      #EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="lo",NAME="en",URI="lo/en.m3u8"
+      #EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="hi",NAME="en",URI="hi/en.m3u8"
+      #EXT-X-STREAM-INF:BANDWIDTH=800000,AUDIO="lo"
+      low.m3u8
+      #EXT-X-STREAM-INF:BANDWIDTH=900000,AUDIO="lo",CODECS="x"
+      low.m3u8
+      #EXT-X-STREAM-INF:BANDWIDTH=4000000,AUDIO="hi"
+      high.m3u8
+      """.trimIndent()
+    assertEquals(listOf(StreamKey(0, 1), StreamKey(1, 1)), MediaCache.hlsKeys(groups))
     assertEquals(emptyList<StreamKey>(), MediaCache.hlsKeys("#EXTM3U\n#EXT-X-TARGETDURATION:6\n#EXTINF:6,\na.ts\n"))
   }
 
