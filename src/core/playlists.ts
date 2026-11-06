@@ -26,7 +26,8 @@ export interface PlaylistOptions {
 
 const PLAYLIST_PATH = /\.(pls|m3u|xspf)$/i;
 /** A path that names a media file (not a stream's mount). */
-const MEDIA_FILE = /\.(mp3|m4a|m4b|aac|flac|ogg|oga|opus|wav|aiff?|mp4|m4v|mov|webm|mkv|ts)$/i;
+const MEDIA_FILE =
+  /\.(mp3|m4a|m4b|aac|flac|ogg|oga|opus|wav|aiff?|mp4|m4v|mov|webm|mkv|ts)$/i;
 /** Tags only an HLS playlist has. */
 const HLS_TAGS = [
   '#EXT-X-TARGETDURATION',
