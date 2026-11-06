@@ -181,7 +181,7 @@ async function fetchOnce(
 }
 
 /** Fetches through the platform (native decodes any charset), with backoff. */
-async function fetchText(
+export async function fetchText(
   uri: string,
   headers: Record<string, string>,
   encoding: string | null,

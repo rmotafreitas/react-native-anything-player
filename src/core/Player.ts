@@ -4,6 +4,7 @@ import { answerLicense, type LicenseRequestEvent } from './drm';
 import { dispatchModuleEvent } from './moduleEvents';
 import type { SubtitleCue } from './subtitles/types';
 import { PlayerQueue } from './queue';
+import { isPlaylistUri, resolvePlaylistSource } from './playlists';
 import {
   callRefresh,
   normalizeVideoSource,
@@ -102,6 +103,27 @@ function invalidSource(message: string): PlayerError {
 function isBlob(value: unknown): value is BlobInput {
   const Blob = (globalThis as { Blob?: abstract new () => object }).Blob;
   return typeof Blob === 'function' && value instanceof Blob;
+}
+
+function namesPlaylist(source: SourceInput | BlobInput): boolean {
+  if (typeof source === 'string') return isPlaylistUri(source);
+  if (typeof source !== 'object' || source == null || isBlob(source))
+    return false;
+  return typeof source.uri === 'string' && isPlaylistUri(source.uri);
+}
+
+/** A playlist file given to `load()` (a station's `listen.pls`): its first entry. */
+async function resolveLoadPlaylist(
+  source: SourceInput | BlobInput
+): Promise<SourceInput | BlobInput> {
+  if (typeof source === 'string') {
+    return isPlaylistUri(source)
+      ? resolvePlaylistSource({ uri: source })
+      : source;
+  }
+  if (typeof source !== 'object' || source == null || isBlob(source))
+    return source;
+  return resolvePlaylistSource(source);
 }
 
 /** A picked file's name without its extension: what the lock screen shows for it. */
@@ -459,6 +481,10 @@ export class Player {
     options: LoadOptions = {}
   ): Promise<void> {
     this.ensureAlive();
+    // A radio station's `listen.pls` / `.m3u` / `.xspf`: its first entry
+    // plays. Anything else goes to the module in this same tick (a play()
+    // must stay inside the user's tap on the web).
+    if (namesPlaylist(source)) source = await resolveLoadPlaylist(source);
     const normalized = isBlob(source)
       ? normalizeBlob(source)
       : normalizeSource(source);

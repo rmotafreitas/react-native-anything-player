@@ -4,6 +4,7 @@
 // snapshot and keeps each item as the app gave it.
 
 import { PlayerError } from '../errors';
+import { isPlaylistUri, resolvePlaylistSource } from './playlists';
 import type {
   BlobInput,
   QueueItem,
@@ -138,7 +139,10 @@ export class PlayerQueue {
     items: QueueItemInput[],
     options: QueueSetOptions = {}
   ): Promise<void> {
-    const prepared = this.prepare(items, new Set());
+    const resolved = namesPlaylists(items)
+      ? await resolvePlaylists(items)
+      : items;
+    const prepared = this.prepare(resolved, new Set());
     const command: Record<string, unknown> = {
       op: 'set',
       items: prepared.map((p) => p.wire),
@@ -159,7 +163,10 @@ export class PlayerQueue {
     items: QueueItemInput[],
     options: { index?: number } = {}
   ): Promise<void> {
-    const prepared = this.prepare(items, new Set(this.snapshot.ids));
+    const resolved = namesPlaylists(items)
+      ? await resolvePlaylists(items)
+      : items;
+    const prepared = this.prepare(resolved, new Set(this.snapshot.ids));
     const command: Record<string, unknown> = {
       op: 'add',
       items: prepared.map((p) => p.wire),
@@ -324,6 +331,34 @@ export class PlayerQueue {
       throw invalid(`${name} must be a finite number ≥ 0.`);
     return value;
   }
+}
+
+/** A playlist file among the items (a station's `listen.pls`) plays its first entry. */
+async function resolvePlaylists(
+  items: QueueItemInput[]
+): Promise<QueueItemInput[]> {
+  if (!Array.isArray(items)) throw invalid('Queue items must be an array.');
+  return Promise.all(items.map(resolvePlaylist));
+}
+
+/** Whether any item names a playlist file (only then does a command wait for a fetch). */
+function namesPlaylists(items: QueueItemInput[]): boolean {
+  return Array.isArray(items) && items.some(namesPlaylist);
+}
+
+function namesPlaylist(input: QueueItemInput): boolean {
+  if (typeof input === 'string') return isPlaylistUri(input);
+  const uri = isPlainSource(input) ? input.uri : null;
+  return typeof uri === 'string' && isPlaylistUri(uri);
+}
+
+async function resolvePlaylist(input: QueueItemInput): Promise<QueueItemInput> {
+  if (typeof input === 'string') {
+    return isPlaylistUri(input) ? resolvePlaylistSource({ uri: input }) : input;
+  }
+  const uri = isPlainSource(input) ? input.uri : undefined;
+  if (typeof uri !== 'string' || !isPlaylistUri(uri)) return input;
+  return resolvePlaylistSource(input as Source);
 }
 
 function sameList(a: string[], b: string[]): boolean {
