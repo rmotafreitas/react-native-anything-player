@@ -49,8 +49,10 @@ export function enableVideo(world: FakeWorld): void {
   const original = document.createElement.bind(document);
   document.createElement = (tag) => {
     if (tag !== 'video') return tag === 'div' ? new FakeBox() : original(tag);
+    const style: Record<string, string> = {};
+    const attributes: Record<string, string> = {};
     return Object.assign(original(tag) as object, {
-      style: {} as Record<string, string>,
+      style,
       parentNode: null,
       poster: '',
       controls: false,
@@ -58,7 +60,7 @@ export function enableVideo(world: FakeWorld): void {
       playsInline: false,
       videoWidth: 0,
       videoHeight: 0,
-      attributes: {} as Record<string, string>,
+      attributes,
       setAttribute(name: string, value: string) {
         this.attributes[name] = value;
       },

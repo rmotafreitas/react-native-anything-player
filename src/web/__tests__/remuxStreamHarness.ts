@@ -30,22 +30,6 @@ export function fixture(name: string): Uint8Array {
   return new Uint8Array(fs.readFileSync(path.join(DIR, name)));
 }
 
-/** A golden `tracks.json` entry. */
-export interface GoldenTrack {
-  id: number;
-  kind: string;
-  codec: string | null;
-  language: string | null;
-  name: string | null;
-  default: boolean;
-}
-
-export function goldenTracks(name: string): GoldenTrack[] {
-  return JSON.parse(
-    fs.readFileSync(path.join(DIR, `${name}.out`, 'tracks.json'), 'utf8')
-  );
-}
-
 /** The MSE types a browser takes for these codecs, as video and as audio. */
 export function typesFor(codecs: string[]): string[] {
   return ['video', 'audio'].flatMap((kind) =>

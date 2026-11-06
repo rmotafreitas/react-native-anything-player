@@ -256,6 +256,12 @@ export class PlaybackEngine extends EngineQueue {
         if (this.remote) this.heartbeatRemoteBuffering(t);
         else this.heartbeatBuffering(t, suspect);
         break;
+      case 'ended':
+      case 'error':
+      case 'idle':
+      case 'paused':
+      case 'reconnecting':
+      case 'stopped':
       default:
         break;
     }

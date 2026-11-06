@@ -118,7 +118,7 @@ export class FakeTextTrack extends FakeEvents implements TextTrackLike {
   }
 
   get activeCues(): TextTrackLike['activeCues'] {
-    return this.cues.length > 0 ? (this.cues as never) : null;
+    return this.cues.length > 0 ? this.cues : null;
   }
 
   /** The cues on screen now change. */

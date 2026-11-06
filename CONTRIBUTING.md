@@ -57,13 +57,20 @@ Running "AnythingPlayerExample" with {"fabric":true,"initialProps":{"concurrentR
 
 Note the `"fabric":true` and `"concurrentRoot":true` properties.
 
+Before a pull request, run every check CI runs, with one summary at the end
+(`--fast` skips the slow ones; see [quality gates](docs/quality-gates.md)):
+
+```sh
+yarn verify
+```
+
 Make sure your code passes TypeScript:
 
 ```sh
 yarn typecheck
 ```
 
-To check for linting errors, run the following:
+To check for linting errors (ESLint, oxlint's type-aware rules, knip and sherif), run the following:
 
 ```sh
 yarn lint
@@ -72,7 +79,7 @@ yarn lint
 To fix formatting errors, run the following:
 
 ```sh
-yarn lint --fix
+yarn lint:eslint --fix
 ```
 
 Every public export, field and method needs a TSDoc comment: it becomes the API reference on the docs site. Check it with:
@@ -89,7 +96,8 @@ The `package.json` file contains various scripts for common tasks:
 
 - `yarn`: setup project by installing dependencies.
 - `yarn typecheck`: type-check files with TypeScript.
-  - `yarn lint`: lint files with [ESLint](https://eslint.org/).
+  - `yarn verify`: every check CI runs, with a summary (`--fast` skips the slow ones).
+  - `yarn lint`: lint files with [ESLint](https://eslint.org/), [oxlint](https://oxc.rs/)'s type-aware rules, [knip](https://knip.dev/) and [sherif](https://github.com/QuiiBz/sherif).
   - `yarn docs:api`: generate the API reference into `docs/api/` and fail on undocumented exports.
   - `yarn test:web`: build, then run the web end-to-end suite (needs `scripts/stream-server/generate-media.sh` once, and `npx playwright install`).
     - `yarn example start`: start the Metro server for the example app.

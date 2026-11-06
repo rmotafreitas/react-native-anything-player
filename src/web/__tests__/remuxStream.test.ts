@@ -71,7 +71,7 @@ const startsOf = (b: Mp4Buffer) => b.fragments.map((f) => f.start);
 function patched(file: string, from: number[], to: number[]): Uint8Array {
   const bytes = fixture(file).slice();
   const at = Buffer.from(bytes).indexOf(Buffer.from(from));
-  if (at < 0) throw new Error(`${file} does not hold ${from}`);
+  if (at < 0) throw new Error(`${String(file)} does not hold ${String(from)}`);
   bytes.set(to, at);
   return bytes;
 }

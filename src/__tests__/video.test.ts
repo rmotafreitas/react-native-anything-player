@@ -162,7 +162,9 @@ describe('subtitleTracks', () => {
 });
 
 describe('normalizeVideoSource', () => {
-  const art = jest.fn((a: unknown) => (a === 'none' ? null : `art:${a}`));
+  const art = jest.fn((a: unknown) =>
+    a === 'none' ? null : `art:${String(a)}`
+  );
   const uri = 'https://x.example/a.mp4';
 
   it('is empty for an audio source', () => {
@@ -663,7 +665,11 @@ describe('Player video', () => {
       });
       await flush();
       const cues = videoCommands().filter((c) => c.op === 'cues');
-      expect(cues.map((c) => c.trackId).sort()).toEqual(['en', 'inline']);
+      expect(
+        cues
+          .map((c) => c.trackId)
+          .sort((x, y) => String(x).localeCompare(String(y)))
+      ).toEqual(['en', 'inline']);
       expect(cues[0]).toMatchObject({
         session: expect.stringMatching(/^s\d+$/),
         cues: [expect.objectContaining({ start: 1, end: 2.5 })],
@@ -1012,6 +1018,25 @@ describe('Player video', () => {
       });
     });
 
+    it('calls a getLicense written as a method on its drm object', async () => {
+      const drm = {
+        widevine: { licenseUrl: 'https://lic.example/w' },
+        license: new Uint8Array([4, 5, 6]),
+        async getLicense() {
+          return this.license;
+        },
+      };
+      const p = videoPlayer();
+      await p.load({ uri, drm });
+      fake.emit(request(p.id));
+      await flush();
+      expect(videoCommands().at(-1)).toEqual({
+        op: 'license',
+        requestId: 7,
+        license: 'BAUG',
+      });
+    });
+
     it('is answered with the error when the app fails', async () => {
       const p = videoPlayer();
       await p.load({
@@ -1097,6 +1122,25 @@ describe('Player video', () => {
           uri: 'https://cdn.example/movie.mp4?sig=new',
           headers: { Authorization: 'Bearer new' },
         },
+      });
+    });
+
+    it('calls a refresh written as a method on its source', async () => {
+      const source = {
+        uri,
+        signed: 'https://cdn.example/movie.mp4?sig=new',
+        async refresh() {
+          return { uri: this.signed };
+        },
+      };
+      const p = videoPlayer();
+      await p.load(source);
+      ask(p.id, 'unauthorized', 5);
+      await flush();
+      expect(videoCommands().at(-1)).toEqual({
+        op: 'refreshed',
+        loadId: 5,
+        source: { uri: 'https://cdn.example/movie.mp4?sig=new' },
       });
     });
 

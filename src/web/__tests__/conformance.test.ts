@@ -82,7 +82,7 @@ function videoOptions(value: unknown): VideoEngineOptions {
         ? DEFAULT_FALLBACK_POLICY
         : fallback == null || fallback === false
           ? null
-          : { ...DEFAULT_FALLBACK_POLICY, ...(fallback as object) },
+          : { ...DEFAULT_FALLBACK_POLICY, ...fallback },
   };
 }
 

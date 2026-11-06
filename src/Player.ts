@@ -22,7 +22,7 @@ installHost({
         recoverable: false,
       });
     }
-    return NativeAnythingPlayer as unknown as PlayerModule;
+    return NativeAnythingPlayer;
   },
   onForeground(listener) {
     AppState.addEventListener('change', (state) => {
@@ -38,6 +38,7 @@ installHost({
   },
   resolveAsset(module) {
     // React Native Web has no asset resolver: `require()`d audio is a URL there.
+    // oxlint-disable-next-line typescript/no-unnecessary-condition -- React Native Web's Image has no resolveAssetSource
     return Image.resolveAssetSource?.(module)?.uri ?? null;
   },
   // Picked files and inline data play on React Native Web, not on a device.

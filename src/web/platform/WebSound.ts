@@ -135,7 +135,7 @@ async function bytesOf(source: SoundSource): Promise<ArrayBuffer> {
     return (
       source.blob as unknown as { arrayBuffer(): Promise<ArrayBuffer> }
     ).arrayBuffer();
-  const fetchFn = globals().fetch;
+  const fetchFn = globals().fetch?.bind(globals());
   if (!fetchFn) throw fail('INTERNAL_ERROR', 'This browser has no fetch().');
   let response: ResponseBody;
   try {
@@ -352,13 +352,13 @@ export function createWebSoundBackend(
       if (ctx.state === 'running') return;
       if (globals().navigator?.userActivation?.hasBeenActive === false)
         throw blocked();
-      const { setTimeout, clearTimeout } = globals();
+      const g = globals();
       let timer = 0;
       const timeout = new Promise<void>((resolve) => {
-        timer = setTimeout(resolve, UNLOCK_WAIT_MS);
+        timer = g.setTimeout(resolve, UNLOCK_WAIT_MS);
       });
       await Promise.race([ctx.resume().catch(() => undefined), timeout]);
-      clearTimeout(timer);
+      g.clearTimeout(timer);
       if (ctx.state !== 'running') throw blocked();
     },
   };

@@ -23,6 +23,9 @@ export default defineConfig([
     rules: {
       'react/react-in-jsx-scope': 'off',
       'prettier/prettier': 'error',
+      // `void promise;` marks a promise nothing waits for, as oxlint's
+      // no-floating-promises asks (`yarn lint:types`).
+      'no-void': ['warn', { allowAsStatement: true }],
     },
   },
   {
@@ -31,6 +34,8 @@ export default defineConfig([
       'lib/',
       'example-expo/',
       'coverage/',
+      // typedoc clears and rewrites it beside the lint (yarn verify).
+      'docs/api/',
       '**/build/',
       'ios/.build/',
       'scripts/stream-server/media/',

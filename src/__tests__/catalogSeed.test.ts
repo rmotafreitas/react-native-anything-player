@@ -48,6 +48,16 @@ describe('catalogSeed', () => {
     });
   });
 
+  it('keeps the seed ids already written (cyrb53 over UTF-16 units)', () => {
+    const seedOf = (title: string) =>
+      catalogSeed({ items: [{ id: 'a', title, source: 'https://x/a' }] }).seed;
+    expect(seedOf('Rádio Animu')).toBe('1aff67c58820c7');
+    expect(seedOf('😀 live')).toBe('0f8e33b1b36323');
+    expect(seedOf('a\uD83Db')).toBe('1f6f23e86e630c');
+    expect(seedOf('\uDE00x')).toBe('10c23f73d23a3f');
+    expect(seedOf('新時代')).toBe('03efd7e48323c5');
+  });
+
   it('refuses what setCatalog refuses, and a file that is not a catalog', () => {
     expect(() =>
       catalogSeed({ items: [{ id: 'a', title: '', source: 'https://x/a' }] })

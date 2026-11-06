@@ -107,7 +107,7 @@ export function parseArgs(argv) {
   // `rnap help <command>` prints that command's help, like `<command> --help`.
   if (options.command === 'help' && options.helpTopic) {
     if (!COMMANDS[options.helpTopic]) {
-      options.error = `unknown command ${options.helpTopic}`;
+      options.error = `unknown command ${String(options.helpTopic)}`;
       return options;
     }
     options.command = options.helpTopic;
@@ -126,7 +126,7 @@ export function parseArgs(argv) {
     }
   }
   if (spec.positionals === false && options.positionals.length > 0) {
-    options.error = `unexpected argument ${options.positionals[0]}`;
+    options.error = `unexpected argument ${String(options.positionals[0])}`;
     return options;
   }
   return options;

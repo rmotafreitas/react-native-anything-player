@@ -144,7 +144,7 @@ export class WebModule implements PlayerModule {
         parseLoadQuality(o.quality)
       );
       // An autoplay refusal leaves the load ready-but-paused (see status.interruption).
-      controller.takePlayAttempt();
+      void controller.takePlayAttempt();
       return loaded;
     } catch (error) {
       if (objectUrl != null) browser().URL.revokeObjectURL(objectUrl);
@@ -502,7 +502,7 @@ export class WebModule implements PlayerModule {
           null,
           parseLoadQuality(item.quality)
         );
-    controller.takePlayAttempt();
+    void controller.takePlayAttempt();
     this.catalog.played(item);
     this.emit({ playerId: controller.id, type: 'searchPlay', request, item });
     await loaded;
@@ -520,7 +520,7 @@ export class WebModule implements PlayerModule {
     const controller = this.runtime.players.get(playerId);
     if (!controller) throw released();
     // A play() started outside a command (media keys, system resume) is nobody's to report.
-    controller.takePlayAttempt();
+    void controller.takePlayAttempt();
     try {
       block(controller);
     } catch (error) {

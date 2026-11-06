@@ -171,14 +171,17 @@ export class HlsStream implements HlsTracks {
     this.hls = hls;
     // Subtitles load into hidden text tracks: RNAP's overlay draws them.
     hls.subtitleDisplay = false;
-    hls.on(Events.MANIFEST_PARSED, (_event, data) => {
-      this.listener.onNote('hls manifest', {
-        levels: `${data?.levels?.length ?? 0}`,
-      });
-      this.listener.onVariants?.(variantsOf(hls.levels ?? []));
-      this.applyQuality();
-      this.listener.onTracks?.();
-    });
+    hls.on(
+      Events.MANIFEST_PARSED,
+      (_event, data: { levels?: readonly unknown[] } | undefined) => {
+        this.listener.onNote('hls manifest', {
+          levels: `${data?.levels?.length ?? 0}`,
+        });
+        this.listener.onVariants?.(variantsOf(hls.levels ?? []));
+        this.applyQuality();
+        this.listener.onTracks?.();
+      }
+    );
     for (const event of [
       Events.AUDIO_TRACKS_UPDATED,
       Events.SUBTITLE_TRACKS_UPDATED,
@@ -186,10 +189,13 @@ export class HlsStream implements HlsTracks {
       if (event) hls.on(event, () => this.listener.onTracks?.());
     }
     if (Events.LEVEL_SWITCHED) {
-      hls.on(Events.LEVEL_SWITCHED, (_event, data) => {
-        if (typeof data?.level === 'number')
-          this.listener.onVariantSwitched?.(variantId(data.level));
-      });
+      hls.on(
+        Events.LEVEL_SWITCHED,
+        (_event, data: { level?: unknown } | undefined) => {
+          if (typeof data?.level === 'number')
+            this.listener.onVariantSwitched?.(variantId(data.level));
+        }
+      );
     }
     if (Events.FRAG_LOADED) {
       hls.on(Events.FRAG_LOADED, () => {
@@ -198,13 +204,19 @@ export class HlsStream implements HlsTracks {
           this.listener.onBandwidth?.(bps);
       });
     }
-    hls.on(Events.LEVEL_LOADED, (_event, data) => {
-      this.details = (data?.details as HlsLevelDetails | undefined) ?? null;
-    });
-    hls.on(Events.FRAG_PARSING_METADATA, (_event, data) => {
-      this.timedMetadata((data?.samples as HlsMetadataSample[]) ?? []);
-    });
-    hls.on(Events.ERROR, (_event, data: HlsErrorData) => {
+    hls.on(
+      Events.LEVEL_LOADED,
+      (_event, data: { details?: HlsLevelDetails } | undefined) => {
+        this.details = data?.details ?? null;
+      }
+    );
+    hls.on(
+      Events.FRAG_PARSING_METADATA,
+      (_event, data: { samples?: HlsMetadataSample[] } | undefined) => {
+        this.timedMetadata(data?.samples ?? []);
+      }
+    );
+    hls.on(Events.ERROR, (_event, data: HlsErrorData | undefined) => {
       if (!data?.fatal || this.closed || this.failed) return;
       this.failed = true;
       this.listener.onFailure(hlsFailure(data, this.ctor));

@@ -279,6 +279,7 @@ export class FrameScanner {
     // Where the previous frame ended in `data`, while there is one.
     let lastEnd = this.synced && skipped === 0 ? 0 : NOT_SYNCED;
     let pos = 0;
+    // oxlint-disable-next-line typescript/no-unnecessary-condition -- step() may halt it, which TypeScript does not follow
     while (pos < data.length && !this.halted) {
       const step = this.step(data, pos, lastEnd, frames);
       if (step.next === NEED_MORE) break;

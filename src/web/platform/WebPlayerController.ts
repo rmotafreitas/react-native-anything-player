@@ -373,7 +373,7 @@ export class WebPlayerController
       case 'fullscreen':
         return video.setFullscreen(
           c.active === true,
-          (c.lockOrientation as string | false) ?? false
+          (c.lockOrientation as string | false | undefined) ?? false
         );
       case 'pictureInPicture':
         return video.setPictureInPicture(c.active === true);

@@ -236,6 +236,7 @@ export class WebDrm {
     try {
       await this.attach(granted.name, granted.access);
     } catch (error) {
+      // oxlint-disable-next-line typescript/no-unnecessary-condition -- close() may come during the await
       if (!this.closed)
         this.fail(licenseError(error, 'The DRM keys could not be set up'));
       return false;
@@ -398,7 +399,7 @@ export class WebDrm {
     body: Uint8Array | null,
     headers: Record<string, string>
   ): Promise<Uint8Array> {
-    const fetchLike = browser().fetch as unknown as (
+    const fetchLike = browser().fetch.bind(browser()) as unknown as (
       url: string,
       init: object
     ) => Promise<{

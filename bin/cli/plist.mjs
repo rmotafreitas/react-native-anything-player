@@ -154,7 +154,7 @@ export function addPlistArrayItem(text, key, item) {
       .at(-1);
     const itemIndent =
       lastItemLine && /^\s*</.test(lastItemLine)
-        ? `${/^\s*/.exec(lastItemLine)[0]}`
+        ? /^\s*/.exec(lastItemLine)[0]
         : `${closingIndent}\t`;
     return `${text.slice(0, lineStart)}${itemIndent}<string>${item}</string>\n${text.slice(lineStart)}`;
   }

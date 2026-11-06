@@ -94,7 +94,9 @@ function deafTo(
       if (typeof value !== 'function' || key === 'onElementReplaced')
         return value;
       return (g: unknown, ...rest: unknown[]) =>
-        g === generation() ? undefined : value.call(target, g, ...rest);
+        g === generation()
+          ? undefined
+          : (value as (...args: unknown[]) => unknown).call(target, g, ...rest);
     },
   });
 }
@@ -622,6 +624,7 @@ export class SwapDriver implements LocalDriver {
         ? pending.aligner!.interrupt()
         : pending.aligner!.step(monotonicNow(), old, next);
     this.apply(action);
+    // oxlint-disable-next-line typescript/no-unnecessary-condition -- apply() may end the alignment, which TypeScript does not follow
     if (this.pending === pending && this.aligning)
       pending.timer = browser().setTimeout(
         () => this.alignTick(),
@@ -682,7 +685,7 @@ export class SwapDriver implements LocalDriver {
   private playSpare(pending: Pending, spare: MediaElementDriver): void {
     spare.play();
     if (!pending.whisper) return;
-    spare.lastPlayAttempt?.then((attempt) => {
+    void spare.lastPlayAttempt?.then((attempt) => {
       if (attempt !== 'blocked' || this.pending !== pending) return;
       if (!pending.whisper) return;
       pending.whisper = false;

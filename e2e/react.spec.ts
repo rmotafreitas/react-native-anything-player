@@ -34,6 +34,7 @@ test('plays the radio with hooks, pauses, and plays a search result', async ({
   await expect(page.getByTestId('state')).toHaveText('playing', {
     timeout: 15_000,
   });
+  // oxlint-disable-next-line typescript/no-unnecessary-condition -- set by the page once it has loaded
   expect(await page.evaluate(() => window.rnap?.player.status.isLive)).toBe(
     false
   );
@@ -76,8 +77,8 @@ test('a video view that unmounts leaves the sound playing; a newer view keeps th
     () => (window.rnap as unknown as VideoPage).video!.getProgress().position
   );
   await page.waitForTimeout(1000);
-  expect(await video!.evaluate((v) => v.isConnected)).toBe(true);
-  expect(await video!.evaluate((v) => (v as HTMLVideoElement).paused)).toBe(
+  expect(await video.evaluate((v) => v.isConnected)).toBe(true);
+  expect(await video.evaluate((v) => (v as HTMLVideoElement).paused)).toBe(
     false
   );
   expect(

@@ -150,7 +150,7 @@ function drmFailure(
     error.code === LICENSE_REQUEST_FAILED &&
     cause?.code === BAD_HTTP_STATUS &&
     typeof cause.data?.[1] === 'number'
-      ? (cause.data[1] as number)
+      ? cause.data[1]
       : null;
   if (status != null)
     return engineError(
@@ -176,7 +176,7 @@ export function shakaFailure(error: ShakaError): PlayerError {
   if (error.category === NETWORK) {
     const status =
       error.code === BAD_HTTP_STATUS && typeof error.data?.[1] === 'number'
-        ? (error.data[1] as number)
+        ? error.data[1]
         : null;
     if (status === 404 || status === 410)
       return engineError(
@@ -277,7 +277,7 @@ export class DashStream implements HlsTracks {
     const player = new this.shaka.Player();
     this.player = player;
     player.addEventListener('error', (event: { detail?: ShakaError }) => {
-      const error = event?.detail;
+      const error = event.detail;
       if (error?.severity !== CRITICAL) return;
       this.fail(shakaFailure(error));
     });
@@ -306,7 +306,7 @@ export class DashStream implements HlsTracks {
       await player.load(this.source.uri, startTime);
     } catch (error) {
       if (this.closed) return;
-      const shakaError = error as ShakaError;
+      const shakaError = error as ShakaError | null | undefined;
       this.fail(
         typeof shakaError?.category === 'number'
           ? shakaFailure(shakaError)

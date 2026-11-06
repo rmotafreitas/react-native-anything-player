@@ -48,6 +48,7 @@ export function parseSubtitles(
       return parseAss(text);
     case 'ttml':
       return parseTtml(text);
+    case null:
     default:
       return [];
   }

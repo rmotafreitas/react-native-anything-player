@@ -29,10 +29,20 @@ function contentId(text: string): string {
   /* eslint-disable no-bitwise -- a hash is bitwise by nature */
   let h1 = 0xdeadbeef;
   let h2 = 0x41c6ce57;
-  for (let i = 0; i < text.length; i++) {
-    const c = text.charCodeAt(i);
-    h1 = Math.imul(h1 ^ c, 2654435761);
-    h2 = Math.imul(h2 ^ c, 1597334677);
+  const mix = (unit: number) => {
+    h1 = Math.imul(h1 ^ unit, 2654435761);
+    h2 = Math.imul(h2 ^ unit, 1597334677);
+  };
+  // Per UTF-16 unit, as the ids already written: a code point past U+FFFF
+  // is split back into its surrogates (a lone one comes through as itself).
+  for (const char of text) {
+    const point = char.codePointAt(0) ?? 0;
+    if (point > 0xffff) {
+      mix(0xd800 + ((point - 0x10000) >> 10));
+      mix(0xdc00 + ((point - 0x10000) & 0x3ff));
+    } else {
+      mix(point);
+    }
   }
   h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507);
   h1 ^= Math.imul(h2 ^ (h2 >>> 13), 3266489909);
@@ -58,6 +68,7 @@ export function catalogSeed(
     items: CatalogItem[];
   } & CatalogOptions
 ): Record<string, unknown> {
+  // oxlint-disable-next-line typescript/no-unnecessary-condition -- validates what a JS caller passes, whatever its type says
   if (input == null || typeof input !== 'object' || Array.isArray(input))
     throw new TypeError(
       'The catalog must be an object: { items, playerId?, playerOptions?, browse? }.'

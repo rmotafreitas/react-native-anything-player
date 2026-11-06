@@ -233,6 +233,7 @@ function sourceUri(source: Source | null | undefined): string {
   if (typeof source.uri === 'string' && source.uri.trim() !== '')
     return source.uri.trim();
   const renditions = Array.isArray(source.renditions) ? source.renditions : [];
+  // oxlint-disable-next-line typescript/no-unnecessary-condition -- validates what a JS caller passes, whatever its type says
   const first = renditions.find((r) => !r?.audioOnly) ?? renditions[0];
   return typeof first?.uri === 'string' ? first.uri.trim() : '';
 }
@@ -253,6 +254,7 @@ function wantsVideo(options: PlayerOptions): boolean {
 function artworkUri(art: ArtworkInput): string | null {
   if (typeof art === 'number') return resolveAsset(art);
   if (typeof art === 'string') return art;
+  // oxlint-disable-next-line typescript/no-unnecessary-condition -- validates what a JS caller passes, whatever its type says
   return typeof art?.uri === 'string' ? art.uri : null;
 }
 
@@ -343,7 +345,7 @@ export class Player {
   readonly queue: PlayerQueue;
   private _status: NativeStatus;
   /** The native player behind this one (see `NativeStatus`), when native says. */
-  private nativeInstance: number | undefined;
+  private readonly nativeInstance: number | undefined;
   private _metadata: MediaMetadata | null = null;
   private readonly listeners = new Map<PlayerEvent, Set<AnyListener>>();
   private released = false;
@@ -402,7 +404,7 @@ export class Player {
     if (options.fade != null) normalizeFade(options.fade);
     ensureSubscription();
     // With an id native already knows, this attaches to that player.
-    this.id = native().createPlayer(options as object);
+    this.id = native().createPlayer(options);
     players.set(this.id, this);
     const initial = native().getStatus(this.id) as NativeStatus;
     this.nativeInstance = initial.instance;
@@ -528,8 +530,7 @@ export class Player {
       nativeOptions.quality = options.quality;
     }
     this._metadata = null;
-    const full =
-      typeof source === 'object' && !isBlob(source) ? (source as Source) : null;
+    const full = typeof source === 'object' && !isBlob(source) ? source : null;
     this.lastLoaded = full ?? { uri: String(normalized.uri ?? '') };
     this.beginVideoLoad(full, normalized);
     const loading = this.run(() =>
@@ -547,8 +548,8 @@ export class Player {
     normalized: Record<string, unknown>
   ): void {
     this.loads += 1;
-    this.refreshSource = source?.refresh ?? null;
-    this.licenseHook = source?.drm?.getLicense ?? null;
+    this.refreshSource = source?.refresh?.bind(source) ?? null;
+    this.licenseHook = source?.drm?.getLicense?.bind(source.drm) ?? null;
     this.sourceHeaders = { ...source?.headers };
     this.thumbnails =
       source?.thumbnails != null
@@ -812,8 +813,8 @@ export class Player {
     } = {}
   ): void {
     this.ensureAlive();
-    const attach = host().attachVideo;
-    if (!attach) {
+    const videoHost = host();
+    if (!videoHost.attachVideo) {
       throw new PlayerError({
         code: 'INVALID_ARGUMENT',
         message:
@@ -821,7 +822,7 @@ export class Player {
         recoverable: false,
       });
     }
-    attach(
+    videoHost.attachVideo(
       this.id,
       element,
       options.contentFit,
@@ -878,7 +879,7 @@ export class Player {
     // source was loaded meanwhile).
     const drm = source != null ? (next as Source).drm : undefined;
     if (drm != null && this.loads === load) {
-      this.licenseHook = drm.getLicense ?? null;
+      this.licenseHook = drm.getLicense?.bind(drm) ?? null;
     }
     const command =
       source != null
@@ -946,9 +947,9 @@ export class Player {
       set = new Set();
       this.listeners.set(event, set);
     }
-    set.add(listener as AnyListener);
+    set.add(listener);
     return () => {
-      this.listeners.get(event)?.delete(listener as AnyListener);
+      this.listeners.get(event)?.delete(listener);
     };
   }
 
@@ -1098,6 +1099,7 @@ export class Player {
 
   /** Applies a status snapshot unless an equal-or-newer one was already applied. */
   private apply(next: NativeStatus): void {
+    // oxlint-disable-next-line typescript/no-unnecessary-condition -- a native snapshot, as the bridge delivers it
     if (!next || typeof next.seq !== 'number' || next.seq <= this._status.seq)
       return;
     if (!this.fromOwnInstance(next.instance)) return;
@@ -1149,17 +1151,13 @@ export class Player {
     } catch (error) {
       throw toPlayerError(error);
     }
+    // oxlint-disable-next-line typescript/no-unnecessary-condition -- a native command may resolve with nothing
     if (result) this.apply(result as NativeStatus);
   }
 }
 
 function sameRoute(a: AudioRoute, b: AudioRoute): boolean {
   return a.kind === b.kind && a.name === b.name;
-}
-
-/** @internal The live `Player` with this native id, if any. */
-export function _livePlayer(id: string): Player | undefined {
-  return players.get(id);
 }
 
 /** @internal Test hook. */

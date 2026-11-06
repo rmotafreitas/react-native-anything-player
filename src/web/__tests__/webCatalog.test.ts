@@ -40,6 +40,7 @@ async function play(
 ): Promise<{ item: { id: string } | null }> {
   const result = module.playFromSearch(request, playerId);
   await flush();
+  // oxlint-disable-next-line typescript/no-unnecessary-condition -- no element until the item loads
   world.element()?.becomeReady(120);
   await flush();
   return (await result) as { item: { id: string } | null };
@@ -224,6 +225,7 @@ describe('web catalog', () => {
       item: item('opera', 'Opera Live'),
     });
     await flush();
+    // oxlint-disable-next-line typescript/no-unnecessary-condition -- no element until the item loads
     world.element()?.becomeReady(120);
     await flush();
     expect(((await asked) as { item: { id: string } }).item.id).toBe('opera');

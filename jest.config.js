@@ -1,4 +1,6 @@
 module.exports = {
+  // Beside the other `yarn verify` steps: half the cores for the test files.
+  ...(process.env.VERIFY_RUNNING ? { maxWorkers: '50%' } : {}),
   reporters: process.env.CI ? ['default', 'jest-junit'] : ['default'],
   coverageReporters: ['text', 'lcov'],
   preset: '@react-native/jest-preset',

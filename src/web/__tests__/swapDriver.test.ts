@@ -513,7 +513,7 @@ describe('what the elements report', () => {
     proxy.onStreamMetadata(1, metadata);
     proxy.onDiscontinuity(1, 4);
     proxy.onNote(1, 'event', { a: 'b' });
-    proxy.onElementReplaced(world.elements[0]! as never);
+    proxy.onElementReplaced(world.elements[0]!);
     proxy.onVideoInfo?.(1, info);
     proxy.onFirstFrame?.(1);
     proxy.onVariants?.(1, []);

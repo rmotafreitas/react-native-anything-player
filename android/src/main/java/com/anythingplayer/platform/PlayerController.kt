@@ -63,6 +63,9 @@ private const val TAG = "RNAP"
 private const val LIVE_READ_MS = 500L
 private const val DIAGNOSTICS_CAPACITY = 300
 
+/** A load's `quality`: an id, or `null` for automatic. A load without one keeps the current pick. */
+internal data class QualityPick(val id: String?)
+
 /**
  * One player: the engine, its ExoPlayer driver and everything that crosses to
  * JS. Engine and driver run on the main thread; the `@Volatile` snapshots are
@@ -202,13 +205,12 @@ internal class PlayerController(
     autoplay: Boolean?,
     start: Double?,
     parts: VideoLoadParts? = null,
-    qualityGiven: Boolean = false,
-    quality: String? = null,
+    quality: QualityPick? = null,
     completion: LoadCompletion? = null,
   ) {
     runtime.beforeLoad(this, source.isNetwork)
     beginItem(fields, parts ?: VideoLoadParts())
-    engine.load(source, autoplay, start, qualityGiven, quality)
+    engine.load(source, autoplay, start, quality != null, quality?.id)
     // The app's subtitle files are tracks from the start (their cues follow).
     if (picture != null && parts != null && parts.subtitles.isNotEmpty()) engine.setAppTracks(parts.subtitles)
     // `load` settles synchronously only when it supersedes; this load is pending.

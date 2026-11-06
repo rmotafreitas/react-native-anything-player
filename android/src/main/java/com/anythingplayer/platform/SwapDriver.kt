@@ -5,27 +5,21 @@ import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
 import com.anythingplayer.core.ErrorCode
-import com.anythingplayer.core.InterruptionReason
 import com.anythingplayer.core.LiveAligner
-import com.anythingplayer.core.MediaTrack
 import com.anythingplayer.core.OpenRequest
 import com.anythingplayer.core.PlaybackSample
 import com.anythingplayer.core.PlayerError
 import com.anythingplayer.core.QualityConstraints
 import com.anythingplayer.core.ReadyInfo
 import com.anythingplayer.core.StreamMetadata
-import com.anythingplayer.core.VideoInfo
-import com.anythingplayer.core.VideoVariant
 
 /** Where the players show: a video's picture, nothing for a sound. */
-internal interface SwapStage {
+internal fun interface SwapStage {
   fun show(current: ExoPlayerDriver, hidden: ExoPlayerDriver?)
 }
 
 /** A sound's stage: nothing to show. */
-internal object NoStage : SwapStage {
-  override fun show(current: ExoPlayerDriver, hidden: ExoPlayerDriver?) = Unit
-}
+internal val NoStage = SwapStage { _, _ -> }
 
 /** How far ahead of the picture the new file opens, seconds. */
 private const val LOOKAHEAD_S = 1.5
@@ -477,8 +471,12 @@ internal class SwapDriver(
 
   private fun switching(generation: Int) = pending?.generation == generation
 
-  /** Forwards both drivers' events; the switch's ready starts the rendezvous, its playing takes over first. */
-  private inner class Proxy : DriverObserver {
+  /**
+   * Forwards both drivers' events to [observer] (delegated: only what a switch
+   * changes is overridden). The switch's ready starts the rendezvous, its
+   * playing takes over first.
+   */
+  private inner class Proxy : DriverObserver by observer {
     override fun onReady(generation: Int, info: ReadyInfo) {
       observer.onReady(generation, info)
       val waiting = pending
@@ -497,10 +495,6 @@ internal class SwapDriver(
       }
     }
 
-    override fun onBuffering(generation: Int) = observer.onBuffering(generation)
-
-    override fun onEnded(generation: Int) = observer.onEnded(generation)
-
     override fun onAdvanced(generation: Int, playing: Boolean) {
       if (queuedNext?.generation == generation) {
         queuedNext = null
@@ -508,11 +502,6 @@ internal class SwapDriver(
       }
       observer.onAdvanced(generation, playing)
     }
-
-    override fun onFailed(generation: Int, error: PlayerError) = observer.onFailed(generation, error)
-
-    override fun onPausedExternally(generation: Int, reason: InterruptionReason) =
-      observer.onPausedExternally(generation, reason)
 
     override fun onStreamMetadata(generation: Int, metadata: StreamMetadata) {
       // The new player's, while it lines up: told again once it is heard
@@ -540,25 +529,6 @@ internal class SwapDriver(
         pending?.jump = null
       }
     }
-
-    override fun isOffline(): Boolean = observer.isOffline()
-
-    override fun onVideoInfo(generation: Int, info: VideoInfo) = observer.onVideoInfo(generation, info)
-
-    override fun onFirstFrame(generation: Int) = observer.onFirstFrame(generation)
-
-    override fun onTracks(generation: Int, tracks: List<MediaTrack>, variants: List<VideoVariant>) =
-      observer.onTracks(generation, tracks, variants)
-
-    override fun onSourceCues(generation: Int, cues: List<OverlayCue>) = observer.onSourceCues(generation, cues)
-
-    override fun onBandwidth(generation: Int, bitsPerSecond: Double) = observer.onBandwidth(generation, bitsPerSecond)
-
-    override fun onPositionJump(generation: Int) = observer.onPositionJump(generation)
-
-    override fun onLicenseRequest(generation: Int, ask: LicenseAsk) = observer.onLicenseRequest(generation, ask)
-
-    override fun onWarning(generation: Int, error: PlayerError) = observer.onWarning(generation, error)
   }
 }
 

@@ -916,7 +916,7 @@ describe('protected content', () => {
       );
       const outcome = operation.promise.then(
         () => null,
-        (error: PlayerError) => error
+        (error: unknown) => error as PlayerError
       );
       await jest.advanceTimersByTimeAsync(30_000);
       expect(events).toHaveLength(1);

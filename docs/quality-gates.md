@@ -4,25 +4,43 @@ The standalone repository enforces the same policy as the Animu app. Install
 with `yarn install --immutable`, then run:
 
 ```sh
-yarn run check:ci
+yarn verify          # every check, as CI runs it
+yarn verify --fast   # skips the slow ones (secrets, dependency audit, React Doctor)
 ```
 
-Both GitHub Actions and Jenkins call that command. It scans complete Git history
-and current tracked/unignored files for secrets, then runs `check:quality`:
+`yarn verify` (`scripts/verify.mjs`) runs independent steps side by side (half the
+cores at a time; `--serial` runs one at a time with live output), runs every
+step even after one fails, and ends with a summary of all of them. `yarn run check:ci`, which GitHub Actions
+and Jenkins call, is the same script, so a local run and CI cannot drift apart:
 
+- Secrets: complete Git history and current tracked/unignored files.
 - The Bob package build first, so the package-contents tests check this commit's
   `lib/`, not a stale one or none.
 - Regression tests for the gate tooling, the Expo config plugin and the CLI.
 - Dependency audit: unreviewed high/critical findings fail; registry failures fail
   closed. Narrow, version/path-specific exceptions match the app and remain visible.
-- ESLint, including SonarJS production-code rules, with zero warnings allowed.
+- Lint, each with zero warnings allowed (`yarn lint` runs all three): ESLint
+  with SonarJS production-code rules (`lint:eslint`), oxlint's type-aware rules
+  run by tsgolint, the app's rule set (`lint:types`), and knip for unused files,
+  exports and dependencies plus sherif for the workspaces' package.json files
+  (`lint:deps`). In tests (`__tests__/`, `*.test.*`, `e2e/`) a few
+  rules are off: the `no-unsafe-*` family (Jest's and Playwright's `any`),
+  `prefer-promise-reject-errors` and `only-throw-error` (fakes reject and throw
+  as the APIs they stand in for do, the Cast SDK with string codes),
+  `unbound-method` (`expect(obj.method)`, prototype patches), `no-deprecated`
+  (tests cover deprecated aliases and patch deprecated DOM overloads) and
+  `await-thenable`; every other rule applies to them too.
+  A finding oxlint gets wrong (a flag set in a callback or across an await,
+  which TypeScript's narrowing does not follow; a check of what a JS caller
+  passes) is disabled on its line with the reason:
+  `// oxlint-disable-next-line <rule> -- <why>`.
 - TypeScript checks, unit tests and enforced coverage floors.
 - TypeDoc (`yarn docs:api`): every public export, field and method needs a TSDoc
   comment, and every `{@link}` must resolve. The generated pages are the site's
   API reference.
 - React Doctor (zero findings in the library).
 
-`check:quality` omits only Git-history scanning so the app can call it inside its
+`yarn run check:quality` (`verify --no-secrets`) omits only Git-history scanning so the app can call it inside its
 isolated source copy; the app performs the full history scan before checking its
 submodules. Neither entry point requires the app checkout or its dependencies.
 
@@ -32,8 +50,9 @@ increase. LCOV (`coverage/lcov.info`) feeds SonarQube, and `CI=true` also emits
 The web engine's browser layer is JavaScript, so it counts toward the floors like
 the rest: it is unit-tested against a scripted fake browser (`src/web/__tests__`).
 
-The `e2e-web` GitHub Actions job runs `yarn test:web`: Playwright in Chromium,
-Firefox and WebKit against the test radio: the plain-web example, the React
+The `e2e-web` GitHub Actions jobs run `yarn test:web`, one job a browser
+(`--project=chromium`, `firefox`, `webkit`) side by side, each with its own test
+radio: the plain-web example, the React
 example (Vite), a scripted Cast receiver, and the integration scenarios on the
 Expo example's web export (see [Testing](testing.md#web-end-to-end)).
 

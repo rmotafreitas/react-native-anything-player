@@ -87,7 +87,7 @@ describe('placing the stage', () => {
   test('puts the stage in the container and tells the engine it is attached', () => {
     const box = container();
 
-    stage.attach(box as never);
+    stage.attach(box);
 
     expect(asStage(stage).parentNode).toBe(box);
     expect(lastView()).toMatchObject({ attached: true, visible: true });
@@ -96,9 +96,9 @@ describe('placing the stage', () => {
   test('moves the stage to another container without a gap', () => {
     const first = container();
     const second = container();
-    stage.attach(first as never);
+    stage.attach(first);
 
-    stage.attach(second as never);
+    stage.attach(second);
 
     expect(first.children).toEqual([]);
     expect(second.children).toEqual([asStage(stage)]);
@@ -107,10 +107,10 @@ describe('placing the stage', () => {
 
   test('attaching to the same container only reports again', () => {
     const box = container();
-    stage.attach(box as never);
+    stage.attach(box);
     engine.viewChanged.mockClear();
 
-    stage.attach(box as never);
+    stage.attach(box);
 
     expect(box.children).toEqual([asStage(stage)]);
     expect(engine.viewChanged).toHaveBeenCalledTimes(1);
@@ -119,7 +119,7 @@ describe('placing the stage', () => {
 
   test('taking the stage out reports it detached and hidden', () => {
     const box = container();
-    stage.attach(box as never);
+    stage.attach(box);
 
     stage.attach(null);
 
@@ -129,7 +129,7 @@ describe('placing the stage', () => {
 
   test('taken out, it waits in the page, unseen, at its size: the browser does not pause the sound (#51)', () => {
     const box = container();
-    stage.attach(box as never);
+    stage.attach(box);
     observers(FakeResizeObserver)[0]!.fire({
       contentRect: { width: 640, height: 360 },
     });
@@ -161,11 +161,11 @@ describe('placing the stage', () => {
   });
 
   test('shown again, it leaves the parking', () => {
-    stage.attach(container() as never);
+    stage.attach(container());
     stage.attach(null);
     const box = container();
 
-    stage.attach(box as never);
+    stage.attach(box);
 
     expect(asStage(stage).parentNode).toBe(box);
     expect(page.document.body.children).toEqual([]);
@@ -174,10 +174,10 @@ describe('placing the stage', () => {
   test('an older view going leaves the picture in the newer one (#54)', () => {
     const older = container();
     const newer = container();
-    stage.attach(older as never);
-    stage.attach(newer as never, 'cover', true);
+    stage.attach(older);
+    stage.attach(newer, 'cover', true);
 
-    stage.detach(older as never);
+    stage.detach(older);
 
     expect(asStage(stage).parentNode).toBe(newer);
     expect(lastView()).toMatchObject({ attached: true });
@@ -186,11 +186,11 @@ describe('placing the stage', () => {
   test('the newer view going gives the picture back to the older one, with its fit', () => {
     const older = container();
     const newer = container();
-    stage.attach(older as never, 'contain');
+    stage.attach(older, 'contain');
     stage.show(asElement(video), null);
-    stage.attach(newer as never, 'cover');
+    stage.attach(newer, 'cover');
 
-    stage.detach(newer as never);
+    stage.detach(newer);
 
     expect(asStage(stage).parentNode).toBe(older);
     expect(video.style.objectFit).toBe('contain');
@@ -198,9 +198,9 @@ describe('placing the stage', () => {
 
   test('the last view going parks it', () => {
     const box = container();
-    stage.attach(box as never);
+    stage.attach(box);
 
-    stage.detach(box as never);
+    stage.detach(box);
 
     expect(asStage(stage).parentNode!.parentNode).toBe(page.document.body);
     expect(lastView()).toMatchObject({ attached: false, visible: false });
@@ -208,13 +208,13 @@ describe('placing the stage', () => {
 
   test('attachTo(null) forgets every view', () => {
     const older = container();
-    stage.attach(older as never);
-    stage.attach(container() as never);
+    stage.attach(older);
+    stage.attach(container());
     stage.attach(null);
     const box = container();
-    stage.attach(box as never);
+    stage.attach(box);
 
-    stage.detach(box as never);
+    stage.detach(box);
 
     expect(older.children).toEqual([]);
   });
@@ -223,7 +223,7 @@ describe('placing the stage', () => {
     release();
     setup({ observers: false });
 
-    stage.attach(container() as never);
+    stage.attach(container());
 
     expect(lastView()).toMatchObject({ attached: true, visible: true });
     expect(observers(FakeIntersectionObserver)).toEqual([]);
@@ -237,7 +237,7 @@ describe('placing the stage', () => {
 
 describe('the view the engine hears about', () => {
   test('visibility follows the intersection observer', () => {
-    stage.attach(container() as never);
+    stage.attach(container());
     const io = observers(FakeIntersectionObserver)[0]!;
     expect(io.observed).toEqual([asStage(stage)]);
 
@@ -252,7 +252,7 @@ describe('the view the engine hears about', () => {
   });
 
   test('an observer callback without entries changes nothing', () => {
-    stage.attach(container() as never);
+    stage.attach(container());
     engine.viewChanged.mockClear();
 
     observers(FakeIntersectionObserver)[0]!.callback([]);
@@ -262,7 +262,7 @@ describe('the view the engine hears about', () => {
   });
 
   test('the size is reported in device pixels and sets the subtitle size', () => {
-    stage.attach(container() as never);
+    stage.attach(container());
     const ro = observers(FakeResizeObserver)[0]!;
 
     ro.fire({ contentRect: { width: 640, height: 360 } });
@@ -274,7 +274,7 @@ describe('the view the engine hears about', () => {
   });
 
   test('the observers stop when the stage leaves the page', () => {
-    stage.attach(container() as never);
+    stage.attach(container());
 
     stage.attach(null);
 
@@ -308,7 +308,7 @@ describe('showing the elements', () => {
     const behind = new FakeVideo();
     stage.show(asElement(video), asElement(behind));
 
-    stage.attach(container() as never, 'cover');
+    stage.attach(container(), 'cover');
     expect([video.style.objectFit, behind.style.objectFit]).toEqual([
       'cover',
       'cover',
@@ -325,7 +325,7 @@ describe('showing the elements', () => {
     const behind = new FakeVideo();
     stage.show(asElement(video), asElement(behind));
 
-    stage.attach(container() as never, 'contain', true);
+    stage.attach(container(), 'contain', true);
     expect([video.controls, behind.controls]).toEqual([true, false]);
 
     stage.show(asElement(behind), asElement(video));
@@ -400,7 +400,9 @@ describe('fullscreen', () => {
   });
 
   test('says so when the browser has no fullscreen', async () => {
-    const error = await stage.setFullscreen(true, false).catch((e) => e);
+    const error = await stage
+      .setFullscreen(true, false)
+      .catch((e: unknown) => e);
 
     expect(error).toBeInstanceOf(PlayerError);
     expect(error).toMatchObject({
@@ -527,7 +529,9 @@ describe('Picture in Picture', () => {
   ])('says so with %s', async (_name, supports) => {
     video.webkitSupportsPresentationMode = supports;
 
-    const error = await stage.setPictureInPicture(true).catch((e) => e);
+    const error = await stage
+      .setPictureInPicture(true)
+      .catch((e: unknown) => e);
 
     expect(error).toBeInstanceOf(PlayerError);
     expect(error).toMatchObject({
@@ -663,7 +667,7 @@ describe('the screen wake lock', () => {
 describe('release', () => {
   test('takes the stage out of the page and stops the observers', () => {
     const box = container();
-    stage.attach(box as never);
+    stage.attach(box);
 
     stage.release();
 
@@ -673,7 +677,7 @@ describe('release', () => {
   });
 
   test('takes the parking out of the page', () => {
-    stage.attach(container() as never);
+    stage.attach(container());
     stage.attach(null);
 
     stage.release();

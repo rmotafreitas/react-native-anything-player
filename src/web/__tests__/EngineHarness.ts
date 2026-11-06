@@ -97,6 +97,7 @@ export class FakeDriver implements EngineDriver {
           position: this.anchorPosition + elapsed,
           bufferedPosition: this.anchorBuffered,
         };
+      case 'frozen':
       default:
         return {
           position: this.anchorPosition,

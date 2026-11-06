@@ -20,9 +20,13 @@ permissions:
   contents: read
   actions: read
 
+# A newer push cancels a PR's older run. Every other run is a group of its own:
+# a shared group keeps one pending run and drops the rest, and every main commit
+# keeps its results, which the app reuses for the commit it pins
+# (scripts/ci-results.mjs).
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   quality:
@@ -67,8 +71,18 @@ jobs:
         run: cd ios && swift test
 
   test-engine-android:
+    # The default build and the one with every optional module, side by side.
+    name: test-engine-android (${{ matrix.variant }})
     timeout-minutes: 30
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: default
+            flags: ''
+          - variant: all modules
+            flags: -PrnapCast=true -PrnapSound=true -PrnapCar=true -PrnapVideo=true
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -80,13 +94,11 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
       - name: Set up Gradle caches and wrapper validation
-        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
         with:
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
       - name: Android lint and Kotlin engine conformance + ICY tests
-        run: cd example/android && ./gradlew :react-native-anything-player:lintDebug :react-native-anything-player:testDebugUnitTest --no-daemon --build-cache
-      - name: Android lint and tests with Cast, Sound and Android Auto built in
-        run: cd example/android && ./gradlew :react-native-anything-player:lintDebug :react-native-anything-player:testDebugUnitTest -PrnapCast=true -PrnapSound=true -PrnapCar=true -PrnapVideo=true --no-daemon --build-cache
+        run: cd example/android && ./gradlew :react-native-anything-player:lintDebug :react-native-anything-player:testDebugUnitTest ${{ matrix.flags }} --no-daemon --build-cache
 
   build-android:
     timeout-minutes: 45
@@ -132,7 +144,7 @@ jobs:
 
 
       - name: Set up Gradle caches and wrapper validation
-        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
         with:
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
       - name: Build example for Android
@@ -290,9 +302,16 @@ jobs:
   e2e-web:
     # The web engine in real browsers (Chromium, Firefox, WebKit) against the
     # local test radio: the plain-web example and the Expo example's web
-    # export, which runs the native integration scenarios.
+    # export, which runs the native integration scenarios. One job a browser:
+    # each has its own test radio, whose stats the tests read, so within a job
+    # they still run one at a time.
+    name: e2e-web (${{ matrix.browser }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox, webkit]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -327,7 +346,7 @@ jobs:
           key: ${{ runner.os }}-expo-npm-${{ hashFiles('example-expo/package-lock.json') }}
           restore-keys: ${{ runner.os }}-expo-npm-
       - name: Install the browsers
-        run: npx playwright install --with-deps chromium firefox webkit
+        run: npx playwright install --with-deps ${{ matrix.browser }}
       - name: Give the browsers an audio output
         # The runner has no sound device; without one, Firefox never starts
         # playback. A PulseAudio null sink plays into nothing.
@@ -336,12 +355,12 @@ jobs:
           pulseaudio -D -n --exit-idle-time=-1 -L module-native-protocol-unix -L "module-null-sink sink_name=ci" -L module-always-sink
           pactl info | grep 'Default Sink'
       - name: Build and run the end-to-end suite
-        run: yarn test:web
+        run: yarn test:web --project=${{ matrix.browser }}
       - name: Upload the Playwright traces
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
-          name: e2e-web-traces
+          name: e2e-web-traces-${{ matrix.browser }}
           path: e2e/test-results/
           if-no-files-found: ignore
 
