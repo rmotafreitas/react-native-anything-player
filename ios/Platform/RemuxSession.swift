@@ -592,7 +592,7 @@ final class RemuxSession {
       for track in [video].compactMap({ $0 }) + audios {
         let choice = Remuxer.Choice(video: track.kind == .video ? track.id : nil, audio: track.kind == .audio ? track.id : nil)
         let remuxer = Remuxer(format: probe.format, choose: { _ in choice }, timeBase: probe.timeBase)
-        let rendition = (track: track, remuxer: remuxer, segmenter: RemuxHls.LiveSegmenter())
+        let rendition = (track: track, remuxer: remuxer, segmenter: RemuxHls.LiveSegmenter(target: 1))
         renditions.append(rendition)
         absorb(rendition, remuxer.push(early))
       }
