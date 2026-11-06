@@ -445,11 +445,16 @@ final class VideoOutput: NSObject, VideoPicture, SwapStage, AVPictureInPictureCo
     avkit.delegate = self
     avkit.modalPresentationStyle = .fullScreen
     avkit.allowsPictureInPicturePlayback = true
-    switch lock {
-    case "landscape": avkit.orientations = .landscape
-    case "portrait": avkit.orientations = .portrait
-    default: avkit.orientations = .all
-    }
+    // Within what the app supports: UIKit raises (and the app ends) when the
+    // two have nothing in common, as for a landscape lock in a portrait-only app.
+    let allowed = UIApplication.shared.supportedInterfaceOrientations(for: presenter.view.window)
+    let wanted: UIInterfaceOrientationMask =
+      switch lock {
+      case "landscape": .landscape
+      case "portrait": .portrait
+      default: .all
+      }
+    avkit.orientations = allowed.intersection(wanted).isEmpty ? allowed : allowed.intersection(wanted)
     avkit.onDismiss = { [weak self] in self?.fullscreenDismissed() }
     fullscreen = avkit
     engine?.fullscreenChanged(true)
