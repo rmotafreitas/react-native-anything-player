@@ -82,8 +82,21 @@ enum ErrorMapping {
       }
     }
 
+    // Core Audio's 'fmt?' / 'typ?' under an unknown AVFoundation error: a
+    // codec or container this device does not play (Ogg Vorbis on iOS).
+    var reason: NSError? = ns
+    while let e = reason {
+      if e.domain == NSOSStatusErrorDomain && (e.code == 0x666D_743F || e.code == 0x7479_703F) {
+        return make(.unsupportedFormat, "This audio format is not supported on this device.", false)
+      }
+      reason = e.userInfo[NSUnderlyingErrorKey] as? NSError
+    }
+
     if ns.domain == AVFoundationErrorDomain {
       switch AVError.Code(rawValue: ns.code) {
+      case .incompatibleAsset:
+        // "The media cannot be used on this device": its codecs (VP9 or AV1 through HLS, for one).
+        return make(.unsupportedFormat, "This device cannot play the source's codecs.", false)
       case .fileFormatNotRecognized, .failedToParse:
         return make(.unsupportedFormat, "The data is not a supported audio format.", hadPlayed)
       case .decoderNotFound, .formatUnsupported, .contentIsUnavailable:
