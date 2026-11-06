@@ -778,6 +778,8 @@ export interface PlayerEventMap {
   stateChange: (state: PlaybackState, previous: PlaybackState) => void;
   /** New stream metadata became audible. */
   metadata: (metadata: MediaMetadata) => void;
+  /** Where a live item heard after a title change starts (`setBoundaryDetection`). */
+  boundary: (boundary: StreamBoundary) => void;
   /** A failure. `fatal: false` means recovery is in progress. */
   error: (error: PlayerError, info: { fatal: boolean }) => void;
   /**
@@ -995,6 +997,27 @@ export interface AudioSample {
   outputLatency: number;
   /** Epoch ms when the window was decoded. */
   timestamp: number;
+}
+
+/**
+ * Where a live stream's item starts in what is heard (`boundary` event, while
+ * `setBoundaryDetection` is on). The ICY title is no clock (a station sends it
+ * when an item is queued: up to seconds off), so the audio around it is read.
+ */
+export interface StreamBoundary {
+  /** The item's title (`StreamTitle`). */
+  title: string;
+  /** Epoch ms the title was heard (its `metadata` event). */
+  titleAt: number;
+  /** Epoch ms the item's audio starts being heard (may be before the event: the title came late). */
+  at: number;
+  /**
+   * `gap`: the end of the silence a station leaves between items (to a few
+   * ms); `onset`: sound after a quiet stretch (a jingle over a fade-out);
+   * `title`: the audio showed neither (music running straight on), the title
+   * time is all there is.
+   */
+  kind: 'gap' | 'onset' | 'title';
 }
 
 /** Options for `setAudioSampling()`. */

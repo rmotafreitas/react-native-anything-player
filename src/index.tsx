@@ -102,6 +102,7 @@ export type {
   AudioRouteKind,
   AudioSample,
   AudioSamplingOptions,
+  StreamBoundary,
   BlobInput,
   BrowseOptions,
   CastState,

@@ -4,6 +4,7 @@ import { answerLicense, type LicenseRequestEvent } from './drm';
 import { dispatchModuleEvent } from './moduleEvents';
 import type { SubtitleCue } from './subtitles/types';
 import { PlayerQueue } from './queue';
+import { BoundaryTracker } from './boundaryTracker';
 import { isPlaylistUri, resolvePlaylistSource } from './playlists';
 import {
   callRefresh,
@@ -13,6 +14,7 @@ import {
   ThumbnailTrack,
 } from './video';
 import type {
+  AudioSample,
   ArtworkInput,
   AudioRoute,
   AudioSamplingOptions,
@@ -360,6 +362,11 @@ export class Player {
   private sourceHeaders: Record<string, string> = {};
   private thumbnails: ThumbnailTrack | null = null;
   private cuesOnScreen: SubtitleCue[] = [];
+  private readonly boundaries = new BoundaryTracker(
+    (boundary) => this.emit('boundary', boundary),
+    (enabled, points) =>
+      !this.released && native().setAudioSampling(this.id, enabled, points)
+  );
   private readonly subtitles = new SubtitleLoader({
     sendCues: async (session, trackId, cues) => {
       await native().videoCommand(this.id, {
@@ -528,6 +535,7 @@ export class Player {
       nativeOptions.quality = options.quality;
     }
     this._metadata = null;
+    this.boundaries.reset();
     const full = typeof source === 'object' && !isBlob(source) ? source : null;
     this.lastLoaded = full ?? {
       uri: typeof normalized.uri === 'string' ? normalized.uri : '',
@@ -929,7 +937,19 @@ export class Player {
     if (this.released) return false;
     const points = options.points ?? 1024;
     assertFinite('points', points);
-    return native().setAudioSampling(this.id, options.enabled, points);
+    return this.boundaries.setAppSampling(options.enabled, points);
+  }
+
+  /**
+   * Reports where each live item heard after a title change really starts
+   * (`boundary` events), read from the audio around its ICY title: a station
+   * sends titles when items are queued, up to seconds off. Samples the audio
+   * meanwhile (shared with `setAudioSampling`). Returns whether the platform
+   * can.
+   */
+  setBoundaryDetection(enabled: boolean): boolean {
+    if (this.released) return false;
+    return this.boundaries.setDetection(enabled);
   }
 
   /** The last ~300 engine traces (kept natively even while diagnostics are off). */
@@ -998,6 +1018,7 @@ export class Player {
         const meta = event.metadata as MediaMetadata;
         this._metadata = meta;
         this.emit('metadata', meta);
+        this.boundaries.metadata(meta);
         break;
       }
       case 'error':
@@ -1053,6 +1074,7 @@ export class Player {
         });
         break;
       case 'discontinuity':
+        this.boundaries.reset();
         this.emit('discontinuity', {
           position: event.position as number,
           reason: event.reason === 'switch' ? 'switch' : 'reconnect',
@@ -1075,15 +1097,18 @@ export class Player {
           () => undefined
         );
         break;
-      case 'audioSample':
-        this.emit('audioSample', {
+      case 'audioSample': {
+        const sample: AudioSample = {
           waveform: event.waveform as number[],
           level: event.level as number,
           duration: event.duration as number,
           outputLatency: event.outputLatency as number,
           timestamp: event.timestamp as number,
-        });
+        };
+        this.boundaries.sample(sample);
+        if (this.boundaries.appSampling) this.emit('audioSample', sample);
         break;
+      }
       default:
         break;
     }
