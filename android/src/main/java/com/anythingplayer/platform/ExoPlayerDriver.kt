@@ -13,6 +13,7 @@ import androidx.media3.common.Format
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Metadata
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.Timeline
@@ -182,6 +183,9 @@ internal class ExoPlayerDriver(
    * with each observation, so staleness is still checked by the engine.
    */
   private val main = Handler(Looper.getMainLooper())
+
+  /** A source's URL and the playlist type its first bytes showed (`""`: looked, none). */
+  private var sniffed: Pair<String, String>? = null
   /** Decoded-PCM tap for visualizers (installed always, silent until enabled). */
   val sampler = AudioSampler(context)
   private var generation = 0
@@ -264,6 +268,7 @@ internal class ExoPlayerDriver(
         // Past readiness ExoPlayer took the container and the codecs: a
         // decoding or parsing failure now is the pipeline's, worth a re-open.
         val pastReady = playedGeneration == gen || readyGeneration == gen
+        if (!pastReady && sniff(error, gen)) return
         report { observer.onFailed(gen, mapPlaybackException(error, observer.isOffline(), pastReady)) }
       }
 
@@ -743,13 +748,64 @@ internal class ExoPlayerDriver(
         .setLoadErrorHandlingPolicy(AnythingPlayerLoadErrorPolicy())
     sourceDrm?.let { drm -> factory.setDrmSessionManagerProvider { drm.manager } }
     // A downloaded HLS / DASH item plays the quality that was kept (offline, the others are not there).
+    val type = sniffed?.takeIf { it.first == request.source.uri && it.second.isNotEmpty() }?.second
     val item =
       MediaItem.Builder()
         .setUri(resolveUri(request.source.uri))
         .setMediaId(mediaId)
         .setStreamKeys(MediaCache.streamKeysFor(request.source))
+        .apply { if (type != null) setMimeType(type) }
         .build()
     return factory.createMediaSource(item)
+  }
+
+  /**
+   * A source ExoPlayer could not read as a file, at a URL with no extension
+   * (`/live`, `/playlist?token=…`): its first bytes say whether it is an HLS
+   * or DASH playlist (AVPlayer and the web go by the server's Content-Type),
+   * and if so it opens again as one. Once per source, and only after that
+   * failure (no extra connection for any other source). `true`: handled.
+   */
+  private fun sniff(error: PlaybackException, gen: Int): Boolean {
+    val request = currentRequest ?: return false
+    val uri = request.source.uri
+    val path = uri.substringBefore('#').substringBefore('?')
+    if (error.cause !is androidx.media3.exoplayer.source.UnrecognizedInputFormatException) return false
+    if (!request.source.isNetwork || sniffed?.first == uri || EXTENSION.containsMatchIn(path)) return false
+    sniffed = uri to ""
+    Thread {
+      val text =
+        runCatching {
+          val connection = java.net.URL(uri).openConnection() as java.net.HttpURLConnection
+          request.source.headers.forEach { (name, value) -> connection.setRequestProperty(name, value) }
+          connection.setRequestProperty("Range", "bytes=0-1023")
+          connection.connectTimeout = 8000
+          connection.readTimeout = 8000
+          try {
+            val bytes = ByteArray(1024)
+            val read = connection.inputStream.use { it.read(bytes) }
+            if (read > 0) String(bytes, 0, read, Charsets.UTF_8) else ""
+          } finally {
+            connection.disconnect()
+          }
+        }.getOrDefault("")
+      val type =
+        when {
+          text.trimStart('﻿', ' ', '\n', '\r', '\t').startsWith("#EXTM3U") -> MimeTypes.APPLICATION_M3U8
+          text.contains("<MPD") && dashBuiltIn -> MimeTypes.APPLICATION_MPD
+          else -> null
+        }
+      main.post {
+        if (generation != gen || currentRequest !== request) return@post
+        if (type == null) {
+          observer.onFailed(gen, mapPlaybackException(error, observer.isOffline(), false))
+        } else {
+          sniffed = uri to type
+          open(request)
+        }
+      }
+    }.start()
+    return true
   }
 
   /**
@@ -1110,6 +1166,9 @@ internal class ExoPlayerDriver(
 internal fun isDashUri(uri: String): Boolean = uri.substringBefore('#').substringBefore('?').lowercase().endsWith(".mpd")
 
 /** Whether Media3's DASH module is in this build (`rnapDash`). */
+/** A path's file extension (`.mp3`, `.m3u8`): a source without one may be a playlist. */
+private val EXTENSION = Regex("\\.[A-Za-z0-9]{2,5}$")
+
 private val dashBuiltIn: Boolean by lazy {
   runCatching { Class.forName("androidx.media3.exoplayer.dash.DashMediaSource") }.isSuccess
 }
