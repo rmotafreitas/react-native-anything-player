@@ -212,8 +212,8 @@ The example page ([`example-web/`](../example-web/main.js)) has a picker and a d
 
 Browsers refuse to start audible playback without a user gesture. RNAP reports it rather than failing silently:
 
-- `play()` (or a `load(…, { autoplay: true })`) that the browser refuses rejects with **`AUTOPLAY_BLOCKED`** (recoverable).
-- The status says `playWhenReady: false, interruption: { reason: 'autoplay-blocked' }` until playback starts.
+- `play()` that the browser refuses rejects with **`AUTOPLAY_BLOCKED`** (recoverable).
+- The status says `playWhenReady: false, interruption: { reason: 'autoplay-blocked' }` until playback starts. That is also how a `load(…, { autoplay: true })` outside a gesture tells it: the load resolves once the source opens, and its start, refused later, shows in the status alone.
 
 Call `play()` from a click or tap handler; the same call then succeeds. Only the command that made the refused `play()` rejects: one that the system started (a media key, the lock screen, an automatic resume after a call) shows up in the status alone, and does not fail the next `setVolume()` or `seekTo()`.
 
