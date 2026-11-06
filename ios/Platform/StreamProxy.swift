@@ -74,6 +74,11 @@ final class StreamProxy {
     /// A live quality switch's new connection: its endless response's audio
     /// is held here until the aligner opens it (`BurstGate`).
     var gate: BurstGate? = nil
+    /// The media cache's key for this file (`nil`: not cached): a range the
+    /// cache or a download holds is answered from disk.
+    var cacheKey: String? = nil
+    /// What is relayed is also written to the cache.
+    var cacheWrites = false
   }
 
   private let queue = DispatchQueue(label: "anythingplayer.proxy")
@@ -354,6 +359,8 @@ final class StreamProxy {
     /// ICY framing: per connection in, at the first response's cadence out.
     var deinterleaver = IcyDeinterleaver(metaint: 0)
     var reframer = IcyReframer(metaint: 0)
+    /// Writing to the media cache: where the next byte goes.
+    var storeOffset: Int64?
 
     init(token: String, request: URLRequest, range: String?) {
       self.token = token
@@ -434,6 +441,10 @@ final class StreamProxy {
     // Byte-exact passthrough: no transparent decompression.
     request.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
     proxyLog.debug("request \(lines.first ?? "", privacy: .public) [\(range ?? "no range", privacy: .public)]")
+    // Held on disk (the cache, a download): nothing reaches the server.
+    if request.httpMethod == "GET", let key = route.cacheKey, let held = MediaCache.shared.store(holding: key, range: range) {
+      return serveStored(downstream, store: held.0, key: key, plan: held.1)
+    }
 
     if request.httpMethod == "GET",
       let shared = upstreams.values.first(where: {
@@ -491,6 +502,7 @@ final class StreamProxy {
     upstream.endless =
       http.statusCode == 200 && headers["content-length"] == nil && routes[upstream.token]?.live != false
     upstream.contentType = headers["content-type"]
+    beginStoring(upstream, status: http.statusCode, headers: headers)
     upstream.reframer = IcyReframer(metaint: metaint)
     var head = "HTTP/1.1 \(http.statusCode) \(HTTPURLResponse.localizedString(forStatusCode: http.statusCode))\r\n"
     for (name, value) in headers {
@@ -508,6 +520,10 @@ final class StreamProxy {
 
   fileprivate func upstreamData(_ upstream: Upstream, _ data: Data) {
     guard !upstream.readers.isEmpty else { return }
+    if let offset = upstream.storeOffset, let key = routes[upstream.token]?.cacheKey {
+      MediaCache.shared.play.write(key, offset: offset, data: data)
+      upstream.storeOffset = offset + Int64(data.count)
+    }
     var out = data
     if upstream.endless {
       let chunk = upstream.deinterleaver.consume([UInt8](data))
@@ -635,6 +651,70 @@ final class StreamProxy {
   }
 
   /// A remuxed file's playlist or segment (`/r-<token>/<file>`).
+  // MARK: - The media cache
+
+  /// A finite response for a file the cache writes: where its bytes go.
+  private func beginStoring(_ upstream: Upstream, status: Int, headers: [String: String]) {
+    guard let route = routes[upstream.token], route.cacheWrites, let key = route.cacheKey, !upstream.endless,
+      upstream.request.httpMethod == "GET"
+    else { return }
+    var offset: Int64 = 0
+    var total = headers["content-length"].flatMap { Int64($0) }
+    if status == 206 {
+      // `bytes a-b/total`
+      guard let range = headers["content-range"], range.hasPrefix("bytes ") else { return }
+      let parts = range.dropFirst(6).split(separator: "/")
+      guard let start = parts.first?.split(separator: "-").first.flatMap({ Int64($0) }) else { return }
+      offset = start
+      total = parts.count > 1 ? Int64(parts[1]) : nil
+    } else if status != 200 {
+      return
+    }
+    guard let total else { return }
+    MediaCache.shared.describe(key: key, url: route.url, totalLength: total, contentType: headers["content-type"])
+    upstream.storeOffset = offset
+  }
+
+  /// Answers from disk, a chunk at a time (a whole file is never read into memory).
+  private func serveStored(_ downstream: Downstream, store: MediaStore, key: String, plan: StoredResponse) {
+    var head = "HTTP/1.1 \(plan.status) \(HTTPURLResponse.localizedString(forStatusCode: plan.status))\r\n"
+    for (name, value) in plan.headers { head += "\(name): \(value)\r\n" }
+    head += "connection: close\r\n\r\n"
+    downstream.connection.send(content: Data(head.utf8), completion: .contentProcessed { _ in })
+    sendStored(downstream, store: store, key: key, offset: plan.offset, end: plan.offset + plan.length)
+  }
+
+  private static let storedChunk = 256 * 1024
+
+  private func sendStored(_ downstream: Downstream, store: MediaStore, key: String, offset: Int64, end: Int64) {
+    guard !downstream.closed else { return }
+    guard offset < end else {
+      downstream.connection.send(
+        content: nil, contentContext: .finalMessage, isComplete: true,
+        completion: .contentProcessed { [weak self, weak downstream] _ in
+          self?.queue.async {
+            guard let self, let downstream else { return }
+            self.close(downstream)
+          }
+        })
+      return
+    }
+    let length = Int(min(Int64(Self.storedChunk), end - offset))
+    guard let data = store.read(key, offset: offset, length: length), !data.isEmpty else {
+      // Evicted under us: the connection ends; AVPlayer asks again and the
+      // request goes upstream.
+      return close(downstream)
+    }
+    downstream.connection.send(
+      content: data,
+      completion: .contentProcessed { [weak self, weak downstream] error in
+        self?.queue.async {
+          guard let self, let downstream, error == nil else { return }
+          self.sendStored(downstream, store: store, key: key, offset: offset + Int64(data.count), end: end)
+        }
+      })
+  }
+
   private func serveRemux(_ downstream: Downstream, path: String, head: Bool) {
     let parts = path.split(separator: "?")[0].split(separator: "/")
     guard parts.count == 2 else { return respond(downstream, status: 400) }

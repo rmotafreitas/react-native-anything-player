@@ -143,7 +143,8 @@ extension SourceDescriptor {
       uri: source["uri"] as? String ?? "", headers: headers, liveHint: source["live"] as? Bool,
       renditions: renditions, refreshable: source["refreshable"] as? Bool ?? false,
       expiresAt: (source["expiresAt"] as? NSNumber)?.int64Value,
-      drm: (source["drm"] as? NSDictionary).map(parseDrm))
+      drm: (source["drm"] as? NSDictionary).map(parseDrm), cache: source["cache"] as? Bool,
+      cacheKey: source["cacheKey"] as? String)
     return (descriptor, NowPlayingFields(source["metadata"] as? NSDictionary))
   }
 

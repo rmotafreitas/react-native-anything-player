@@ -320,6 +320,8 @@ final class AnythingPlayerRuntime: AudioSessionListener, RemoteCommandTarget {
   func startIfNeeded() {
     guard !started else { return }
     started = true
+    // The media cache: its settings, and downloads a past launch left half-way.
+    _ = MediaCache.shared
     session.listener = self
     nowPlaying.target = self
     network.start()

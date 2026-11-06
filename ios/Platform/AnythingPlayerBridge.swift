@@ -388,6 +388,22 @@ public final class AnythingPlayerBridge: NSObject {
     }
   }
 
+  // MARK: Cache
+
+  /// A cache command (`{ op, … }`, app-global): see `MediaCache`.
+  @objc(cacheCommand:resolve:reject:)
+  public func cacheCommand(
+    _ command: NSDictionary,
+    resolve: @escaping (Any?) -> Void, reject: @escaping (String, String, NSError?) -> Void
+  ) {
+    MediaCache.shared.command(command) { result in
+      switch result {
+      case .success(let value): resolve(value)
+      case .failure(let error): Self.reject(reject, error)
+      }
+    }
+  }
+
   // MARK: Queue
 
   /// A queue command (`{ op, … }`): see `QueueHost`.
