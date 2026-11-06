@@ -29,6 +29,7 @@ export type CacheState = 'none' | 'partial' | 'complete';
 
 /** `Cache.info()`. */
 export interface CacheInfo {
+  /** `complete`: every byte is on the device; `partial`: some; `none`. */
   state: CacheState;
   /** Bytes held (the cache and downloads). */
   bytes: number;
@@ -57,8 +58,11 @@ export interface DownloadInfo {
   id: string;
   /** The source's URL. */
   uri: string;
+  /** Where it is: `queued`, `downloading`, `completed` or `failed`. */
   state: DownloadState;
+  /** Bytes fetched so far (an HLS download on iOS: a share of 1,000). */
   bytes: number;
+  /** The whole size when known (an HLS download on iOS: 1,000). */
   totalBytes: number | null;
   /** Why it failed, while `failed`. */
   error: PlayerErrorInfo | null;
@@ -119,6 +123,10 @@ function info(raw: unknown): CacheInfo {
   };
 }
 
+/**
+ * Media kept on the device: the cache written as items play, preload, and
+ * downloads for offline replay (see the Cache guide).
+ */
 export const Cache = {
   /** Turns the cache written as items play on or off, and sets its size. */
   async configure(options: CacheOptions): Promise<void> {
