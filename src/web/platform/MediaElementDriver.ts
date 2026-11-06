@@ -46,7 +46,7 @@ import { MediaTracks } from './MediaTracks';
 import { TimedQueue } from './TimedQueue';
 import { createMediaElement } from './mediaElement';
 import { OwnSeeks } from './OwnSeeks';
-import { ItemFacts, elementReadyInfo } from './ItemFacts';
+import { ItemFacts, bufferedEnd, elementReadyInfo } from './ItemFacts';
 import { isDashUri, shakaNamespace, type ShakaLike } from '../../core/shaka';
 import type { DashStream } from './DashStream';
 import { AudioSampler } from './AudioSampler';
@@ -137,8 +137,8 @@ export class MediaElementDriver implements EngineDriver {
   private source: SourceDescriptor | null = null;
   /** The current source has played before (in any generation): a later "unsupported" is the server failing. */
   private sourcePlayed = false;
-  /** Native HLS: where its clock was at `playing` (it has played once it moves on). */
-  private nativeStart: number | null = null;
+  /** Native HLS: where its clock must pass (from `playing`) for it to have played. */
+  private nativeAt: number | null = null;
   /** The current source has streamed through fetch: its server allows CORS. */
   private corsProven = false;
   /** The engine allows reconnecting (`OpenRequest.allowReconnect`): a dropped stream may be spliced. */
@@ -234,7 +234,7 @@ export class MediaElementDriver implements EngineDriver {
     this.generation = request.generation;
     if (this.source?.uri !== request.source.uri) {
       this.sourcePlayed = false;
-      this.nativeStart = null;
+      this.nativeAt = null;
       this.corsProven = false;
       this.nativeHlsFailed = false;
       this.remuxFallback = null;
@@ -390,7 +390,6 @@ export class MediaElementDriver implements EngineDriver {
     this.releaseConnection();
     this.source = null;
     this.sourcePlayed = false;
-    this.nativeStart = null;
     this.corsProven = false;
     this.nativeHlsFailed = false;
   }
@@ -509,7 +508,7 @@ export class MediaElementDriver implements EngineDriver {
       if (this._element.defaultPlaybackRate !== this.rate) this.applyRate();
       this.flowed = true;
       // Native HLS can say playing and never play (Chrome on Android, packed audio).
-      if (this.nativeHls) this.nativeStart ??= this._element.currentTime;
+      if (this.nativeHls) this.nativeAt ??= this.position() + 0.25;
       else this.sourcePlayed = true;
       this.observer.onPlaying(generation);
       this.timed.pump();
@@ -554,9 +553,7 @@ export class MediaElementDriver implements EngineDriver {
     });
     on('timeupdate', () => {
       this.timed.pump();
-      const start = this.nativeStart;
-      if (start != null && this._element.currentTime > start + 0.25)
-        this.sourcePlayed = true;
+      this.sourcePlayed ||= this.position() > (this.nativeAt ?? Infinity);
     });
     on('seeked', () => this.timed.pump());
   }
@@ -1153,9 +1150,9 @@ export class MediaElementDriver implements EngineDriver {
     if (!error || error.code === MEDIA_ERR_ABORTED) return;
     // hls.js already reported the failure that stopped the element.
     if (this.hls?.failed || this.dash?.failed || this.remux?.failed) return;
+    // Also native HLS that said playing and never moved (retryWithHls knows).
     if (
-      (error.code === MEDIA_ERR_SRC_NOT_SUPPORTED ||
-        (this.nativeStart != null && !this.sourcePlayed)) &&
+      (error.code === MEDIA_ERR_SRC_NOT_SUPPORTED || this.nativeAt != null) &&
       (this.retryWithHls(generation) || this.retryWithRemux(generation))
     )
       return;
@@ -1216,11 +1213,6 @@ export class MediaElementDriver implements EngineDriver {
   }
 
   private bufferedEnd(position: number): number {
-    const ranges = this._element.buffered;
-    for (let i = 0; i < ranges.length; i++) {
-      if (ranges.start(i) <= position + 0.1 && ranges.end(i) >= position)
-        return ranges.end(i);
-    }
-    return position;
+    return bufferedEnd(this._element.buffered, position);
   }
 }

@@ -3,7 +3,7 @@
 // can say 18 s at first, then 600 s once more of it is read.
 
 import type { ReadyInfo } from '../engine/types';
-import type { AudioElementLike } from './dom';
+import type { AudioElementLike, TimeRangesLike } from './dom';
 
 /** The element's own facts (`streamed`: a live stream read through MSE). */
 export function elementReadyInfo(
@@ -15,6 +15,15 @@ export function elementReadyInfo(
   return finite
     ? { duration, isLive: false, seekable: element.seekable.length > 0 }
     : { duration: null, isLive: true, seekable: false };
+}
+
+/** Where the buffered range around `position` ends (`position` when none holds it). */
+export function bufferedEnd(ranges: TimeRangesLike, position: number): number {
+  for (let i = 0; i < ranges.length; i++) {
+    if (ranges.start(i) <= position + 0.1 && ranges.end(i) >= position)
+      return ranges.end(i);
+  }
+  return position;
 }
 
 export class ItemFacts {
