@@ -60,6 +60,7 @@ import {
 import { SwapDriver, type LocalDriver } from './SwapDriver';
 import { WebVideo, type ContentFit, type VideoHost } from './WebVideo';
 import { WebQueue } from './WebQueue';
+import { webCache } from './WebCache';
 
 export type EventSink = (event: Record<string, unknown>) => void;
 
@@ -210,6 +211,7 @@ export class WebPlayerController
     this.runtime.beforeLoad(this, source, autoplay);
     this.beginItem(source.uri, fields, parts);
     this.engine.load(source, autoplay, start, quality);
+    webCache().played(source);
     if (this.video && parts && parts.subtitles.length > 0)
       this.engine.setAppTracks(parts.subtitles);
     // The replaced item is gone from the element: nothing can ask for it again.
@@ -672,6 +674,7 @@ export class WebPlayerController
     // An item a Cast receiver cannot play comes back to this device first.
     if (opens && source != null)
       this.runtime.beforeLoad(this, source.source, null);
+    if (source != null) webCache().played(source.source);
     const parts = this.queue.get(id);
     if (parts == null) return;
     this.beginItem(source?.source.uri ?? '', parts.fields, parts.video);

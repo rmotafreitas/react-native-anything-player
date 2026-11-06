@@ -67,6 +67,10 @@ export interface SourceDescriptor {
   expiresAt?: number | null;
   /** Protected content: its key systems (the platform's driver plays it). */
   drm?: DrmDescriptor | null;
+  /** Cache it as it plays (`null`: the cache's setting). The platform's cache reads these; the engine does not. */
+  cache?: boolean | null;
+  /** Its identity in the cache (default: the URL without its fragment). */
+  cacheKey?: string | null;
 }
 
 /**

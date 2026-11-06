@@ -6,6 +6,7 @@
 // the order they were produced, and a command's promise settles after the
 // events it caused.
 
+import { webCache } from './WebCache';
 import { PlayerError, toPlayerError } from '../../errors';
 import type { PlayerModule } from '../../core/host';
 import { browser } from './dom';
@@ -78,6 +79,8 @@ export class WebModule implements PlayerModule {
     this.emit(event)
   );
   private readonly catalog = new WebCatalog();
+  /** The media cache, made now: its index is read before the first item opens. */
+  private readonly cache = webCache();
   private readonly listeners = new Set<Listener>();
   private queue: object[] = [];
   private flushScheduled = false;
@@ -336,6 +339,17 @@ export class WebModule implements PlayerModule {
     this.catalog.answer(requestId, result);
   }
 
+  // ── Cache ──
+
+  cacheCommand(command: object): Promise<object> {
+    this.cache.onEvent((event) => this.emit(event));
+    return this.cache
+      .command(command as Record<string, unknown>)
+      .catch((error: unknown) => {
+        throw asError(error);
+      });
+  }
+
   // ── Queue ──
 
   queueCommand(playerId: string, command: object): Promise<object> {
@@ -438,6 +452,8 @@ export class WebModule implements PlayerModule {
   }
 
   onPlayerEvent(listener: Listener): { remove(): void } {
+    // Downloads a page left half-way report their progress too.
+    this.cache.onEvent((event) => this.emit(event));
     this.listeners.add(listener);
     return { remove: () => this.listeners.delete(listener) };
   }

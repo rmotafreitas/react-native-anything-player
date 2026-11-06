@@ -149,6 +149,17 @@ export function normalizeBlob(blob: BlobInput): Record<string, unknown> {
   return out;
 }
 
+/** A source's `cache` and `cacheKey`, checked. */
+function cacheFields(source: Source): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  if (typeof source.cache === 'boolean') out.cache = source.cache;
+  if (source.cacheKey == null) return out;
+  if (typeof source.cacheKey !== 'string' || source.cacheKey === '')
+    throw invalidSource('`cacheKey` must be a non-empty string.');
+  out.cacheKey = source.cacheKey;
+  return out;
+}
+
 /** Validates and normalizes what apps pass to `load()`. Exported for tests. */
 export function normalizeSource(input: SourceInput): Record<string, unknown> {
   if (isBlob(input)) {
@@ -185,6 +196,7 @@ export function normalizeSource(input: SourceInput): Record<string, unknown> {
   const out: Record<string, unknown> = { uri };
   if (source.headers) out.headers = { ...source.headers };
   if (typeof source.live === 'boolean') out.live = source.live;
+  Object.assign(out, cacheFields(source));
   if (source.metadata) out.metadata = normalizeNowPlaying(source.metadata);
   return { ...out, ...normalizeVideoSource(source, artworkUri) };
 }

@@ -5,6 +5,13 @@ import type { PlayerError } from '../../errors';
 import { engineError } from '../engine/types';
 import { HLS_HINT } from './hlsFormats';
 
+/** An encrypted source without `drm`. */
+export const ENCRYPTED = engineError(
+  'DRM_UNSUPPORTED',
+  'The source is encrypted (DRM): give its key systems and license servers in `drm`.',
+  false
+);
+
 // MediaError codes.
 const MEDIA_ERR_NETWORK = 2;
 const MEDIA_ERR_DECODE = 3;

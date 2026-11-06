@@ -135,6 +135,7 @@ export type PlayerErrorCode =
   | 'DRM_LICENSE_FAILED'
   | 'SUBTITLE_LOAD_FAILED'
   | 'QUALITY_SWITCH_FAILED'
+  | 'CACHE_UNAVAILABLE'
   | 'INTERNAL_ERROR';
 
 /**
@@ -424,6 +425,18 @@ export interface SourceOptions {
   thumbnails?: string;
   /** Protected content: the key systems and their license servers (the Video guide, "DRM"). */
   drm?: DrmConfig;
+  /**
+   * Cache this source as it plays (`true`) or never (`false`); default:
+   * `Cache.configure({ enabled })`. Live sources and local files are never
+   * cached.
+   */
+  cache?: boolean;
+  /**
+   * The bytes' identity in the cache and downloads (default: the URL
+   * without its fragment). Give one when the URL changes but the media does
+   * not (a signed URL).
+   */
+  cacheKey?: string;
 }
 
 /**

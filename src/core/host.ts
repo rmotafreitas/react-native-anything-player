@@ -42,6 +42,8 @@ export interface PlayerModule {
   playFromSearch(request: object, playerId: string | null): Promise<object>;
   setSearchHandlerEnabled(enabled: boolean): void;
   resolveSearchRequest(requestId: string, result: object): void;
+  /** A cache command (`{ op, … }`, app-global): see src/core/cache.ts. */
+  cacheCommand(command: object): Promise<object>;
   /** A queue command (`{ op, … }`); resolves with the status after it. */
   queueCommand(playerId: string, command: object): Promise<object>;
   /** The queue's snapshot: `{ ids, order, index, currentId, repeat, shuffle }`. */

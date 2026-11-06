@@ -37,6 +37,8 @@ import {
   type AudioElementLike,
   type VideoElementLike,
 } from './dom';
+import { webCache } from './WebCache';
+import { ENCRYPTED } from './elementErrors';
 import { HLS_MISSING, isHlsType, isHlsUri, needsHlsJs } from './hlsFormats';
 import { elementError } from './elementErrors';
 import type { HlsStream } from './HlsStream';
@@ -104,11 +106,6 @@ onHlsConfigured(() => {
 });
 
 // MediaError codes.
-const ENCRYPTED = engineError(
-  'DRM_UNSUPPORTED',
-  'The source is encrypted (DRM): give its key systems and license servers in `drm`.',
-  false
-);
 
 const MEDIA_ERR_ABORTED = 1;
 const MEDIA_ERR_SRC_NOT_SUPPORTED = 4;
@@ -214,22 +211,15 @@ export class MediaElementDriver implements EngineDriver {
 
   /** hls.js, Shaka, the remuxer or an MSE stream feeds the element. */
   private get fed(): boolean {
-    return (
-      this.stream != null ||
-      this.hls != null ||
-      this.dash != null ||
-      this.remux != null
+    return [this.stream, this.hls, this.dash, this.remux].some(
+      (f) => f != null
     );
   }
 
   /** Whether the current item is live (read through MSE, or an HLS playlist without an end). */
   private get isLive(): boolean {
-    return (
-      this.stream != null ||
-      this.hls?.live === true ||
-      this.dash?.live === true ||
-      this.remux?.live === true
-    );
+    const adaptive = [this.hls, this.dash, this.remux];
+    return this.stream != null || adaptive.some((f) => f?.live === true);
   }
 
   // ── EngineDriver ──
@@ -253,7 +243,13 @@ export class MediaElementDriver implements EngineDriver {
     this.flowed = false;
     this.pendingStart = request.startPosition;
     this.variantId = null;
-    if (request.source.drm && !isDashUri(request.source.uri)) {
+    // A file the cache holds whole: its stored bytes, once they are read.
+    const cached = webCache().blobFor(request.source);
+    if (cached != null) {
+      this.drmPending = true;
+      const ready = (uri: string) => this.cachedReady(request, uri);
+      cached.then(ready, () => ready(request.source.uri));
+    } else if (request.source.drm && !isDashUri(request.source.uri)) {
       // The keys first: the element gets the source once they are attached.
       this.drmPending = true;
       this.drm = protect(this._element, request, this.observer, () => {
@@ -265,6 +261,14 @@ export class MediaElementDriver implements EngineDriver {
       this.route(request.source);
     }
     if (request.playWhenReady) this.play();
+  }
+
+  /** A cached file's bytes are read: it plays from them (or from the network if they are gone). */
+  private cachedReady(request: OpenRequest, uri: string): void {
+    if (request.generation !== this.generation || !this.drmPending) return;
+    this.drmPending = false;
+    this.route({ ...request.source, uri });
+    if (this.playRequested) this.play();
   }
 
   /** Plays a source through MSE (live audio, for ICY) or on the element. */
