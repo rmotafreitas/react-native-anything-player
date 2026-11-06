@@ -418,6 +418,45 @@ describe('WebCache', () => {
     });
   });
 
+  it('a page waiting on another page fetching the file sees it complete when that one ends', async () => {
+    if (!(globalThis as { navigator?: { locks?: unknown } }).navigator?.locks)
+      return;
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((r) => (release = r));
+    const before = globals.fetch as (...args: unknown[]) => Promise<Response>;
+    served['https://cdn.example/wait.mp3'] = { bytes: MB };
+    globals.fetch = async (...args: unknown[]) => {
+      await gate;
+      return before(...args);
+    };
+    const a = new WebCache();
+    const b = new WebCache();
+    await b.command({ op: 'usage' });
+    await a.command({
+      op: 'download',
+      ...src('https://cdn.example/wait.mp3'),
+      id: 'w',
+    });
+    await new Promise((r) => setTimeout(r, 50));
+    await b.command({
+      op: 'download',
+      ...src('https://cdn.example/wait.mp3'),
+      id: 'w',
+    });
+    // b's own index write comes and goes while a still fetches.
+    await new Promise((r) => setTimeout(r, 700));
+    release();
+    await new Promise((r) => setTimeout(r, 1300));
+    globals.fetch = before;
+    expect(requests.filter((r) => r.url.endsWith('wait.mp3'))).toHaveLength(1);
+    expect(await b.command({ op: 'downloads' })).toMatchObject({
+      downloads: [{ id: 'w', state: 'completed' }],
+    });
+    expect(
+      await b.command({ op: 'info', ...src('https://cdn.example/wait.mp3') })
+    ).toMatchObject({ state: 'complete', downloaded: true });
+  });
+
   it('a download removed and asked for again at once starts afresh, not as the old complete file', async () => {
     served['https://cdn.example/r.mp3'] = { bytes: MB };
     const cache = new WebCache();

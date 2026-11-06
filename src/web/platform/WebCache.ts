@@ -520,27 +520,38 @@ export class WebCache {
   }
 
   /**
-   * One page of this site fetches a file at a time (Web Locks): another
-   * page already fetching it lets this one go. The file it stores whole
-   * reaches this page at its next index write (`adoptComplete`), and is
-   * never written over.
+   * One page of this site fetches a file at a time (Web Locks): this one
+   * waits for another page already fetching it, then reads the index that
+   * page wrote: the file it stored whole is this page's too (`adoptComplete`)
+   * and is never written over. Only a file still not whole is fetched here.
    */
   private oneFetch(key: string, fetch: () => Promise<void>): Promise<void> {
     const locks = g().navigator?.locks;
     if (locks == null) return fetch();
     // This page's own earlier fetch (one being removed) is waited for, not skipped.
     const own = (this.holding.get(key) ?? 0) > 0;
-    const run = (lock: unknown): Promise<void> => {
-      if (lock == null) return Promise.resolve();
+    const held = async (): Promise<void> => {
       this.holding.set(key, (this.holding.get(key) ?? 0) + 1);
-      return fetch().finally(() => {
+      try {
+        await fetch();
+      } finally {
+        // In the index before the lock goes: a page waiting on it reads it there.
+        await this.save().catch(() => undefined);
         const left = (this.holding.get(key) ?? 1) - 1;
         if (left > 0) this.holding.set(key, left);
         else this.holding.delete(key);
-      });
+      }
     };
     const name = `${INDEX_KEY}/fetch/${key}`;
-    return locks.request(name, { ifAvailable: !own }, run);
+    const afterOther = async (): Promise<void> => {
+      await this.save();
+      const entry = this.index.get(key);
+      // Removed meanwhile, or stored whole by the other page: nothing to fetch.
+      if (entry != null && !entry.complete) await held();
+    };
+    return locks.request(name, { ifAvailable: !own }, (lock: unknown) =>
+      lock == null ? locks.request(name, afterOther) : held()
+    );
   }
 
   private async fetchWhole(
