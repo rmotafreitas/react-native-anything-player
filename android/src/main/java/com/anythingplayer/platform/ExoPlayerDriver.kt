@@ -818,7 +818,12 @@ internal class ExoPlayerDriver(
           is androidx.media3.exoplayer.source.UnrecognizedInputFormatException -> cause.uri
           else -> null
         }
-      if (failed != null) return requestOf(request, failed.toString())
+      if (failed != null) {
+        // The current item's own request (the same URL queued twice) is the current item's.
+        val current = currentRequest
+        if (current != null && current.generation != request.generation && requestOf(current, failed.toString())) return false
+        return requestOf(request, failed.toString())
+      }
       cause = cause.cause
     }
     val period = (error as? ExoPlaybackException)?.mediaPeriodId ?: return false
@@ -835,7 +840,8 @@ internal class ExoPlayerDriver(
    * segment on another host is not recognised and is the current item's.
    */
   private fun requestOf(request: OpenRequest, failed: String): Boolean {
-    val own = request.source.uri.substringBefore('#')
+    // As ExoPlayer was given it (a path is a file: URL, an asset a resource URL).
+    val own = resolveUri(request.source.uri).toString().substringBefore('#')
     val uri = failed.substringBefore('#')
     if (uri == own) return true
     val path = own.substringBefore('?')

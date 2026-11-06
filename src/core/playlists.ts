@@ -160,10 +160,12 @@ class M3uEntry {
     album: string | null
   ): PlaylistItem {
     const metadata = { ...this.metadata };
+    // An empty logo is none (resolved, it would be the playlist itself).
+    if (metadata.artwork === '') delete metadata.artwork;
     if (typeof metadata.artwork === 'string')
       metadata.artwork = resolve(metadata.artwork, base);
     if (album != null) metadata.album ??= album;
-    if (metadata.artwork == null && this.image != null)
+    if (metadata.artwork == null && this.image != null && this.image !== '')
       metadata.artwork = resolve(this.image, base);
     const headers =
       this.userAgent != null ? { 'User-Agent': this.userAgent } : undefined;

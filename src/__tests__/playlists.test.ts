@@ -51,6 +51,16 @@ describe('Playlists.parse', () => {
     ]);
   });
 
+  it('resolves a relative logo, and an empty one is none', () => {
+    const text =
+      '#EXTM3U\n#EXTINF:10 tvg-logo="logo.png",A\na.mp3\n#EXTINF:10 tvg-logo="",B\n#EXTIMG:\nb.mp3\n';
+    expect(
+      Playlists.parse(text, { baseUrl: 'https://x.example/l/p.m3u' }).map(
+        (i) => i.metadata?.artwork ?? null
+      )
+    ).toEqual(['https://x.example/l/logo.png', null]);
+  });
+
   it('a plain M3U is a list of locations', () => {
     expect(Playlists.parse('a.mp3\nfile:///x/b.ogg\n')).toEqual([
       { uri: 'a.mp3' },

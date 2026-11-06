@@ -1945,10 +1945,14 @@ extension PlaybackEngine {
   func queueAdd(_ items: [EngineQueueItem], at index: Int? = nil) throws {
     try ensureAlive()
     guard !items.isEmpty else { return }
-    try checkIds(items, existing: queue.items)
-    if queue.count == 0, let loaded = source {
+    // The loaded source's id too, before it joins.
+    let joining = "loaded-\(generatedIds + 1)"
+    let joins = queue.count == 0 ? source : nil
+    try checkIds(
+      items, existing: queue.items + (joins.map { [EngineQueueItem(id: joining, live: false, source: $0)] } ?? []))
+    if let loaded = joins {
       generatedIds += 1
-      queue.set([EngineQueueItem(id: "loaded-\(generatedIds)", live: loaded.liveHint == true, source: loaded)])
+      queue.set([EngineQueueItem(id: joining, live: loaded.liveHint == true, source: loaded)])
     }
     let idle = queue.count == 0
     // A new queue: earlier failures do not count against it.

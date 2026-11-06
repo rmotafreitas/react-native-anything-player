@@ -186,12 +186,20 @@ export abstract class EngineQueue extends EngineVideo {
   queueAdd(items: EngineQueueItem[], index?: number): void {
     this.ensureAlive();
     if (items.length === 0) return;
-    this.checkIds(items, this.queue.items);
-    if (this.queue.length === 0 && this._source != null) {
+    const joins = this.queue.length === 0 && this._source != null;
+    // The loaded source's id too, before it joins.
+    const joining = `loaded-${this.generatedIds + 1}`;
+    this.checkIds(
+      items,
+      joins
+        ? [...this.queue.items, { id: joining } as EngineQueueItem]
+        : this.queue.items
+    );
+    if (joins && this._source != null) {
       this.generatedIds += 1;
       this.queue.set([
         {
-          id: `loaded-${this.generatedIds}`,
+          id: joining,
           live: this._source.liveHint === true,
           source: this._source,
         },

@@ -877,11 +877,14 @@ class PlaybackEngine(
   fun queueAdd(items: List<EngineQueueItem>, index: Int? = null) {
     ensureAlive()
     if (items.isEmpty()) return
-    checkIds(items, queue.items)
     val loaded = source
-    if (queue.length == 0 && loaded != null) {
+    val joins = queue.length == 0 && loaded != null
+    // The loaded source's id too, before it joins.
+    val joining = "loaded-${generatedIds + 1}"
+    checkIds(items, if (joins && loaded != null) queue.items + EngineQueueItem(joining, false, loaded) else queue.items)
+    if (joins && loaded != null) {
       generatedIds += 1
-      queue.set(listOf(EngineQueueItem("loaded-$generatedIds", loaded.liveHint == true, loaded)))
+      queue.set(listOf(EngineQueueItem(joining, loaded.liveHint == true, loaded)))
     }
     val idle = queue.length == 0
     // A new queue: earlier failures do not count against it.

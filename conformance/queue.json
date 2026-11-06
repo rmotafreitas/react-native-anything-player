@@ -329,7 +329,10 @@
     "steps": [
       { "call": "load", "uri": "https://cdn.example/x.mp3" },
       { "call": "queueAdd", "items": ["a", "a"], "throws": "INVALID_ARGUMENT" },
-      { "expect": { "queue": { "ids": [], "current": null }, "queueEvents": 0 } }
+      { "call": "queueAdd", "items": ["loaded-1"], "throws": "INVALID_ARGUMENT" },
+      { "expect": { "queue": { "ids": [], "current": null }, "queueEvents": 0 } },
+      { "call": "queueAdd", "items": ["a"] },
+      { "expect": { "queue": { "ids": ["loaded-1", "a"] } } }
     ]
   }
 ]
