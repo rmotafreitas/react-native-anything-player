@@ -334,7 +334,9 @@ internal object MediaCache {
   private fun start(download: Download) {
     // A restart (a failed download asked again) has a task of its own to wait for.
     val ended = if (download.ended.count == 0L) java.util.concurrent.CountDownLatch(1).also { download.ended = it } else download.ended
-    running[download.id] =
+    // Its own entry only: a restart's task may have taken the id's place.
+    var self: java.util.concurrent.Future<*>? = null
+    val task =
       work.submit {
         // Removed or replaced while it ran: nothing of it is told or written.
         val current = { downloads[download.id] === download }
@@ -376,7 +378,7 @@ internal object MediaCache {
           if (download.type == "file" && download.error?.code == ErrorCode.UNSUPPORTED_FORMAT) {
             runCatching { kept.removeResource(download.key) }
           }
-          if (current()) running.remove(download.id)
+          self?.let { running.remove(download.id, it) }
           // A cancel left this pool thread interrupted: the next work on it must not fail.
           Thread.interrupted()
           ended.countDown()
@@ -385,6 +387,8 @@ internal object MediaCache {
         writeIndex()
         emit(download)
       }
+    self = task
+    running[download.id] = task
   }
 
 

@@ -332,7 +332,7 @@ export class WebCache {
     if (!removedHere && !stored.has(key) && this.known.has(key))
       this.index.delete(key);
     else {
-      adoptComplete(entry, stored.get(key));
+      if (adoptComplete(entry, stored.get(key))) this.emitDownload(entry);
       stored.set(key, entry);
     }
   }
@@ -372,8 +372,11 @@ export class WebCache {
       // What other pages wrote and this page has not: it sees it too.
       for (const [key, entry] of stored) {
         const local = this.index.get(key);
-        if (local == null) this.index.set(key, entry);
-        else adoptComplete(local, entry);
+        if (local == null) {
+          this.index.set(key, entry);
+          continue;
+        }
+        if (adoptComplete(local, entry)) this.emitDownload(local);
       }
       // What another page removed (and this one did not touch) goes here too.
       for (const key of [...this.index.keys()]) {
@@ -594,7 +597,13 @@ export class WebCache {
       this.emitDownload(entry);
       await this.evict();
     } catch (error) {
-      if (stop.signal.aborted || this.index.get(key) !== entry) return;
+      // Stopped, removed, or stored whole by another page meanwhile: not a failure.
+      if (
+        stop.signal.aborted ||
+        this.index.get(key) !== entry ||
+        entry.complete
+      )
+        return;
       this.fillFailed(entry, error);
       throw error;
     } finally {
@@ -868,9 +877,9 @@ export function resetWebCache(): void {
  * A file another page stored whole stays whole: this page's stale view of it
  * (`queued`, part of it) is never written over it.
  */
-function adoptComplete(local: Entry, stored: Entry | undefined): void {
+function adoptComplete(local: Entry, stored: Entry | undefined): boolean {
   if (stored == null || local === stored || !stored.complete || local.complete)
-    return;
+    return false;
   local.complete = true;
   local.bytes = stored.bytes;
   local.totalBytes = stored.totalBytes;
@@ -878,4 +887,5 @@ function adoptComplete(local: Entry, stored: Entry | undefined): void {
     local.state = 'completed';
     local.error = null;
   }
+  return true;
 }
