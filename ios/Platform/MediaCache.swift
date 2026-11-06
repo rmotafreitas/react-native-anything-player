@@ -260,7 +260,7 @@ final class MediaCache: NSObject {
     // One download per id, and per file: another one with either goes.
     for other in downloads.values where other.id == name || other.key == key { removeDownload(other.id) }
     let entry = Download(
-      id: name, uri: source.uri, key: key(of: source), headers: source.headers,
+      id: name, uri: source.uri, key: key, headers: source.headers,
       type: Self.isHls(source.uri) ? "hls" : "file", state: "queued")
     downloads[name] = entry
     save()
