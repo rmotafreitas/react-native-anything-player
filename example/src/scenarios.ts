@@ -11,6 +11,7 @@
  */
 import { Platform } from 'react-native';
 import {
+  Cache,
   Player,
   type AudioSample,
   type Discontinuity,
@@ -998,6 +999,140 @@ function liveRenditions(
   });
 }
 
+/** Waits until `check()` holds, polling. */
+async function pollUntil(
+  check: () => Promise<boolean> | boolean,
+  withinMs: number,
+  label: string
+) {
+  const deadline = Date.now() + withinMs;
+  while (Date.now() < deadline) {
+    if (await check()) return;
+    await sleep(250);
+  }
+  throw new AssertionFailure(`timed out (${withinMs} ms) waiting for ${label}`);
+}
+
+/** A file the device holds plays with the server unreachable. */
+async function playsOffline(uri: string, log: (m: string) => void) {
+  await serverControl('offline=1');
+  try {
+    await withPlayer(async (p) => {
+      await p.load({ uri }, { autoplay: true });
+      await waitFor(p, (s) => s.state === 'playing', 10_000, 'playing offline');
+      const from = p.getProgress().position;
+      await sleep(2_000);
+      const to = p.getProgress().position;
+      log(`offline: ${from.toFixed(2)} s → ${to.toFixed(2)} s`);
+      expect(to - from > 1, `offline playback stalled (${from} → ${to})`);
+    });
+  } finally {
+    await serverControl('offline=0');
+  }
+}
+
+SCENARIOS.push(
+  {
+    // The next item starts by itself, with no `ended` between the items.
+    name: 'queue-advance',
+    timeoutMs: 40_000,
+    run: (log) =>
+      withPlayer(async (p) => {
+        const states: string[] = [];
+        p.on('stateChange', (s) => states.push(s));
+        let ended = 0;
+        p.on('ended', () => (ended += 1));
+        await p.queue.set(
+          [
+            { id: 'a', uri: `${STREAM_HOST}/file.mp3?item=a` },
+            { id: 'b', uri: `${STREAM_HOST}/file.mp3?item=b` },
+          ],
+          { autoplay: true }
+        );
+        await waitFor(p, (s) => s.state === 'playing', 10_000, 'playing a');
+        await sleep(2_500); // b is prepared after 2 s of a
+        await p.seekTo(27);
+        await pollUntil(() => p.queue.current?.id === 'b', 15_000, 'b current');
+        await waitFor(p, (s) => s.state === 'playing', 5_000, 'playing b');
+        const position = p.getProgress().position;
+        log(`b at ${position.toFixed(2)} s; states: ${states.join(' → ')}`);
+        expect(ended === 0, `ended fired ${ended} time(s) between items`);
+        expect(!states.includes('ended'), 'ended state between items');
+        expect(
+          position < 5,
+          `b did not start from its beginning (${position})`
+        );
+      }),
+  },
+  {
+    // An item that is not there is reported and skipped.
+    name: 'queue-skip-404',
+    timeoutMs: 30_000,
+    run: (log) =>
+      withPlayer(async (p) => {
+        const errors: string[] = [];
+        p.on('error', (e) => errors.push(e.code));
+        await p.queue
+          .set(
+            [
+              { id: 'gone', uri: `${STREAM_HOST}/gone.mp3` },
+              { id: 'here', uri: `${STREAM_HOST}/file.mp3?item=here` },
+            ],
+            { autoplay: true }
+          )
+          .catch((e: unknown) => log(`set: ${String(e)}`));
+        await pollUntil(() => p.queue.current?.id === 'here', 15_000, 'skip');
+        await waitFor(p, (s) => s.state === 'playing', 10_000, 'playing');
+        log(`errors: ${errors.join(', ')}`);
+        expect(errors.includes('SOURCE_NOT_FOUND'), 'the 404 was reported');
+      }),
+  },
+  {
+    // A download plays with no network.
+    name: 'cache-download-offline',
+    timeoutMs: 60_000,
+    run: async (log) => {
+      const uri = `${STREAM_HOST}/file.mp3?cache=download`;
+      await Cache.removeDownload('rnap-test').catch(() => undefined);
+      await Cache.download({ uri }, { id: 'rnap-test' });
+      await pollUntil(
+        async () =>
+          (await Cache.downloads()).some(
+            (d) => d.id === 'rnap-test' && d.state === 'completed'
+          ),
+        30_000,
+        'download completed'
+      );
+      const info = await Cache.info({ uri });
+      log(`info: ${JSON.stringify(info)}`);
+      expect(info.downloaded && info.state === 'complete', 'downloaded');
+      try {
+        await playsOffline(uri, log);
+      } finally {
+        await Cache.removeDownload('rnap-test');
+      }
+      const after = await Cache.info({ uri });
+      expect(!after.downloaded, 'removed');
+    },
+  },
+  {
+    // A whole preloaded file plays with no network.
+    name: 'cache-preload-offline',
+    timeoutMs: 60_000,
+    run: async (log) => {
+      const uri = `${STREAM_HOST}/file.mp3?cache=preload`;
+      const info = await Cache.preload({ uri }, { all: true });
+      log(`preload: ${JSON.stringify(info)}`);
+      expect(info.state === 'complete', `preload ${info.state}`);
+      try {
+        await playsOffline(uri, log);
+      } finally {
+        await Cache.clear();
+      }
+    },
+  }
+);
+
 export async function runScenarios(
   names: string[] | 'all',
   onLog: (line: string) => void
@@ -1013,7 +1148,7 @@ export async function runScenarios(
     onLog(line);
   };
   emit(`START ${selected.map((s) => s.name).join(',')}`);
-  await serverControl('down=0&stall=0&delay=0').catch(() =>
+  await serverControl('down=0&stall=0&delay=0&offline=0').catch(() =>
     emit('WARN test server unreachable')
   );
   for (const scenario of selected) {
