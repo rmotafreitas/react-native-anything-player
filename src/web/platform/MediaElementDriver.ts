@@ -137,6 +137,8 @@ export class MediaElementDriver implements EngineDriver {
   private source: SourceDescriptor | null = null;
   /** The current source has played before (in any generation): a later "unsupported" is the server failing. */
   private sourcePlayed = false;
+  /** Native HLS: where its clock was at `playing` (it has played once it moves on). */
+  private nativeStart: number | null = null;
   /** The current source has streamed through fetch: its server allows CORS. */
   private corsProven = false;
   /** The engine allows reconnecting (`OpenRequest.allowReconnect`): a dropped stream may be spliced. */
@@ -232,6 +234,7 @@ export class MediaElementDriver implements EngineDriver {
     this.generation = request.generation;
     if (this.source?.uri !== request.source.uri) {
       this.sourcePlayed = false;
+      this.nativeStart = null;
       this.corsProven = false;
       this.nativeHlsFailed = false;
       this.remuxFallback = null;
@@ -387,6 +390,7 @@ export class MediaElementDriver implements EngineDriver {
     this.releaseConnection();
     this.source = null;
     this.sourcePlayed = false;
+    this.nativeStart = null;
     this.corsProven = false;
     this.nativeHlsFailed = false;
   }
@@ -504,7 +508,9 @@ export class MediaElementDriver implements EngineDriver {
       // rate asked for is the one that plays.
       if (this._element.defaultPlaybackRate !== this.rate) this.applyRate();
       this.flowed = true;
-      this.sourcePlayed = true;
+      // Native HLS can say playing and never play (Chrome on Android, packed audio).
+      if (this.nativeHls) this.nativeStart ??= this._element.currentTime;
+      else this.sourcePlayed = true;
       this.observer.onPlaying(generation);
       this.timed.pump();
     });
@@ -546,7 +552,12 @@ export class MediaElementDriver implements EngineDriver {
       if (this.userControlled && !this.ownSeeks.isOwn(this.position()))
         this.observer.onUserCommand?.(generation, 'seek', this.position());
     });
-    on('timeupdate', () => this.timed.pump());
+    on('timeupdate', () => {
+      this.timed.pump();
+      const start = this.nativeStart;
+      if (start != null && this._element.currentTime > start + 0.25)
+        this.sourcePlayed = true;
+    });
     on('seeked', () => this.timed.pump());
   }
 
@@ -1143,7 +1154,8 @@ export class MediaElementDriver implements EngineDriver {
     // hls.js already reported the failure that stopped the element.
     if (this.hls?.failed || this.dash?.failed || this.remux?.failed) return;
     if (
-      error.code === MEDIA_ERR_SRC_NOT_SUPPORTED &&
+      (error.code === MEDIA_ERR_SRC_NOT_SUPPORTED ||
+        (this.nativeStart != null && !this.sourcePlayed)) &&
       (this.retryWithHls(generation) || this.retryWithRemux(generation))
     )
       return;

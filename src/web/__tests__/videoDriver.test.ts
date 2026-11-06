@@ -1685,6 +1685,47 @@ describe('native HLS that fails', () => {
     expect(video.plays).toBe(2);
   });
 
+  it('is tried with hls.js when it said playing but its clock never moved (Chrome on Android, packed audio)', async () => {
+    setup(
+      {
+        audioTracks: [
+          { id: '1', kind: 'main', label: 'English', language: 'en' },
+        ],
+      },
+      { nativeHls: true }
+    );
+    await flush();
+    driver.open(open(HLS, { playWhenReady: true }));
+    const video = world.video();
+    video.dispatch('playing');
+    video.dispatch('timeupdate');
+    video.fail(2);
+    await flush();
+    expect(RichHls.last().source).toBe(HLS);
+    expect(failures()).toEqual([]);
+  });
+
+  it('is not tried again once its clock moved', async () => {
+    setup(
+      {
+        audioTracks: [
+          { id: '1', kind: 'main', label: 'English', language: 'en' },
+        ],
+      },
+      { nativeHls: true }
+    );
+    await flush();
+    driver.open(open(HLS, { playWhenReady: true }));
+    const video = world.video();
+    video.dispatch('playing');
+    video.currentTime = 1;
+    video.dispatch('timeupdate');
+    video.fail(2);
+    await flush();
+    expect(RichHls.instances).toEqual([]);
+    expect(failures()).toHaveLength(1);
+  });
+
   it('is a failure when there is no hls.js to try', async () => {
     setup(
       {
