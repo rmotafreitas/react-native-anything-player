@@ -563,7 +563,13 @@ export type RepeatMode = 'off' | 'one' | 'all';
  * `id` (default `q1`, `q2`…). On the web also a `Blob` or `File`.
  */
 export type QueueItemInput =
-  (Source & { id?: string }) | string | AssetModule | BlobInput;
+  | (Source & {
+      /** Unique in the queue (default `q1`, `q2`…). */
+      id?: string;
+    })
+  | string
+  | AssetModule
+  | BlobInput;
 
 /** A queue item: its source (a string or `require()` became `{ uri }`) and its id. */
 export type QueueItem = Source & {
@@ -583,7 +589,9 @@ export interface QueueState {
   current: QueueItem | null;
   /** The ids in the order they play: the list's, or shuffled. */
   order: string[];
+  /** How the queue repeats. */
   repeat: RepeatMode;
+  /** Whether it plays shuffled. */
   shuffle: boolean;
 }
 

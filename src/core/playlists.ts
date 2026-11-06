@@ -12,7 +12,9 @@ export type PlaylistFormat = 'm3u' | 'pls' | 'xspf';
 
 /** An entry of a playlist file: a source to give `player.queue` or `load()`. */
 export type PlaylistItem = Source & {
+  /** The entry's address, resolved against the playlist's own. */
   uri: string;
+  /** Its title, artist, album or artwork when the file gives them. */
   metadata?: NowPlayingMetadata;
 };
 
@@ -400,7 +402,10 @@ export async function resolvePlaylistSource<T extends Source>(
 
 /** Playlist files (see the Queue guide). */
 export const Playlists = {
+  /** The entries of a playlist file's text (M3U / M3U8 of files, PLS, XSPF). */
   parse,
+  /** Fetches a playlist file and parses it (`http(s)` only; at most 2 MB). */
   fetch: fetchPlaylist,
+  /** Whether a URL names a playlist file by its extension (`.m3u`, `.pls`, `.xspf`). */
   isPlaylistUri,
 };

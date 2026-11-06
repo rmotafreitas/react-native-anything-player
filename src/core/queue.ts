@@ -118,10 +118,12 @@ export class PlayerQueue {
     return id == null ? null : this.item(id);
   }
 
+  /** How the queue repeats: `off`, `one` (the current item) or `all`. */
   get repeat(): RepeatMode {
     return this.snapshot.repeat;
   }
 
+  /** Whether the queue plays in shuffled order. */
   get shuffle(): boolean {
     return this.snapshot.shuffle;
   }
@@ -247,6 +249,7 @@ export class PlayerQueue {
     await this.send({ op: 'previous' });
   }
 
+  /** `off`, `one` (loops the current item seamlessly) or `all` (wraps). */
   async setRepeat(mode: RepeatMode): Promise<void> {
     if (!REPEAT_MODES.has(mode))
       throw invalid(`Unknown repeat mode "${String(mode)}".`);
