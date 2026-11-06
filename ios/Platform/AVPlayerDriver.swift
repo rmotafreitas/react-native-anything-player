@@ -1002,8 +1002,12 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
   private func loadAssetMetadata(_ asset: AVAsset, _ gen: Int) {
     // Static tags of files (ID3 / iTunes). Live streams report theirs as timed metadata.
     Task { @MainActor [weak self] in
-      guard let items = try? await asset.load(.commonMetadata), !items.isEmpty else { return }
-      guard let self, self.generation == gen else { return }
+      var items = (try? await asset.load(.commonMetadata)) ?? []
+      // Vorbis comments (FLAC, Ogg, Opus) have no common keys: read as they are.
+      if items.isEmpty {
+        items = ((try? await asset.load(.metadata)) ?? []).filter { $0.identifier?.rawValue.hasPrefix("vorb/") == true }
+      }
+      guard !items.isEmpty, let self, self.generation == gen else { return }
       let meta = Self.metadata(from: items, format: self.titleFormat)
       if self.lastMetadata == nil { self.publish(meta, gen) }
     }
@@ -1026,6 +1030,17 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
       let value: String? = item.stringValue ?? item.dataValue.map { IcyParser.decode(Array($0)) }
       if identifier.hasPrefix("icy/"), let value {
         icy[String(identifier.dropFirst(4))] = value
+        continue
+      }
+      if identifier.hasPrefix("vorb/"), let value {
+        let field = String(identifier.dropFirst(5)).uppercased()
+        common.raw[field] = value
+        switch field {
+        case "TITLE": common.title = value
+        case "ARTIST": common.artist = value
+        case "ALBUM": common.album = value
+        default: break
+        }
         continue
       }
       guard let value, let key = item.commonKey else { continue }

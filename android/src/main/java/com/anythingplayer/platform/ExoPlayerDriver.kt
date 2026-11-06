@@ -36,6 +36,7 @@ import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.extractor.DefaultExtractorsFactory
 import androidx.media3.extractor.metadata.icy.IcyInfo
 import androidx.media3.extractor.metadata.id3.TextInformationFrame
+import androidx.media3.extractor.metadata.vorbis.VorbisComment
 import com.anythingplayer.core.EngineDriver
 import com.anythingplayer.core.ErrorCode
 import com.anythingplayer.core.InterruptionReason
@@ -360,6 +361,12 @@ internal class ExoPlayerDriver(
         val p = player ?: return
         val gen = currentGeneration(p) ?: return
         if (reportUnplayable(tracks, gen)) return
+        // A file's own tags (ID3, iTunes, Vorbis comments), when the stream has said nothing yet.
+        if (lastStream == null) {
+          tracks.groups.firstNotNullOfOrNull { group ->
+            (0 until group.length).firstNotNullOfOrNull { i -> group.getTrackFormat(i).metadata?.let(::tags) }
+          }?.let { publish(gen, it) }
+        }
         if (!video) return
         val found = ExoVideo.map(tracks)
         mapped = found
@@ -388,23 +395,37 @@ internal class ExoPlayerDriver(
         for (i in 0 until metadata.length()) {
           when (val entry = metadata.get(i)) {
             is IcyInfo -> merged = IcyParser.metadataFromBlock(entry.rawMetadata, titleFormat)
-            is TextInformationFrame -> {
-              val value = entry.values.firstOrNull()?.trim()?.ifEmpty { null } ?: continue
-              val base = merged ?: StreamMetadata()
-              merged =
-                when (entry.id) {
-                  "TIT2", "TT2" -> base.copy(title = value, raw = base.raw + (entry.id to value))
-                  "TPE1", "TP1" -> base.copy(artist = value, raw = base.raw + (entry.id to value))
-                  "TALB", "TAL" -> base.copy(album = value, raw = base.raw + (entry.id to value))
-                  else -> base.copy(raw = base.raw + (entry.id to value))
-                }
-            }
+            is TextInformationFrame -> merged = tag(merged ?: StreamMetadata(), entry) ?: merged
             else -> Unit
           }
         }
         merged?.let { publish(gen, it.copy(station = it.station ?: stationName, genre = it.genre ?: stationGenre)) }
       }
     }
+
+  /** Title, artist and album from ID3 frames (MP3; MP4's iTunes tags come as the same ids) and Vorbis comments. */
+  private fun tags(metadata: Metadata): StreamMetadata? {
+    var found: StreamMetadata? = null
+    for (i in 0 until metadata.length()) found = tag(found ?: StreamMetadata(), metadata.get(i)) ?: found
+    return found?.takeIf { !it.isEmpty }
+  }
+
+  private fun tag(base: StreamMetadata, entry: Metadata.Entry): StreamMetadata? {
+    val (key, raw) =
+      when (entry) {
+        is TextInformationFrame -> entry.id to entry.values.firstOrNull()
+        is VorbisComment -> entry.key.uppercase() to entry.value
+        else -> return null
+      }
+    val value = raw?.trim()?.ifEmpty { null } ?: return null
+    val fields = base.raw + (key to value)
+    return when (key) {
+      "TIT2", "TT2", "TITLE" -> base.copy(title = value, raw = fields)
+      "TPE1", "TP1", "ARTIST" -> base.copy(artist = value, raw = fields)
+      "TALB", "TAL", "ALBUM" -> base.copy(album = value, raw = fields)
+      else -> base.copy(raw = fields)
+    }
+  }
 
   private fun report(block: () -> Unit) {
     main.post(block)
