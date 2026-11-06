@@ -119,7 +119,7 @@ final class MediaCache: NSObject {
   /// A file the device holds whole (a download, else the cache): opened from disk.
   func completeFile(for source: SourceDescriptor) -> URL? {
     guard source.liveHint != true, source.isNetwork, !Self.isHls(source.uri) else { return nil }
-    let key = key(of: source)
+    let key = self.key(of: source)
     if kept.isComplete(key) { return kept.fileURL(key) }
     if play.isComplete(key) {
       play.touch(key)
@@ -130,7 +130,7 @@ final class MediaCache: NSObject {
 
   /// A downloaded HLS item's package.
   func downloadedPackage(for source: SourceDescriptor) -> URL? {
-    let key = key(of: source)
+    let key = self.key(of: source)
     let package: String? = queue.sync {
       downloads.values.first { $0.key == key && $0.type == "hls" && $0.state == "completed" }?.package
     }
@@ -171,11 +171,11 @@ final class MediaCache: NSObject {
           }
           completion(.success([:]))
         case "preload":
-          let source = try Self.need(source)
+          let item = try Self.need(source)
           let all = command["all"] as? Bool ?? false
           let bytes = (command["bytes"] as? NSNumber)?.int64Value ?? Self.defaultPreload
-          self.preload(source, bytes: all ? nil : bytes) { error in
-            if let error { completion(.failure(Self.failure(error))) } else { completion(.success(self.info(source))) }
+          self.preload(item, bytes: all ? nil : bytes) { error in
+            if let error { completion(.failure(Self.failure(error))) } else { completion(.success(self.info(item))) }
           }
         case "download":
           completion(.success(try self.download(Self.need(source), id: command["id"] as? String)))
@@ -212,7 +212,7 @@ final class MediaCache: NSObject {
     guard source.liveHint != true, source.isNetwork, !Self.isHls(source.uri), let url = URL(string: source.uri) else {
       return done(nil)
     }
-    let key = key(of: source)
+    let key = self.key(of: source)
     if play.isComplete(key) || kept.isComplete(key) { return done(nil) }
     var request = URLRequest(url: url)
     source.headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
@@ -231,15 +231,15 @@ final class MediaCache: NSObject {
     guard !DashLoader.isDash(URL(string: source.uri) ?? URL(fileURLWithPath: "/")) else {
       throw PlayerError.code(.unsupportedFormat, "DASH cannot be downloaded on iOS (HLS and files can).", recoverable: false)
     }
-    let id = id ?? source.uri
-    if downloads[id] != nil { removeDownload(id) }
-    let download = Download(
-      id: id, uri: source.uri, key: key(of: source), headers: source.headers,
+    let name = id ?? source.uri
+    if downloads[name] != nil { removeDownload(name) }
+    let entry = Download(
+      id: name, uri: source.uri, key: key(of: source), headers: source.headers,
       type: Self.isHls(source.uri) ? "hls" : "file", state: "queued")
-    downloads[id] = download
+    downloads[name] = entry
     save()
-    start(download)
-    return Self.map(download)
+    start(entry)
+    return Self.map(entry)
   }
 
   private func start(_ download: Download) {
@@ -283,7 +283,7 @@ final class MediaCache: NSObject {
   }
 
   private func info(_ source: SourceDescriptor) -> [String: Any] {
-    let key = key(of: source)
+    let key = self.key(of: source)
     let download = downloads.values.first { $0.key == key }
     let held = max(kept.heldBytes(key), play.heldBytes(key))
     let total = kept.entry(key)?.totalLength ?? play.entry(key)?.totalLength ?? download?.totalBytes
