@@ -476,4 +476,31 @@ describe('WebCache', () => {
       })
     ).toMatchObject({ state: 'complete', downloaded: true });
   });
+
+  it('a download asked for again after its removal is one fetch, which a third ask joins', async () => {
+    served['https://cdn.example/a.mp3'] = { bytes: 4 * MB };
+    const cache = new WebCache();
+    await cache.command({
+      op: 'download',
+      ...src('https://cdn.example/a.mp3'),
+      id: 'a',
+    });
+    await cache.command({ op: 'removeDownload', id: 'a' });
+    await cache.command({
+      op: 'download',
+      ...src('https://cdn.example/a.mp3'),
+      id: 'a',
+    });
+    await new Promise((r) => setTimeout(r, 0));
+    requests = [];
+    await cache.command({
+      op: 'preload',
+      ...src('https://cdn.example/a.mp3'),
+      all: true,
+    });
+    expect(requests).toEqual([]);
+    expect(
+      await cache.command({ op: 'info', ...src('https://cdn.example/a.mp3') })
+    ).toMatchObject({ state: 'complete', downloaded: true });
+  });
 });

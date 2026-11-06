@@ -320,6 +320,14 @@ export class WebCache {
     else stored.set(key, entry);
   }
 
+  /** A key leaves the index (and the stored one, at the next write). */
+  private forget(key: string): void {
+    this.index.delete(key);
+    this.dirty.delete(key);
+    this.deleted.add(key);
+    this.saveSoon();
+  }
+
   /** A key changed: written with the index soon. */
   private changed(key: string): void {
     this.dirty.add(key);
@@ -472,9 +480,15 @@ export class WebCache {
     const running = this.filling.get(key);
     if (running) return running.work;
     const stop = new (browser().AbortController)();
-    const work = this.fetchWhole(source, key, downloadId, stop).finally(() =>
-      this.filling.delete(key)
-    );
+    const work: Promise<void> = this.fetchWhole(
+      source,
+      key,
+      downloadId,
+      stop
+    ).finally(() => {
+      // Only its own entry: a removal may have let a newer fill take the key.
+      if (this.filling.get(key)?.work === work) this.filling.delete(key);
+    });
     this.filling.set(key, { work, stop });
     return work;
   }
@@ -510,7 +524,7 @@ export class WebCache {
       // Larger than the whole cache, or a server that asks not to be stored: not for the cache.
       if (entry.downloadId == null && (total > this.maxSize || noStore)) {
         stop.abort();
-        this.index.delete(key);
+        this.forget(key);
         return;
       }
       entry.totalBytes = total;
@@ -544,7 +558,7 @@ export class WebCache {
   /** A download that failed says why; a fill for the cache leaves nothing behind. */
   private fillFailed(entry: Entry, error: unknown): void {
     if (entry.downloadId == null) {
-      if (!entry.complete) this.index.delete(entry.key);
+      if (!entry.complete) this.forget(entry.key);
       return;
     }
     const e = error as {

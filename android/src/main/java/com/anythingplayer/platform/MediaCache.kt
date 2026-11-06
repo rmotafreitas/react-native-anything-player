@@ -255,7 +255,8 @@ internal object MediaCache {
     admin.execute {
       replaced.forEach { removeBytes(it) }
       writeIndex()
-      start(download)
+      // Removed before its turn came: it never starts.
+      if (downloads[name] === download) start(download)
     }
     return downloadMap(download)
   }
@@ -314,6 +315,7 @@ internal object MediaCache {
       work.submit {
         // Removed or replaced while it ran: nothing of it is told or written.
         val current = { downloads[download.id] === download }
+        if (!current()) return@submit
         try {
           download.state = "downloading"
           emit(download)
@@ -339,13 +341,15 @@ internal object MediaCache {
         } catch (_: InterruptedException) {
           if (download.error == null) return@submit
           download.state = "failed"
-          // A stream that never ends keeps nothing.
-          runCatching { kept.removeResource(download.key) }
         } catch (error: Exception) {
           if (!current()) return@submit
           download.state = "failed"
           if (download.error == null) download.error = mapDownloadError(error)
         } finally {
+          // A stream that never ends keeps nothing (however the cancel surfaced).
+          if (download.type == "file" && download.error?.code == ErrorCode.UNSUPPORTED_FORMAT) {
+            runCatching { kept.removeResource(download.key) }
+          }
           if (current()) running.remove(download.id)
           // A cancel left this pool thread interrupted: the next work on it must not fail.
           Thread.interrupted()

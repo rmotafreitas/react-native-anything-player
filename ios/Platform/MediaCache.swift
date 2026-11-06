@@ -382,7 +382,9 @@ final class MediaCache: NSObject {
       self?.queue.async {
         guard let self else { return }
         let alive = Set(tasks.compactMap(\.taskDescription))
-        for d in self.downloads.values where d.type == "hls" && d.state == "downloading" && !alive.contains(d.id) {
+        // One that finished while the app was away has its package (its callbacks may come after this).
+        for d in self.downloads.values
+        where d.type == "hls" && d.state == "downloading" && d.package == nil && !alive.contains(d.id) {
           self.fail(d.id, PlayerError.code(.networkError, "The download stopped while the app was not running.", recoverable: true))
         }
       }
@@ -427,7 +429,9 @@ final class MediaCache: NSObject {
     case "video/quicktime": return "mov"
     case let type? where type.hasPrefix("video/"): return "mp4"
     case let type? where type.hasPrefix("audio/"): return "mp3"
-    default: return "bin"
+    // No type (or a generic one): most such files are MP3 (AVFoundation reads
+    // the container by the extension).
+    default: return "mp3"
     }
   }
 
@@ -540,6 +544,8 @@ extension MediaCache: URLSessionDataDelegate {
       }
       if d.package != nil {
         d.state = "completed"
+        d.error = nil
+        d.errorCode = nil
         downloads[id] = d
         save()
         emit(d)
@@ -562,6 +568,10 @@ extension MediaCache: URLSessionDataDelegate {
       }
       guard var d = downloads[id] else { return }
       d.state = job.store.isComplete(job.key) ? "completed" : "failed"
+      if d.state == "completed" {
+        d.error = nil
+        d.errorCode = nil
+      }
       if d.state == "failed" {
         d.error = "The connection ended before the whole file arrived."
         d.errorCode = "NETWORK_ERROR"
