@@ -113,6 +113,8 @@ final class RemuxSession {
   private var inFlight: [String: [(RemuxHls.WindowReader?) -> Void]] = [:]
   private var cache: [String: RemuxHls.WindowReader] = [:]
   private var cacheOrder: [String] = []
+  /// Subtitle cues read so far, by track: a long one shows in every window it spans.
+  private var knownCues: [Int: [RemuxCue]] = [:]
 
   private lazy var session: URLSession = {
     let config = URLSessionConfiguration.default
@@ -442,8 +444,8 @@ final class RemuxSession {
         // The subtitles come out of the picture's read (or the sound's, without one).
         let source = plan.video ?? plan.audios.first { $0.id == plan.defaultAudio }
         guard let source else { return done(.missing) }
-        return windowReader(plan, window, track: source) { reader in
-          let cues = reader?.cues.filter { $0.track == track.id } ?? []
+        return readCues(plan, index, back: 0, track: track, source: source) {
+          let cues = RemuxHls.cues(self.knownCues[track.id] ?? [], in: window)
           done(.text(RemuxHls.vtt(cues, codec: track.codec), "text/vtt"))
         }
       }
@@ -456,6 +458,23 @@ final class RemuxSession {
   }
 
   /// The window read for one rendition (cached, and shared by requests that come together).
+  /// A window's cues, and the windows' before it (up to 30 s back) until one
+  /// holds a cue of `track`: a cue that began earlier and is still on screen
+  /// shows too (the window's own read starts at its first keyframe).
+  private func readCues(
+    _ plan: Plan, _ index: Int, back: Int, track: RemuxTrack, source: RemuxTrack, _ done: @escaping () -> Void
+  ) {
+    windowReader(plan, plan.windows[index], track: source) { reader in
+      let cues = reader?.cues ?? []
+      for cue in cues where self.knownCues[cue.track]?.contains(cue) != true {
+        self.knownCues[cue.track, default: []].append(cue)
+      }
+      let found = back > 0 && cues.contains { $0.track == track.id }
+      guard index > 0, back < 5, !found else { return done() }
+      self.readCues(plan, index - 1, back: back + 1, track: track, source: source, done)
+    }
+  }
+
   private func windowReader(
     _ plan: Plan, _ window: RemuxHls.Window, track: RemuxTrack, _ done: @escaping (RemuxHls.WindowReader?) -> Void
   ) {

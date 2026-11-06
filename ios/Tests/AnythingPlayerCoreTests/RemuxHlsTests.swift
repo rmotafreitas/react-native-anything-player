@@ -267,4 +267,17 @@ final class RemuxHlsTests: XCTestCase {
 
       """)
   }
+
+  func testAWindowHoldsEveryCueOnScreenInIt() {
+    let windows = RemuxHls.windows(duration: 30)
+    let known = [
+      RemuxCue(track: 3, start: 500, end: 4000, text: "a"),
+      RemuxCue(track: 3, start: 4000, end: 30000, text: "b"),
+      RemuxCue(track: 3, start: 13000, end: nil, text: "c"),
+    ]
+    XCTAssertEqual(RemuxHls.cues(known, in: windows[0]).map(\.text), ["a", "b"])
+    XCTAssertEqual(RemuxHls.cues(known, in: windows[1]).map(\.text), ["b"])
+    XCTAssertEqual(RemuxHls.cues(known, in: windows[2]).map(\.text), ["b", "c"])
+    XCTAssertEqual(RemuxHls.cues(known, in: windows[4]).map(\.text), ["b"])
+  }
 }
