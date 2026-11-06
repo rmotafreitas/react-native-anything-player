@@ -254,5 +254,28 @@
       { "native": "ended" },
       { "expect": { "commands": ["open(gen=3,start=-,play=true)"], "queue": { "current": "b" } } }
     ]
+  },
+  {
+    "name": "repeat all with one item loops it; a second item ends the loop",
+    "steps": [
+      { "call": "queueSet", "items": ["a"], "autoplay": true },
+      { "call": "repeat", "value": "all" },
+      { "expect": { "commands": ["open(gen=1,start=-,play=true)", "loop(true)"] } },
+      { "call": "queueAdd", "items": ["b"] },
+      { "expect": { "commands": ["loop(false)"], "queue": { "ids": ["a", "b"], "current": "a" } } }
+    ]
+  },
+  {
+    "name": "failures before the queue emptied do not count against the next queue",
+    "steps": [
+      { "call": "queueSet", "items": ["a", "b"], "autoplay": true },
+      { "native": "failed", "code": "SOURCE_NOT_FOUND", "recoverable": false },
+      { "native": "failed", "code": "SOURCE_NOT_FOUND", "recoverable": false },
+      { "expect": { "state": "error", "queue": { "current": "b" } } },
+      { "call": "queueRemove", "ids": ["a", "b"] },
+      { "call": "queueAdd", "items": ["c", "d"] },
+      { "native": "failed", "code": "SOURCE_NOT_FOUND", "recoverable": false },
+      { "expect": { "state": "loading", "queue": { "current": "d" } } }
+    ]
   }
 ]

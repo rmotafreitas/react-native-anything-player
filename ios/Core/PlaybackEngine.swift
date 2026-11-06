@@ -1947,6 +1947,8 @@ extension PlaybackEngine {
     }
     try checkIds(items, existing: queue.items)
     let idle = queue.count == 0
+    // A new queue: earlier failures do not count against it.
+    if idle { skipStreak = 0 }
     queue.add(items, at: index)
     queueDirty = true
     if idle, let current = queue.current {
@@ -1965,6 +1967,7 @@ extension PlaybackEngine {
     queueDirty = true
     if changed {
       guard let current = queue.current else {
+        skipStreak = 0
         resetSource()
         return
       }
@@ -2154,6 +2157,7 @@ extension PlaybackEngine {
     queue.set([])
     queueDirty = true
     unpreparable = nil
+    skipStreak = 0
     applyLoop()
   }
 
@@ -2226,7 +2230,9 @@ extension PlaybackEngine {
   }
 
   fileprivate func applyLoop() {
-    let want = userLoop || (queue.count > 0 && queue.repeatMode == .one)
+    // Repeat `one`, or `all` with one item: the item loops, seamlessly.
+    let repeats = queue.repeatMode == .one || (queue.repeatMode == .all && queue.count == 1)
+    let want = userLoop || (queue.count > 0 && repeats)
     guard want != loop else { return }
     loop = want
     driver.setLoop(want)

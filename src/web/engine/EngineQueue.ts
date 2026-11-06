@@ -194,6 +194,8 @@ export abstract class EngineQueue extends EngineVideo {
     }
     this.checkIds(items, this.queue.items);
     const idle = this.queue.length === 0;
+    // A new queue: earlier failures do not count against it.
+    if (idle) this.skipStreak = 0;
     this.queue.add(items, index);
     this.queueDirty = true;
     const current = this.queue.current;
@@ -214,6 +216,7 @@ export abstract class EngineQueue extends EngineVideo {
     const current = this.queue.current;
     if (changed) {
       if (current == null) {
+        this.skipStreak = 0;
         super.reset();
         return;
       }
@@ -499,6 +502,7 @@ export abstract class EngineQueue extends EngineVideo {
     this.queue.set([]);
     this.queueDirty = true;
     this.unpreparable = null;
+    this.skipStreak = 0;
     this.applyLoop();
   }
 
@@ -597,8 +601,11 @@ export abstract class EngineQueue extends EngineVideo {
   }
 
   private applyLoop(): void {
-    const loop =
-      this.userLoop || (this.queue.length > 0 && this.queue.repeat === 'one');
+    // Repeat `one`, or `all` with one item: the item loops, seamlessly.
+    const q = this.queue;
+    const repeats =
+      q.repeat === 'one' || (q.repeat === 'all' && q.length === 1);
+    const loop = this.userLoop || (q.length > 0 && repeats);
     if (loop === this.loop) return;
     this.loop = loop;
     this.driver.setLoop?.(loop);

@@ -879,6 +879,8 @@ class PlaybackEngine(
     }
     checkIds(items, queue.items)
     val idle = queue.length == 0
+    // A new queue: earlier failures do not count against it.
+    if (idle) skipStreak = 0
     queue.add(items, index ?: queue.length)
     queueDirty = true
     val current = queue.current
@@ -899,6 +901,7 @@ class PlaybackEngine(
     val current = queue.current
     if (changed) {
       if (current == null) {
+        skipStreak = 0
         resetSource()
         return
       }
@@ -1092,6 +1095,7 @@ class PlaybackEngine(
     queue.set(emptyList())
     queueDirty = true
     unpreparable = null
+    skipStreak = 0
     applyLoop()
   }
 
@@ -1166,7 +1170,9 @@ class PlaybackEngine(
   }
 
   private fun applyLoop() {
-    val want = userLoop || (queue.length > 0 && queue.repeat == RepeatMode.ONE)
+    // Repeat `one`, or `all` with one item: the item loops, seamlessly.
+    val repeats = queue.repeat == RepeatMode.ONE || (queue.repeat == RepeatMode.ALL && queue.length == 1)
+    val want = userLoop || (queue.length > 0 && repeats)
     if (want == loop) return
     loop = want
     driver.setLoop(want)

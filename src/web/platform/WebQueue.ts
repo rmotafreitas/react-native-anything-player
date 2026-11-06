@@ -24,6 +24,12 @@ export interface QueueItemParts {
 
 type Dict = Record<string, unknown>;
 
+/** Items a command brings, and their parts, before it runs. */
+interface Staged {
+  items: EngineQueueItem[];
+  parts: Map<string, QueueItemParts>;
+}
+
 const REPEAT: ReadonlySet<string> = new Set(['off', 'one', 'all']);
 
 function invalid(message: string): Error {
@@ -52,28 +58,22 @@ export class WebQueue {
     const e = this.engine;
     switch (command.op) {
       case 'set': {
-        const items = this.parseItems(command.items);
-        try {
+        const staged = this.parseItems(command.items);
+        this.commit(staged, () =>
           e.queueSet(
-            items,
+            staged.items,
             optionalNumber(command.startIndex) ?? 0,
             optionalNumber(command.startPosition),
             typeof command.autoplay === 'boolean' ? command.autoplay : null
-          );
-        } catch (error) {
-          this.forget(items);
-          throw error;
-        }
+          )
+        );
         break;
       }
       case 'add': {
-        const items = this.parseItems(command.items);
-        try {
-          e.queueAdd(items, optionalNumber(command.index) ?? undefined);
-        } catch (error) {
-          this.forget(items);
-          throw error;
-        }
+        const staged = this.parseItems(command.items);
+        this.commit(staged, () =>
+          e.queueAdd(staged.items, optionalNumber(command.index) ?? undefined)
+        );
         break;
       }
       case 'remove':
@@ -132,40 +132,53 @@ export class WebQueue {
     return value.map(String);
   }
 
-  private parseItems(value: unknown): EngineQueueItem[] {
-    if (!Array.isArray(value)) throw invalid('Queue items must be an array.');
-    const made: string[] = [];
+  /**
+   * Runs a command that brings items: their parts are in place while it
+   * runs (the engine asks for the first item's), and kept if it succeeds; a
+   * refused command leaves the parts as they were and revokes its own URLs.
+   */
+  private commit(staged: Staged, run: () => void): void {
+    const before = new Map(
+      staged.items.map((item) => [item.id, this.parts.get(item.id)])
+    );
+    staged.parts.forEach((parts, id) => this.parts.set(id, parts));
     try {
-      return value.map((raw) => {
+      run();
+    } catch (error) {
+      before.forEach((previous, id) => {
+        if (previous != null) this.parts.set(id, previous);
+        else this.parts.delete(id);
+      });
+      staged.parts.forEach((parts) => this.revoke(parts));
+      throw error;
+    }
+    // Replaced items' files are gone from the queue now.
+    before.forEach((previous) => {
+      if (previous != null) this.revoke(previous);
+    });
+  }
+
+  private parseItems(value: unknown): Staged {
+    if (!Array.isArray(value)) throw invalid('Queue items must be an array.');
+    const parts = new Map<string, QueueItemParts>();
+    try {
+      const items = value.map((raw) => {
         const map = (raw ?? {}) as Dict;
         const id = typeof map.id === 'string' ? map.id : '';
         if (id === '') throw invalid('Every queue item needs an id.');
         const blob = map.blob;
         const objectUrl =
           blob == null ? null : browser().URL.createObjectURL(blob);
-        if (objectUrl != null) made.push(objectUrl);
         const [source, fields] = parseSource(
           objectUrl == null ? map : { ...map, uri: objectUrl }
         );
-        const previous = this.parts.get(id);
-        if (previous != null) this.revoke(previous);
-        this.parts.set(id, { fields, objectUrl, video: parseVideoParts(map) });
+        parts.set(id, { fields, objectUrl, video: parseVideoParts(map) });
         return { id, live: source.liveHint === true, source };
       });
+      return { items, parts };
     } catch (error) {
-      made.forEach((url) => browser().URL.revokeObjectURL(url));
+      parts.forEach((p) => this.revoke(p));
       throw error;
-    }
-  }
-
-  /** Items a refused command brought: their parts go (unless an item of the queue has the id). */
-  private forget(items: EngineQueueItem[]): void {
-    const kept = new Set(this.engine.queueState.ids);
-    for (const item of items) {
-      if (kept.has(item.id)) continue;
-      const parts = this.parts.get(item.id);
-      if (parts) this.revoke(parts);
-      this.parts.delete(item.id);
     }
   }
 

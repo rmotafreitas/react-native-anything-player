@@ -154,3 +154,14 @@ describe('player.queue', () => {
     await p.release();
   });
 });
+
+describe('player.queue entries', () => {
+  it('a refused set that reuses an id keeps the item native still plays', async () => {
+    const p = new Player();
+    await p.queue.set([{ id: 'a', uri: 'https://cdn.example/old.mp3' }]);
+    fake.rejectNext = { code: 'INVALID_ARGUMENT', message: 'no' };
+    await expect(p.queue.set([{ id: 'a', uri: 'https://cdn.example/new.mp3' }])).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
+    expect(p.queue.current).toEqual({ id: 'a', uri: 'https://cdn.example/old.mp3' });
+    await p.release();
+  });
+});

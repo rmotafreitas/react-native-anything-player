@@ -50,6 +50,14 @@ export interface QueueOwner {
   itemStarted(item: QueueItem | null): void;
   /** Tells the app (`queueChange`). */
   changed(state: QueueState): void;
+  /**
+   * A command that replaces what plays (`load`, `queue.set`) begins: the
+   * returned check is false once a later one began (a playlist fetch made
+   * this one wait).
+   */
+  replaceTurn(): () => boolean;
+  /** Whether a replacing command began since `turn` was taken (for `add`). */
+  currentReplaceTurn(): number;
 }
 
 function invalid(message: string): PlayerError {
@@ -139,9 +147,12 @@ export class PlayerQueue {
     items: QueueItemInput[],
     options: QueueSetOptions = {}
   ): Promise<void> {
+    const current = this.owner.replaceTurn();
     const resolved = namesPlaylists(items)
       ? await resolvePlaylists(items)
       : items;
+    // A newer load or set replaced what plays while the playlist was fetched.
+    if (!current()) return;
     const prepared = this.prepare(resolved, new Set());
     const command: Record<string, unknown> = {
       op: 'set',
@@ -163,9 +174,12 @@ export class PlayerQueue {
     items: QueueItemInput[],
     options: { index?: number } = {}
   ): Promise<void> {
+    const turn = this.owner.currentReplaceTurn();
     const resolved = namesPlaylists(items)
       ? await resolvePlaylists(items)
       : items;
+    // The queue it was meant for was replaced while the playlist was fetched.
+    if (turn !== this.owner.currentReplaceTurn()) return;
     const prepared = this.prepare(resolved, new Set(this.snapshot.ids));
     const command: Record<string, unknown> = {
       op: 'add',
@@ -266,14 +280,18 @@ export class PlayerQueue {
     command: Record<string, unknown>,
     added: Array<{ item: QueueItem }> = []
   ): Promise<void> {
+    const before = new Map(
+      added.map(({ item }) => [item.id, this.entries.get(item.id)])
+    );
     added.forEach(({ item }) => this.entries.set(item.id, item));
     try {
       await this.owner.command(command);
     } catch (error) {
-      // What a refused command brought is not in the queue.
-      const kept = new Set(this.snapshot.ids);
-      added.forEach(({ item }) => {
-        if (!kept.has(item.id)) this.entries.delete(item.id);
+      // A refused command changed nothing: its items go, the ones it would
+      // have replaced come back.
+      before.forEach((previous, id) => {
+        if (previous != null) this.entries.set(id, previous);
+        else this.entries.delete(id);
       });
       throw error;
     }

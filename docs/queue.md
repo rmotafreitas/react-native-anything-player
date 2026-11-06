@@ -107,7 +107,7 @@ Playlists.isPlaylistUri(url);
 
 Relative entries resolve against the file's URL. An entry with a length of `-1` is `live`. An `.m3u8` that is an HLS playlist is one item, the stream itself.
 
-A `.pls`, `.m3u` or `.xspf` URL given to `load()` or a queue (a radio station's `listen.pls`) plays its first entry, with the source's own `headers` and `metadata` on top.
+A `.pls`, `.m3u` or `.xspf` URL given to `load()` or a queue (a radio station's `listen.pls`) plays its first entry, with the source's own `metadata` on top. The source's `headers` (a token) are sent to the playlist and, only when the entry is on the same host, to the entry. A playlist fetched over HTTP(S) names only HTTP(S) entries: one pointing at a file on the device is left out. Resolving a playlist file runs in JavaScript: give a voice-catalog item the stream's own URL.
 
 ## Not in this version
 

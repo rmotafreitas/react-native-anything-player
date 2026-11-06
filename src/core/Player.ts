@@ -339,6 +339,8 @@ export class Player {
   private refreshSource: Source['refresh'] | null = null;
   /** Counts the loads, so an answer for an earlier one changes nothing. */
   private loads = 0;
+  /** Counts the commands that replace what plays (`load`, `queue.set`). */
+  private replaceTurns = 0;
   /** The current source's `drm.getLicense`. */
   private licenseHook: NonNullable<Source['drm']>['getLicense'] | null = null;
   private sourceHeaders: Record<string, string> = {};
@@ -406,6 +408,8 @@ export class Player {
     }
     if (options.diagnostics) native().setDiagnosticsEnabled(this.id, true);
     this.queue = new PlayerQueue({
+      replaceTurn: () => this.replaceTurn(),
+      currentReplaceTurn: () => this.replaceTurns,
       command: (command) =>
         this.run(() => native().queueCommand(this.id, command)),
       read: () => native().getQueue(this.id),
@@ -484,7 +488,12 @@ export class Player {
     // A radio station's `listen.pls` / `.m3u` / `.xspf`: its first entry
     // plays. Anything else goes to the module in this same tick (a play()
     // must stay inside the user's tap on the web).
-    if (namesPlaylist(source)) source = await resolveLoadPlaylist(source);
+    const current = this.replaceTurn();
+    if (namesPlaylist(source)) {
+      source = await resolveLoadPlaylist(source);
+      // A newer load or queue replaced this one while the playlist was fetched.
+      if (!current()) return;
+    }
     const normalized = isBlob(source)
       ? normalizeBlob(source)
       : normalizeSource(source);
@@ -546,6 +555,12 @@ export class Player {
         ? new ThumbnailTrack(item.thumbnails, this.sourceHeaders)
         : null;
     this.cuesOnScreen = [];
+  }
+
+  private replaceTurn(): () => boolean {
+    this.replaceTurns += 1;
+    const turn = this.replaceTurns;
+    return () => turn === this.replaceTurns && !this.released;
   }
 
   /** Starts or resumes playback (re-opens live streams at the live edge when needed). */

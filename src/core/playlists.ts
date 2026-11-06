@@ -93,8 +93,8 @@ function makeItem(
   headers?: Record<string, string>
 ): PlaylistItem {
   const item: PlaylistItem = { uri };
-  // -1 (or 0 in some players' PLS files): an endless stream.
-  if (seconds != null && seconds <= 0) item.live = true;
+  // -1: an endless stream.
+  if (seconds != null && seconds < 0) item.live = true;
   if (seconds != null && seconds > 0) metadata.duration ??= seconds;
   const meta = Object.fromEntries(
     Object.entries(metadata).filter(([, v]) => v != null && v !== '')
@@ -199,39 +199,46 @@ function parsePls(text: string, base: string | undefined): PlaylistItem[] {
       line.slice(eq + 1).trim()
     );
   }
-  const numbers = [...fields.keys()]
-    .map((k) => /^file(\d+)$/.exec(k)?.[1])
-    .filter((n): n is string => n != null)
-    .map(Number)
-    .sort((a, b) => a - b);
-  return numbers.map((n) => {
+  // `File1`, `File01`…: each entry's own key names its title and length.
+  const files = [...fields.keys()]
+    .map((key) => ({ key, n: /^file(\d+)$/.exec(key)?.[1] }))
+    .filter((f): f is { key: string; n: string } => f.n != null)
+    .filter((f) => fields.get(f.key) !== '')
+    .sort((a, b) => Number(a.n) - Number(b.n));
+  return files.map(({ key, n }) => {
     const length = Number.parseFloat(fields.get(`length${n}`) ?? '');
     return makeItem(
-      resolve(fields.get(`file${n}`)!, base),
+      resolve(fields.get(key)!, base),
       Number.isFinite(length) ? length : null,
       splitTitle(fields.get(`title${n}`) ?? '')
     );
   });
 }
 
-const XML_ENTITIES: Record<string, string> = {
-  amp: '&',
-  lt: '<',
-  gt: '>',
-  quot: '"',
-  apos: "'",
-};
+const XML_ENTITIES = new Map([
+  ['amp', '&'],
+  ['lt', '<'],
+  ['gt', '>'],
+  ['quot', '"'],
+  ['apos', "'"],
+]);
+
+/** A numeric character reference; one that names no character stays as it is. */
+function codePoint(digits: string, radix: number, raw: string): string {
+  const n = Number.parseInt(digits, radix);
+  return Number.isInteger(n) && n > 0 && n <= 0x10ffff
+    ? String.fromCodePoint(n)
+    : raw;
+}
 
 function xmlText(value: string | undefined): string | undefined {
   if (value == null) return undefined;
   const text = value
     .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
-    .replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, (m, code: string) => {
-      if (code.startsWith('#x') || code.startsWith('#X'))
-        return String.fromCodePoint(Number.parseInt(code.slice(2), 16));
-      if (code.startsWith('#'))
-        return String.fromCodePoint(Number.parseInt(code.slice(1), 10));
-      return XML_ENTITIES[code.toLowerCase()] ?? m;
+    .replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (m, code: string) => {
+      if (/^#x/i.test(code)) return codePoint(code.slice(2), 16, m);
+      if (code.startsWith('#')) return codePoint(code.slice(1), 10, m);
+      return XML_ENTITIES.get(code.toLowerCase()) ?? m;
     })
     .trim();
   return text === '' ? undefined : text;
@@ -245,12 +252,30 @@ function xmlField(track: string, name: string): string | undefined {
   return xmlText(match?.[1]);
 }
 
+/** Each `<track>…</track>` body, found by a linear scan (the text is untrusted). */
+function xspfTracks(text: string): string[] {
+  const lower = text.toLowerCase();
+  const tracks: string[] = [];
+  let open = lower.indexOf('<track');
+  while (open >= 0) {
+    const bodyAt = lower.indexOf('>', open);
+    const close = bodyAt < 0 ? -1 : lower.indexOf('</track>', bodyAt);
+    if (close < 0) return tracks;
+    // `<trackList>` is not a track: look inside it.
+    const list = lower[open + 6] === 'l';
+    if (!list && TRACK_TAG_END.test(lower[open + 6] ?? ''))
+      tracks.push(text.slice(bodyAt + 1, close));
+    open = lower.indexOf('<track', list ? bodyAt + 1 : close + 8);
+  }
+  return tracks;
+}
+
+/** What may follow `<track`: the tag's end or its attributes. */
+const TRACK_TAG_END = /^[>\s/]$/;
+
 function parseXspf(text: string, base: string | undefined): PlaylistItem[] {
   const items: PlaylistItem[] = [];
-  for (const match of text.matchAll(
-    /<track(?:\s[^>]*)?>([\s\S]*?)<\/track>/gi
-  )) {
-    const track = match[1]!;
+  for (const track of xspfTracks(text)) {
     const location = xmlField(track, 'location');
     if (location == null) continue;
     const ms = Number.parseFloat(xmlField(track, 'duration') ?? '');
@@ -300,7 +325,23 @@ async function fetchPlaylist(
     null,
     () => true
   );
-  return parse(text, { baseUrl: url, format: options.format });
+  if (text.length > MAX_PLAYLIST_CHARS)
+    throw invalid(`The playlist ${url} is too large to be a playlist.`);
+  const items = parse(text, { baseUrl: url, format: options.format });
+  // A file on the network names network sources only (not this device's files).
+  if (!/^https?:/i.test(url)) return items;
+  return items.filter((item) => /^https?:/i.test(item.uri));
+}
+
+/** Larger than any real playlist (about 2 MB of text). */
+const MAX_PLAYLIST_CHARS = 2_000_000;
+
+function originOf(uri: string): string | null {
+  try {
+    return new URL(uri).origin;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -317,7 +358,11 @@ export async function resolvePlaylistSource<T extends Source>(
   const first = items[0];
   if (first == null) throw invalid(`The playlist ${uri} has no entries.`);
   const resolved: T = { ...first, ...source, uri: first.uri };
-  const headers = { ...first.headers, ...source.headers };
+  // The app's headers (a token) go to the playlist's own host only.
+  const sameHost = originOf(first.uri) === originOf(uri);
+  const own = sameHost ? source.headers : undefined;
+  delete resolved.headers;
+  const headers = { ...first.headers, ...own };
   if (Object.keys(headers).length > 0) resolved.headers = headers;
   const metadata = { ...first.metadata, ...source.metadata };
   if (Object.keys(metadata).length > 0) resolved.metadata = metadata;

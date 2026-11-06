@@ -90,7 +90,7 @@ player.queue.set(items);
 ```
 
 - **Playlist files:** M3U / extended M3U (`#EXTINF` duration, artist and title, `#EXTIMG`/`tvg-logo` artwork, `#EXTVLCOPT:http-user-agent`), PLS (`File1`, `Title1`, `Length1`), XSPF (`location`, `title`, `creator`, `album`, `image`, `duration`). Relative entries resolve against the file's URL. An `.m3u8` that turns out to be an HLS playlist (`#EXT-X-TARGETDURATION` / `#EXT-X-STREAM-INF`) is returned as one item (the HLS source itself). Entries with a `-1` duration are marked `live: true`.
-- **`load()` of a playlist file:** a `.pls`, `.m3u` or `.xspf` URL given to `load()` or a queue (common for radio stations) is resolved to its first playable entry (the others are its fallbacks, tried in order when one fails to open). Parsing runs in the same TypeScript code on every platform; native receives resolved items.
+- **`load()` of a playlist file:** a `.pls`, `.m3u` or `.xspf` URL given to `load()` or a queue (common for radio stations) is resolved to its first entry. Parsing runs in the same TypeScript code on every platform, so it needs JavaScript (a voice catalog item should name the stream itself); native receives resolved items. The app's headers go to the playlist's own host only, and a playlist fetched over HTTP(S) can name only HTTP(S) entries.
 - **Saved playlists (deferred, council):** `Playlists.save/get/list/remove` is not in v1; apps keep their own storage, and a playlist is a list of items they pass to `queue.set()`. `Playlists.format` is deferred too.
 
 ## 3. Cache, preload and offline (pull request B)
