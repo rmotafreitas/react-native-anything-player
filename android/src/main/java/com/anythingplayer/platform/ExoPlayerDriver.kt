@@ -819,10 +819,13 @@ internal class ExoPlayerDriver(
           else -> null
         }
       if (failed != null) {
-        // The current item's own request (the same URL queued twice) is the current item's.
-        val current = currentRequest
-        if (current != null && current.generation != request.generation && requestOf(current, failed.toString())) return false
-        return requestOf(request, failed.toString())
+        val uri = failed.toString()
+        val current = currentRequest?.takeIf { it.generation != request.generation }
+        // Exact matches first: the current item's own URL (the same URL queued
+        // twice) is the current item's; the prepared item's is the prepared one's.
+        if (current != null && ownRequest(current, uri)) return false
+        if (ownRequest(request, uri) || besideManifest(request, uri)) return true
+        return false
       }
       cause = cause.cause
     }
@@ -834,20 +837,17 @@ internal class ExoPlayerDriver(
     return window != p.currentMediaItemIndex && window == preparedIndex(p, request)
   }
 
-  /**
-   * Whether a failed request was the prepared item's: its own URL, or for
-   * HLS and DASH one beside its manifest (a media playlist, a segment). A
-   * segment on another host is not recognised and is the current item's.
-   */
-  private fun requestOf(request: OpenRequest, failed: String): Boolean {
-    // As ExoPlayer was given it (a path is a file: URL, an asset a resource URL).
-    val own = resolveUri(request.source.uri).toString().substringBefore('#')
-    val uri = failed.substringBefore('#')
-    if (uri == own) return true
-    val path = own.substringBefore('?')
+  /** Whether a failed request is this item's own URL, as ExoPlayer was given it. */
+  private fun ownRequest(request: OpenRequest, failed: String): Boolean =
+    failed.substringBefore('#') == resolveUri(request.source.uri).toString().substringBefore('#')
+
+  /** A request beside an HLS / DASH manifest (a media playlist, a segment); one on another host is not recognised. */
+  private fun besideManifest(request: OpenRequest, failed: String): Boolean {
+    val path = resolveUri(request.source.uri).toString().substringBefore('#').substringBefore('?')
     val adaptive = path.endsWith(".m3u8", ignoreCase = true) || path.endsWith(".mpd", ignoreCase = true)
-    return adaptive && uri.startsWith(path.substringBeforeLast('/') + "/")
+    return adaptive && failed.substringBefore('#').startsWith(path.substringBeforeLast('/') + "/")
   }
+
 
   private fun preparedIndex(p: ExoPlayer, request: OpenRequest): Int {
     val id = "$MEDIA_ID_PREFIX${request.generation}"
