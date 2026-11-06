@@ -12,7 +12,8 @@
 // paused or stalled (the live point moves on, the playhead does not), and it
 // keeps going across a lined-up quality switch (positions are continuous).
 // It starts again on a new connection: a `discontinuity`, or a playhead that
-// went back.
+// went back. A connection whose edge is not past its playhead yet has
+// received nothing (still opening): it has no live point until audio arrives.
 //
 // A source with a clock (HLS program dates, a DASH or ExoPlayer live window)
 // is the player's own reading, passed through. `settled`: the live point has
@@ -103,6 +104,9 @@ export class LiveOffset {
       this.reset();
     this.lastPosition = r.position;
     if (r.edge == null) return { offset: null, settled: false };
+    // Nothing received yet: an edge at the playhead is no arrival.
+    if (this.lastEdge == null && r.edge <= r.position)
+      return { offset: null, settled: false };
     this.since ??= t;
     if (this.lastEdge == null || r.edge > this.lastEdge)
       this.arrived(t, r.edge);
