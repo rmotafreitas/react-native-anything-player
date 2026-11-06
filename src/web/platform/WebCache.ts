@@ -135,6 +135,8 @@ export class WebCache {
   /** Keys this page changed or removed since it last wrote the index. */
   private readonly dirty = new Set<string>();
   private readonly deleted = new Set<string>();
+  /** Keys this page holds the fetch lock of (`oneFetch`). */
+  private readonly holding = new Map<string, number>();
   /** Blob URLs past the protected set, revoked when their file goes. */
   private readonly loose = new Map<string, Promise<string>>();
   /** The keys the stored index had when this page last read it. */
@@ -511,11 +513,19 @@ export class WebCache {
   private oneFetch(key: string, fetch: () => Promise<void>): Promise<void> {
     const locks = g().navigator?.locks;
     if (locks == null) return fetch();
-    return locks.request(
-      `${INDEX_KEY}/fetch/${key}`,
-      { ifAvailable: true },
-      (lock) => (lock == null ? Promise.resolve() : fetch())
-    );
+    // This page's own earlier fetch (one being removed) is waited for, not skipped.
+    const own = (this.holding.get(key) ?? 0) > 0;
+    const run = (lock: unknown): Promise<void> => {
+      if (lock == null) return Promise.resolve();
+      this.holding.set(key, (this.holding.get(key) ?? 0) + 1);
+      return fetch().finally(() => {
+        const left = (this.holding.get(key) ?? 1) - 1;
+        if (left > 0) this.holding.set(key, left);
+        else this.holding.delete(key);
+      });
+    };
+    const name = `${INDEX_KEY}/fetch/${key}`;
+    return locks.request(name, { ifAvailable: !own }, run);
   }
 
   private async fetchWhole(
