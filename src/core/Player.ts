@@ -421,8 +421,13 @@ export class Player {
       loaded: () => this.lastLoaded,
       changed: (state) => this.emit('queueChange', state),
     });
-    // Attached to a native player that already has a queue.
-    this.queue._refresh();
+    // Attached to a native player that already has a queue (a binary
+    // without the queue has nothing to read).
+    try {
+      this.queue._refresh();
+    } catch {
+      // No queue in this native module.
+    }
   }
 
   // ── State ──
@@ -549,7 +554,10 @@ export class Player {
    * its refresh, license hook and thumbnails answer from now on.
    */
   private queueItemStarted(item: QueueItem | null): void {
+    if (item == null) return;
     this._metadata = null;
+    // The previous item's subtitle files are not this one's.
+    this.subtitles.cancel();
     this.loads += 1;
     this.refreshSource = item?.refresh ?? null;
     this.licenseHook = item?.drm?.getLicense ?? null;

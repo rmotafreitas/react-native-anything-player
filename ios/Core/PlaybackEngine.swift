@@ -1931,6 +1931,8 @@ extension PlaybackEngine {
     skipStreak = 0
     unpreparable = nil
     guard let current = queue.current else {
+      // No queue: repeat no longer loops anything.
+      applyLoop()
       resetSource()
       return
     }
@@ -1943,11 +1945,11 @@ extension PlaybackEngine {
   func queueAdd(_ items: [EngineQueueItem], at index: Int? = nil) throws {
     try ensureAlive()
     guard !items.isEmpty else { return }
+    try checkIds(items, existing: queue.items)
     if queue.count == 0, let loaded = source {
       generatedIds += 1
       queue.set([EngineQueueItem(id: "loaded-\(generatedIds)", live: loaded.liveHint == true, source: loaded)])
     }
-    try checkIds(items, existing: queue.items)
     let idle = queue.count == 0
     // A new queue: earlier failures do not count against it.
     if idle { skipStreak = 0 }
@@ -1970,6 +1972,7 @@ extension PlaybackEngine {
     if changed {
       guard let current = queue.current else {
         skipStreak = 0
+        applyLoop()
         resetSource()
         return
       }
@@ -2182,8 +2185,10 @@ extension PlaybackEngine {
   /// Loads a queue item as a plain load would, keeping the queue.
   private func loadItem(_ item: EngineQueueItem, autoplay: Bool?, startPosition: Double?) throws {
     applyLoop()
+    // The intent is decided before the host may move the output.
+    let wanted = autoplay ?? (playWhenReady && Self.continuesIntent(state))
     delegate?.engine(queueItemStarts: item.id, opens: true)
-    try loadSource(item.source, autoplay: autoplay, startPosition: startPosition)
+    try loadSource(item.source, autoplay: wanted, startPosition: startPosition)
   }
 
   /// Goes to a queue item, through what was prepared when it is that item.

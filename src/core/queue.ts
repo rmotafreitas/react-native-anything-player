@@ -168,11 +168,13 @@ export class PlayerQueue {
         options.startPosition
       );
     if (options.autoplay != null) command.autoplay = options.autoplay === true;
-    const before = this.snapshot.currentId;
+    const before = this.snapshot;
     await this.send(command, prepared);
-    // The same id as before, given anew: its new hooks answer from now on.
+    // The same ids as before, given anew: the items changed all the same.
+    if (this.snapshot === before) this.owner.changed(this.state);
+    // The same current id: its new hooks answer from now on.
     const now = this.current;
-    if (now != null && now.id === before) this.owner.itemStarted(now);
+    if (now != null && now.id === before.currentId) this.owner.itemStarted(now);
   }
 
   /** Inserts at `index` (default: the end). The current item plays on. */

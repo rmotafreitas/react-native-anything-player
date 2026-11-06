@@ -167,6 +167,17 @@ describe('untrusted playlist text', () => {
     );
   });
 
+  it('scans many <trackList> tags and unclosed fields in linear time', () => {
+    const lists = '<trackList>'.repeat(100_000);
+    const fields = `<playlist><trackList><track>${'<location>x'.repeat(50_000)}</track></trackList></playlist>`;
+    const started = Date.now();
+    expect(
+      Playlists.parse(`<playlist>${lists}</playlist>`, { format: 'xspf' })
+    ).toEqual([]);
+    expect(Playlists.parse(fields, { format: 'xspf' })).toEqual([]);
+    expect(Date.now() - started).toBeLessThan(1_000);
+  });
+
   it('scans unclosed tracks in linear time', () => {
     const text = `<playlist><trackList>${'<track><location>x</location>'.repeat(50_000)}</trackList></playlist>`;
     const started = Date.now();

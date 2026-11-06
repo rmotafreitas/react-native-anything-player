@@ -194,11 +194,12 @@ export class WebRuntime implements PlayerRuntime {
     if (!target) return;
     // A queue handles next and previous; without one they are the app's.
     const queued = target.engine.queueState.ids.length > 0;
-    if (queued && (command === 'next' || command === 'previous')) {
-      if (command === 'next') target.engine.queueNext();
-      else target.engine.queuePrevious();
+    if (queued && command === 'previous') {
+      target.engine.queuePrevious();
       return;
     }
+    // At the end of the queue, next is the app's (if it asked for it).
+    if (queued && command === 'next' && target.engine.queueNext()) return;
     let nothingLoaded = false;
     try {
       switch (command) {

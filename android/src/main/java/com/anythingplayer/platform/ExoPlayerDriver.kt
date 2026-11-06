@@ -23,6 +23,7 @@ import androidx.media3.common.text.CueGroup
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.common.util.Util
 import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.HttpDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlaybackException
@@ -794,10 +795,34 @@ internal class ExoPlayerDriver(
       // A skip to it before the current item ended: it is buffered already.
       p.seekTo(index, 0)
       if (index > 0) p.removeMediaItems(0, index)
+      // An error stopped the player earlier: the playlist is kept, the player needs preparing.
+      if (p.playbackState == Player.STATE_IDLE) p.prepare()
       cancelCallsExcept((0 until p.mediaItemCount).map { p.getMediaItemAt(it).mediaId }.toSet())
     }
     adoptPrepared(p, request)
     p.playWhenReady = true
+  }
+
+  /**
+   * Whether an error is the prepared item's. ExoPlayer tags a source error
+   * (a 404, a timeout) with the period that plays, whichever item it read
+   * for: the request that failed says which. A renderer error is tagged with
+   * the period it came from.
+   */
+  private fun belongsToPrepared(p: ExoPlayer, error: PlaybackException, request: OpenRequest): Boolean {
+    var cause: Throwable? = error
+    while (cause != null) {
+      if (cause is HttpDataSource.HttpDataSourceException) {
+        return cause.dataSpec.uri.toString().substringBefore('#') == request.source.uri.substringBefore('#')
+      }
+      cause = cause.cause
+    }
+    val period = (error as? ExoPlaybackException)?.mediaPeriodId ?: return false
+    val timeline = p.currentTimeline
+    val periodIndex = timeline.getIndexOfPeriod(period.periodUid)
+    if (periodIndex == C.INDEX_UNSET) return false
+    val window = timeline.getPeriod(periodIndex, Timeline.Period()).windowIndex
+    return window != p.currentMediaItemIndex && window == preparedIndex(p, request)
   }
 
   private fun preparedIndex(p: ExoPlayer, request: OpenRequest): Int {
@@ -813,12 +838,7 @@ internal class ExoPlayerDriver(
    */
   private fun preparedFailed(p: ExoPlayer, error: PlaybackException): Boolean {
     val request = prepared ?: return false
-    val period = (error as? ExoPlaybackException)?.mediaPeriodId ?: return false
-    val timeline = p.currentTimeline
-    val periodIndex = timeline.getIndexOfPeriod(period.periodUid)
-    if (periodIndex == C.INDEX_UNSET) return false
-    val window = timeline.getPeriod(periodIndex, Timeline.Period()).windowIndex
-    if (window == p.currentMediaItemIndex || window != preparedIndex(p, request)) return false
+    if (!belongsToPrepared(p, error, request)) return false
     val gen = request.generation
     removePrepared(p)
     prepared = null

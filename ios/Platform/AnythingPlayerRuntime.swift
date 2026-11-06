@@ -559,8 +559,8 @@ final class AnythingPlayerRuntime: AudioSessionListener, RemoteCommandTarget {
       case "seek": if let position { try target.engine.seek(to: position) }
       // A queue handles them natively; without one they are the app's.
       case "next" where target.hasQueue:
-        try target.engine.queueNext()
-        return
+        // At the end of the queue, next is the app's (if it asked for it).
+        if try target.engine.queueNext() { return }
       case "previous" where target.hasQueue:
         try target.engine.queuePrevious()
         return

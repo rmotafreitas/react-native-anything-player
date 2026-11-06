@@ -16,6 +16,7 @@ import type { PlayerError } from '../../errors';
 import { EngineVideo } from './EngineVideo';
 import { QueueModel, type QueueEntry, type RepeatMode } from './QueueModel';
 import { RecoveryPolicy } from './RecoveryPolicy';
+import { continuesIntent } from './status';
 import type { PlayerErrorCode } from '../../types';
 import {
   engineError,
@@ -169,6 +170,8 @@ export abstract class EngineQueue extends EngineVideo {
     this.unpreparable = null;
     const current = this.queue.current;
     if (current == null) {
+      // No queue: repeat no longer loops anything.
+      this.applyLoop();
       super.reset();
       return;
     }
@@ -183,6 +186,7 @@ export abstract class EngineQueue extends EngineVideo {
   queueAdd(items: EngineQueueItem[], index?: number): void {
     this.ensureAlive();
     if (items.length === 0) return;
+    this.checkIds(items, this.queue.items);
     if (this.queue.length === 0 && this._source != null) {
       this.generatedIds += 1;
       this.queue.set([
@@ -193,7 +197,6 @@ export abstract class EngineQueue extends EngineVideo {
         },
       ]);
     }
-    this.checkIds(items, this.queue.items);
     const idle = this.queue.length === 0;
     // A new queue: earlier failures do not count against it.
     if (idle) this.skipStreak = 0;
@@ -218,6 +221,7 @@ export abstract class EngineQueue extends EngineVideo {
     if (changed) {
       if (current == null) {
         this.skipStreak = 0;
+        this.applyLoop();
         super.reset();
         return;
       }
@@ -531,8 +535,12 @@ export abstract class EngineQueue extends EngineVideo {
     startPosition: number | null
   ): void {
     this.applyLoop();
+    // The intent is decided before the host may move the output (a Cast
+    // receiver handing an item it cannot play back stops it there).
+    const wanted =
+      autoplay ?? (this._playWhenReady && continuesIntent(this._state));
     this.delegate?.engineQueueItemStarts?.(item.id, true);
-    super.load(item.source, autoplay, startPosition);
+    super.load(item.source, wanted, startPosition);
   }
 
   /** Goes to a queue item, through what was prepared when it is that item. */

@@ -307,5 +307,29 @@
       { "native": "ended" },
       { "expect": { "orderedCommands": ["prepareNext(gen=2)", "pause", "seek(179.0)", "play", "advance(gen=2)"], "queue": { "current": "b" }, "gen": 2 } }
     ]
+  },
+  {
+    "name": "an emptied queue stops repeat's loop: the next plain load does not loop",
+    "steps": [
+      { "call": "queueSet", "items": ["a"], "autoplay": true },
+      { "call": "repeat", "value": "one" },
+      { "expect": { "commands": ["open(gen=1,start=-,play=true)", "loop(true)"] } },
+      { "call": "queueSet", "items": [] },
+      { "expect": { "state": "idle", "commands": ["loop(false)", "unload"] } },
+      { "call": "queueAdd", "items": ["b"] },
+      { "call": "repeat", "value": "all" },
+      { "expect": { "commands": ["loop(true)", "open(gen=3,start=-,play=false)"], "queue": { "repeat": "all" } } },
+      { "call": "queueRemove", "ids": ["b"] },
+      { "call": "load", "uri": "https://cdn.example/x.mp3", "autoplay": true },
+      { "expect": { "commands": ["loop(false)", "unload", "open(gen=5,start=-,play=true)"] } }
+    ]
+  },
+  {
+    "name": "an add with an id the queue has throws before the loaded source joins",
+    "steps": [
+      { "call": "load", "uri": "https://cdn.example/x.mp3" },
+      { "call": "queueAdd", "items": ["a", "a"], "throws": "INVALID_ARGUMENT" },
+      { "expect": { "queue": { "ids": [], "current": null }, "queueEvents": 0 } }
+    ]
   }
 ]

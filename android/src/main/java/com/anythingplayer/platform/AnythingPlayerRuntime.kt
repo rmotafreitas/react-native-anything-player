@@ -577,8 +577,16 @@ internal object AnythingPlayerRuntime : FocusListener {
         // A queue handles them natively; without one they are the app's.
         "next", "previous" ->
           if (target.hasQueue) {
-            if (command == "next") target.engine.queueNext() else target.engine.queuePrevious()
-            return
+            // At the end of the queue, next is the app's (if it asked for it).
+            val moved =
+              when (command) {
+                "next" -> target.engine.queueNext()
+                else -> {
+                  target.engine.queuePrevious()
+                  true
+                }
+              }
+            if (moved) return
           }
         else -> Unit
       }

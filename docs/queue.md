@@ -87,7 +87,7 @@ While the queue has items, the next and previous buttons are shown and handled n
 The engine advances, skips failed items, repeats and answers the buttons without JavaScript. What needs JavaScript waits for it:
 
 - `refresh` (a signed URL): an item whose URL expired fails its open with 401/403, and the engine retries it with backoff until JavaScript answers, as for a single source. Give queue items a long enough expiry.
-- Subtitle files (`subtitles`) of a queue item are not loaded when the item becomes current; add them with `addSubtitles` from a `queueChange` listener.
+- Subtitle files (`subtitles`) of a queue item are not loaded in this version (a video's own tracks are): load a video with subtitle files with `load()`.
 
 ## Playlist files
 
@@ -107,7 +107,7 @@ Playlists.isPlaylistUri(url);
 
 Relative entries resolve against the file's URL. An entry with a length of `-1` is `live`. An `.m3u8` that is an HLS playlist is one item, the stream itself.
 
-A `.pls`, `.m3u` or `.xspf` URL given to `load()` or a queue (a radio station's `listen.pls`) plays its first entry, with the source's own `metadata` on top. The source's `headers` (a token) are sent to the playlist and, only when the entry is on the same host, to the entry. A playlist fetched over HTTP(S) names only HTTP(S) entries: one pointing at a file on the device is left out. Resolving a playlist file runs in JavaScript: give a voice-catalog item the stream's own URL.
+A `.pls`, `.m3u` or `.xspf` URL given to `load()` or a queue (a radio station's `listen.pls`) plays its first entry (fetched first: on iPhone and iPad a `load(…, { autoplay: true })` of one from a tap may need a second tap to start; give the stream's URL where you know it), with the source's own `metadata` on top. The source's `headers` (a token) are sent to the playlist and, only when the entry is on the same host, to the entry. A playlist fetched over HTTP(S) names only HTTP(S) entries: one pointing at a file on the device is left out. Resolving a playlist file runs in JavaScript: give a voice-catalog item the stream's own URL.
 
 ## Not in this version
 

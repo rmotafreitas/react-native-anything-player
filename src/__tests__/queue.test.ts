@@ -222,3 +222,15 @@ describe('player.queue with load()', () => {
     await p.release();
   });
 });
+
+describe('player.queue events', () => {
+  it('a set with the same ids and new sources is a change', async () => {
+    const p = new Player();
+    await p.queue.set([{ id: 'a', uri: 'https://cdn.example/a.mp3?sig=1' }]);
+    const seen: string[] = [];
+    p.on('queueChange', (s) => seen.push(s.current?.uri ?? ''));
+    await p.queue.set([{ id: 'a', uri: 'https://cdn.example/a.mp3?sig=2' }]);
+    expect(seen).toEqual(['https://cdn.example/a.mp3?sig=2']);
+    await p.release();
+  });
+});

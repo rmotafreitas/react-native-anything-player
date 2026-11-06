@@ -226,7 +226,7 @@ export class WebPlayerController
   queueCommand(command: Record<string, unknown>): void {
     this.queue.command(command);
     // WebKit: the next item can start on the second element (this is a tap).
-    this.userGesture();
+    if (this.engine.queueState.ids.length > 0) this.driver.unlock?.();
   }
 
   queueMap(): Record<string, unknown> {

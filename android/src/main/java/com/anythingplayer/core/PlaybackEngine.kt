@@ -861,6 +861,8 @@ class PlaybackEngine(
     unpreparable = null
     val current = queue.current
     if (current == null) {
+      // No queue: repeat no longer loops anything.
+      applyLoop()
       resetSource()
       return
     }
@@ -875,12 +877,12 @@ class PlaybackEngine(
   fun queueAdd(items: List<EngineQueueItem>, index: Int? = null) {
     ensureAlive()
     if (items.isEmpty()) return
+    checkIds(items, queue.items)
     val loaded = source
     if (queue.length == 0 && loaded != null) {
       generatedIds += 1
       queue.set(listOf(EngineQueueItem("loaded-$generatedIds", loaded.liveHint == true, loaded)))
     }
-    checkIds(items, queue.items)
     val idle = queue.length == 0
     // A new queue: earlier failures do not count against it.
     if (idle) skipStreak = 0
@@ -905,6 +907,7 @@ class PlaybackEngine(
     if (changed) {
       if (current == null) {
         skipStreak = 0
+        applyLoop()
         resetSource()
         return
       }
@@ -1112,8 +1115,10 @@ class PlaybackEngine(
   /** Loads a queue item as a plain load would, keeping the queue. */
   private fun loadItem(item: EngineQueueItem, autoplay: Boolean?, startPosition: Double?) {
     applyLoop()
+    // The intent is decided before the host may move the output.
+    val wanted = autoplay ?: (playWhenReady && continuesIntent(state))
     delegate?.engineQueueItemStarts(item.id, true)
-    loadSource(item.source, autoplay, startPosition)
+    loadSource(item.source, wanted, startPosition)
   }
 
   /** Goes to a queue item, through what was prepared when it is that item. */

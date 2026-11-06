@@ -30,6 +30,16 @@ interface Staged {
   parts: Map<string, QueueItemParts>;
 }
 
+const NO_FIELDS: NowPlayingFields = {
+  title: null,
+  artist: null,
+  album: null,
+  artwork: null,
+  duration: null,
+  elapsed: null,
+  live: null,
+};
+
 const NO_VIDEO_PARTS: VideoLoadParts = {
   poster: null,
   session: null,
@@ -189,6 +199,8 @@ export class WebQueue {
         const blob = map.blob;
         const objectUrl =
           blob == null ? null : browser().URL.createObjectURL(blob);
+        // Owned from here: revoked with the item, or below if it is refused.
+        parts.set(id, { fields: NO_FIELDS, objectUrl, video: NO_VIDEO_PARTS });
         const [source, fields] = parseSource(
           objectUrl == null ? map : { ...map, uri: objectUrl }
         );

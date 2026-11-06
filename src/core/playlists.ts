@@ -143,7 +143,7 @@ class M3uEntry {
     };
   }
 
-  /** A tag line; `false` for a tag it does not know. */
+  /** A tag line (one it does not know changes nothing). */
   tag(line: string, album: { value: string | null }): void {
     const upper = line.toUpperCase();
     if (upper.startsWith('#EXTINF:')) this.info(line.slice(8));
@@ -160,6 +160,8 @@ class M3uEntry {
     album: string | null
   ): PlaylistItem {
     const metadata = { ...this.metadata };
+    if (typeof metadata.artwork === 'string')
+      metadata.artwork = resolve(metadata.artwork, base);
     if (album != null) metadata.album ??= album;
     if (metadata.artwork == null && this.image != null)
       metadata.artwork = resolve(this.image, base);
@@ -248,12 +250,20 @@ function xmlText(value: string | undefined): string | undefined {
   return text === '' ? undefined : text;
 }
 
+/** A field's text in a track body, by a bounded scan (no backtracking on untrusted text). */
 function xmlField(track: string, name: string): string | undefined {
-  const match = new RegExp(
-    `<${name}(?:\\s[^>]*)?>([\\s\\S]*?)</${name}>`,
-    'i'
-  ).exec(track);
-  return xmlText(match?.[1]);
+  const lower = track.toLowerCase();
+  let open = lower.indexOf(`<${name}`);
+  while (
+    open >= 0 &&
+    !TRACK_TAG_END.test(lower[open + name.length + 1] ?? '')
+  ) {
+    open = lower.indexOf(`<${name}`, open + 1);
+  }
+  if (open < 0) return undefined;
+  const bodyAt = lower.indexOf('>', open);
+  const close = bodyAt < 0 ? -1 : lower.indexOf(`</${name}>`, bodyAt);
+  return close < 0 ? undefined : xmlText(track.slice(bodyAt + 1, close));
 }
 
 /** Each `<track>…</track>` body, found by a linear scan (the text is untrusted). */
@@ -263,13 +273,16 @@ function xspfTracks(text: string): string[] {
   let open = lower.indexOf('<track');
   while (open >= 0) {
     const bodyAt = lower.indexOf('>', open);
-    const close = bodyAt < 0 ? -1 : lower.indexOf('</track>', bodyAt);
+    if (bodyAt < 0) return tracks;
+    // `<trackList>` (or any other `<track…>` tag) is not a track: look on inside it.
+    if (!TRACK_TAG_END.test(lower[open + 6] ?? '')) {
+      open = lower.indexOf('<track', bodyAt + 1);
+      continue;
+    }
+    const close = lower.indexOf('</track>', bodyAt);
     if (close < 0) return tracks;
-    // `<trackList>` is not a track: look inside it.
-    const list = lower[open + 6] === 'l';
-    if (!list && TRACK_TAG_END.test(lower[open + 6] ?? ''))
-      tracks.push(text.slice(bodyAt + 1, close));
-    open = lower.indexOf('<track', list ? bodyAt + 1 : close + 8);
+    tracks.push(text.slice(bodyAt + 1, close));
+    open = lower.indexOf('<track', close + 8);
   }
   return tracks;
 }
