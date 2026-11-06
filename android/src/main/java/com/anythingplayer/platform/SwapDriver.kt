@@ -94,6 +94,8 @@ internal class SwapDriver(
     private set
   private var spare: ExoPlayerDriver? = null
   private var pending: Pending? = null
+  /** The queue's next item (`prepareNext`). */
+  private var next: OpenRequest? = null
   private var volume = 1.0
   private var rate = 1.0
   private var loop = false
@@ -137,6 +139,7 @@ internal class SwapDriver(
   override fun open(request: OpenRequest) {
     if (request.swap) return prepare(request)
     drop()
+    next = null
     generation = request.generation
     shift = 0.0
     shifted = false
@@ -159,11 +162,13 @@ internal class SwapDriver(
 
   override fun releaseConnection() {
     drop()
+    next = null
     current.releaseConnection()
   }
 
   override fun unload() {
     drop()
+    next = null
     current.unload()
   }
 
@@ -203,6 +208,39 @@ internal class SwapDriver(
 
   override fun cancelSwap(generation: Int) {
     if (pending?.generation == generation) drop()
+  }
+
+  // ── The queue's next item: in the current player's playlist (gapless) ──
+
+  override val preparesNext: Boolean
+    get() = true
+
+  override fun prepareNext(request: OpenRequest) {
+    next = request
+    current.prepareNext(request)
+  }
+
+  override fun cancelNext(generation: Int) {
+    if (next?.generation == generation) next = null
+    current.cancelNext(generation)
+  }
+
+  override fun advance(generation: Int) {
+    val request = next?.takeIf { it.generation == generation }
+    next = null
+    // The player that has it in its playlist starts it (or opens it now).
+    if (request != null) adopt(generation)
+    current.advance(generation)
+  }
+
+  /** The current player moved onto the queue's next item: positions start over with it. */
+  private fun adopt(generation: Int) {
+    this.generation = generation
+    shift = 0.0
+    shifted = false
+    shiftItem = current.currentItemId
+    lastRaw = 0.0
+    seeked = false
   }
 
   override fun switchOutput(outputId: String) {
@@ -424,6 +462,8 @@ internal class SwapDriver(
     spare = old
     stage.show(next, old)
     old.releaseConnection()
+    // The queue's next item was in the old player's playlist: the new one prepares it.
+    this.next?.let { next.prepareNext(it) }
   }
 
   private fun drop() {
@@ -460,6 +500,14 @@ internal class SwapDriver(
     override fun onBuffering(generation: Int) = observer.onBuffering(generation)
 
     override fun onEnded(generation: Int) = observer.onEnded(generation)
+
+    override fun onAdvanced(generation: Int, playing: Boolean) {
+      if (next?.generation == generation) {
+        next = null
+        adopt(generation)
+      }
+      observer.onAdvanced(generation, playing)
+    }
 
     override fun onFailed(generation: Int, error: PlayerError) = observer.onFailed(generation, error)
 

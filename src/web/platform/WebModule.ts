@@ -62,6 +62,16 @@ function asError(error: unknown): PlayerError {
   return error instanceof PlayerError ? error : toPlayerError(error);
 }
 
+/** A released player's queue. */
+const EMPTY_QUEUE = {
+  ids: [],
+  order: [],
+  index: null,
+  currentId: null,
+  repeat: 'off',
+  shuffle: false,
+};
+
 export class WebModule implements PlayerModule {
   private readonly runtime = new WebRuntime();
   private readonly outputs = new WebOutputs(this.runtime, (event) =>
@@ -324,6 +334,28 @@ export class WebModule implements PlayerModule {
 
   resolveSearchRequest(requestId: string, result: object): void {
     this.catalog.answer(requestId, result);
+  }
+
+  // ── Queue ──
+
+  queueCommand(playerId: string, command: object): Promise<object> {
+    const controller = this.runtime.players.get(playerId);
+    if (!controller) return Promise.reject(released());
+    try {
+      controller.userGesture();
+      controller.queueCommand(command as Record<string, unknown>);
+      // An autoplay refusal leaves the item ready-but-paused, as for load().
+      controller.takePlayAttempt();
+    } catch (error) {
+      return Promise.reject(asError(error));
+    }
+    return Promise.resolve(controller.statusMap());
+  }
+
+  getQueue(playerId: string): object {
+    const controller = this.runtime.players.get(playerId);
+    if (!controller) return EMPTY_QUEUE;
+    return controller.queueMap();
   }
 
   // ── Video ──

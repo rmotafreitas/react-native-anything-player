@@ -65,6 +65,18 @@ internal class RoutingDriver(
   override fun setQuality(constraints: QualityConstraints) = target.setQuality(constraints)
   override fun setLoop(loop: Boolean) = target.setLoop(loop)
   override fun cancelSwap(generation: Int) = target.cancelSwap(generation)
+
+  // The queue's next item: only the local output prepares one (the engine
+  // prepares nothing while casting).
+  override val preparesNext: Boolean
+    get() = !isRemote && local.preparesNext
+  override fun prepareNext(request: OpenRequest) {
+    if (!isRemote) local.prepareNext(request)
+  }
+  override fun cancelNext(generation: Int) = local.cancelNext(generation)
+  override fun advance(generation: Int) {
+    if (!isRemote) local.advance(generation)
+  }
   override fun selectTracks(audio: String?, text: String?) = target.selectTracks(audio, text)
 
   /** Frees the remote output; the local driver is destroyed by its owner. */

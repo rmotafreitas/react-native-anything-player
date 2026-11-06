@@ -116,6 +116,15 @@ export interface Spec extends TurboModule {
     result: CodegenTypes.UnsafeObject
   ): void;
 
+  // ── Queue ──
+  /** A queue command (`{ op, … }`); resolves with the status after it. */
+  queueCommand(
+    playerId: string,
+    command: CodegenTypes.UnsafeObject
+  ): Promise<CodegenTypes.UnsafeObject>;
+  /** `{ ids, order, index, currentId, repeat, shuffle }` */
+  getQueue(playerId: string): CodegenTypes.UnsafeObject;
+
   // ── Video ──
   /** A video command (`{ op, … }`); resolves with the status after it. */
   videoCommand(

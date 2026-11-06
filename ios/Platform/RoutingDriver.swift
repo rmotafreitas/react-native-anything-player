@@ -86,6 +86,12 @@ final class RoutingDriver: EngineDriver {
   func setQuality(_ constraints: QualityConstraints) { current.setQuality(constraints) }
   func setLoop(_ loop: Bool) { current.setLoop(loop) }
   func cancelSwap(generation: Int) { current.cancelSwap(generation: generation) }
+  // The queue's next item: only the local output prepares one (the engine
+  // prepares nothing while casting).
+  var preparesNext: Bool { !isRemote && local.preparesNext }
+  func prepareNext(_ request: OpenRequest) { if !isRemote { local.prepareNext(request) } }
+  func cancelNext(generation: Int) { local.cancelNext(generation: generation) }
+  func advance(generation: Int) { if !isRemote { local.advance(generation: generation) } }
   func selectTracks(audio: String?, text: String?) { current.selectTracks(audio: audio, text: text) }
   func releaseConnection() { current.releaseConnection() }
   func unload() { current.unload() }

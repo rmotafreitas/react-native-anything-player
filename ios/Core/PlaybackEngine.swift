@@ -48,6 +48,17 @@ protocol EngineDriver: AnyObject {
   /// Play these of the source's own tracks (`nil` text: none of them, which
   /// is also how an app's subtitle file is shown: by the overlay).
   func selectTracks(audio: String?, text: String?)
+  /// Whether the driver can prepare the queue's next item (`prepareNext`).
+  var preparesNext: Bool { get }
+  /// The queue's next item: open it behind the current one, paused at its
+  /// start (`request.generation` is its own). When the current item ends, the
+  /// driver may start it itself and report `onAdvanced`; otherwise the engine
+  /// calls `advance`.
+  func prepareNext(_ request: OpenRequest)
+  /// Drop the item `prepareNext` was preparing.
+  func cancelNext(generation: Int)
+  /// The current item ended: play the prepared item now (it becomes the current one).
+  func advance(generation: Int)
 }
 
 /// Audio drivers have no picture, qualities or switches; the engine restarts
@@ -60,6 +71,10 @@ extension EngineDriver {
   func cancelSwap(generation: Int) {}
   var swapsInPlace: Bool { false }
   func selectTracks(audio: String?, text: String?) {}
+  var preparesNext: Bool { false }
+  func prepareNext(_ request: OpenRequest) {}
+  func cancelNext(generation: Int) {}
+  func advance(generation: Int) {}
 }
 
 protocol EngineClock: AnyObject {
@@ -92,11 +107,19 @@ protocol EngineDelegate: AnyObject {
   /// The source needs a new URL. Answer with `sourceRefreshed` or
   /// `sourceRefreshFailed` for the same `loadId`.
   func engine(refreshRequested loadId: Int, reason: RefreshReason)
+  /// The queue changed: its items, order, current item, repeat or shuffle (`engine.queueState`).
+  func engineQueueChanged()
+  /// A queue item becomes the current one, before it is opened or takes over:
+  /// the host applies what it keeps for it (lock-screen fields). Host work
+  /// only: no engine command from inside it.
+  func engine(queueItemStarts id: String)
 }
 
 extension EngineDelegate {
   /// Without an answer the engine backs off as for any failure.
   func engine(refreshRequested loadId: Int, reason: RefreshReason) {}
+  func engineQueueChanged() {}
+  func engine(queueItemStarts id: String) {}
 }
 
 /// Playback wanted, nothing heard yet: the foreground recovers these at once.
@@ -154,6 +177,22 @@ final class PlaybackEngine {
   private var rate: Double = 1
   /// Repeat a finite item from the start instead of ending.
   private var loop = false
+
+  // ── Queue ──
+  private let queue = QueueModel<EngineQueueItem>()
+  private var prepared: PreparedNext?
+  /// The last prepared item dropped, and the current generation then.
+  private var dropped: (generation: Int, under: Int)?
+  /// An item whose preparation failed: it is opened normally when its turn comes.
+  private var unpreparable: String?
+  private var itemReadyAt: Int64?
+  private var prepareDueAt: Int64?
+  /// `setLoop`'s value; repeat `one` loops on top of it.
+  private var userLoop = false
+  /// Items skipped in a row for their own errors.
+  private var skipStreak = 0
+  private var queueDirty = false
+  private var generatedIds = 0
 
   // ── Output ──
   private var route: AudioRoute = .unknown
@@ -411,6 +450,15 @@ final class PlaybackEngine {
     quality: String? = nil
   ) throws {
     try ensureAlive()
+    // A plain load replaces the queue: what plays is no longer a queue item.
+    emptyQueue()
+    try loadSource(newSource, autoplay: autoplay, startPosition: startPosition, qualityGiven: qualityGiven, quality: quality)
+  }
+
+  private func loadSource(
+    _ newSource: SourceDescriptor, autoplay: Bool?, startPosition: Double?, qualityGiven: Bool = false,
+    quality: String? = nil
+  ) throws {
     if qualityGiven { try chooseQuality(newSource, quality) }
     // A fade-out ends with the item it was fading.
     cancelFadeOut()
@@ -521,9 +569,15 @@ final class PlaybackEngine {
 
   func reset() throws {
     try ensureAlive()
+    emptyQueue()
+    resetSource()
+  }
+
+  private func resetSource() {
     cancelFadeOut()
     settlePendingLoad(.superseded)
     cancelSwap("reset")
+    cancelPrepared("reset")
     generation = issueGeneration()
     source = nil
     playWhenReady = false
@@ -648,8 +702,8 @@ final class PlaybackEngine {
   /// Repeat a finite item from the start (the driver loops it seamlessly where it can).
   func setLoop(_ value: Bool) throws {
     try ensureAlive()
-    loop = value
-    driver.setLoop(value)
+    userLoop = value
+    applyLoop()
     commit()
   }
 
@@ -677,6 +731,7 @@ final class PlaybackEngine {
     cancelFadeOut()
     cancelFadeTo()
     cancelSwap("release")
+    cancelPrepared("release")
     sleepAt = nil
     sleepWallAt = nil
     playWhenReady = false
@@ -699,9 +754,11 @@ final class PlaybackEngine {
       if pendingSwap?.readyAt == nil { pendingSwap?.readyAt = now }
       return swapNote("ready")
     }
+    if isPreparedGeneration(gen) { return preparedNote("ready", info) }
     guard accepts(gen) else { return logStale("ready", gen) }
     applyFacts(info)
     readyForGeneration = true
+    queueItemReady()
     if state == .loading {
       if playWhenReady {
         setState(.buffering, cause: "ready")
@@ -720,6 +777,7 @@ final class PlaybackEngine {
   func onPlaying(generation gen: Int) {
     // A quality switch's new item plays: it is the current item from now on.
     if isSwapGeneration(gen) { completeSwap() }
+    if isPreparedGeneration(gen) { return preparedNote("playing", nil) }
     guard accepts(gen) else { return logStale("playing", gen) }
     guard playWhenReady else {
       // Fading out: the audio keeps going until the fade ends.
@@ -744,6 +802,7 @@ final class PlaybackEngine {
     silentStall = false
     lastOpenAt = nil
     nextAttemptAt = nil
+    skipStreak = 0
     let sample = driver.sample()
     lastPosition = sample.position
     lastPositionAdvanceAt = t
@@ -763,6 +822,7 @@ final class PlaybackEngine {
   /// Playback wanted, waiting for data.
   func onBuffering(generation gen: Int) {
     if isSwapGeneration(gen) { return swapNote("buffering") }
+    if isPreparedGeneration(gen) { return preparedNote("buffering", nil) }
     guard accepts(gen) else { return logStale("buffering", gen) }
     // Nothing left to fade.
     completeFadeOut()
@@ -781,6 +841,10 @@ final class PlaybackEngine {
       swapFailed(error)
       return commit()
     }
+    if isPreparedGeneration(gen) {
+      preparedFailed(error)
+      return commit()
+    }
     guard accepts(gen) else { return logStale("failed", gen) }
     completeFadeOut()
     // A stop's fade-out landed: the item is gone.
@@ -791,6 +855,7 @@ final class PlaybackEngine {
 
   func onEnded(generation gen: Int) {
     if isSwapGeneration(gen) { return swapNote("ended") }
+    if isPreparedGeneration(gen) { return preparedNote("ended", nil) }
     guard accepts(gen) else { return logStale("ended", gen) }
     if state == .ended { return logStale("ended again", gen) }
     completeFadeOut()
@@ -803,6 +868,8 @@ final class PlaybackEngine {
     } else if loop && playWhenReady {
       // The driver could not loop it seamlessly: start over.
       restartFromEnd(cause: "loop")
+    } else if advanceAtEnd() {
+      // The queue's next item took over: no `ended` in between.
     } else {
       playWhenReady = false
       resumePosition = 0
@@ -816,6 +883,7 @@ final class PlaybackEngine {
   /// The platform paused the player without being asked to.
   func onPausedExternally(generation gen: Int, reason: InterruptionReason) {
     if isSwapGeneration(gen) { return swapNote("paused") }
+    if isPreparedGeneration(gen) { return preparedNote("paused", nil) }
     guard accepts(gen) else { return logStale("paused externally", gen) }
     if fadeOutThen != nil {
       completeFadeOut()
@@ -874,6 +942,7 @@ final class PlaybackEngine {
     } else {
       // Old-output callbacks are stale; nothing is loaded on the new one.
       cancelSwap("handoff")
+      cancelPrepared("handoff")
       generation = issueGeneration()
       readyForGeneration = false
       if source != nil { connectionReleased = true }
@@ -1006,6 +1075,7 @@ final class PlaybackEngine {
     }
     fireSleepIfDue(t)
     stepFades(t)
+    queueWakeup(t)
     if heartbeatDue && t - lastHeartbeatAt >= RecoveryPolicy.heartbeatMs - 50 {
       lastHeartbeatAt = t
       heartbeat(t)
@@ -1149,7 +1219,24 @@ final class PlaybackEngine {
   private func open(startPosition: Double?, reason: String) {
     guard let source else { return }
     cancelSwap("open")
-    generation = issueGeneration()
+    cancelPrepared("open")
+    beginItem(issueGeneration(), startPosition: startPosition, reason: reason)
+    var target = source
+    var index: Int?
+    if renditions != nil, let current = currentRendition {
+      target = renditionSource(current)
+      index = current
+    }
+    driver.open(
+      OpenRequest(
+        generation: generation, source: target, startPosition: startPosition,
+        playWhenReady: playWhenReady, allowReconnect: options.reconnect, rendition: index))
+    videoOpened()
+  }
+
+  /// A new item (an open, or the queue's prepared item taking over) under `newGeneration`.
+  private func beginItem(_ newGeneration: Int, startPosition: Double?, reason: String) {
+    generation = newGeneration
     readyForGeneration = false
     flowedSinceOpen = false
     silentStall = false
@@ -1167,17 +1254,6 @@ final class PlaybackEngine {
     lastPositionAdvanceAt = now
     lastHeartbeatAt = now
     setState(.loading, cause: reason)
-    var target = source
-    var index: Int?
-    if renditions != nil, let current = currentRendition {
-      target = renditionSource(current)
-      index = current
-    }
-    driver.open(
-      OpenRequest(
-        generation: generation, source: target, startPosition: startPosition,
-        playWhenReady: playWhenReady, allowReconnect: options.reconnect, rendition: index))
-    videoOpened()
   }
 
   /// Re-open the loaded source: at the live edge for live streams, at the last
@@ -1266,6 +1342,7 @@ final class PlaybackEngine {
   }
 
   private func fail(_ error: PlayerError) {
+    let wanted = playWhenReady
     lastError = error
     playWhenReady = false
     resetRecovery()
@@ -1274,6 +1351,7 @@ final class PlaybackEngine {
     releaseItemConnection()
     setState(.error, cause: error.code.rawValue)
     pendingEvents.append { [weak self] in self?.delegate?.engine(error: error, fatal: true) }
+    afterFatalFailure(error, wanted: wanted)
   }
 
   private func scheduleReconnect(reason: String) {
@@ -1494,6 +1572,7 @@ final class PlaybackEngine {
   /// player out of `stopped`, `paused` or `error`. Resuming opens a new one.
   private func releaseItemConnection() {
     cancelSwap("release")
+    cancelPrepared("release")
     generation = issueGeneration()
     readyForGeneration = false
     silentStall = false
@@ -1749,6 +1828,10 @@ final class PlaybackEngine {
 
   /// Publishes the status (if changed) and the next wake-up instant.
   private func commit() {
+    if queueDirty {
+      queueDirty = false
+      pendingEvents.append { [weak self] in self?.delegate?.engineQueueChanged() }
+    }
     let current = status
     if current != lastPublished {
       lastPublished = current
@@ -1769,7 +1852,422 @@ final class PlaybackEngine {
     if heartbeatDue { candidates.append(lastHeartbeatAt + RecoveryPolicy.heartbeatMs) }
     fadeWakeups(&candidates)
     videoWakeups(&candidates)
+    if let due = prepareDueAt { candidates.append(due) }
     return candidates.min()
+  }
+}
+
+// MARK: - Queue
+//
+// What plays after the current item, which item a skip or previous goes to,
+// repeat and shuffle, and the next item prepared behind the current one so
+// it starts without a gap. The queue's decisions are `QueueModel`'s
+// (conformance/queue); this section loads what it decides and is held to
+// conformance/queue.json. Twin: `src/web/engine/EngineQueue.ts`.
+
+/// A queue item: an id, and what to play.
+struct EngineQueueItem: QueueEntry, Equatable {
+  let id: String
+  let live: Bool
+  let source: SourceDescriptor
+}
+
+/// The queue's snapshot (`engine.queueState`).
+struct QueueState: Equatable {
+  /// The items' ids, in list order.
+  let ids: [String]
+  /// The ids in the order they play (the list's, or shuffled).
+  let order: [String]
+  /// The current item's place in `ids`, `nil` when the queue is empty.
+  let index: Int?
+  let currentId: String?
+  let repeatMode: RepeatMode
+  let shuffle: Bool
+
+  static let empty = QueueState(ids: [], order: [], index: nil, currentId: nil, repeatMode: .off, shuffle: false)
+}
+
+final class PreparedNext {
+  let generation: Int
+  let itemId: String
+  var info: ReadyInfo?
+
+  init(generation: Int, itemId: String) {
+    self.generation = generation
+    self.itemId = itemId
+  }
+}
+
+/// Errors that are the item's own: the queue goes on to the next one.
+private let itemErrors: Set<ErrorCode> = [
+  .sourceNotFound, .unsupportedFormat, .decoderError, .invalidSource, .drmUnsupported, .drmLicenseFailed,
+]
+
+private func isItemError(_ error: PlayerError) -> Bool {
+  if itemErrors.contains(error.code) { return true }
+  guard error.code == .httpError, let status = error.httpStatus else { return false }
+  return (400..<500).contains(status)
+}
+
+extension PlaybackEngine {
+  var queueState: QueueState {
+    QueueState(
+      ids: queue.items.map(\.id), order: queue.order, index: queue.index, currentId: queue.current?.id,
+      repeatMode: queue.repeatMode, shuffle: queue.shuffle)
+  }
+
+  /// The queue's items, in list order.
+  var queueItems: [EngineQueueItem] { queue.items }
+
+  /// Replaces the queue and loads `startIndex` (an empty list resets the player).
+  func queueSet(_ items: [EngineQueueItem], startIndex: Int = 0, startPosition: Double? = nil, autoplay: Bool? = nil)
+    throws
+  {
+    try ensureAlive()
+    try checkIds(items, existing: [])
+    queue.set(items, startIndex: startIndex)
+    queueDirty = true
+    skipStreak = 0
+    guard let current = queue.current else {
+      resetSource()
+      return
+    }
+    try loadItem(current, autoplay: autoplay, startPosition: startPosition)
+  }
+
+  /// Inserts at `index` (default: the end). A source loaded with `load()`
+  /// joins the queue first, as its current item; an idle player loads the
+  /// first item added, paused.
+  func queueAdd(_ items: [EngineQueueItem], at index: Int? = nil) throws {
+    try ensureAlive()
+    guard !items.isEmpty else { return }
+    if queue.count == 0, let loaded = source {
+      generatedIds += 1
+      queue.set([EngineQueueItem(id: "loaded-\(generatedIds)", live: loaded.liveHint == true, source: loaded)])
+    }
+    try checkIds(items, existing: queue.items)
+    let idle = queue.count == 0
+    queue.add(items, at: index)
+    queueDirty = true
+    if idle, let current = queue.current {
+      try loadItem(current, autoplay: false, startPosition: nil)
+      return
+    }
+    applyLoop()
+    reconsiderNext()
+    commit()
+  }
+
+  /// Removes these ids; when the current item goes, the next one loads (keeping the intent).
+  func queueRemove(_ ids: [String]) throws {
+    try ensureAlive()
+    let changed = queue.remove(ids)
+    queueDirty = true
+    if changed {
+      guard let current = queue.current else {
+        resetSource()
+        return
+      }
+      try loadItem(current, autoplay: nil, startPosition: nil)
+      return
+    }
+    applyLoop()
+    reconsiderNext()
+    commit()
+  }
+
+  func queueMove(from: Int, to: Int) throws {
+    try ensureAlive()
+    queue.move(from: from, to: to)
+    queueDirty = true
+    reconsiderNext()
+    commit()
+  }
+
+  /// Every item but the current one goes.
+  func queueClear() throws {
+    try ensureAlive()
+    queue.clear()
+    queueDirty = true
+    reconsiderNext()
+    commit()
+  }
+
+  func queueSkipTo(_ id: String, position: Double? = nil) throws {
+    try ensureAlive()
+    guard let item = queue.find(id) else {
+      throw PlayerError.code(.invalidArgument, "No queue item has the id \"\(id)\".", recoverable: false)
+    }
+    queue.skipTo(id)
+    queueDirty = true
+    skipStreak = 0
+    try go(item, position: position)
+  }
+
+  /// Skips to the next item; `false` (nothing changes) at the end of the queue.
+  @discardableResult
+  func queueNext() throws -> Bool {
+    try ensureAlive()
+    guard let item = queue.next(auto: false) else { return false }
+    queueDirty = true
+    skipStreak = 0
+    try go(item, position: nil)
+    return true
+  }
+
+  /// Restarts a finite item more than 3 s in (or with nothing before it), else goes to the item before.
+  func queuePrevious() throws {
+    try ensureAlive()
+    guard queue.current != nil else { return }
+    let position = source == nil ? 0 : driver.sample().position
+    let action = queue.previous(position: position)
+    skipStreak = 0
+    switch action {
+    case .none:
+      return
+    case .restart:
+      if seekable && state != .error && state != .stopped {
+        try seek(to: 0)
+      } else if let current = queue.current {
+        try loadItem(current, autoplay: nil, startPosition: nil)
+      }
+    case .item:
+      queueDirty = true
+      if let current = queue.current { try go(current, position: nil) }
+    }
+  }
+
+  func setRepeat(_ mode: RepeatMode) throws {
+    try ensureAlive()
+    queue.setRepeat(mode)
+    queueDirty = true
+    applyLoop()
+    reconsiderNext()
+    commit()
+  }
+
+  /// `seed` makes the order reproducible (tests, the twins' conformance).
+  func setShuffle(_ on: Bool, seed: UInt64? = nil) throws {
+    try ensureAlive()
+    queue.setShuffle(on, seed: seed)
+    queueDirty = true
+    reconsiderNext()
+    commit()
+  }
+
+  /// The driver started the prepared item itself as the current one ended.
+  /// `playing`: its audio already flows.
+  func onAdvanced(generation gen: Int, playing: Bool) {
+    guard !released else { return }
+    if let p = prepared, p.generation == gen, let next = queue.peekNext(auto: true), next.id == p.itemId {
+      queue.next(auto: true)
+      queueDirty = true
+      prepared = nil
+      takeOver(p, item: next, playing: playing)
+      commit()
+      return
+    }
+    if let d = dropped, d.generation == gen, d.under == generation {
+      // It went on to an item the queue no longer wants next: the current
+      // item ended all the same.
+      log("advance to a dropped item", ["gen": "\(gen)"])
+      onEnded(generation: generation)
+      return
+    }
+    logStale("advanced", gen)
+  }
+
+  // MARK: Hooks the core calls
+
+  fileprivate func isPreparedGeneration(_ gen: Int) -> Bool { !released && prepared?.generation == gen }
+
+  fileprivate func preparedNote(_ event: String, _ info: ReadyInfo?) {
+    if event == "ready" { prepared?.info = info }
+    log("next item", ["event": event])
+  }
+
+  fileprivate func preparedFailed(_ error: PlayerError) {
+    guard let p = prepared else { return }
+    unpreparable = p.itemId
+    dropPrepared("failed: \(error.code.rawValue)")
+  }
+
+  /// The current item goes (an open, a stop, a reset, a handoff): so does what was prepared behind it.
+  fileprivate func cancelPrepared(_ reason: String) {
+    dropPrepared(reason)
+    itemReadyAt = nil
+    prepareDueAt = nil
+  }
+
+  /// The current item ended with no loop: `true` when the queue's next item took over.
+  fileprivate func advanceAtEnd() -> Bool {
+    guard let next = queue.peekNext(auto: true), let current = queue.current, next.id != current.id else {
+      return false
+    }
+    queue.next(auto: true)
+    queueDirty = true
+    if let p = prepared, p.itemId == next.id, playWhenReady {
+      prepared = nil
+      driver.advance(generation: p.generation)
+      takeOver(p, item: next, playing: false)
+    } else {
+      try? loadItem(next, autoplay: playWhenReady, startPosition: nil)
+    }
+    return true
+  }
+
+  fileprivate func afterFatalFailure(_ error: PlayerError, wanted: Bool) {
+    guard queue.count > 0, isItemError(error) else { return }
+    skipStreak += 1
+    if skipStreak >= queue.count {
+      log("queue stopped", ["note": "every item failed"])
+      return
+    }
+    guard let failed = queue.current, let next = queue.peekNext(auto: false), next.id != failed.id else { return }
+    // After the error's status and event: the app hears that this item failed.
+    pendingEvents.append { [weak self] in
+      guard let self, !self.released, self.state == .error, self.lastError == error,
+        self.queue.current?.id == failed.id
+      else { return }
+      self.queue.next(auto: false)
+      self.queueDirty = true
+      self.log("skipped", ["code": error.code.rawValue])
+      try? self.loadItem(next, autoplay: wanted, startPosition: nil)
+    }
+  }
+
+  fileprivate func queueItemReady() {
+    if itemReadyAt == nil { itemReadyAt = now }
+    reconsiderNext()
+  }
+
+  fileprivate func queueWakeup(_ t: Int64) {
+    guard let due = prepareDueAt, due <= t else { return }
+    prepareDueAt = nil
+    reconsiderNext()
+  }
+
+  // MARK: Internals
+
+  fileprivate func emptyQueue() {
+    guard queue.count > 0 else { return }
+    queue.set([])
+    queueDirty = true
+    unpreparable = nil
+    applyLoop()
+  }
+
+  private func checkIds(_ items: [EngineQueueItem], existing: [EngineQueueItem]) throws {
+    var seen = Set(existing.map(\.id))
+    for item in items where !seen.insert(item.id).inserted {
+      throw PlayerError.code(.invalidArgument, "Two queue items have the id \"\(item.id)\".", recoverable: false)
+    }
+  }
+
+  /// Loads a queue item as a plain load would, keeping the queue.
+  private func loadItem(_ item: EngineQueueItem, autoplay: Bool?, startPosition: Double?) throws {
+    applyLoop()
+    delegate?.engine(queueItemStarts: item.id)
+    try loadSource(item.source, autoplay: autoplay, startPosition: startPosition)
+  }
+
+  /// Goes to a queue item, through what was prepared when it is that item.
+  private func go(_ item: EngineQueueItem, position: Double?) throws {
+    if let p = prepared, p.itemId == item.id, p.info != nil, position == nil, playWhenReady {
+      prepared = nil
+      driver.advance(generation: p.generation)
+      applyLoop()
+      takeOver(p, item: item, playing: false)
+      commit()
+      return
+    }
+    try loadItem(item, autoplay: nil, startPosition: position)
+  }
+
+  /// The prepared item becomes the current one, under its own generation.
+  private func takeOver(_ p: PreparedNext, item: EngineQueueItem, playing: Bool) {
+    delegate?.engine(queueItemStarts: item.id)
+    cancelFadeOut()
+    settlePendingLoad(.superseded)
+    source = item.source
+    loadId += 1
+    pendingLoadId = loadId
+    isLive = item.source.liveHint ?? false
+    duration = nil
+    seekable = false
+    lastError = nil
+    interruption = nil
+    resetRecovery()
+    resumePosition = nil
+    playWhenReady = true
+    videoLoad()
+    log("advance", ["uri": item.source.uri, "gen": "\(p.generation)"])
+    beginItem(p.generation, startPosition: nil, reason: "advance")
+    itemReadyAt = nil
+    prepareDueAt = nil
+    videoOpened()
+    if let info = p.info {
+      applyFacts(info)
+      readyForGeneration = true
+      setState(.buffering, cause: "ready")
+      beginWaiting()
+      settlePendingLoad(.ready)
+      queueItemReady()
+    }
+    if playing { onPlaying(generation: p.generation) }
+  }
+
+  private func dropPrepared(_ reason: String) {
+    guard let p = prepared else { return }
+    prepared = nil
+    dropped = (p.generation, generation)
+    driver.cancelNext(generation: p.generation)
+    log("next item dropped", ["reason": reason])
+  }
+
+  fileprivate func applyLoop() {
+    let want = userLoop || (queue.count > 0 && queue.repeatMode == .one)
+    guard want != loop else { return }
+    loop = want
+    driver.setLoop(want)
+  }
+
+  /// The item to prepare now, if any.
+  private func nextToPrepare() -> EngineQueueItem? {
+    guard driver.preparesNext, !remote, !loop, readyForGeneration, !isLive, duration != nil else { return nil }
+    guard state != .error, state != .stopped, state != .ended, state != .idle else { return nil }
+    guard let current = queue.current, let next = queue.peekNext(auto: true), next.id != current.id else {
+      return nil
+    }
+    let s = next.source
+    if next.live || s.liveHint == true || s.renditions != nil || s.drm != nil || next.id == unpreparable {
+      return nil
+    }
+    return next
+  }
+
+  /// Drops a prepared item that is no longer next; prepares the next one when due.
+  fileprivate func reconsiderNext() {
+    let target = nextToPrepare()
+    if let p = prepared, p.itemId != target?.id { dropPrepared("next changed") }
+    guard let target, prepared == nil, let readyAt = itemReadyAt else {
+      prepareDueAt = nil
+      return
+    }
+    let lead = min(RecoveryPolicy.prepareNextAfterMs, Int64((duration ?? 0) * 250))
+    let due = readyAt + lead
+    if now < due {
+      prepareDueAt = due
+      return
+    }
+    prepareDueAt = nil
+    let nextGeneration = issueGeneration()
+    prepared = PreparedNext(generation: nextGeneration, itemId: target.id)
+    log("next item prepared", ["uri": target.source.uri, "gen": "\(nextGeneration)"])
+    driver.prepareNext(
+      OpenRequest(
+        generation: nextGeneration, source: target.source, startPosition: nil, playWhenReady: false,
+        allowReconnect: options.reconnect))
   }
 }
 

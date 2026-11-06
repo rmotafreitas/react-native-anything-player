@@ -130,6 +130,23 @@ final class FakeDriver: EngineDriver {
   func unload() { commands.append("unload") }
   func setVolume(_ effective: Double) { commands.append("volume(\(String(format: "%.2f", effective)))") }
   func setRate(_ rate: Double) { commands.append("rate(\(String(format: "%.2f", rate)))") }
+  var preparesNext: Bool { true }
+  func prepareNext(_ request: OpenRequest) { commands.append("prepareNext(gen=\(request.generation))") }
+  func cancelNext(generation: Int) { commands.append("cancelNext(gen=\(generation))") }
+  func advance(generation: Int) {
+    commands.append("advance(gen=\(generation))")
+    startPrepared(generation, playing: false)
+  }
+
+  /// The prepared item became the output's: its playhead starts at 0.
+  func startPrepared(_ generation: Int, playing: Bool) {
+    openGeneration = generation
+    anchorPosition = 0
+    anchorBuffered = playing ? 10 : 0
+    anchorTime = clock.monotonicMs
+    motion = playing ? .flowing : .frozen
+  }
+
   func switchOutput(_ outputId: String) {
     commands.append("switchOutput(\(outputId))")
     // The playhead stops where it is; the engine re-opens at a position.
@@ -154,6 +171,10 @@ final class Recorder: EngineDelegate {
   var refreshes: [String] = []
   /// Ordering invariant breaches (an event delivered before its status).
   var violations: [String] = []
+  /// `engineQueueChanged` calls.
+  var queueEvents = 0
+
+  func engineQueueChanged() { queueEvents += 1 }
 
   func engineRequestsAudioFocus() -> FocusResult { focus }
   func engine(statusChanged status: Status) { statuses.append(status) }

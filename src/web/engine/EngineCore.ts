@@ -590,6 +590,8 @@ export abstract class EngineCore {
     } else if (this.loop && this._playWhenReady) {
       // The driver could not loop it seamlessly: start over.
       this.restartFromEnd('loop');
+    } else if (this.advanceAtEnd()) {
+      // The queue's next item took over: no `ended` in between.
     } else {
       this._playWhenReady = false;
       this.resumePosition = 0;
@@ -801,7 +803,26 @@ export abstract class EngineCore {
     const source = this._source;
     if (source == null) return;
     this.cancelSwap('open');
-    this._generation = this.issueGeneration();
+    this.beginItem(this.issueGeneration(), startPosition, reason);
+    const target = this.openTarget(source);
+    this.driver.open({
+      generation: this._generation,
+      source: target.source,
+      startPosition,
+      playWhenReady: this._playWhenReady,
+      allowReconnect: this.options.reconnect,
+      ...(target.rendition != null ? { rendition: target.rendition } : {}),
+    });
+    this.videoOpened();
+  }
+
+  /** A new item (an open, or the queue's prepared item taking over) under `generation`. */
+  protected beginItem(
+    generation: number,
+    startPosition: number | null,
+    reason: string
+  ): void {
+    this._generation = generation;
     this.readyForGeneration = false;
     this.flowedSinceOpen = false;
     this.silentStall = false;
@@ -819,16 +840,6 @@ export abstract class EngineCore {
     this.lastPositionAdvanceAt = this.now;
     this.lastHeartbeatAt = this.now;
     this.setState('loading', reason);
-    const target = this.openTarget(source);
-    this.driver.open({
-      generation: this._generation,
-      source: target.source,
-      startPosition,
-      playWhenReady: this._playWhenReady,
-      allowReconnect: this.options.reconnect,
-      ...(target.rendition != null ? { rendition: target.rendition } : {}),
-    });
-    this.videoOpened();
   }
 
   protected reopen(reason: string, startPosition: number | null = null): void {
@@ -909,6 +920,7 @@ export abstract class EngineCore {
   }
 
   protected fail(error: PlayerError): void {
+    const wanted = this._playWhenReady;
     this.lastError = error;
     this._playWhenReady = false;
     this.resetRecovery();
@@ -917,6 +929,7 @@ export abstract class EngineCore {
     this.releaseItemConnection();
     this.setState('error', error.code);
     this.pendingEvents.push(() => this.delegate?.engineError(error, true));
+    this.afterFatalFailure(error, wanted);
   }
 
   protected scheduleReconnect(reason: string): void {
@@ -1078,6 +1091,15 @@ export abstract class EngineCore {
   ): void;
   /** Drops a quality switch in flight (`reason` for the log). */
   protected abstract cancelSwap(reason: string): void;
+
+  // ── Queue (EngineQueue.ts) ──
+  /** The current item ended with no loop: `true` when the queue's next item took over. */
+  protected abstract advanceAtEnd(): boolean;
+  /** `wanted`: playback was wanted before the failure. */
+  protected abstract afterFatalFailure(
+    error: PlayerError,
+    wanted: boolean
+  ): void;
   /** `true` when the failure waits for the app's new source instead. */
   protected abstract refreshOnFailure(error: PlayerError): boolean;
   /** The audio flows (stats, a stall's end). */

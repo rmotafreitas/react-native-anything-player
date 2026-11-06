@@ -1,0 +1,183 @@
+[
+  {
+    "name": "set makes the start index current; next walks the list and stops at the end",
+    "steps": [
+      { "call": "set", "items": ["a", "b", "c"], "start": 1 },
+      { "expect": { "current": "b", "index": 1, "items": ["a", "b", "c"], "order": ["a", "b", "c"], "next": "c", "previous": "a" } },
+      { "call": "next", "result": "c" },
+      { "call": "next", "result": null },
+      { "expect": { "current": "c", "next": null } }
+    ]
+  },
+  {
+    "name": "an empty set has no current item; a start index past the end is clamped",
+    "steps": [
+      { "call": "set", "items": [] },
+      { "expect": { "current": null, "index": null, "next": null, "previous": null } },
+      { "call": "set", "items": ["a", "b"], "start": 9 },
+      { "expect": { "current": "b" } },
+      { "call": "set", "items": ["a", "b"], "start": -3 },
+      { "expect": { "current": "a" } }
+    ]
+  },
+  {
+    "name": "repeat all wraps both ways",
+    "steps": [
+      { "call": "set", "items": ["a", "b", "c"], "start": 2 },
+      { "call": "repeat", "value": "all" },
+      { "expect": { "next": "a", "nextAuto": "a" } },
+      { "call": "next", "result": "a" },
+      { "expect": { "previous": "c" } },
+      { "call": "previous", "position": 0, "result": "item:c" },
+      { "expect": { "current": "c" } }
+    ]
+  },
+  {
+    "name": "repeat one plays the item again when it ends; a skip goes on as with repeat all",
+    "steps": [
+      { "call": "set", "items": ["a", "b"], "start": 1 },
+      { "call": "repeat", "value": "one" },
+      { "expect": { "nextAuto": "b", "next": "a" } },
+      { "call": "next", "auto": true, "result": "b" },
+      { "call": "next", "result": "a" },
+      { "expect": { "current": "a" } }
+    ]
+  },
+  {
+    "name": "previous restarts past three seconds, else goes back; at the first item it restarts",
+    "steps": [
+      { "call": "set", "items": ["a", "b"], "start": 1 },
+      { "call": "previous", "position": 3.5, "result": "restart" },
+      { "expect": { "current": "b" } },
+      { "call": "previous", "position": 3, "result": "item:a" },
+      { "call": "previous", "position": 0, "result": "restart" },
+      { "expect": { "current": "a" } }
+    ]
+  },
+  {
+    "name": "a live item is never restarted by previous",
+    "steps": [
+      { "call": "set", "items": ["a", { "id": "radio", "live": true }], "start": 1 },
+      { "call": "previous", "position": 600, "result": "item:a" },
+      { "call": "set", "items": [{ "id": "radio", "live": true }] },
+      { "call": "previous", "position": 600, "result": "none" },
+      { "expect": { "current": "radio" } }
+    ]
+  },
+  {
+    "name": "add inserts at an index or at the end, and the current item stays current",
+    "steps": [
+      { "call": "set", "items": ["a", "b"], "start": 1 },
+      { "call": "add", "items": ["x"], "index": 0 },
+      { "expect": { "items": ["x", "a", "b"], "current": "b", "index": 2 } },
+      { "call": "add", "items": ["y", "z"] },
+      { "expect": { "items": ["x", "a", "b", "y", "z"], "order": ["x", "a", "b", "y", "z"], "next": "y" } }
+    ]
+  },
+  {
+    "name": "add to an empty queue makes the first item current",
+    "steps": [
+      { "call": "add", "items": ["a", "b"] },
+      { "expect": { "current": "a", "index": 0 } }
+    ]
+  },
+  {
+    "name": "removing the current item moves to the one after it, or before it when it was last",
+    "steps": [
+      { "call": "set", "items": ["a", "b", "c"], "start": 1 },
+      { "call": "remove", "ids": ["b"], "result": true },
+      { "expect": { "current": "c", "items": ["a", "c"] } },
+      { "call": "remove", "ids": ["c"], "result": true },
+      { "expect": { "current": "a" } },
+      { "call": "remove", "ids": ["a"], "result": true },
+      { "expect": { "current": null, "items": [] } }
+    ]
+  },
+  {
+    "name": "removing other items keeps the current one",
+    "steps": [
+      { "call": "set", "items": ["a", "b", "c", "d"], "start": 2 },
+      { "call": "remove", "ids": ["a", "d", "nope"], "result": false },
+      { "expect": { "current": "c", "index": 1, "items": ["b", "c"], "next": null } }
+    ]
+  },
+  {
+    "name": "removing the current item with the ones after it goes to the one before",
+    "steps": [
+      { "call": "set", "items": ["a", "b", "c"], "start": 1 },
+      { "call": "remove", "ids": ["b", "c"], "result": true },
+      { "expect": { "current": "a" } }
+    ]
+  },
+  {
+    "name": "move reorders the list and the current item follows",
+    "steps": [
+      { "call": "set", "items": ["a", "b", "c"], "start": 0 },
+      { "call": "move", "from": 0, "to": 2 },
+      { "expect": { "items": ["b", "c", "a"], "current": "a", "index": 2, "next": null, "previous": "c" } },
+      { "call": "move", "from": 2, "to": 9 },
+      { "expect": { "items": ["b", "c", "a"] } },
+      { "call": "move", "from": 7, "to": 0 },
+      { "expect": { "items": ["b", "c", "a"] } }
+    ]
+  },
+  {
+    "name": "clear keeps the current item alone",
+    "steps": [
+      { "call": "set", "items": ["a", "b", "c"], "start": 1 },
+      { "call": "clear" },
+      { "expect": { "items": ["b"], "current": "b", "next": null, "previous": null } }
+    ]
+  },
+  {
+    "name": "skipTo an id makes it current; an unknown id changes nothing",
+    "steps": [
+      { "call": "set", "items": ["a", "b", "c"] },
+      { "call": "skipTo", "id": "c", "result": true },
+      { "call": "skipTo", "id": "nope", "result": false },
+      { "expect": { "current": "c" } }
+    ]
+  },
+  {
+    "name": "shuffle with a seed: the current item first, then the same order on every platform",
+    "steps": [
+      { "call": "set", "items": ["a", "b", "c", "d", "e"], "start": 2 },
+      { "call": "shuffle", "value": true, "seed": 42 },
+      { "expect": { "current": "c", "items": ["a", "b", "c", "d", "e"], "order": ["c", "e", "d", "b", "a"], "next": "e", "previous": null } },
+      { "call": "shuffle", "value": false },
+      { "expect": { "order": ["a", "b", "c", "d", "e"], "next": "d" } }
+    ]
+  },
+  {
+    "name": "shuffled adds land after the current item in play order",
+    "steps": [
+      { "call": "set", "items": ["a", "b", "c"], "start": 0 },
+      { "call": "shuffle", "value": true, "seed": 7 },
+      { "call": "next" },
+      { "call": "add", "items": ["x", "y"] },
+      { "expect": { "items": ["a", "b", "c", "x", "y"], "order": ["a", "b", "c", "y", "x"], "current": "b" } }
+    ]
+  },
+  {
+    "name": "shuffled: move keeps play order, set reshuffles with the new start first",
+    "steps": [
+      { "call": "set", "items": ["a", "b", "c", "d"], "start": 0 },
+      { "call": "shuffle", "value": true, "seed": 3 },
+      { "expect": { "order": ["a", "d", "c", "b"] } },
+      { "call": "move", "from": 3, "to": 0 },
+      { "expect": { "items": ["d", "a", "b", "c"], "order": ["a", "d", "c", "b"] } },
+      { "call": "set", "items": ["p", "q", "r"], "start": 2 },
+      { "expect": { "order": ["r", "p", "q"], "current": "r" } }
+    ]
+  },
+  {
+    "name": "shuffled with repeat all wraps to the first of the play order",
+    "steps": [
+      { "call": "set", "items": ["a", "b", "c", "d"], "start": 0 },
+      { "call": "shuffle", "value": true, "seed": 3 },
+      { "call": "repeat", "value": "all" },
+      { "call": "skipTo", "id": "b" },
+      { "expect": { "next": "a", "previous": "c" } }
+    ]
+  }
+]

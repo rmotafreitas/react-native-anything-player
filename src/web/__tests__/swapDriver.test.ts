@@ -939,3 +939,59 @@ describe('a live switch', () => {
     expect(rec.of('onPlaying').filter((call) => call[0] === 2)).toEqual([]);
   });
 });
+
+describe("the queue's next item", () => {
+  const NEXT = 'https://cdn.example/next.mp4';
+
+  it('opens paused on the spare element and plays from it when the current item ends', () => {
+    const first = playing();
+    driver.setVolume(0.7);
+    driver.prepareNext(open(5, NEXT));
+    const next = world.videos[1]!;
+    expect(next.src).toBe(NEXT);
+    expect(next.plays).toBe(0);
+    next.becomeReady(200);
+    expect(rec.of('onReady').map((a) => a[0])).toEqual([1, 5]);
+    expect(driver.element).toBe(first);
+
+    first.dispatch('ended');
+    expect(rec.of('onEnded').map((a) => a[0])).toEqual([1]);
+    driver.advance(5);
+    expect(next.plays).toBe(1);
+    expect(next.volume).toBe(0.7);
+    expect(driver.element).toBe(next);
+    expect(shows).toEqual([[next, first]]);
+    expect(first.src).toBe('');
+    next.startPlaying();
+    expect(rec.of('onPlaying').map((a) => a[0])).toEqual([1, 5]);
+  });
+
+  it('a cancelled next item empties the spare; an advance to it then does nothing', () => {
+    playing();
+    driver.prepareNext(open(5, NEXT));
+    driver.cancelNext(5);
+    expect(world.videos[1]!.src).toBe('');
+    driver.advance(5);
+    expect(driver.element).toBe(world.videos[0]);
+  });
+
+  it('a quality switch takes the spare: the next item opens on the current element when its turn comes', () => {
+    const first = playing();
+    driver.prepareNext(open(5, NEXT));
+    driver.open(swap(2, HD, 10));
+    expect(world.videos[1]!.src).toBe(HD);
+    driver.cancelSwap(2);
+    driver.advance(5);
+    expect(driver.element).toBe(first);
+    expect(first.src).toBe(NEXT);
+  });
+
+  it('a new open drops the prepared item', () => {
+    playing();
+    driver.prepareNext(open(5, NEXT));
+    driver.open(open(6, UHD, { playWhenReady: true }));
+    expect(world.videos[1]!.src).toBe('');
+    driver.advance(5);
+    expect((driver.element as FakeVideo).src).toBe(UHD);
+  });
+});

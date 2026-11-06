@@ -12,6 +12,8 @@ import com.facebook.react.bridge.WritableMap
 import com.anythingplayer.core.ErrorCode
 import com.anythingplayer.core.LoadOutcome
 import com.anythingplayer.core.PlayerError
+import com.anythingplayer.core.QueueState
+import com.anythingplayer.core.RepeatMode
 import com.anythingplayer.core.TrackKind
 import com.anythingplayer.platform.ActivitySource
 import com.anythingplayer.platform.AnythingPlayerRuntime
@@ -34,6 +36,7 @@ import com.anythingplayer.platform.toWritableMap
 import com.anythingplayer.platform.parseNowPlaying
 import com.anythingplayer.platform.parseOptions
 import com.anythingplayer.platform.parseSource
+import com.anythingplayer.platform.queueToMap
 import com.anythingplayer.platform.statusToMap
 
 /**
@@ -107,6 +110,14 @@ class AnythingPlayerModule(reactContext: ReactApplicationContext) : NativeAnythi
       }
     }
   }
+
+  // ── Queue ──
+
+  override fun queueCommand(playerId: String, command: ReadableMap, promise: Promise) =
+    command(playerId, promise) { it.queueCommand(command) }
+
+  override fun getQueue(playerId: String): WritableMap =
+    AnythingPlayerRuntime.players[playerId]?.queueMap() ?: queueToMap(QueueState(emptyList(), emptyList(), null, null, RepeatMode.OFF, false))
 
   override fun getVideoStats(playerId: String): WritableMap =
     AnythingPlayerRuntime.players[playerId]?.statsMap() ?: Arguments.createMap()

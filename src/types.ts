@@ -555,6 +555,48 @@ export interface LicenseRequest {
 /** What `load()` accepts: a {@link Source}, a URI, or `require('./file.mp3')`. */
 export type SourceInput = Source | string | AssetModule;
 
+/** How the queue repeats: not at all, the current item, or the whole queue. */
+export type RepeatMode = 'off' | 'one' | 'all';
+
+/**
+ * What `player.queue.set()` and `add()` take: any source, with an optional
+ * `id` (default `q1`, `q2`…). On the web also a `Blob` or `File`.
+ */
+export type QueueItemInput =
+  (Source & { id?: string }) | string | AssetModule | BlobInput;
+
+/** A queue item: its source (a string or `require()` became `{ uri }`) and its id. */
+export type QueueItem = Source & {
+  /** Unique in the queue; what `remove`, `skipTo` and events use. */
+  id: string;
+  /** The web: the `Blob` or `File` it plays. */
+  blob?: BlobInput;
+};
+
+/** `player.queue.state` and the `queueChange` event. */
+export interface QueueState {
+  /** The items, in list order. */
+  items: QueueItem[];
+  /** The current item's place in `items`, `null` when the queue is empty. */
+  index: number | null;
+  /** The current item, `null` when the queue is empty. */
+  current: QueueItem | null;
+  /** The ids in the order they play: the list's, or shuffled. */
+  order: string[];
+  repeat: RepeatMode;
+  shuffle: boolean;
+}
+
+/** `player.queue.set()` options. */
+export interface QueueSetOptions {
+  /** The item to start with (default 0). */
+  startIndex?: number;
+  /** Seconds into that item. */
+  startPosition?: number;
+  /** Start playing (default: keep the current intent, as `load()`). */
+  autoplay?: boolean;
+}
+
 /**
  * A `Blob` or `File` for `Player.load()` on the web: a file the user picked or
  * dropped. Described by the two fields RNAP needs so the declarations compile
@@ -717,8 +759,13 @@ export interface PlayerEventMap {
   metadata: (metadata: MediaMetadata) => void;
   /** A failure. `fatal: false` means recovery is in progress. */
   error: (error: PlayerError, info: { fatal: boolean }) => void;
-  /** A finite source played to its end. */
+  /**
+   * A finite source played to its end. With a queue: only when the last item
+   * ends (repeat `off`); the queue moves on to the next item without it.
+   */
   ended: () => void;
+  /** The queue changed: its items, order, current item, repeat or shuffle. */
+  queueChange: (state: QueueState) => void;
   /** A remote command the app opted into (`mediaSession.commands`). */
   remoteCommand: (event: RemoteCommandEvent) => void;
   /** Structured engine trace (only while diagnostics are enabled). */

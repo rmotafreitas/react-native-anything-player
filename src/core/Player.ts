@@ -3,6 +3,7 @@ import { WEB_ONLY_SCHEMES, host } from './host';
 import { answerLicense, type LicenseRequestEvent } from './drm';
 import { dispatchModuleEvent } from './moduleEvents';
 import type { SubtitleCue } from './subtitles/types';
+import { PlayerQueue } from './queue';
 import {
   callRefresh,
   normalizeVideoSource,
@@ -27,6 +28,7 @@ import type {
   PlayerOptions,
   PlayerStatus,
   Progress,
+  QueueItem,
   RemoteCommandEvent,
   SearchPlayEvent,
   SleepTimer,
@@ -299,6 +301,12 @@ function assertFinite(name: string, value: number): void {
 export class Player {
   /** Native player id (stable for the player's lifetime). */
   readonly id: string;
+  /**
+   * The queue: what plays after the current item, next / previous, repeat
+   * and shuffle. Run by the engine, so it advances while JavaScript is
+   * frozen. See the Queue guide.
+   */
+  readonly queue: PlayerQueue;
   private _status: NativeStatus;
   /** The native player behind this one (see `NativeStatus`), when native says. */
   private nativeInstance: number | undefined;
@@ -375,6 +383,17 @@ export class Player {
       });
     }
     if (options.diagnostics) native().setDiagnosticsEnabled(this.id, true);
+    this.queue = new PlayerQueue({
+      command: (command) =>
+        this.run(() => native().queueCommand(this.id, command)),
+      read: () => native().getQueue(this.id),
+      normalize: (input) =>
+        isBlob(input) ? normalizeBlob(input) : normalizeSource(input),
+      itemStarted: (item) => this.queueItemStarted(item),
+      changed: (state) => this.emit('queueChange', state),
+    });
+    // Attached to a native player that already has a queue.
+    this.queue._refresh();
   }
 
   // ── State ──
@@ -484,6 +503,23 @@ export class Player {
     const session = this.subtitles.begin();
     // Subtitle files are a video player's; an audio load stays as it was.
     if (this._status.video != null) normalized.subtitleSession = session;
+  }
+
+  /**
+   * A queue item became current (the engine moved on, or a queue command):
+   * its refresh, license hook and thumbnails answer from now on.
+   */
+  private queueItemStarted(item: QueueItem | null): void {
+    this._metadata = null;
+    this.loads += 1;
+    this.refreshSource = item?.refresh ?? null;
+    this.licenseHook = item?.drm?.getLicense ?? null;
+    this.sourceHeaders = { ...item?.headers };
+    this.thumbnails =
+      item?.thumbnails != null
+        ? new ThumbnailTrack(item.thumbnails, this.sourceHeaders)
+        : null;
+    this.cuesOnScreen = [];
   }
 
   /** Starts or resumes playback (re-opens live streams at the live edge when needed). */
@@ -913,6 +949,9 @@ export class Player {
         break;
       case 'ended':
         this.emit('ended');
+        break;
+      case 'queue':
+        this.queue._apply(event);
         break;
       case 'remoteCommand':
         this.emit('remoteCommand', {

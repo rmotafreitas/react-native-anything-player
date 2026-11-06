@@ -69,6 +69,11 @@ enum RecoveryPolicy {
   /// How often a fade (play, pause, stop, `fadeTo`, the sleep timer) updates the volume.
   static let fadeTickMs: Int64 = 50
 
+  /// The queue's next item is prepared this long after the current one is
+  /// ready (or a quarter of a shorter item's length): its start is not
+  /// slowed down, and a skip right away prepares nothing.
+  static let prepareNextAfterMs: Int64 = 2_000
+
   // MARK: Video
 
   /// A player without a view this long stops decoding the picture (a move between views keeps it).

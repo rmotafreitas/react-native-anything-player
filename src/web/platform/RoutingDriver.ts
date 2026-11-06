@@ -80,6 +80,20 @@ export class RoutingDriver implements EngineDriver {
     this.engineTarget.cancelSwap?.(generation);
   }
 
+  // The queue's next item: only the local output prepares one (the engine
+  // prepares nothing while casting).
+  prepareNext(request: OpenRequest): void {
+    if (!this.casting) this.local.prepareNext?.(request);
+  }
+
+  cancelNext(generation: number): void {
+    this.local.cancelNext?.(generation);
+  }
+
+  advance(generation: number): void {
+    if (!this.casting) this.local.advance?.(generation);
+  }
+
   selectTracks(audio: string | null, text: string | null): void {
     this.engineTarget.selectTracks?.(audio, text);
   }

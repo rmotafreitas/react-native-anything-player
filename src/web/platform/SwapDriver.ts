@@ -48,6 +48,8 @@ export interface LocalDriver extends EngineDriver {
   readonly swapsInPlace?: boolean;
   progress(): ProgressReading;
   destroy(): void;
+  /** A user gesture: elements WebKit holds back may play from now on. */
+  unlock?(): void;
 }
 
 /** Shows one element of the stage and hides the other. */
@@ -162,6 +164,13 @@ export class SwapDriver implements LocalDriver {
   private current: MediaElementDriver;
   private spare: MediaElementDriver | null = null;
   private pending: Pending | null = null;
+  /**
+   * The queue's next item (`prepareNext`): opened, paused, on the spare
+   * element when it is free (`onSpare`), else opened when its turn comes.
+   */
+  private next: { request: OpenRequest; onSpare: boolean } | null = null;
+  /** WebKit lets an element play only after a play() in a user gesture: the spare has had one. */
+  private spareUnlocked = false;
   private volume = 1;
   private rate = 1;
   private loop = false;
@@ -227,9 +236,74 @@ export class SwapDriver implements LocalDriver {
       return;
     }
     this.drop();
+    this.dropNext();
     this.generation = request.generation;
     this.shift = 0;
     this.current.open(request);
+  }
+
+  // ── The queue's next item ──
+
+  prepareNext(request: OpenRequest): void {
+    this.dropNext();
+    this.next = { request, onSpare: false };
+    // A quality switch holds the spare; or WebKit would refuse to start it.
+    if (this.pending != null || (isWebKit() && !this.spareUnlocked)) return;
+    this.finishHandover();
+    const spare = (this.spare ??= this.make(this.proxy));
+    spare.element.muted = false;
+    spare.setRate(this.rate);
+    spare.setVolume(this.volume);
+    spare.setLoop(false);
+    spare.open({ ...request, swap: false, playWhenReady: false });
+    this.next.onSpare = true;
+  }
+
+  cancelNext(generation: number): void {
+    if (this.next?.request.generation === generation) this.dropNext();
+  }
+
+  /** The current item ended: the prepared one plays (from the spare, without a network wait, when it is there). */
+  advance(generation: number): void {
+    const next = this.next;
+    if (next == null || next.request.generation !== generation) return;
+    this.next = null;
+    this.drop();
+    const spare = this.spare;
+    this.shift = 0;
+    if (!next.onSpare || spare == null) {
+      this.generation = generation;
+      this.current.open({ ...next.request, playWhenReady: true });
+      return;
+    }
+    const old = this.current;
+    spare.setRate(this.rate);
+    spare.setVolume(this.volume);
+    spare.setLoop(this.loop);
+    if (this.tracks) spare.selectTracks(this.tracks.audio, this.tracks.text);
+    this.current = spare;
+    this.generation = generation;
+    this.stage.show(spare.element, old.element);
+    spare.play();
+    old.releaseConnection();
+    this.spare = old;
+  }
+
+  /**
+   * A user gesture: WebKit lets the spare element play from now on (a
+   * play() inside the gesture lifts its restriction, whatever it plays).
+   */
+  unlock(): void {
+    if (this.spareUnlocked || !isWebKit()) return;
+    if (this.pending != null || this.next?.onSpare === true) return;
+    const spare = (this.spare ??= this.make(this.proxy));
+    this.spareUnlocked = true;
+    try {
+      const attempt = spare.element.play?.() as Promise<void> | undefined;
+      attempt?.catch?.(() => undefined);
+    } catch {
+      // Nothing to play: the restriction is lifted all the same.
+    }
   }
 
   play(): void {
@@ -246,11 +320,13 @@ export class SwapDriver implements LocalDriver {
 
   releaseConnection(): void {
     this.drop();
+    this.dropNext();
     this.current.releaseConnection();
   }
 
   unload(): void {
     this.drop();
+    this.dropNext();
     this.current.unload();
   }
 
@@ -316,6 +392,7 @@ export class SwapDriver implements LocalDriver {
 
   destroy(): void {
     this.drop();
+    this.dropNext();
     this.finishHandover();
     this.current.destroy();
     this.spare?.destroy();
@@ -327,6 +404,8 @@ export class SwapDriver implements LocalDriver {
   private prepare(request: OpenRequest): void {
     this.drop();
     this.finishHandover();
+    // The switch takes the spare: the queue's next item opens when its turn comes.
+    if (this.next?.onSpare === true) this.next.onSpare = false;
     const spare = (this.spare ??= this.make(this.proxy));
     const position = this.current.sample().position;
     const target =
@@ -733,6 +812,13 @@ export class SwapDriver implements LocalDriver {
     this.leaving = null;
     this.spare?.releaseConnection();
     if (this.spare) this.spare.element.muted = false;
+  }
+
+  private dropNext(): void {
+    const next = this.next;
+    if (next == null) return;
+    this.next = null;
+    if (next.onSpare) this.spare?.releaseConnection();
   }
 
   private drop(): void {

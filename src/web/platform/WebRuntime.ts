@@ -192,6 +192,13 @@ export class WebRuntime implements PlayerRuntime {
   remote(command: string, position?: number): void {
     const target = this.active;
     if (!target) return;
+    // A queue handles next and previous; without one they are the app's.
+    const queued = target.engine.queueState.ids.length > 0;
+    if (queued && (command === 'next' || command === 'previous')) {
+      if (command === 'next') target.engine.queueNext();
+      else target.engine.queuePrevious();
+      return;
+    }
     let nothingLoaded = false;
     try {
       switch (command) {
@@ -269,9 +276,12 @@ export class WebRuntime implements PlayerRuntime {
     const session = browser().navigator?.mediaSession;
     if (!session) return;
     const seekable = target?.status.seekable ?? false;
+    const queued = (target?.engine.queueState.ids.length ?? 0) > 0;
     const forwarded = new Set(
-      FORWARDED.filter(([, command]) =>
-        target?.options.remoteCommands.has(command)
+      FORWARDED.filter(
+        ([, command]) =>
+          target?.options.remoteCommands.has(command) ||
+          (queued && (command === 'next' || command === 'previous'))
       ).map(([action]) => action)
     );
     const key = `${target?.id ?? ''}|${seekable}|${[...forwarded].join(',')}`;

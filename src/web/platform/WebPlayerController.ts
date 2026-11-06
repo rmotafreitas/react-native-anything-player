@@ -59,6 +59,7 @@ import {
 } from './serialization';
 import { SwapDriver, type LocalDriver } from './SwapDriver';
 import { WebVideo, type ContentFit, type VideoHost } from './WebVideo';
+import { WebQueue } from './WebQueue';
 
 export type EventSink = (event: Record<string, unknown>) => void;
 
@@ -117,6 +118,7 @@ export class WebPlayerController
   /** What the engine commands: the local output or the Cast receiver. */
   readonly routing: RoutingDriver;
   readonly engine: PlaybackEngine;
+  private readonly queue: WebQueue;
   /** What the browser knows about where the element plays (AirPlay, Remote Playback). */
   readonly elementRoute: ElementRoute;
   readonly sampler = new AudioSampler();
@@ -175,6 +177,7 @@ export class WebPlayerController
         : null;
     });
     this.engine = new PlaybackEngine(this.routing, webClock, options.engine);
+    this.queue = new WebQueue(this.engine);
     this.statusSnapshot = { status: this.engine.status, seq: 0 };
     this.engine.delegate = this;
     this.elementRoute = new ElementRoute(() => this.elementRouteChanged());
@@ -204,17 +207,8 @@ export class WebPlayerController
     parts: VideoLoadParts | null = null,
     quality?: string | null
   ): Promise<object> {
-    this.sourceFields = fields;
-    this.localItem = LOCAL_URI.test(source.uri);
-    this.overrides = NO_FIELDS;
-    this.liveOffset.reset();
-    this.trackClock = null;
-    this._streamMetadata = null;
-    this.station = { name: null, genre: null };
-    this.driver.lastPlayAttempt = null;
     this.runtime.beforeLoad(this, source, autoplay);
-    this.video?.beginSession(parts?.session ?? null);
-    this.video?.setPoster(parts?.poster ?? null);
+    this.beginItem(source.uri, fields, parts);
     this.engine.load(source, autoplay, start, quality);
     if (this.video && parts && parts.subtitles.length > 0)
       this.engine.setAppTracks(parts.subtitles);
@@ -228,6 +222,33 @@ export class WebPlayerController
     return promise;
   }
 
+  /** A queue command (`{ op, … }`): see `WebQueue`. */
+  queueCommand(command: Record<string, unknown>): void {
+    this.queue.command(command);
+  }
+
+  queueMap(): Record<string, unknown> {
+    return this.queue.map();
+  }
+
+  /** What the host resets for every new item, a load's or the queue's. */
+  private beginItem(
+    uri: string,
+    fields: NowPlayingFields,
+    parts: VideoLoadParts | null
+  ): void {
+    this.sourceFields = fields;
+    this.localItem = LOCAL_URI.test(uri);
+    this.overrides = NO_FIELDS;
+    this.liveOffset.reset();
+    this.trackClock = null;
+    this._streamMetadata = null;
+    this.station = { name: null, genre: null };
+    this.driver.lastPlayAttempt = null;
+    this.video?.beginSession(parts?.session ?? null);
+    this.video?.setPoster(parts?.poster ?? null);
+  }
+
   /** The play() attempt the last command made, if any (to report an autoplay refusal). */
   takePlayAttempt(): Promise<PlayAttempt> | null {
     const attempt = this.driver.lastPlayAttempt;
@@ -238,6 +259,8 @@ export class WebPlayerController
   /** A command arrived from a user gesture: the sampler may start its audio context now. */
   userGesture(): void {
     this.updateSampler();
+    // WebKit: the queue's next item can start on the second element later.
+    this.driver.unlock?.();
   }
 
   updateNowPlaying(fields: NowPlayingFields): void {
@@ -415,6 +438,7 @@ export class WebPlayerController
     this.routing.destroy();
     this.revoke(this.objectUrl);
     this.objectUrl = null;
+    this.queue.release();
     this.pendingLoads.clear();
   }
 
@@ -627,6 +651,24 @@ export class WebPlayerController
 
   engineDidEnd(): void {
     this.emit('ended', {});
+  }
+
+  engineQueueChanged(): void {
+    this.queue.prune();
+    this.emit('queue', this.queue.map());
+    // Next / previous on the media session follow the queue.
+    this.runtime.onStatusChanged(this);
+  }
+
+  engineQueueItemStarts(id: string): void {
+    const parts = this.queue.get(id);
+    if (parts == null) return;
+    const source = this.engine.queueItems.find((item) => item.id === id);
+    this.beginItem(source?.source.uri ?? '', parts.fields, parts.video);
+    // The queue owns its items' object URLs; a loaded file's goes now.
+    this.revoke(this.objectUrl);
+    this.objectUrl = null;
+    this.runtime.onNowPlayingChanged(this);
   }
 
   engineSleepFired(): void {

@@ -23,6 +23,7 @@ import {
   type VideoVariant,
 } from '../engine/types';
 import { EngineHarness, WALL_BASE, type Motion } from './EngineHarness';
+import type { EngineQueueItem, RepeatMode } from '../engine/EngineQueue';
 
 type Step = Record<string, unknown>;
 interface Scenario {
@@ -121,9 +122,72 @@ function variants(value: unknown): VideoVariant[] {
   }));
 }
 
+/** `"a"` is `https://cdn.example/a.mp3`; `{ "id", "uri", "live" }` otherwise. */
+function queueItems(value: unknown): EngineQueueItem[] {
+  return (value as Array<string | Record<string, unknown>>).map((v) => {
+    const o = typeof v === 'string' ? { id: v } : v;
+    const id = o.id as string;
+    const live = o.live === true;
+    return {
+      id,
+      live,
+      source: {
+        uri: (o.uri as string | undefined) ?? `https://cdn.example/${id}.mp3`,
+        headers: {},
+        liveHint: (o.live as boolean | undefined) ?? null,
+        renditions: renditions(o.renditions),
+      },
+    };
+  });
+}
+
 function perform(call: string, step: Step, h: EngineHarness): void {
   const value = (step.value as number | undefined) ?? 0;
   switch (call) {
+    case 'queueSet':
+      h.engine.queueSet(
+        queueItems(step.items),
+        (step.start as number | undefined) ?? 0,
+        (step.position as number | undefined) ?? null,
+        (step.autoplay as boolean | undefined) ?? null
+      );
+      break;
+    case 'queueAdd':
+      h.engine.queueAdd(
+        queueItems(step.items),
+        step.index as number | undefined
+      );
+      break;
+    case 'queueRemove':
+      h.engine.queueRemove(step.ids as string[]);
+      break;
+    case 'queueMove':
+      h.engine.queueMove(step.from as number, step.to as number);
+      break;
+    case 'queueClear':
+      h.engine.queueClear();
+      break;
+    case 'queueSkipTo':
+      h.engine.queueSkipTo(
+        step.id as string,
+        (step.position as number | undefined) ?? null
+      );
+      break;
+    case 'queueNext':
+      h.engine.queueNext();
+      break;
+    case 'queuePrevious':
+      h.engine.queuePrevious();
+      break;
+    case 'repeat':
+      h.engine.setRepeat(step.value as RepeatMode);
+      break;
+    case 'shuffle':
+      h.engine.setShuffle(
+        step.value as boolean,
+        step.seed as number | undefined
+      );
+      break;
     case 'load':
       h.engine.load(
         {
@@ -232,6 +296,9 @@ function native(step: Step, h: EngineHarness): void {
     return h.engine.onPlaying(gen);
   }
   switch (step.native) {
+    case 'advanced':
+      h.driver.startPrepared(gen, step.playing === true);
+      return h.engine.onAdvanced(gen, step.playing === true);
     case 'ready':
       return h.engine.onReady(gen, {
         duration: (step.duration as number | undefined) ?? null,
@@ -415,6 +482,26 @@ function check(
       case 'gen':
         expect_(label, h.engine.generation, v);
         break;
+      case 'loadId':
+        expect_(label, s.loadId, v);
+        break;
+      case 'queue': {
+        const q = h.engine.queueState as unknown as Record<string, unknown>;
+        const actual: Record<string, unknown> = {
+          current: q.currentId,
+          index: q.index,
+          ids: q.ids,
+          order: q.order,
+          repeat: q.repeat,
+          shuffle: q.shuffle,
+        };
+        for (const [k, want] of Object.entries(v as Record<string, unknown>))
+          expect_(`${label}.${k}`, actual[k], want);
+        break;
+      }
+      case 'queueEvents':
+        expect_(label, h.recorder.queueEvents, v);
+        break;
       case 'stats': {
         const stats = h.engine.stats as unknown as Record<string, unknown>;
         for (const [k, want] of Object.entries(v as Record<string, unknown>))
@@ -432,6 +519,7 @@ function check(
   h.recorder.sleeps = 0;
   h.recorder.fades = 0;
   h.recorder.refreshes = [];
+  h.recorder.queueEvents = 0;
 }
 
 /** Compares the listed `status.video` fields (`tracks` as their ids). */

@@ -54,6 +54,14 @@ export const RecoveryPolicy = {
   /** How often a fade (play, pause, stop, `fadeTo`, the sleep timer) updates the volume. */
   FADE_TICK_MS: 50,
 
+  // ── Queue ──
+  /**
+   * The queue's next item is prepared this long after the current one is
+   * ready (or a quarter of a shorter item's length): its start is not slowed
+   * down, and a skip right away prepares nothing.
+   */
+  PREPARE_NEXT_AFTER_MS: 2_000,
+
   // ── Video ──
   /** A player without a view this long stops decoding the picture (a move between views keeps it). */
   VIEW_DETACH_GRACE_MS: 1_000,

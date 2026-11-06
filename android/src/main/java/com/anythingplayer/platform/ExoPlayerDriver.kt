@@ -57,6 +57,10 @@ internal interface DriverObserver {
   fun onPlaying(generation: Int)
   fun onBuffering(generation: Int)
   fun onEnded(generation: Int)
+  /** The queue's prepared item took over as the current one ended (ExoPlayer's playlist): gapless. */
+  fun onAdvanced(generation: Int, playing: Boolean) {
+    // Drivers without a queue never report it.
+  }
   fun onFailed(generation: Int, error: PlayerError)
   fun onPausedExternally(generation: Int, reason: InterruptionReason)
   fun onStreamMetadata(generation: Int, metadata: StreamMetadata)
@@ -300,6 +304,10 @@ internal class ExoPlayerDriver(
       override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
         // A continuation took over seamlessly: drop the finished item.
         val p = player ?: return
+        val nextRequest = prepared
+        if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO && nextRequest != null && currentGeneration(p) == nextRequest.generation) {
+          adoptPrepared(p, nextRequest)
+        }
         if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO && p.currentMediaItemIndex > 0) {
           p.removeMediaItems(0, p.currentMediaItemIndex)
           cancelCallsExcept((0 until p.mediaItemCount).map { p.getMediaItemAt(it).mediaId }.toSet())
@@ -588,6 +596,8 @@ internal class ExoPlayerDriver(
     val p = ensurePlayer()
     // Close the previous item's sockets now, even a read blocked on a dead one.
     cancelCallsExcept(emptySet())
+    // The playlist starts over: a prepared next item goes with it.
+    prepared = null
     generation = request.generation
     currentRequest = request
     continuationCount = 0
@@ -730,6 +740,76 @@ internal class ExoPlayerDriver(
     p.addMediaSource(buildMediaSource(request, "$MEDIA_ID_PREFIX$gen:c$continuationCount"))
   }
 
+  // ── The queue's next item ──
+
+  /** The queue's next item, appended to the playlist behind the current one. */
+  private var prepared: OpenRequest? = null
+
+  override val preparesNext: Boolean
+    get() = true
+
+  override fun prepareNext(request: OpenRequest) {
+    val p = ensurePlayer()
+    removePrepared(p)
+    prepared = request
+    // ExoPlayer buffers it once the current item is loaded, and plays it
+    // without a gap (encoder delay and padding trimmed).
+    p.addMediaSource(buildMediaSource(request, "$MEDIA_ID_PREFIX${request.generation}"))
+  }
+
+  override fun cancelNext(generation: Int) {
+    if (prepared?.generation != generation) return
+    player?.let { removePrepared(it) }
+    prepared = null
+  }
+
+  override fun advance(generation: Int) {
+    val request = prepared?.takeIf { it.generation == generation }
+    val p = player
+    if (request == null || p == null) return
+    // ExoPlayer did not move on by itself (the current item ended in error,
+    // or the next one was not reached): open it now.
+    if (currentGeneration(p) == generation) {
+      adoptPrepared(p, request)
+      p.playWhenReady = true
+      return
+    }
+    prepared = null
+    open(request.copy(playWhenReady = true))
+  }
+
+  /** The prepared item is the current one: its generation's events are the engine's from now on. */
+  private fun adoptPrepared(p: ExoPlayer, request: OpenRequest) {
+    prepared = null
+    generation = request.generation
+    currentRequest = request
+    continuationCount = 0
+    continuationTimes.clear()
+    pendingDiscontinuity = null
+    lastStream = null
+    stationName = null
+    stationGenre = null
+    mapped = null
+    reportedInfo = null
+    val gen = request.generation
+    // The engine hears its facts first (it holds them for the prepared
+    // item), then that it took over.
+    readyGeneration = -1
+    if (p.playbackState == Player.STATE_READY) reportReady(p, gen)
+    val playing = p.isPlaying
+    if (playing) playedGeneration = gen
+    report { observer.onAdvanced(gen, playing) }
+  }
+
+  private fun removePrepared(p: ExoPlayer) {
+    val request = prepared ?: return
+    val id = "$MEDIA_ID_PREFIX${request.generation}"
+    for (i in p.mediaItemCount - 1 downTo 0) {
+      if (i != p.currentMediaItemIndex && p.getMediaItemAt(i).mediaId == id) p.removeMediaItem(i)
+    }
+    cancelCallsExcept((0 until p.mediaItemCount).map { p.getMediaItemAt(it).mediaId }.toSet())
+  }
+
   override fun play() {
     player?.playWhenReady = true
   }
@@ -748,6 +828,7 @@ internal class ExoPlayerDriver(
   }
 
   override fun releaseConnection() {
+    prepared = null
     val p = player ?: return
     p.playWhenReady = false
     p.stop()
@@ -758,6 +839,7 @@ internal class ExoPlayerDriver(
   }
 
   override fun unload() {
+    prepared = null
     val p = player ?: return
     p.playWhenReady = false
     p.stop()

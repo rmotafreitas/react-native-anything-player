@@ -83,6 +83,9 @@ final class SwapDriver: LocalOutput {
   private(set) var current: AVPlayerDriver
   private var spare: AVPlayerDriver?
   private var pending: Pending?
+  /// The queue's next item (`prepareNext`): opened, paused, on the spare
+  /// player when it is free (`onSpare`), else opened when its turn comes.
+  private var next: (request: OpenRequest, onSpare: Bool)?
   private var volume = 1.0
   private var rate = 1.0
   private var loop = false
@@ -117,6 +120,7 @@ final class SwapDriver: LocalOutput {
   func open(_ request: OpenRequest) {
     if request.swap { return prepare(request) }
     drop()
+    dropNext()
     generation = request.generation
     shift = 0
     current.open(request)
@@ -129,12 +133,79 @@ final class SwapDriver: LocalOutput {
 
   func releaseConnection() {
     drop()
+    dropNext()
     current.releaseConnection()
   }
 
   func unload() {
     drop()
+    dropNext()
     current.unload()
+  }
+
+  // MARK: - The queue's next item
+
+  var preparesNext: Bool { true }
+
+  func prepareNext(_ request: OpenRequest) {
+    dropNext()
+    next = (request, false)
+    // A quality switch holds the spare: the item opens when its turn comes.
+    guard pending == nil else { return }
+    let player = spareDriver()
+    player.copySampling(from: current)
+    player.setSampling(false)
+    player.setVolume(0)
+    player.setRate(rate)
+    player.setLoop(false)
+    player.setVideoEnabled(videoOn)
+    player.holdBurst = false
+    stage?.show(current: current, hidden: player)
+    player.open(
+      OpenRequest(
+        generation: request.generation, source: request.source, startPosition: nil, playWhenReady: false,
+        allowReconnect: request.allowReconnect))
+    next = (request, true)
+  }
+
+  func cancelNext(generation: Int) {
+    if next?.request.generation == generation { dropNext() }
+  }
+
+  /// The current item ended: the prepared one plays, from the spare player
+  /// (opened and buffered already) when it is there.
+  func advance(generation: Int) {
+    guard let waiting = next, waiting.request.generation == generation else { return }
+    next = nil
+    drop()
+    guard waiting.onSpare, spare != nil else {
+      self.generation = generation
+      shift = 0
+      var request = waiting.request
+      request = OpenRequest(
+        generation: request.generation, source: request.source, startPosition: nil, playWhenReady: true,
+        allowReconnect: request.allowReconnect)
+      current.open(request)
+      return
+    }
+    takeOver(generation: generation, live: false)
+    current.setLoop(loop)
+    if let tracks { current.selectTracks(audio: tracks.audio, text: tracks.text) }
+    current.play()
+  }
+
+  private func spareDriver() -> AVPlayerDriver {
+    if let spare { return spare }
+    let made = make()
+    made.observer = proxy
+    spare = made
+    return made
+  }
+
+  private func dropNext() {
+    guard let waiting = next else { return }
+    next = nil
+    if waiting.onSpare { spare?.releaseConnection() }
   }
 
   func setVolume(_ effective: Double) {
@@ -196,6 +267,7 @@ final class SwapDriver: LocalOutput {
 
   func destroy() {
     drop()
+    dropNext()
     current.destroy()
     spare?.destroy()
     spare = nil
@@ -205,6 +277,8 @@ final class SwapDriver: LocalOutput {
 
   private func prepare(_ request: OpenRequest) {
     drop()
+    // The switch takes the spare: the queue's next item opens when its turn comes.
+    if next?.onSpare == true { next?.onSpare = false }
     let next: AVPlayerDriver
     if let spare {
       next = spare

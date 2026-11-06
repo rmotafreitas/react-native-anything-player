@@ -574,6 +574,12 @@ internal object AnythingPlayerRuntime : FocusListener {
         "pause" -> target.engine.pause()
         "stop" -> target.engine.stop()
         "seek" -> position?.let { target.engine.seek(it) }
+        // A queue handles them natively; without one they are the app's.
+        "next", "previous" ->
+          if (target.hasQueue) {
+            if (command == "next") target.engine.queueNext() else target.engine.queuePrevious()
+            return
+          }
         else -> Unit
       }
     } catch (e: PlayerError) {

@@ -227,6 +227,7 @@ final class PlayerController: EngineDelegate, DriverObserver {
   var driver: AVPlayerDriver { picture?.primary ?? audioOutput!.current }
   let routing: RoutingDriver
   let engine: PlaybackEngine
+  private let queue: QueueHost
   private unowned let runtime: AnythingPlayerRuntime
 
   private let lock = NSLock()
@@ -280,6 +281,7 @@ final class PlayerController: EngineDelegate, DriverObserver {
     audioOutput = video == nil ? SwapDriver { AVPlayerDriver(titleFormat: titleFormat) } : nil
     routing = RoutingDriver(local: video?.output ?? audioOutput!)
     engine = PlaybackEngine(driver: routing, clock: SystemClock.shared, options: options.engine)
+    queue = QueueHost(engine: engine)
     picture = video
     audioOutput?.observer = self
     routing.observer = self
@@ -301,6 +303,16 @@ final class PlayerController: EngineDelegate, DriverObserver {
   func load(_ source: SourceDescriptor, fields: NowPlayingFields, autoplay: Bool?, start: Double?,
             parts: VideoLoadParts = VideoLoadParts(), qualityGiven: Bool = false, quality: String? = nil,
             completion: @escaping LoadCompletion) throws {
+    beginItem(fields, parts: parts)
+    try engine.load(source, autoplay: autoplay, startPosition: start, qualityGiven: qualityGiven, quality: quality)
+    // The app's subtitle files are tracks from the start (their cues follow).
+    if picture != nil && !parts.subtitles.isEmpty { engine.setAppTracks(parts.subtitles) }
+    pendingLoads[engine.loadId] = completion
+    runtime.nowPlayingChanged(self)
+  }
+
+  /// What the host resets for every new item, a load's or the queue's.
+  private func beginItem(_ fields: NowPlayingFields, parts: VideoLoadParts) {
     sourceFields = fields
     overrides = NowPlayingFields(nil)
     trackClock = nil
@@ -311,12 +323,18 @@ final class PlayerController: EngineDelegate, DriverObserver {
       droppedFrames = nil
     }
     picture?.load(parts)
-    try engine.load(source, autoplay: autoplay, startPosition: start, qualityGiven: qualityGiven, quality: quality)
-    // The app's subtitle files are tracks from the start (their cues follow).
-    if picture != nil && !parts.subtitles.isEmpty { engine.setAppTracks(parts.subtitles) }
-    pendingLoads[engine.loadId] = completion
-    runtime.nowPlayingChanged(self)
   }
+
+  /// A queue command (`{ op, … }`): see `QueueHost`.
+  func queueCommand(_ command: NSDictionary) throws {
+    try queue.command(command)
+  }
+
+  /// The queue's snapshot (any thread).
+  func queueDictionary() -> [String: Any] { queue.dictionary() }
+
+  /// Whether a queue is in use: next / previous are the queue's, not the app's.
+  var hasQueue: Bool { !queue.snapshot.ids.isEmpty }
 
   func updateNowPlaying(_ fields: NowPlayingFields) {
     overrides = fields
@@ -667,6 +685,19 @@ final class PlayerController: EngineDelegate, DriverObserver {
 
   func engineDidEnd() {
     emit("ended", [:])
+  }
+
+  func engineQueueChanged() {
+    queue.changed()
+    emit("queue", queue.dictionary())
+    // Next / previous on the lock screen follow the queue.
+    runtime.nowPlayingChanged(self)
+  }
+
+  func engine(queueItemStarts id: String) {
+    guard let parts = queue[id] else { return }
+    beginItem(parts.fields, parts: parts.video)
+    runtime.nowPlayingChanged(self)
   }
 
   func engineSleepFired() {
