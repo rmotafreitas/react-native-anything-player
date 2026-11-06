@@ -292,9 +292,13 @@ describe('WebCache', () => {
     const url = page.blobFor(descriptor('https://cdn.example/a.mp3'));
     const other = page.blobFor(descriptor('https://cdn.example/other.mp3'));
     expect(url).not.toBeNull();
-    await expect(url).resolves.toMatch(/^blob:/);
+    const [held, missing] = await Promise.allSettled([url!, other!]);
+    expect(held).toMatchObject({
+      status: 'fulfilled',
+      value: expect.stringMatching(/^blob:/),
+    });
     // Not held: the element plays the network URL.
-    await expect(other).rejects.toBeTruthy();
+    expect(missing.status).toBe('rejected');
     expect(
       page.blobFor(descriptor('https://cdn.example/other.mp3'))
     ).toBeNull();
@@ -373,5 +377,68 @@ describe('WebCache', () => {
       }
     ).downloads.map((d) => d.id);
     expect(ids.sort()).toEqual(['a', 'b']);
+  });
+
+  it('a download of a source with no length fails, and says why', async () => {
+    const cache = new WebCache();
+    const events: Array<Record<string, unknown>> = [];
+    cache.onEvent((e) => events.push(e));
+    const globals2 = globalThis as unknown as Record<string, unknown>;
+    const before = globals2.fetch;
+    globals2.fetch = async () =>
+      new Response(new Uint8Array(10), { status: 200 });
+    await cache.command({
+      op: 'download',
+      ...src('https://radio.example/stream.mp3'),
+      id: 'r',
+    });
+    await new Promise((r) => setTimeout(r, 20));
+    globals2.fetch = before;
+    expect(events.at(-1)).toMatchObject({
+      id: 'r',
+      state: 'failed',
+      error: { code: 'UNSUPPORTED_FORMAT' },
+    });
+  });
+
+  it('a preload of a file a download holds changes nothing of the download', async () => {
+    served['https://cdn.example/a.mp3'] = { bytes: MB };
+    const cache = new WebCache();
+    await cache.command({
+      op: 'download',
+      ...src('https://cdn.example/a.mp3'),
+      id: 'a',
+    });
+    await new Promise((r) => setTimeout(r, 20));
+    requests = [];
+    await cache.command({
+      op: 'preload',
+      ...src('https://cdn.example/a.mp3'),
+      all: true,
+    });
+    expect(requests).toEqual([]);
+    expect((await cache.command({ op: 'downloads' })) as object).toMatchObject({
+      downloads: [{ id: 'a', state: 'completed' }],
+    });
+  });
+
+  it('does not bring back a download another page removed', async () => {
+    served['https://cdn.example/x.mp3'] = { bytes: MB };
+    const a = new WebCache();
+    await a.command({
+      op: 'download',
+      ...src('https://cdn.example/x.mp3'),
+      id: 'x',
+    });
+    await new Promise((r) => setTimeout(r, 600));
+    const b = new WebCache();
+    await b.command({ op: 'usage' });
+    await a.command({ op: 'removeDownload', id: 'x' });
+    await new Promise((r) => setTimeout(r, 600));
+    // The stale page plays it (its index still says it is held) and writes.
+    b.blobFor(descriptor('https://cdn.example/x.mp3'))?.catch(() => undefined);
+    await new Promise((r) => setTimeout(r, 600));
+    const third = new WebCache();
+    expect(await third.command({ op: 'downloads' })).toEqual({ downloads: [] });
   });
 });

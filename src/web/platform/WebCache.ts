@@ -127,8 +127,13 @@ export class WebCache {
   >();
   /** A player's pending write of what it plays (`played`), by player. */
   private readonly timers = new Map<string, { key: string; timer: number }>();
-  /** Keys this page removed: another page's index does not bring them back. */
-  private readonly removed = new Set<string>();
+  /** Keys this page changed or removed since it last wrote the index. */
+  private readonly dirty = new Set<string>();
+  private readonly deleted = new Set<string>();
+  /** Blob URLs past the protected set, revoked when their file goes. */
+  private readonly loose = new Map<string, Promise<string>>();
+  /** The keys the stored index had when this page last read it. */
+  private known = new Set<string>();
   private listener: ((event: Record<string, unknown>) => void) | null = null;
   private saving: number | null = null;
 
@@ -218,7 +223,12 @@ export class WebCache {
     if (!wanted || !cacheable(source) || this.index.get(key)?.complete) return;
     const timer = browser().setTimeout(() => {
       this.timers.delete(player);
-      this.fill(source, null).catch(() => undefined);
+      // A page that just opened may not have read that it holds the file.
+      this.loaded
+        .then(() =>
+          this.index.get(key)?.complete ? undefined : this.fill(source, null)
+        )
+        .catch(() => undefined);
     }, CACHE_AFTER_MS);
     this.timers.set(player, { key, timer });
   }
@@ -229,7 +239,7 @@ export class WebCache {
     const entry = this.index.get(cacheKeyOf(source));
     if (entry == null || !entry.complete) return null;
     entry.lastUsed = Date.now();
-    this.saveSoon();
+    this.changed(entry.key);
     const key = entry.key;
     let url = this.blobs.get(key);
     if (url == null) {
@@ -276,6 +286,7 @@ export class WebCache {
     try {
       for (const entry of await this.readStored())
         this.index.set(entry.key, entry);
+      this.known = new Set(this.index.keys());
       // A download a page left half-way starts again (the web cannot resume a file).
       for (const entry of this.index.values()) {
         const unfinished =
@@ -301,23 +312,46 @@ export class WebCache {
     }, 500);
   }
 
+  /** One changed key onto the stored index; one another page removed is let go. */
+  private writeKey(stored: Map<string, Entry>, key: string): void {
+    const entry = this.index.get(key);
+    if (entry == null) return;
+    if (!stored.has(key) && this.known.has(key)) this.index.delete(key);
+    else stored.set(key, entry);
+  }
+
+  /** A key changed: written with the index soon. */
+  private changed(key: string): void {
+    this.dirty.add(key);
+    this.saveSoon();
+  }
+
   /**
-   * Writes the index, merged with what another page of this site wrote
-   * since (its downloads stay listed), one page at a time where the browser
-   * has Web Locks.
+   * Writes this page's changes onto the stored index (another page of this
+   * site may have written since): its changed keys and its removals, one
+   * page at a time where the browser has Web Locks. A key another page
+   * removed is not written back; this page lets go of it too.
    */
   private async save(): Promise<void> {
     const write = async () => {
       const Response = g().Response;
       if (Response == null) return;
-      for (const entry of await this.readStored()) {
-        if (!this.index.has(entry.key) && !this.removed.has(entry.key))
-          this.index.set(entry.key, entry);
+      const stored = new Map(
+        (await this.readStored()).map((e) => [e.key, e] as const)
+      );
+      for (const key of this.deleted) stored.delete(key);
+      for (const key of this.dirty) this.writeKey(stored, key);
+      this.dirty.clear();
+      this.deleted.clear();
+      // What other pages wrote and this page has not: it sees it too.
+      for (const [key, entry] of stored) {
+        if (!this.index.has(key)) this.index.set(key, entry);
       }
+      this.known = new Set(stored.keys());
       const store = await this.open();
       await store.put(
         INDEX_KEY,
-        new Response(JSON.stringify([...this.index.values()]), {
+        new Response(JSON.stringify([...stored.values()]), {
           headers: { 'Content-Type': 'application/json' },
         })
       );
@@ -339,7 +373,8 @@ export class WebCache {
     if (entry == null) {
       entry = blankEntry(key, source);
       this.index.set(key, entry);
-      this.removed.delete(key);
+      this.deleted.delete(key);
+      this.changed(key);
     }
     return entry;
   }
@@ -378,7 +413,7 @@ export class WebCache {
     entry.bytes = Math.max(entry.bytes, got);
     entry.totalBytes = totalOf(response) ?? entry.totalBytes;
     entry.lastUsed = Date.now();
-    this.saveSoon();
+    this.changed(key);
     return this.info(source);
   }
 
@@ -407,7 +442,7 @@ export class WebCache {
     entry.headers = source.headers;
     entry.state = entry.complete ? 'completed' : 'queued';
     entry.error = null;
-    this.saveSoon();
+    this.changed(key);
     // Ask the browser not to evict what the user downloaded.
     g()
       .navigator?.storage?.persist?.()
@@ -424,6 +459,16 @@ export class WebCache {
     downloadId: string | null
   ): Promise<void> {
     const key = cacheKeyOf(source);
+    const held = this.index.get(key);
+    // Held whole already: a download of it is done at once.
+    if (held?.complete) {
+      if (downloadId != null && held.state !== 'completed') {
+        held.state = 'completed';
+        this.emitDownload(held);
+        this.changed(key);
+      }
+      return Promise.resolve();
+    }
     const running = this.filling.get(key);
     if (running) return running.work;
     const stop = new (browser().AbortController)();
@@ -453,12 +498,14 @@ export class WebCache {
       );
       // No length: a stream that never ends (a live source without `live: true`).
       if (total == null) {
-        stop.abort();
-        throw engineError(
+        const error = engineError(
           'UNSUPPORTED_FORMAT',
           'The source has no length: a live stream cannot be kept.',
           false
         );
+        this.fillFailed(entry, error);
+        stop.abort();
+        throw error;
       }
       // Larger than the whole cache, or a server that asks not to be stored: not for the cache.
       if (entry.downloadId == null && (total > this.maxSize || noStore)) {
@@ -490,7 +537,7 @@ export class WebCache {
       this.fillFailed(entry, error);
       throw error;
     } finally {
-      this.saveSoon();
+      this.changed(key);
     }
   }
 
@@ -552,7 +599,6 @@ export class WebCache {
     for (const entry of [...this.index.values()]) {
       if (entry.downloadId === id) await this.drop(entry.key);
     }
-    this.saveSoon();
   }
 
   private info(source: SourceDescriptor): object {
@@ -582,7 +628,6 @@ export class WebCache {
     for (const entry of [...this.index.values()]) {
       if (entry.downloadId == null) await this.drop(entry.key);
     }
-    this.saveSoon();
   }
 
   /**
@@ -602,15 +647,18 @@ export class WebCache {
       total -= entry.bytes;
       await this.drop(entry.key);
     }
-    this.saveSoon();
   }
 
   private async drop(key: string): Promise<void> {
     this.filling.get(key)?.stop.abort();
+    // A download asked for now starts afresh, not on the dying fill.
+    this.filling.delete(key);
     this.index.delete(key);
-    this.removed.add(key);
-    const url = this.blobs.get(key);
+    this.dirty.delete(key);
+    this.deleted.add(key);
+    const url = this.blobs.get(key) ?? this.loose.get(key);
     this.blobs.delete(key);
+    this.loose.delete(key);
     url?.then((u) => browser().URL.revokeObjectURL(u)).catch(() => undefined);
     const store = await this.open();
     await store.delete(mediaKey(key));
@@ -623,8 +671,10 @@ export class WebCache {
         string,
         Promise<string>,
       ];
+      // Out of the protected set; the URL itself stays (a player may still
+      // play from it): it goes with the file, or with the page.
       this.blobs.delete(key);
-      url.then((u) => browser().URL.revokeObjectURL(u)).catch(() => undefined);
+      this.loose.set(key, url);
     }
   }
 
@@ -676,6 +726,8 @@ function downloadMap(entry: Entry): Record<string, unknown> {
 
 function totalOf(response: StoredResponse): number | null {
   const range = response.headers.get('Content-Range');
+  // A part (206) whose range a cross-origin page cannot read: its length is the part's, not the file's.
+  if (range == null && response.status === 206) return null;
   const total =
     range != null
       ? Number(range.split('/')[1])
