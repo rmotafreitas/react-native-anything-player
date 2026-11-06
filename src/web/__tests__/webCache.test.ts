@@ -493,7 +493,7 @@ describe('WebCache', () => {
       all: true,
     });
     expect(requests).toEqual([]);
-    expect((await cache.command({ op: 'downloads' })) as object).toMatchObject({
+    expect(await cache.command({ op: 'downloads' })).toMatchObject({
       downloads: [{ id: 'a', state: 'completed' }],
     });
   });

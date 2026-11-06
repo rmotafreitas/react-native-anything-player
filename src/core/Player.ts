@@ -107,8 +107,7 @@ function isBlob(value: unknown): value is BlobInput {
 
 function namesPlaylist(source: SourceInput | BlobInput): boolean {
   if (typeof source === 'string') return isPlaylistUri(source);
-  if (typeof source !== 'object' || source == null || isBlob(source))
-    return false;
+  if (typeof source !== 'object' || isBlob(source)) return false;
   return typeof source.uri === 'string' && isPlaylistUri(source.uri);
 }
 
@@ -121,8 +120,7 @@ async function resolveLoadPlaylist(
       ? resolvePlaylistSource({ uri: source })
       : source;
   }
-  if (typeof source !== 'object' || source == null || isBlob(source))
-    return source;
+  if (typeof source !== 'object' || isBlob(source)) return source;
   return resolvePlaylistSource(source);
 }
 
@@ -531,7 +529,9 @@ export class Player {
     }
     this._metadata = null;
     const full = typeof source === 'object' && !isBlob(source) ? source : null;
-    this.lastLoaded = full ?? { uri: String(normalized.uri ?? '') };
+    this.lastLoaded = full ?? {
+      uri: typeof normalized.uri === 'string' ? normalized.uri : '',
+    };
     this.beginVideoLoad(full, normalized);
     const loading = this.run(() =>
       native().load(this.id, normalized, nativeOptions)
@@ -572,8 +572,8 @@ export class Player {
     // The previous item's subtitle files are not this one's.
     this.subtitles.cancel();
     this.loads += 1;
-    this.refreshSource = item.refresh ?? null;
-    this.licenseHook = item.drm?.getLicense ?? null;
+    this.refreshSource = item.refresh?.bind(item) ?? null;
+    this.licenseHook = item.drm?.getLicense?.bind(item.drm) ?? null;
     this.sourceHeaders = { ...item.headers };
     this.thumbnails =
       item.thumbnails != null

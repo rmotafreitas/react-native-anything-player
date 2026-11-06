@@ -359,7 +359,7 @@ export class WebModule implements PlayerModule {
       controller.userGesture();
       controller.queueCommand(command as Record<string, unknown>);
       // An autoplay refusal leaves the item ready-but-paused, as for load().
-      controller.takePlayAttempt();
+      void controller.takePlayAttempt();
     } catch (error) {
       return Promise.reject(asError(error));
     }

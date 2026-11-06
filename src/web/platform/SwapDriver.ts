@@ -301,8 +301,7 @@ export class SwapDriver implements LocalDriver {
     const spare = (this.spare ??= this.make(this.proxy));
     this.spareUnlocked = true;
     try {
-      const attempt = spare.element.play?.() as Promise<void> | undefined;
-      attempt?.catch?.(() => undefined);
+      spare.element.play().catch(() => undefined);
     } catch {
       // Nothing to play: the restriction is lifted all the same.
     }

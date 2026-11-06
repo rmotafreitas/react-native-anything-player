@@ -169,7 +169,7 @@ export class PlayerQueue {
         'startPosition',
         options.startPosition
       );
-    if (options.autoplay != null) command.autoplay = options.autoplay === true;
+    if (options.autoplay != null) command.autoplay = options.autoplay;
     const before = this.snapshot;
     await this.send(command, prepared);
     // The same ids as before, given anew: the items changed all the same.
@@ -258,7 +258,7 @@ export class PlayerQueue {
 
   /** Shuffled: the current item first, then the rest in random order. */
   async setShuffle(enabled: boolean): Promise<void> {
-    await this.send({ op: 'shuffle', enabled: enabled === true });
+    await this.send({ op: 'shuffle', enabled });
   }
 
   // ── Internals ──
@@ -343,7 +343,7 @@ export class PlayerQueue {
       const source = isPlainSource(input) ? { ...input } : input;
       if (isPlainSource(source)) delete (source as { id?: unknown }).id;
       const wire: Record<string, unknown> = {
-        ...this.owner.normalize(source as Source),
+        ...this.owner.normalize(source),
         id,
       };
       let item: QueueItem;

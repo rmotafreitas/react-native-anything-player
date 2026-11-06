@@ -138,12 +138,12 @@ export class FakeNative {
     const q = this.queues.get(id) ?? new QueueModel(1);
     this.queues.set(id, q);
     const items = () =>
-      ((c.items as Array<{ id: string; live?: boolean }>) ?? []).map((i) => ({
+      (c.items as Array<{ id: string; live?: boolean }>).map((i) => ({
         id: i.id,
         live: i.live === true,
       }));
     if (!this.rejectNext) {
-      if (c.op === 'set') q.set(items(), (c.startIndex as number) ?? 0);
+      if (c.op === 'set') q.set(items(), c.startIndex as number);
       if (c.op === 'add') q.add(items(), c.index as number | undefined);
       if (c.op === 'remove') q.remove(c.ids as string[]);
       if (c.op === 'move') q.move(c.from as number, c.to as number);

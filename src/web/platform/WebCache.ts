@@ -270,7 +270,7 @@ export class WebCache {
   private source(command: Record<string, unknown>): SourceDescriptor {
     const map = (command.source ?? {}) as Record<string, unknown>;
     return {
-      uri: String(map.uri ?? ''),
+      uri: typeof map.uri === 'string' ? map.uri : '',
       headers: (map.headers as Record<string, string> | undefined) ?? {},
       liveHint: typeof map.live === 'boolean' ? map.live : null,
       cacheKey: typeof map.cacheKey === 'string' ? map.cacheKey : null,
@@ -866,11 +866,6 @@ let shared: WebCache | null = null;
 export function webCache(): WebCache {
   shared ??= new WebCache();
   return shared;
-}
-
-/** @internal Tests: a fresh cache. */
-export function resetWebCache(): void {
-  shared = null;
 }
 
 /**

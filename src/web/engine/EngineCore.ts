@@ -824,32 +824,6 @@ export abstract class EngineCore {
     this.videoOpened();
   }
 
-  /** A new item (an open, or the queue's prepared item taking over) under `generation`. */
-  protected beginItem(
-    generation: number,
-    startPosition: number | null,
-    reason: string
-  ): void {
-    this._generation = generation;
-    this.readyForGeneration = false;
-    this.flowedSinceOpen = false;
-    this.silentStall = false;
-    this.connectionReleased = false;
-    this.stallStartedAt = null;
-    this.pausedAt = null;
-    this.playingSince = null;
-    this.driftMs = 0;
-    this.pauseReleaseAt = null;
-    this.lastOpenAt = this.now;
-    this.openNetworkRevision = this.networkRevision;
-    this.lastPosition = startPosition ?? 0;
-    this.lastBuffered = 0;
-    this.lastBufferedAdvanceAt = this.now;
-    this.lastPositionAdvanceAt = this.now;
-    this.lastHeartbeatAt = this.now;
-    this.setState('loading', reason);
-  }
-
   protected reopen(reason: string, startPosition: number | null = null): void {
     const position = this.isLive
       ? null
@@ -1101,6 +1075,12 @@ export abstract class EngineCore {
   protected abstract cancelSwap(reason: string): void;
 
   // ── Queue (EngineQueue.ts) ──
+  /** A new item (an open, or the queue's prepared item taking over) under `generation`. */
+  protected abstract beginItem(
+    generation: number,
+    startPosition: number | null,
+    reason: string
+  ): void;
   /** The current item ended with no loop: `true` when the queue's next item took over. */
   protected abstract advanceAtEnd(): boolean;
   /** `wanted`: playback was wanted before the failure. */

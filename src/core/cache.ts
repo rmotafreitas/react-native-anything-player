@@ -102,9 +102,10 @@ function command(
 function download(raw: unknown): DownloadInfo {
   const map = (raw ?? {}) as Record<string, unknown>;
   return {
-    id: String(map.id ?? ''),
-    uri: String(map.uri ?? ''),
-    state: (map.state as DownloadState) ?? 'queued',
+    id: typeof map.id === 'string' ? map.id : '',
+    uri: typeof map.uri === 'string' ? map.uri : '',
+    state:
+      typeof map.state === 'string' ? (map.state as DownloadState) : 'queued',
     bytes: typeof map.bytes === 'number' ? map.bytes : 0,
     totalBytes: typeof map.totalBytes === 'number' ? map.totalBytes : null,
     error: (map.error as PlayerErrorInfo | null | undefined) ?? null,
@@ -131,7 +132,7 @@ export const Cache = {
   /** Turns the cache written as items play on or off, and sets its size. */
   async configure(options: CacheOptions): Promise<void> {
     const fields: Record<string, unknown> = {};
-    if (options.enabled != null) fields.enabled = options.enabled === true;
+    if (options.enabled != null) fields.enabled = options.enabled;
     if (options.maxSizeBytes != null) {
       if (
         !Number.isFinite(options.maxSizeBytes) ||
@@ -223,7 +224,7 @@ export const Cache = {
     event: 'download',
     listener: (download: DownloadInfo) => void
   ): () => void {
-    if (event !== 'download')
+    if ((event as string) !== 'download')
       throw invalid(`Unknown cache event "${String(event)}".`);
     ensureSubscription();
     return onModuleEvent((e) => {

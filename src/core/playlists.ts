@@ -338,6 +338,7 @@ function parse(text: string, options: PlaylistOptions = {}): PlaylistItem[] {
       return parsePls(text, options.baseUrl);
     case 'xspf':
       return parseXspf(text, options.baseUrl);
+    case 'm3u':
     default:
       return parseM3u(text, options.baseUrl);
   }

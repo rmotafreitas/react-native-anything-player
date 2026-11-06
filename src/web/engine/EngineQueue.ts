@@ -304,12 +304,12 @@ export abstract class EngineQueue extends EngineVideo {
       ) {
         this.seek(0);
       } else {
-        this.loadItem(this.queue.current!, null, null);
+        this.loadItem(this.queue.current, null, null);
       }
       return;
     }
     this.queueDirty = true;
-    this.go(this.queue.current!, null);
+    this.go(this.queue.current, null);
   }
 
   setRepeat(mode: RepeatMode): void {
@@ -428,6 +428,32 @@ export abstract class EngineQueue extends EngineVideo {
     this.dropPrepared(reason);
     this.itemReadyAt = null;
     this.prepareDueAt = null;
+  }
+
+  /** A new item (an open, or the queue's prepared item taking over) under `generation`. */
+  protected beginItem(
+    generation: number,
+    startPosition: number | null,
+    reason: string
+  ): void {
+    this._generation = generation;
+    this.readyForGeneration = false;
+    this.flowedSinceOpen = false;
+    this.silentStall = false;
+    this.connectionReleased = false;
+    this.stallStartedAt = null;
+    this.pausedAt = null;
+    this.playingSince = null;
+    this.driftMs = 0;
+    this.pauseReleaseAt = null;
+    this.lastOpenAt = this.now;
+    this.openNetworkRevision = this.networkRevision;
+    this.lastPosition = startPosition ?? 0;
+    this.lastBuffered = 0;
+    this.lastBufferedAdvanceAt = this.now;
+    this.lastPositionAdvanceAt = this.now;
+    this.lastHeartbeatAt = this.now;
+    this.setState('loading', reason);
   }
 
   protected advanceAtEnd(): boolean {
