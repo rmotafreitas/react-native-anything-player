@@ -143,7 +143,10 @@ internal object MediaCache {
           .setUpstreamDataSourceFactory(upstream)
           .setCacheWriteDataSinkFactory(playSink())
           .setCacheKeyFactory(keys)
-          .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR or CacheDataSource.FLAG_IGNORE_CACHE_FOR_UNSET_LENGTH_REQUESTS)
+          // Not FLAG_IGNORE_CACHE_FOR_UNSET_LENGTH_REQUESTS: a player's progressive
+          // requests have no length, so it left files out of the cache both ways.
+          // What has no length once it answers is left out by the sink instead.
+          .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
       } else {
         // Read what is there (a preload), write nothing.
         CacheDataSource.Factory()
@@ -660,7 +663,7 @@ internal class ResizableLruEvictor(@Volatile var maxBytes: Long) : CacheEvictor 
   }
 }
 
-/** A cache writer that leaves manifests out (a live HLS / DASH playlist must always be read fresh). */
+/** A cache writer that leaves out manifests (a live HLS / DASH playlist must always be read fresh) and what has no length. */
 @OptIn(UnstableApi::class)
 internal class ManifestsUncached(private val inner: DataSink.Factory) : DataSink.Factory {
   override fun createDataSink(): DataSink =
@@ -670,7 +673,8 @@ internal class ManifestsUncached(private val inner: DataSink.Factory) : DataSink
 
       override fun open(dataSpec: DataSpec) {
         val path = dataSpec.uri.toString().substringBefore('#').substringBefore('?').lowercase()
-        skip = path.endsWith(".m3u8") || path.endsWith(".mpd")
+        // A response with no length is a stream that never ends: nothing of it is kept.
+        skip = path.endsWith(".m3u8") || path.endsWith(".mpd") || dataSpec.length == C.LENGTH_UNSET.toLong()
         if (!skip) sink.open(dataSpec)
       }
 
