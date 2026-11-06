@@ -90,6 +90,12 @@ export const SECTIONS: DocSection[] = [
           'A native queue for React Native and the web: next and previous, repeat and shuffle, the next item started without a gap, playlist files (M3U, PLS, XSPF).',
       },
       {
+        link: '/docs/cache',
+        text: 'Cache & offline',
+        description:
+          'A media cache for React Native and the web: files cached as they play, preload, and downloads for offline replay (files, HLS and DASH), from one API.',
+      },
+      {
         link: '/docs/internet-radio',
         text: 'Internet radio & ICY',
         description:

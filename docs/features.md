@@ -64,6 +64,7 @@ Supported: the current and previous version of each browser. Radio titles on iPh
 | Queue: next / previous, repeat, shuffle, run while JS is frozen | ✓ † | ✓ | ✓ | ✓ | ✓ | ✓ † |
 | The queue's next item started without a gap | ◐ † ¹⁰ | ✓ | ◐ ¹⁰ | ◐ ¹⁰ | ◐ ¹⁰ | ◐ † ¹⁰ ¹¹ |
 | Playlist files (M3U, PLS, XSPF) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Cache as items play, preload, downloads for offline ([what each keeps](cache.md#what-each-platform-keeps)) | ◐ † | ✓ | ◐ | ◐ | ◐ | ◐ † |
 
 1. Leave it out with `rnapHls=false`.
 2. The browser's own HLS where it has one (Chrome on Android), else [hls.js](web.md#hls), registered with `configureHls`.
