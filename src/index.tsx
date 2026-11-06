@@ -9,6 +9,15 @@ export { PlayerError, isPlayerError } from './errors';
 export { configureHls } from './core/hls';
 export { configureShaka } from './core/shaka';
 export { Playlists } from './core/playlists';
+export { Cache } from './core/cache';
+export type {
+  CacheInfo,
+  CacheOptions,
+  CacheState,
+  CacheUsage,
+  DownloadInfo,
+  DownloadState,
+} from './core/cache';
 export type {
   PlaylistFormat,
   PlaylistItem,

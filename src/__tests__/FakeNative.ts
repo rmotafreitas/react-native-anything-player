@@ -156,6 +156,20 @@ export class FakeNative {
     }
     return this.command('queueCommand', id, command);
   };
+  /** Cache commands, and what the next one resolves with. */
+  cacheAnswer: object = {};
+  cacheCommand = (command: object) => {
+    this.calls.push(['cacheCommand', command]);
+    if (this.rejectNext) {
+      const error = Object.assign(
+        new Error(this.rejectNext.message),
+        this.rejectNext
+      );
+      this.rejectNext = null;
+      return Promise.reject(error);
+    }
+    return Promise.resolve(this.cacheAnswer);
+  };
   getQueue = (id: string) => {
     const q = this.queues.get(id);
     return {
