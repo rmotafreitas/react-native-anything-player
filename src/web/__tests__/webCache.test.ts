@@ -407,6 +407,11 @@ describe('WebCache', () => {
     release();
     await new Promise((r) => setTimeout(r, 1300));
     globals.fetch = before;
+    // Web Locks (Node 24, browsers): one page fetches the file.
+    if ((globalThis as { navigator?: { locks?: unknown } }).navigator?.locks)
+      expect(requests.filter((r) => r.url.endsWith('slow.mp3'))).toHaveLength(
+        1
+      );
     const third = new WebCache();
     expect(await third.command({ op: 'downloads' })).toMatchObject({
       downloads: [{ id: 's', state: 'completed' }],

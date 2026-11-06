@@ -512,8 +512,9 @@ export class WebCache {
 
   /**
    * One page of this site fetches a file at a time (Web Locks): another
-   * page already fetching it lets this one go; its index write tells this
-   * page later.
+   * page already fetching it lets this one go. The file it stores whole
+   * reaches this page at its next index write (`adoptComplete`), and is
+   * never written over.
    */
   private oneFetch(key: string, fetch: () => Promise<void>): Promise<void> {
     const locks = g().navigator?.locks;
