@@ -109,17 +109,18 @@ protocol EngineDelegate: AnyObject {
   func engine(refreshRequested loadId: Int, reason: RefreshReason)
   /// The queue changed: its items, order, current item, repeat or shuffle (`engine.queueState`).
   func engineQueueChanged()
-  /// A queue item becomes the current one, before it is opened or takes over:
-  /// the host applies what it keeps for it (lock-screen fields). Host work
-  /// only: no engine command from inside it.
-  func engine(queueItemStarts id: String)
+  /// A queue item becomes the current one, before it is opened (`opens`) or
+  /// takes over from where it was prepared: the host applies what it keeps
+  /// for it (lock-screen fields). An item that opens may first move the
+  /// output; one that takes over stays on the output it was prepared on.
+  func engine(queueItemStarts id: String, opens: Bool)
 }
 
 extension EngineDelegate {
   /// Without an answer the engine backs off as for any failure.
   func engine(refreshRequested loadId: Int, reason: RefreshReason) {}
   func engineQueueChanged() {}
-  func engine(queueItemStarts id: String) {}
+  func engine(queueItemStarts id: String, opens: Bool) {}
 }
 
 /// Playback wanted, nothing heard yet: the foreground recovers these at once.
@@ -1928,6 +1929,7 @@ extension PlaybackEngine {
     queue.set(items, startIndex: startIndex)
     queueDirty = true
     skipStreak = 0
+    unpreparable = nil
     guard let current = queue.current else {
       resetSource()
       return
@@ -2171,7 +2173,7 @@ extension PlaybackEngine {
   /// Loads a queue item as a plain load would, keeping the queue.
   private func loadItem(_ item: EngineQueueItem, autoplay: Bool?, startPosition: Double?) throws {
     applyLoop()
-    delegate?.engine(queueItemStarts: item.id)
+    delegate?.engine(queueItemStarts: item.id, opens: true)
     try loadSource(item.source, autoplay: autoplay, startPosition: startPosition)
   }
 
@@ -2190,7 +2192,7 @@ extension PlaybackEngine {
 
   /// The prepared item becomes the current one, under its own generation.
   private func takeOver(_ p: PreparedNext, item: EngineQueueItem, playing: Bool) {
-    delegate?.engine(queueItemStarts: item.id)
+    delegate?.engine(queueItemStarts: item.id, opens: false)
     cancelFadeOut()
     settlePendingLoad(.superseded)
     source = item.source

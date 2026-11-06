@@ -68,6 +68,12 @@ final class QueueHost {
     }
   }
 
+  /// The engine made a loaded source the queue's first item (`loaded-…`): it keeps the fields it had.
+  func adoptLoaded(_ fields: NowPlayingFields) {
+    guard let id = engine.queueState.ids.first(where: { $0.hasPrefix("loaded-") && parts[$0] == nil }) else { return }
+    parts[id] = Parts(fields: fields, video: VideoLoadParts())
+  }
+
   /// The engine's queue changed: the snapshot follows, and items that left let go of their parts.
   func changed() {
     let state = engine.queueState

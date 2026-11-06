@@ -25,6 +25,7 @@ import androidx.media3.common.util.Util
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.ExoPlaybackException
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.DecoderReuseEvaluation
 import androidx.media3.exoplayer.SeekParameters
@@ -254,6 +255,9 @@ internal class ExoPlayerDriver(
 
       override fun onPlayerError(error: PlaybackException) {
         val p = player ?: return
+        // The queue's next item failed while ExoPlayer prepared it ahead: its
+        // failure, not the current item's, which plays on.
+        if (preparedFailed(p, error)) return
         val gen = currentGeneration(p) ?: return
         // Past readiness ExoPlayer took the container and the codecs: a
         // decoding or parsing failure now is the pipeline's, worth a re-open.
@@ -767,15 +771,49 @@ internal class ExoPlayerDriver(
     val request = prepared?.takeIf { it.generation == generation }
     val p = player
     if (request == null || p == null) return
-    // ExoPlayer did not move on by itself (the current item ended in error,
-    // or the next one was not reached): open it now.
-    if (currentGeneration(p) == generation) {
-      adoptPrepared(p, request)
-      p.playWhenReady = true
-      return
+    if (currentGeneration(p) != generation) {
+      val index = preparedIndex(p, request)
+      if (index < 0) {
+        // Gone from the playlist (the current item ended in error): open it now.
+        prepared = null
+        open(request.copy(playWhenReady = true))
+        return
+      }
+      // A skip to it before the current item ended: it is buffered already.
+      p.seekTo(index, 0)
+      if (p.currentMediaItemIndex > 0) p.removeMediaItems(0, p.currentMediaItemIndex)
+      cancelCallsExcept((0 until p.mediaItemCount).map { p.getMediaItemAt(it).mediaId }.toSet())
     }
+    adoptPrepared(p, request)
+    p.playWhenReady = true
+  }
+
+  private fun preparedIndex(p: ExoPlayer, request: OpenRequest): Int {
+    val id = "$MEDIA_ID_PREFIX${request.generation}"
+    return (0 until p.mediaItemCount).firstOrNull { p.getMediaItemAt(it).mediaId == id } ?: -1
+  }
+
+  /**
+   * A playback error that belongs to the prepared item (ExoPlayer reads it
+   * ahead, near the current item's end): reported for its generation, the
+   * item taken out of the playlist and the current one resumed. `false`:
+   * the current item's error.
+   */
+  private fun preparedFailed(p: ExoPlayer, error: PlaybackException): Boolean {
+    val request = prepared ?: return false
+    val period = (error as? ExoPlaybackException)?.mediaPeriodId ?: return false
+    val timeline = p.currentTimeline
+    val periodIndex = timeline.getIndexOfPeriod(period.periodUid)
+    if (periodIndex == C.INDEX_UNSET) return false
+    val window = timeline.getPeriod(periodIndex, Timeline.Period()).windowIndex
+    if (window == p.currentMediaItemIndex || window != preparedIndex(p, request)) return false
+    val gen = request.generation
+    removePrepared(p)
     prepared = null
-    open(request.copy(playWhenReady = true))
+    report { observer.onFailed(gen, mapPlaybackException(error, observer.isOffline(), false)) }
+    // The error stopped the player: the current item goes on where it was.
+    p.prepare()
+    return true
   }
 
   /** The prepared item is the current one: its generation's events are the engine's from now on. */

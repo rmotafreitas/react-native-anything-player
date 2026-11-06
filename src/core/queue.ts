@@ -46,8 +46,10 @@ export interface QueueOwner {
   normalize(
     input: Source | string | number | BlobInput
   ): Record<string, unknown>;
-  /** A queue item became current (`null`: the queue emptied). */
+  /** A queue item became current: its hooks (refresh, DRM, thumbnails) answer now. */
   itemStarted(item: QueueItem | null): void;
+  /** What `load()` last loaded (a `queue.add` after it makes it the first item). */
+  loaded(): Source | null;
   /** Tells the app (`queueChange`). */
   changed(state: QueueState): void;
   /**
@@ -166,7 +168,11 @@ export class PlayerQueue {
         options.startPosition
       );
     if (options.autoplay != null) command.autoplay = options.autoplay === true;
+    const before = this.snapshot.currentId;
     await this.send(command, prepared);
+    // The same id as before, given anew: its new hooks answer from now on.
+    const now = this.current;
+    if (now != null && now.id === before) this.owner.itemStarted(now);
   }
 
   /** Inserts at `index` (default: the end). The current item plays on. */
@@ -262,8 +268,20 @@ export class PlayerQueue {
     for (const id of [...this.entries.keys()]) {
       if (!kept.has(id)) this.entries.delete(id);
     }
-    if (previous.currentId !== next.currentId)
-      this.owner.itemStarted(this.current);
+    // A source loaded with `load()` that joined the queue (`add`): the
+    // engine named it `loaded-…`; it is what was loaded, already started.
+    const adopted = next.ids.find(
+      (id) => id.startsWith('loaded-') && !this.entries.has(id)
+    );
+    const loaded = adopted != null ? this.owner.loaded() : null;
+    if (adopted != null && loaded != null)
+      this.entries.set(adopted, { ...loaded, id: adopted });
+    const started =
+      next.currentId != null &&
+      next.currentId !== previous.currentId &&
+      next.currentId !== adopted;
+    // An emptied queue (a plain `load`) leaves the loaded source's hooks alone.
+    if (started) this.owner.itemStarted(this.current);
     this.owner.changed(this.state);
   }
 

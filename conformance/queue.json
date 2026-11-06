@@ -277,5 +277,35 @@
       { "native": "failed", "code": "SOURCE_NOT_FOUND", "recoverable": false },
       { "expect": { "state": "loading", "queue": { "current": "d" } } }
     ]
+  },
+  {
+    "name": "a prepared item that fails is dropped and opened normally when its turn comes",
+    "steps": [
+      { "call": "queueSet", "items": ["a", "b"], "autoplay": true },
+      { "native": "ready", "duration": 180, "seekable": true },
+      { "native": "playing" },
+      { "advance": 2000 },
+      { "native": "failed", "gen": 2, "code": "SOURCE_NOT_FOUND", "recoverable": false },
+      { "expect": { "state": "playing", "errors": [], "commands": ["open(gen=1,start=-,play=true)", "prepareNext(gen=2)", "cancelNext(gen=2)"] } },
+      { "advance": 5000 },
+      { "native": "ended" },
+      { "expect": { "commands": ["open(gen=3,start=-,play=true)"], "queue": { "current": "b" }, "ended": 0 } }
+    ]
+  },
+  {
+    "name": "a pause and a seek keep the prepared item",
+    "steps": [
+      { "call": "queueSet", "items": ["a", "b"], "autoplay": true },
+      { "native": "ready", "duration": 180, "seekable": true },
+      { "native": "playing" },
+      { "advance": 2000 },
+      { "native": "ready", "gen": 2, "duration": 200, "seekable": true },
+      { "call": "pause" },
+      { "call": "seek", "value": 179 },
+      { "call": "play" },
+      { "native": "playing" },
+      { "native": "ended" },
+      { "expect": { "orderedCommands": ["prepareNext(gen=2)", "pause", "seek(179.0)", "play", "advance(gen=2)"], "queue": { "current": "b" }, "gen": 2 } }
+    ]
   }
 ]

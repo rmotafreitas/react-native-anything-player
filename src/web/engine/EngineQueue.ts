@@ -166,6 +166,7 @@ export abstract class EngineQueue extends EngineVideo {
     this.queue.set(items, startIndex);
     this.queueDirty = true;
     this.skipStreak = 0;
+    this.unpreparable = null;
     const current = this.queue.current;
     if (current == null) {
       super.reset();
@@ -530,7 +531,7 @@ export abstract class EngineQueue extends EngineVideo {
     startPosition: number | null
   ): void {
     this.applyLoop();
-    this.delegate?.engineQueueItemStarts?.(item.id);
+    this.delegate?.engineQueueItemStarts?.(item.id, true);
     super.load(item.source, autoplay, startPosition);
   }
 
@@ -555,7 +556,7 @@ export abstract class EngineQueue extends EngineVideo {
     item: EngineQueueItem,
     playing: boolean
   ): void {
-    this.delegate?.engineQueueItemStarts?.(item.id);
+    this.delegate?.engineQueueItemStarts?.(item.id, false);
     this.cancelFadeOut();
     this.settlePendingLoad({ kind: 'superseded' });
     this.chooseQuality(item.source, undefined);

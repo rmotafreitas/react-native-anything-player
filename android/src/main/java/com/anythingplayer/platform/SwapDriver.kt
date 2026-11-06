@@ -95,7 +95,7 @@ internal class SwapDriver(
   private var spare: ExoPlayerDriver? = null
   private var pending: Pending? = null
   /** The queue's next item (`prepareNext`). */
-  private var next: OpenRequest? = null
+  private var queuedNext: OpenRequest? = null
   private var volume = 1.0
   private var rate = 1.0
   private var loop = false
@@ -139,7 +139,7 @@ internal class SwapDriver(
   override fun open(request: OpenRequest) {
     if (request.swap) return prepare(request)
     drop()
-    next = null
+    queuedNext = null
     generation = request.generation
     shift = 0.0
     shifted = false
@@ -162,13 +162,13 @@ internal class SwapDriver(
 
   override fun releaseConnection() {
     drop()
-    next = null
+    queuedNext = null
     current.releaseConnection()
   }
 
   override fun unload() {
     drop()
-    next = null
+    queuedNext = null
     current.unload()
   }
 
@@ -216,18 +216,18 @@ internal class SwapDriver(
     get() = true
 
   override fun prepareNext(request: OpenRequest) {
-    next = request
+    queuedNext = request
     current.prepareNext(request)
   }
 
   override fun cancelNext(generation: Int) {
-    if (next?.generation == generation) next = null
+    if (queuedNext?.generation == generation) queuedNext = null
     current.cancelNext(generation)
   }
 
   override fun advance(generation: Int) {
-    val request = next?.takeIf { it.generation == generation }
-    next = null
+    val request = queuedNext?.takeIf { it.generation == generation }
+    queuedNext = null
     // The player that has it in its playlist starts it (or opens it now).
     if (request != null) adopt(generation)
     current.advance(generation)
@@ -463,7 +463,7 @@ internal class SwapDriver(
     stage.show(next, old)
     old.releaseConnection()
     // The queue's next item was in the old player's playlist: the new one prepares it.
-    this.next?.let { next.prepareNext(it) }
+    queuedNext?.let { next.prepareNext(it) }
   }
 
   private fun drop() {
@@ -502,8 +502,8 @@ internal class SwapDriver(
     override fun onEnded(generation: Int) = observer.onEnded(generation)
 
     override fun onAdvanced(generation: Int, playing: Boolean) {
-      if (next?.generation == generation) {
-        next = null
+      if (queuedNext?.generation == generation) {
+        queuedNext = null
         adopt(generation)
       }
       observer.onAdvanced(generation, playing)

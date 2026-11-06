@@ -74,6 +74,12 @@ internal class QueueHost(private val engine: PlaybackEngine) {
     }
   }
 
+  /** The engine made a loaded source the queue's first item (`loaded-…`): it keeps the fields it had. */
+  fun adoptLoaded(fields: NowPlayingFields) {
+    val id = engine.queueState.ids.firstOrNull { it.startsWith("loaded-") && it !in parts } ?: return
+    parts[id] = Parts(fields, VideoLoadParts())
+  }
+
   /** The engine's queue changed: the snapshot follows, and items that left let go of their parts. */
   fun changed() {
     snapshot = engine.queueState

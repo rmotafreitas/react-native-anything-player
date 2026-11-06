@@ -522,13 +522,18 @@ internal class PlayerController(
   }
 
   override fun engineQueueChanged() {
+    // A loaded source that joined the queue (`queue.add` after `load`) keeps its fields.
+    queue.adoptLoaded(sourceFields)
     queue.changed()
     emit("queue", queue.map())
     // Next / previous on the session follow the queue.
     runtime.onNowPlayingChanged(this)
   }
 
-  override fun engineQueueItemStarts(id: String) {
+  override fun engineQueueItemStarts(id: String, opens: Boolean) {
+    // An item a Cast receiver cannot play comes back to this device first.
+    val item = engine.queueItems.firstOrNull { it.id == id }
+    if (opens && item != null) runtime.beforeLoad(this, item.source.isNetwork)
     val parts = queue[id] ?: return
     beginItem(parts.fields, parts.video)
     runtime.onNowPlayingChanged(this)

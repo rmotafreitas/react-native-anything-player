@@ -152,11 +152,13 @@ interface EngineDelegate {
     // Hosts without a queue UI ignore it.
   }
   /**
-   * A queue item becomes the current one, before it is opened or takes over:
-   * the host applies what it keeps for it (lock-screen fields). Host work
-   * only: no engine command from inside it.
+   * A queue item becomes the current one, before it is opened ([opens]) or
+   * takes over from where it was prepared: the host applies what it keeps
+   * for it (lock-screen fields). An item that opens may first move the
+   * output (a Cast receiver that cannot play it hands it back); one that
+   * takes over stays on the output it was prepared on.
    */
-  fun engineQueueItemStarts(id: String) {
+  fun engineQueueItemStarts(id: String, opens: Boolean) {
     // Hosts without per-item state ignore it.
   }
 }
@@ -856,6 +858,7 @@ class PlaybackEngine(
     queue.set(items, startIndex)
     queueDirty = true
     skipStreak = 0
+    unpreparable = null
     val current = queue.current
     if (current == null) {
       resetSource()
@@ -1109,7 +1112,7 @@ class PlaybackEngine(
   /** Loads a queue item as a plain load would, keeping the queue. */
   private fun loadItem(item: EngineQueueItem, autoplay: Boolean?, startPosition: Double?) {
     applyLoop()
-    delegate?.engineQueueItemStarts(item.id)
+    delegate?.engineQueueItemStarts(item.id, true)
     loadSource(item.source, autoplay, startPosition)
   }
 
@@ -1129,7 +1132,7 @@ class PlaybackEngine(
 
   /** The prepared item becomes the current one, under its own generation. */
   private fun takeOver(p: PreparedNext, item: EngineQueueItem, playing: Boolean) {
-    delegate?.engineQueueItemStarts(item.id)
+    delegate?.engineQueueItemStarts(item.id, false)
     cancelFadeOut()
     settlePendingLoad(LoadOutcome.Superseded)
     source = item.source

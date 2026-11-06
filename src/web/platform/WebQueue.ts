@@ -30,6 +30,12 @@ interface Staged {
   parts: Map<string, QueueItemParts>;
 }
 
+const NO_VIDEO_PARTS: VideoLoadParts = {
+  poster: null,
+  session: null,
+  subtitles: [],
+};
+
 const REPEAT: ReadonlySet<string> = new Set(['off', 'one', 'all']);
 
 function invalid(message: string): Error {
@@ -110,6 +116,20 @@ export class WebQueue {
         throw invalid(`Unknown queue command "${String(command.op)}".`);
     }
     this.prune();
+  }
+
+  /**
+   * The engine made a loaded source the queue's first item (`loaded-…`, a
+   * `queue.add` after `load`): it keeps the fields and file the player had
+   * for it. `true` when it took the file.
+   */
+  adoptLoaded(fields: NowPlayingFields, objectUrl: string | null): boolean {
+    const id = this.engine.queueState.ids.find(
+      (i) => i.startsWith('loaded-') && !this.parts.has(i)
+    );
+    if (id == null) return false;
+    this.parts.set(id, { fields, objectUrl, video: NO_VIDEO_PARTS });
+    return objectUrl != null;
   }
 
   /** Lets go of the items that left the queue. */

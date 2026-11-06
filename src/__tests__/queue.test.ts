@@ -160,8 +160,65 @@ describe('player.queue entries', () => {
     const p = new Player();
     await p.queue.set([{ id: 'a', uri: 'https://cdn.example/old.mp3' }]);
     fake.rejectNext = { code: 'INVALID_ARGUMENT', message: 'no' };
-    await expect(p.queue.set([{ id: 'a', uri: 'https://cdn.example/new.mp3' }])).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
-    expect(p.queue.current).toEqual({ id: 'a', uri: 'https://cdn.example/old.mp3' });
+    await expect(
+      p.queue.set([{ id: 'a', uri: 'https://cdn.example/new.mp3' }])
+    ).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
+    expect(p.queue.current).toEqual({
+      id: 'a',
+      uri: 'https://cdn.example/old.mp3',
+    });
+    await p.release();
+  });
+});
+
+describe('player.queue with load()', () => {
+  it('a load after a queue keeps the new source’s refresh', async () => {
+    const p = new Player();
+    await p.queue.set([{ id: 'a', uri: 'https://cdn.example/a.mp3' }]);
+    const refresh = jest.fn(async () => 'https://cdn.example/b2.mp3');
+    await p.load({ uri: 'https://cdn.example/b.mp3', refresh });
+    expect(p.queue.items).toEqual([]);
+    fake.emit({
+      playerId: p.id,
+      type: 'refreshRequest',
+      seq: 2e6,
+      loadId: 2,
+      reason: 'unauthorized',
+    });
+    await new Promise<void>((r) => setImmediate(() => r()));
+    expect(refresh).toHaveBeenCalled();
+    await p.release();
+  });
+
+  it('an add after a load mirrors the loaded source as the first item, its refresh kept', async () => {
+    const p = new Player();
+    const refresh = jest.fn(async () => 'https://cdn.example/s2.mp3');
+    await p.load({ uri: 'https://cdn.example/s.mp3', refresh });
+    fake.emit({
+      playerId: p.id,
+      type: 'queue',
+      seq: 3e6,
+      ids: ['loaded-1', 'n'],
+      order: ['loaded-1', 'n'],
+      index: 0,
+      currentId: 'loaded-1',
+      repeat: 'off',
+      shuffle: false,
+    });
+    expect(p.queue.current).toEqual({
+      uri: 'https://cdn.example/s.mp3',
+      refresh,
+      id: 'loaded-1',
+    });
+    fake.emit({
+      playerId: p.id,
+      type: 'refreshRequest',
+      seq: 3e6 + 1,
+      loadId: 1,
+      reason: 'expiring',
+    });
+    await new Promise<void>((r) => setImmediate(() => r()));
+    expect(refresh).toHaveBeenCalled();
     await p.release();
   });
 });

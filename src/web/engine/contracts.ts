@@ -87,11 +87,13 @@ export interface EngineDelegate {
   /** The queue changed: its items, order, current item, repeat or shuffle (`engine.queueState`). */
   engineQueueChanged?(): void;
   /**
-   * A queue item becomes the current one, before it is opened or takes over:
-   * the host applies what it keeps for it (lock-screen fields). Host work
-   * only: no engine command from inside it.
+   * A queue item becomes the current one, before it is opened (`opens`) or
+   * takes over from where it was prepared: the host applies what it keeps
+   * for it (lock-screen fields). An item that opens may first move the
+   * output (a Cast receiver that cannot play it hands it back); one that
+   * takes over stays on the output it was prepared on.
    */
-  engineQueueItemStarts?(id: string): void;
+  engineQueueItemStarts?(id: string, opens: boolean): void;
   /** The sleep timer paused the player (`sleep` event). */
   engineSleepFired(): void;
   engineDiagnostic(entry: EngineDiagnostic): void;

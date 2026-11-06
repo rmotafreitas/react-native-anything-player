@@ -225,6 +225,8 @@ export class WebPlayerController
   /** A queue command (`{ op, … }`): see `WebQueue`. */
   queueCommand(command: Record<string, unknown>): void {
     this.queue.command(command);
+    // WebKit: the next item can start on the second element (this is a tap).
+    this.userGesture();
   }
 
   queueMap(): Record<string, unknown> {
@@ -259,8 +261,9 @@ export class WebPlayerController
   /** A command arrived from a user gesture: the sampler may start its audio context now. */
   userGesture(): void {
     this.updateSampler();
-    // WebKit: the queue's next item can start on the second element later.
-    this.driver.unlock?.();
+    // WebKit: the queue's next item can start on the second element later
+    // (a player without a queue never makes one).
+    if (this.engine.queueState.ids.length > 0) this.driver.unlock?.();
   }
 
   updateNowPlaying(fields: NowPlayingFields): void {
@@ -654,16 +657,23 @@ export class WebPlayerController
   }
 
   engineQueueChanged(): void {
+    // A loaded source that joined the queue (`queue.add` after `load`): its
+    // fields and file are the queue's from now on.
+    const adopted = this.queue.adoptLoaded(this.sourceFields, this.objectUrl);
+    if (adopted) this.objectUrl = null;
     this.queue.prune();
     this.emit('queue', this.queue.map());
     // Next / previous on the media session follow the queue.
     this.runtime.onStatusChanged(this);
   }
 
-  engineQueueItemStarts(id: string): void {
+  engineQueueItemStarts(id: string, opens: boolean): void {
+    const source = this.engine.queueItems.find((item) => item.id === id);
+    // An item a Cast receiver cannot play comes back to this device first.
+    if (opens && source != null)
+      this.runtime.beforeLoad(this, source.source, null);
     const parts = this.queue.get(id);
     if (parts == null) return;
-    const source = this.engine.queueItems.find((item) => item.id === id);
     this.beginItem(source?.source.uri ?? '', parts.fields, parts.video);
     // The queue owns its items' object URLs; a loaded file's goes now.
     this.revoke(this.objectUrl);

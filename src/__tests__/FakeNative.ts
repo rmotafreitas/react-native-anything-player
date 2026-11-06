@@ -118,8 +118,18 @@ export class FakeNative {
     return Promise.resolve();
   };
   load = (id: string, source: object, options: object) => {
+    const had = (this.queues.get(id)?.length ?? 0) > 0;
     this.queues.delete(id);
-    return this.command('load', id, source, options);
+    const result = this.command('load', id, source, options);
+    // Like native: a plain load empties the queue, and says so.
+    if (had)
+      this.emit({
+        ...this.getQueue(id),
+        playerId: id,
+        type: 'queue',
+        seq: 1e6 + this.calls.length,
+      });
+    return result;
   };
   /** Each player's queue, run by the engine's own model. */
   queues = new Map<string, QueueModel>();

@@ -339,6 +339,8 @@ export class Player {
   private refreshSource: Source['refresh'] | null = null;
   /** Counts the loads, so an answer for an earlier one changes nothing. */
   private loads = 0;
+  /** What `load()` last loaded, as the app gave it. */
+  private lastLoaded: Source | null = null;
   /** Counts the commands that replace what plays (`load`, `queue.set`). */
   private replaceTurns = 0;
   /** The current source's `drm.getLicense`. */
@@ -416,6 +418,7 @@ export class Player {
       normalize: (input) =>
         isBlob(input) ? normalizeBlob(input) : normalizeSource(input),
       itemStarted: (item) => this.queueItemStarted(item),
+      loaded: () => this.lastLoaded,
       changed: (state) => this.emit('queueChange', state),
     });
     // Attached to a native player that already has a queue.
@@ -510,6 +513,7 @@ export class Player {
     this._metadata = null;
     const full =
       typeof source === 'object' && !isBlob(source) ? (source as Source) : null;
+    this.lastLoaded = full ?? { uri: String(normalized.uri ?? '') };
     this.beginVideoLoad(full, normalized);
     const loading = this.run(() =>
       native().load(this.id, normalized, nativeOptions)

@@ -688,13 +688,15 @@ final class PlayerController: EngineDelegate, DriverObserver {
   }
 
   func engineQueueChanged() {
+    // A loaded source that joined the queue (`queue.add` after `load`) keeps its fields.
+    queue.adoptLoaded(sourceFields)
     queue.changed()
     emit("queue", queue.dictionary())
     // Next / previous on the lock screen follow the queue.
     runtime.nowPlayingChanged(self)
   }
 
-  func engine(queueItemStarts id: String) {
+  func engine(queueItemStarts id: String, opens: Bool) {
     guard let parts = queue[id] else { return }
     beginItem(parts.fields, parts: parts.video)
     runtime.nowPlayingChanged(self)

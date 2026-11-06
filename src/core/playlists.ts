@@ -25,6 +25,8 @@ export interface PlaylistOptions {
 }
 
 const PLAYLIST_PATH = /\.(pls|m3u|xspf)$/i;
+/** A path that names a media file (not a stream's mount). */
+const MEDIA_FILE = /\.(mp3|m4a|m4b|aac|flac|ogg|oga|opus|wav|aiff?|mp4|m4v|mov|webm|mkv|ts)$/i;
 /** Tags only an HLS playlist has. */
 const HLS_TAGS = [
   '#EXT-X-TARGETDURATION',
@@ -93,8 +95,9 @@ function makeItem(
   headers?: Record<string, string>
 ): PlaylistItem {
   const item: PlaylistItem = { uri };
-  // -1: an endless stream.
-  if (seconds != null && seconds < 0) item.live = true;
+  // -1: an endless stream (a file whose length the list did not know stays a file).
+  if (seconds != null && seconds < 0 && !MEDIA_FILE.test(uri.split(/[?#]/)[0]!))
+    item.live = true;
   if (seconds != null && seconds > 0) metadata.duration ??= seconds;
   const meta = Object.fromEntries(
     Object.entries(metadata).filter(([, v]) => v != null && v !== '')

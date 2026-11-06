@@ -160,8 +160,11 @@ describe('a playlist file given to load() or the queue', () => {
 
 describe('untrusted playlist text', () => {
   it('keeps bad character references as text, and knows no other entities', () => {
-    const xspf = '<playlist><trackList><track><location>https://a.example/x.mp3</location><title>&#abc; &#x110000; &constructor; &#65;</title></track></trackList></playlist>';
-    expect(Playlists.parse(xspf)[0]!.metadata!.title).toBe('&#abc; &#x110000; &constructor; A');
+    const xspf =
+      '<playlist><trackList><track><location>https://a.example/x.mp3</location><title>&#abc; &#x110000; &constructor; &#65;</title></track></trackList></playlist>';
+    expect(Playlists.parse(xspf)[0]!.metadata!.title).toBe(
+      '&#abc; &#x110000; &constructor; A'
+    );
   });
 
   it('scans unclosed tracks in linear time', () => {
@@ -172,26 +175,44 @@ describe('untrusted playlist text', () => {
   });
 
   it('reads zero-padded PLS keys and skips empty entries; a length of 0 is not live', () => {
-    const pls = '[playlist]\nFile01=http://a.example/1.mp3\nTitle01=One\nLength01=0\nFile2=\n';
-    expect(Playlists.parse(pls)).toEqual([{ uri: 'http://a.example/1.mp3', metadata: { title: 'One' } }]);
+    const pls =
+      '[playlist]\nFile01=http://a.example/1.mp3\nTitle01=One\nLength01=0\nFile2=\n';
+    expect(Playlists.parse(pls)).toEqual([
+      { uri: 'http://a.example/1.mp3', metadata: { title: 'One' } },
+    ]);
   });
 });
 
 describe('a playlist fetched for a source', () => {
   const answer = (text: string) => {
-    (fake as unknown as { fetchText: unknown }).fetchText = jest.fn(async () => ({ text, charset: 'utf-8' }));
+    (fake as unknown as { fetchText: unknown }).fetchText = jest.fn(
+      async () => ({ text, charset: 'utf-8' })
+    );
   };
 
   it('sends the app’s headers to the playlist’s own host only, and drops device files a remote list names', async () => {
-    answer('#EXTM3U\nfile:///data/secret.mp3\nhttps://other.example/a.mp3\nhttps://api.example/b.mp3\n');
+    answer(
+      '#EXTM3U\nfile:///data/secret.mp3\nhttps://other.example/a.mp3\nhttps://api.example/b.mp3\n'
+    );
     const items = await Playlists.fetch('https://api.example/list.m3u');
-    expect(items.map((i) => i.uri)).toEqual(['https://other.example/a.mp3', 'https://api.example/b.mp3']);
+    expect(items.map((i) => i.uri)).toEqual([
+      'https://other.example/a.mp3',
+      'https://api.example/b.mp3',
+    ]);
     const p = new Player();
     fake.calls = [];
-    await p.load({ uri: 'https://api.example/list.m3u', headers: { Authorization: 'Bearer t' } });
-    expect(fake.calls.find((c) => c[0] === 'load')![2]).toEqual({ uri: 'https://other.example/a.mp3' });
+    await p.load({
+      uri: 'https://api.example/list.m3u',
+      headers: { Authorization: 'Bearer t' },
+    });
+    expect(fake.calls.find((c) => c[0] === 'load')![2]).toEqual({
+      uri: 'https://other.example/a.mp3',
+    });
     answer('https://api.example/b.mp3\n');
-    await p.load({ uri: 'https://api.example/list.m3u', headers: { Authorization: 'Bearer t' } });
+    await p.load({
+      uri: 'https://api.example/list.m3u',
+      headers: { Authorization: 'Bearer t' },
+    });
     expect(fake.calls.filter((c) => c[0] === 'load').pop()![2]).toEqual({
       uri: 'https://api.example/b.mp3',
       headers: { Authorization: 'Bearer t' },
@@ -208,14 +229,22 @@ describe('a playlist fetched for a source', () => {
     fake.calls = [];
     const slow = p.load('https://radio.example/listen.pls');
     await p.load('https://cdn.example/b.mp3');
-    release({ text: '[playlist]\nFile1=https://radio.example/320\n', charset: 'utf-8' });
+    release({
+      text: '[playlist]\nFile1=https://radio.example/320\n',
+      charset: 'utf-8',
+    });
     await slow;
-    expect(fake.calls.filter((c) => c[0] === 'load').map((c) => (c[2] as { uri: string }).uri)).toEqual([
-      'https://cdn.example/b.mp3',
-    ]);
+    expect(
+      fake.calls
+        .filter((c) => c[0] === 'load')
+        .map((c) => (c[2] as { uri: string }).uri)
+    ).toEqual(['https://cdn.example/b.mp3']);
     const slowSet = p.queue.set(['https://radio.example/listen.pls']);
     await p.queue.set(['https://cdn.example/c.mp3']);
-    release({ text: '[playlist]\nFile1=https://radio.example/320\n', charset: 'utf-8' });
+    release({
+      text: '[playlist]\nFile1=https://radio.example/320\n',
+      charset: 'utf-8',
+    });
     await slowSet;
     expect(fake.calls.filter((c) => c[0] === 'queueCommand')).toHaveLength(1);
     await p.release();
