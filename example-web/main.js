@@ -2,6 +2,7 @@
 // The plain-web example: the same Player API as React Native, in a page with
 // no framework. `window.rnap` exposes the player to the end-to-end tests.
 import {
+  Cache,
   Player,
   addCastStateListener,
   addRoutePickerAvailabilityListener,
@@ -111,7 +112,7 @@ const player = new Player({
   progressInterval: 500,
 });
 const events = [];
-window.rnap = { player, events, stations: STATIONS, stopCasting };
+window.rnap = { player, events, stations: STATIONS, stopCasting, Cache };
 
 const $ = (id) => document.getElementById(id);
 const log = (line) => {
@@ -123,6 +124,9 @@ const log = (line) => {
 };
 const record = (type, payload) =>
   events.push({ type, at: Date.now(), ...payload });
+player.on('queueChange', (queue) =>
+  record('queue', { current: queue.current?.id ?? null, index: queue.index })
+);
 
 let selected = 0;
 function load(index, autoplay) {

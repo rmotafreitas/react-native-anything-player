@@ -27,12 +27,20 @@ interface Entry {
   error: { code: string; message: string; recoverable: boolean } | null;
 }
 
+/** A response body as the cache reads it (no DOM types in the library build). */
+interface BodyStream {
+  getReader(): {
+    read(): Promise<{ done: boolean; value?: { byteLength: number } }>;
+  };
+  tee(): [BodyStream, BodyStream];
+}
+
 interface StoredResponse {
   readonly ok: boolean;
   readonly status: number;
   readonly headers: { get(name: string): string | null };
-  readonly body: ReadableStream<Uint8Array> | null;
-  blob(): Promise<Blob>;
+  readonly body: BodyStream | null;
+  blob(): Promise<unknown>;
   json(): Promise<unknown>;
 }
 
@@ -262,7 +270,7 @@ export class WebCache {
     );
   }
 
-  private async body(key: string): Promise<Blob | null> {
+  private async body(key: string): Promise<unknown> {
     const store = await this.open();
     const stored = await store.match(mediaKey(key));
     return stored ? stored.blob() : null;
@@ -402,7 +410,7 @@ export class WebCache {
   }
 
   private async count(
-    body: ReadableStream<Uint8Array>,
+    body: BodyStream,
     entry: Entry
   ): Promise<void> {
     const reader = body.getReader();
