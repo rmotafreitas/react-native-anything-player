@@ -322,10 +322,15 @@ export class WebCache {
   }
 
   /** One changed key onto the stored index; one another page removed is let go. */
-  private writeKey(stored: Map<string, Entry>, key: string): void {
+  private writeKey(
+    stored: Map<string, Entry>,
+    key: string,
+    removedHere: boolean
+  ): void {
     const entry = this.index.get(key);
     if (entry == null) return;
-    if (!stored.has(key) && this.known.has(key)) this.index.delete(key);
+    if (!removedHere && !stored.has(key) && this.known.has(key))
+      this.index.delete(key);
     else {
       adoptComplete(entry, stored.get(key));
       stored.set(key, entry);
@@ -360,7 +365,8 @@ export class WebCache {
         (await this.readStored()).map((e) => [e.key, e] as const)
       );
       for (const key of this.deleted) stored.delete(key);
-      for (const key of this.dirty) this.writeKey(stored, key);
+      for (const key of this.dirty)
+        this.writeKey(stored, key, this.deleted.has(key));
       this.dirty.clear();
       this.deleted.clear();
       // What other pages wrote and this page has not: it sees it too.
@@ -399,7 +405,7 @@ export class WebCache {
     if (entry == null) {
       entry = blankEntry(key, source);
       this.index.set(key, entry);
-      this.deleted.delete(key);
+      // A removal before it stays in `deleted`: the stored entry goes, then this one is written.
       this.changed(key);
     }
     return entry;

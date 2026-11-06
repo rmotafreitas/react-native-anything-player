@@ -418,6 +418,43 @@ describe('WebCache', () => {
     });
   });
 
+  it('a download removed and asked for again at once starts afresh, not as the old complete file', async () => {
+    served['https://cdn.example/r.mp3'] = { bytes: MB };
+    const cache = new WebCache();
+    await cache.command({
+      op: 'download',
+      ...src('https://cdn.example/r.mp3'),
+      id: 'r',
+    });
+    await new Promise((r) => setTimeout(r, 600));
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((r) => (release = r));
+    const before = globals.fetch as (...args: unknown[]) => Promise<Response>;
+    globals.fetch = async (...args: unknown[]) => {
+      await gate;
+      return before(...args);
+    };
+    await cache.command({ op: 'removeDownload', id: 'r' });
+    await cache.command({
+      op: 'download',
+      ...src('https://cdn.example/r.mp3'),
+      id: 'r',
+    });
+    await new Promise((r) => setTimeout(r, 600));
+    expect(await cache.command({ op: 'downloads' })).toMatchObject({
+      downloads: [{ id: 'r', state: 'queued' }],
+    });
+    expect(
+      await cache.command({ op: 'info', ...src('https://cdn.example/r.mp3') })
+    ).toMatchObject({ downloaded: false });
+    release();
+    await new Promise((r) => setTimeout(r, 50));
+    globals.fetch = before;
+    expect(await cache.command({ op: 'downloads' })).toMatchObject({
+      downloads: [{ id: 'r', state: 'completed' }],
+    });
+  });
+
   it('a download of a source with no length fails, and says why', async () => {
     const cache = new WebCache();
     const events: Array<Record<string, unknown>> = [];
