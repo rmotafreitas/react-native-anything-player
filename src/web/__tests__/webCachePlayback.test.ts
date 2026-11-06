@@ -10,6 +10,11 @@ import { webCache } from '../platform/WebCache';
 let world: FakeWorld;
 let module: WebModule;
 
+/** A load whose settlement the test does not wait for. */
+function loadQuietly(id: string, source: object, options: object): void {
+  module.load(id, source, options).catch(() => undefined);
+}
+
 async function flush(): Promise<void> {
   for (let i = 0; i < 10; i++) await jest.advanceTimersByTimeAsync(0);
 }
@@ -36,7 +41,7 @@ describe('playback from the web cache', () => {
           : null
       );
     const id = module.createPlayer({});
-    void module.load(
+    loadQuietly(
       id,
       { uri: 'https://cdn.example/cached.mp3', live: false },
       { autoplay: true }
@@ -47,11 +52,7 @@ describe('playback from the web cache', () => {
     expect(element.src).toBe('blob:https://app.example/1');
     expect(element.plays).toBeGreaterThan(0);
 
-    void module.load(
-      id,
-      { uri: 'https://cdn.example/other.mp3', live: false },
-      {}
-    );
+    loadQuietly(id, { uri: 'https://cdn.example/other.mp3', live: false }, {});
     await flush();
     expect(world.element().src).toBe('https://cdn.example/other.mp3');
   });
@@ -61,11 +62,7 @@ describe('playback from the web cache', () => {
       .spyOn(webCache(), 'blobFor')
       .mockReturnValue(Promise.reject(new Error('gone')));
     const id = module.createPlayer({});
-    void module.load(
-      id,
-      { uri: 'https://cdn.example/cached.mp3', live: false },
-      {}
-    );
+    loadQuietly(id, { uri: 'https://cdn.example/cached.mp3', live: false }, {});
     await flush();
     expect(world.element().src).toBe('https://cdn.example/cached.mp3');
   });
@@ -80,12 +77,8 @@ describe('playback from the web cache', () => {
           : null
       );
     const id = module.createPlayer({});
-    void module.load(
-      id,
-      { uri: 'https://cdn.example/cached.mp3', live: false },
-      {}
-    );
-    void module.load(id, { uri: 'https://cdn.example/b.mp3', live: false }, {});
+    loadQuietly(id, { uri: 'https://cdn.example/cached.mp3', live: false }, {});
+    loadQuietly(id, { uri: 'https://cdn.example/b.mp3', live: false }, {});
     release('blob:https://app.example/late');
     await flush();
     expect(world.element().src).toBe('https://cdn.example/b.mp3');
