@@ -52,12 +52,15 @@ enum DashToHls {
     var videos: [(rep: Representation, playlist: String)] = []
     var audios: [(set: XmlNode, rep: Representation, playlist: String)] = []
     var texts: [(set: XmlNode, playlist: String, name: String)] = []
+    // Captions inside the picture (CEA-608/708) only where the manifest says so.
+    var captions = false
     for set in period.children("AdaptationSet") {
       let setBase = resolve(set.child("BaseURL")?.text, against: periodBase)
       let kind = contentKind(set)
       let reps = set.children("Representation").map { Representation(node: $0, set: set, base: setBase) }
       switch kind {
       case "video":
+        captions = captions || set.children("Accessibility").contains { ($0["schemeIdUri"] ?? "").contains("cea-") }
         for rep in reps {
           let name = "video-\(safe(rep.id)).m3u8"
           media.append(Media(name: name, playlist: try mediaPlaylist(rep, live: live, duration: periodDuration, clock: clock)))
@@ -84,7 +87,8 @@ enum DashToHls {
     guard !videos.isEmpty || !audios.isEmpty else {
       throw Failure(message: "The manifest has no picture or sound RNAP can convert for AVPlayer.")
     }
-    return Output(master: master(videos: videos, audios: audios, texts: texts), media: media, live: live)
+    return Output(
+      master: master(videos: videos, audios: audios, texts: texts, captions: captions), media: media, live: live)
   }
 
   // MARK: - The master playlist
@@ -92,7 +96,7 @@ enum DashToHls {
   private static func master(
     videos: [(rep: Representation, playlist: String)],
     audios: [(set: XmlNode, rep: Representation, playlist: String)],
-    texts: [(set: XmlNode, playlist: String, name: String)]
+    texts: [(set: XmlNode, playlist: String, name: String)], captions: Bool
   ) -> String {
     var lines = ["#EXTM3U", "#EXT-X-VERSION:7", "#EXT-X-INDEPENDENT-SEGMENTS"]
     for (i, audio) in audios.enumerated() {
@@ -141,6 +145,8 @@ enum DashToHls {
       if let rate = video.rep.frameRate { attributes.append(String(format: "FRAME-RATE=%.3f", rate)) }
       if !audios.isEmpty { attributes.append("AUDIO=\"aud\"") }
       if !texts.isEmpty { attributes.append("SUBTITLES=\"subs\"") }
+      // Else AVPlayer offers a "CC" track that shows nothing.
+      if !captions { attributes.append("CLOSED-CAPTIONS=NONE") }
       lines.append("#EXT-X-STREAM-INF:" + attributes.joined(separator: ","))
       lines.append(video.playlist)
     }
