@@ -491,6 +491,11 @@ extension MediaCache: URLSessionDataDelegate {
     let headers = http.allHeaderFields.reduce(into: [String: String]()) { out, pair in
       if let k = pair.key as? String { out[k.lowercased()] = "\(pair.value)" }
     }
+    // `no-store`: a preload writes nothing, as the proxy does (a download keeps what it is asked for).
+    if case .preload = job.job, headers["cache-control"]?.lowercased().contains("no-store") == true {
+      finish(dataTask.taskIdentifier, nil)
+      return completionHandler(.cancel)
+    }
     var offset: Int64 = 0
     var total = headers["content-length"].flatMap { Int64($0) }
     if http.statusCode == 206, let range = headers["content-range"] {
