@@ -167,6 +167,18 @@ describe('untrusted playlist text', () => {
     );
   });
 
+  it('reads fields after an İ where they are (its lower case is two characters)', () => {
+    const xspf =
+      '<playlist><trackList><track><title>İİİİ</title><creator>İ</creator><location>https://cdn.example/a.mp3</location></track><track><location>https://cdn.example/b.mp3</location></track></trackList></playlist>';
+    expect(Playlists.parse(xspf)).toEqual([
+      {
+        uri: 'https://cdn.example/a.mp3',
+        metadata: { title: 'İİİİ', artist: 'İ' },
+      },
+      { uri: 'https://cdn.example/b.mp3' },
+    ]);
+  });
+
   it('scans many <trackList> tags and unclosed fields in linear time', () => {
     const lists = '<trackList>'.repeat(100_000);
     const fields = `<playlist><trackList><track>${'<location>x'.repeat(50_000)}</track></trackList></playlist>`;

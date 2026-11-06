@@ -812,9 +812,13 @@ internal class ExoPlayerDriver(
   private fun belongsToPrepared(p: ExoPlayer, error: PlaybackException, request: OpenRequest): Boolean {
     var cause: Throwable? = error
     while (cause != null) {
-      if (cause is HttpDataSource.HttpDataSourceException) {
-        return cause.dataSpec.uri.toString().substringBefore('#') == request.source.uri.substringBefore('#')
-      }
+      val failed =
+        when (cause) {
+          is HttpDataSource.HttpDataSourceException -> cause.dataSpec.uri
+          is androidx.media3.exoplayer.source.UnrecognizedInputFormatException -> cause.uri
+          else -> null
+        }
+      if (failed != null) return requestOf(request, failed.toString())
       cause = cause.cause
     }
     val period = (error as? ExoPlaybackException)?.mediaPeriodId ?: return false
@@ -823,6 +827,20 @@ internal class ExoPlayerDriver(
     if (periodIndex == C.INDEX_UNSET) return false
     val window = timeline.getPeriod(periodIndex, Timeline.Period()).windowIndex
     return window != p.currentMediaItemIndex && window == preparedIndex(p, request)
+  }
+
+  /**
+   * Whether a failed request was the prepared item's: its own URL, or for
+   * HLS and DASH one beside its manifest (a media playlist, a segment). A
+   * segment on another host is not recognised and is the current item's.
+   */
+  private fun requestOf(request: OpenRequest, failed: String): Boolean {
+    val own = request.source.uri.substringBefore('#')
+    val uri = failed.substringBefore('#')
+    if (uri == own) return true
+    val path = own.substringBefore('?')
+    val adaptive = path.endsWith(".m3u8", ignoreCase = true) || path.endsWith(".mpd", ignoreCase = true)
+    return adaptive && uri.startsWith(path.substringBeforeLast('/') + "/")
   }
 
   private fun preparedIndex(p: ExoPlayer, request: OpenRequest): Int {

@@ -199,7 +199,10 @@ export class WebQueue {
         const blob = map.blob;
         const objectUrl =
           blob == null ? null : browser().URL.createObjectURL(blob);
-        // Owned from here: revoked with the item, or below if it is refused.
+        // Owned from here: revoked with the item, or below if it is refused
+        // (an id given twice in one batch is refused: its first file goes now).
+        const twice = parts.get(id);
+        if (twice != null) this.revoke(twice);
         parts.set(id, { fields: NO_FIELDS, objectUrl, video: NO_VIDEO_PARTS });
         const [source, fields] = parseSource(
           objectUrl == null ? map : { ...map, uri: objectUrl }

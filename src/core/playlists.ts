@@ -250,9 +250,17 @@ function xmlText(value: string | undefined): string | undefined {
   return text === '' ? undefined : text;
 }
 
+/**
+ * Lower case with every index unchanged: `İ` (U+0130) is the one character
+ * whose lower case is longer, which would shift every offset after it.
+ */
+function sameLengthLower(text: string): string {
+  return text.replace(/\u0130/g, 'I').toLowerCase();
+}
+
 /** A field's text in a track body, by a bounded scan (no backtracking on untrusted text). */
 function xmlField(track: string, name: string): string | undefined {
-  const lower = track.toLowerCase();
+  const lower = sameLengthLower(track);
   let open = lower.indexOf(`<${name}`);
   while (
     open >= 0 &&
@@ -268,7 +276,7 @@ function xmlField(track: string, name: string): string | undefined {
 
 /** Each `<track>…</track>` body, found by a linear scan (the text is untrusted). */
 function xspfTracks(text: string): string[] {
-  const lower = text.toLowerCase();
+  const lower = sameLengthLower(text);
   const tracks: string[] = [];
   let open = lower.indexOf('<track');
   while (open >= 0) {

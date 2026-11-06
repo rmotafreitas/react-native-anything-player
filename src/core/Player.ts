@@ -559,11 +559,11 @@ export class Player {
     // The previous item's subtitle files are not this one's.
     this.subtitles.cancel();
     this.loads += 1;
-    this.refreshSource = item?.refresh ?? null;
-    this.licenseHook = item?.drm?.getLicense ?? null;
-    this.sourceHeaders = { ...item?.headers };
+    this.refreshSource = item.refresh ?? null;
+    this.licenseHook = item.drm?.getLicense ?? null;
+    this.sourceHeaders = { ...item.headers };
     this.thumbnails =
-      item?.thumbnails != null
+      item.thumbnails != null
         ? new ThumbnailTrack(item.thumbnails, this.sourceHeaders)
         : null;
     this.cuesOnScreen = [];
