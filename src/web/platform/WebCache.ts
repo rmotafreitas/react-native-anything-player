@@ -666,9 +666,8 @@ export class WebCache {
   }
 
   private async removeDownload(id: string): Promise<void> {
-    for (const entry of [...this.index.values()]) {
-      if (entry.downloadId === id) await this.drop(entry.key);
-    }
+    const mine = [...this.index.values()].filter((e) => e.downloadId === id);
+    await Promise.all(mine.map((e) => this.drop(e.key)));
   }
 
   private info(source: SourceDescriptor): object {
@@ -695,9 +694,8 @@ export class WebCache {
   }
 
   private async clear(): Promise<void> {
-    for (const entry of [...this.index.values()]) {
-      if (entry.downloadId == null) await this.drop(entry.key);
-    }
+    const cached = [...this.index.values()].filter((e) => e.downloadId == null);
+    await Promise.all(cached.map((e) => this.drop(e.key)));
   }
 
   /**
@@ -712,11 +710,13 @@ export class WebCache {
     const candidates = cached
       .filter((e) => !this.blobs.has(e.key))
       .sort((a, b) => a.lastUsed - b.lastUsed);
+    const victims: string[] = [];
     for (const entry of candidates) {
       if (total <= this.maxSize) break;
       total -= entry.bytes;
-      await this.drop(entry.key);
+      victims.push(entry.key);
     }
+    await Promise.all(victims.map((key) => this.drop(key)));
   }
 
   private async drop(key: string): Promise<void> {
