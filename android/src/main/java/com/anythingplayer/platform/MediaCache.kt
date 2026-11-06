@@ -81,7 +81,10 @@ internal object MediaCache {
     @Volatile var error: PlayerError? = null,
     /** HLS / DASH: the one quality kept (period, group, stream). */
     @Volatile var keys: List<StreamKey> = emptyList(),
-  )
+  ) {
+    /** Down when its task has ended (a removal waits for it: no write after it). */
+    val ended = java.util.concurrent.CountDownLatch(1)
+  }
 
   /** Main thread, at runtime start: settings and unfinished downloads come back. */
   fun attach(app: Context) {
@@ -249,7 +252,12 @@ internal object MediaCache {
     }
     // One download per id, and per file: another one with either goes first.
     val replaced = downloads.values.filter { it.id == name || it.key == key }
-    replaced.forEach { downloads.remove(it.id); running.remove(it.id)?.cancel(true) }
+    replaced.forEach {
+      downloads.remove(it.id)
+      val task = running.remove(it.id)
+      task?.cancel(true)
+      if (task == null) it.ended.countDown()
+    }
     val download = Download(name, source.uri, key, source.headers, typeOf(source.uri) ?: "file", "queued")
     downloads[name] = download
     admin.execute {
@@ -265,7 +273,10 @@ internal object MediaCache {
 
   fun removeDownload(id: String) {
     val download = downloads.remove(id) ?: return
-    running.remove(id)?.cancel(true)
+    val task = running.remove(id)
+    task?.cancel(true)
+    // Never started (or long done): nothing to wait for.
+    if (task == null) download.ended.countDown()
     admin.execute {
       removeBytes(download)
       writeIndex()
@@ -274,7 +285,10 @@ internal object MediaCache {
 
   /** A download's bytes go (its downloader knows an HLS / DASH item's segments; a file is its key). */
   private fun removeBytes(download: Download) {
-    runCatching { downloaderFor(download).remove() }
+    // Not while its task still writes (bounded: a stuck read gives up).
+    download.ended.await(5, java.util.concurrent.TimeUnit.SECONDS)
+    // Its stored manifest names the segments: nothing is fetched to remove them.
+    runCatching { downloaderFor(download, removing = true).remove() }
     runCatching { kept.removeResource(download.key) }
   }
 
@@ -286,6 +300,12 @@ internal object MediaCache {
     val playedBytes = play.getCachedBytes(key, 0, C.LENGTH_UNSET.toLong())
     val length = ContentMetadata.getContentLength(kept.getContentMetadata(key)).takeIf { it > 0 }
       ?: ContentMetadata.getContentLength(play.getContentMetadata(key)).takeIf { it > 0 }
+    // A downloaded file whose bytes are gone (storage cleared): it failed.
+    if (download != null && download.state == "completed" && download.type == "file" && length != null && keptBytes < length) {
+      download.state = "failed"
+      download.error = PlayerError(ErrorCode.SOURCE_NOT_FOUND, "The downloaded file is gone from the device.", true)
+      admin.execute { writeIndex() }
+    }
     val bytes = if (adaptive) download?.bytes ?: 0 else maxOf(keptBytes, playedBytes)
     val complete =
       download?.state == "completed" || (!adaptive && length != null && maxOf(keptBytes, playedBytes) >= length)
@@ -315,7 +335,10 @@ internal object MediaCache {
       work.submit {
         // Removed or replaced while it ran: nothing of it is told or written.
         val current = { downloads[download.id] === download }
-        if (!current()) return@submit
+        if (!current()) {
+          download.ended.countDown()
+          return@submit
+        }
         try {
           download.state = "downloading"
           emit(download)
@@ -353,6 +376,7 @@ internal object MediaCache {
           if (current()) running.remove(download.id)
           // A cancel left this pool thread interrupted: the next work on it must not fail.
           Thread.interrupted()
+          download.ended.countDown()
         }
         if (!current()) return@submit
         writeIndex()
@@ -361,12 +385,12 @@ internal object MediaCache {
   }
 
 
-  private fun downloaderFor(d: Download): Downloader {
+  private fun downloaderFor(d: Download, removing: Boolean = false): Downloader {
     val factory = CacheDataSource.Factory().setCache(kept).setUpstreamDataSourceFactory(http(d.headers))
     val source = SourceDescriptor(d.uri, d.headers, liveHint = false, cacheKey = d.key)
     factory.setCacheKeyFactory(keyFactory(source))
     val type = if (d.type == "file") null else d.type
-    if (type != null && d.keys.isEmpty()) d.keys = streamKeys(source, type)
+    if (type != null && d.keys.isEmpty() && !removing) d.keys = streamKeys(source, type)
     return downloader(factory, d.uri, d.key, type, d.keys)
   }
 

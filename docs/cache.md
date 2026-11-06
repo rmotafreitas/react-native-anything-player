@@ -75,9 +75,9 @@ player.load({ uri: signedUrl, cacheKey: 'episode-42' });
 - A download left half-way goes on at the next launch: from where it stopped on iOS and Android (HLS downloads on iOS go on in the background, the system's own), from the start on the web (a page cannot resume a file it stores). One that failed stays `failed`: ask for it again.
 - Progress comes at most once a second (`download` events). An HLS download on iOS reports a share of 1,000 (`bytes` / `totalBytes`) until it completes: AVFoundation does not say its size.
 - A finished download of a file removes its copy from the cache (Android, iOS), so the same bytes are not kept twice. On the web a file the cache holds whole becomes the download without being fetched again; on Android and iOS a download fetches the file anew.
-- One download per file: `Cache.download` of a file another id already downloads moves it to the new id (and `Cache.download` with the same id and file again answers with the download that is there).
+- One download per file: `Cache.download` of a file another id already downloads replaces that download (on Android and iOS its bytes go and the new one starts over; on the web a file held whole stays), and `Cache.download` with the same id and file again answers with the download that is there. On the web, one page of a site fetches a file at a time.
 - A source with no length (a live stream without `live: true`) is never cached or downloaded.
-- A response with `Cache-Control: no-store` is not written to the cache as it plays on iOS and the web; Android's cache (Media3) does not read that header: give such a source `cache: false`.
+- A response with `Cache-Control: no-store` is not written to the cache (as it plays, or by `preload`) on iOS and the web; Android's cache (Media3) does not read that header: give such a source `cache: false`.
 - A download keeps its source's request headers (to resume it), in the app's storage. A download is an app's data, not the user's account: on sign-out, remove the downloads (`Cache.downloads()`, then `removeDownload`) and `Cache.clear()` the cache.
 
 ## Offline

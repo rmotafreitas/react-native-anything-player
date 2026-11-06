@@ -324,6 +324,12 @@ final class MediaCache: NSObject {
 
   private func info(_ source: SourceDescriptor) -> [String: Any] {
     let key = self.key(of: source)
+    // A downloaded file whose bytes are gone (storage cleared): it failed.
+    if let gone = downloads.values.first(where: { $0.key == key && $0.type == "file" && $0.state == "completed" }),
+      !kept.isComplete(key) || !kept.fileExists(key)
+    {
+      fail(gone.id, PlayerError.code(.sourceNotFound, "The downloaded file is gone from the device.", recoverable: true))
+    }
     let download = downloads.values.first { $0.key == key }
     let held = max(kept.heldBytes(key), play.heldBytes(key))
     let total = kept.entry(key)?.totalLength ?? play.entry(key)?.totalLength ?? download?.totalBytes

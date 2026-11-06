@@ -68,6 +68,11 @@ interface Globals {
     storage?: { persist?(): Promise<boolean> };
     locks?: {
       request(name: string, task: () => Promise<void>): Promise<void>;
+      request(
+        name: string,
+        options: { ifAvailable: boolean },
+        task: (lock: unknown) => Promise<void>
+      ): Promise<void>;
     };
   };
   fetch(url: string, init: object): Promise<StoredResponse>;
@@ -241,7 +246,9 @@ export class WebCache {
     entry.lastUsed = Date.now();
     this.changed(entry.key);
     const key = entry.key;
-    let url = this.blobs.get(key);
+    // A URL made before (still protected, or loose) is the one: never a second.
+    let url = this.blobs.get(key) ?? this.loose.get(key);
+    this.loose.delete(key);
     if (url == null) {
       url = this.body(key).then((blob) => {
         if (blob != null) return browser().URL.createObjectURL(blob);
@@ -355,6 +362,10 @@ export class WebCache {
       for (const [key, entry] of stored) {
         if (!this.index.has(key)) this.index.set(key, entry);
       }
+      // What another page removed (and this one did not touch) goes here too.
+      for (const key of [...this.index.keys()]) {
+        if (!stored.has(key) && this.known.has(key)) this.index.delete(key);
+      }
       this.known = new Set(stored.keys());
       const store = await this.open();
       await store.put(
@@ -448,7 +459,9 @@ export class WebCache {
     entry.downloadId = name;
     // Kept to start it again at the next visit (a download's only).
     entry.headers = source.headers;
-    entry.state = entry.complete ? 'completed' : 'queued';
+    // Asked again while it runs: it is still downloading.
+    const running = this.filling.has(key) ? 'downloading' : 'queued';
+    entry.state = entry.complete ? 'completed' : running;
     entry.error = null;
     this.changed(key);
     // Ask the browser not to evict what the user downloaded.
@@ -480,17 +493,29 @@ export class WebCache {
     const running = this.filling.get(key);
     if (running) return running.work;
     const stop = new (browser().AbortController)();
-    const work: Promise<void> = this.fetchWhole(
-      source,
-      key,
-      downloadId,
-      stop
+    const work: Promise<void> = this.oneFetch(key, () =>
+      this.fetchWhole(source, key, downloadId, stop)
     ).finally(() => {
       // Only its own entry: a removal may have let a newer fill take the key.
       if (this.filling.get(key)?.work === work) this.filling.delete(key);
     });
     this.filling.set(key, { work, stop });
     return work;
+  }
+
+  /**
+   * One page of this site fetches a file at a time (Web Locks): another
+   * page already fetching it lets this one go; its index write tells this
+   * page later.
+   */
+  private oneFetch(key: string, fetch: () => Promise<void>): Promise<void> {
+    const locks = g().navigator?.locks;
+    if (locks == null) return fetch();
+    return locks.request(
+      `${INDEX_KEY}/fetch/${key}`,
+      { ifAvailable: true },
+      (lock) => (lock == null ? Promise.resolve() : fetch())
+    );
   }
 
   private async fetchWhole(
