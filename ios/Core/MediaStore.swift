@@ -93,7 +93,8 @@ final class MediaStore {
       var entry = index[key] ?? Entry()
       if let totalLength, totalLength > 0 { entry.totalLength = totalLength }
       if let contentType { entry.contentType = contentType }
-      if let pathExtension, !pathExtension.isEmpty { entry.pathExtension = pathExtension }
+      // The file's name holds its extension: fixed once bytes are written.
+      if let pathExtension, !pathExtension.isEmpty, entry.ranges.isEmpty { entry.pathExtension = pathExtension }
       entry.lastUsed = now()
       index[key] = entry
     }
@@ -166,12 +167,40 @@ final class MediaStore {
     saveSoon()
   }
 
-  /// The key's bytes as a file (a complete download played directly).
+  /// The key's bytes as a file (a complete download played directly): a
+  /// 128-bit hash of the key, so two long keys never share a file.
   func fileURL(_ key: String) -> URL {
-    let name = Data(key.utf8).base64EncodedString()
-      .replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "+", with: "-")
     let ext = locked { index[key]?.pathExtension } ?? "bin"
-    return directory.appendingPathComponent(String(name.prefix(180))).appendingPathExtension(ext)
+    return directory.appendingPathComponent(Self.fileName(key)).appendingPathExtension(ext)
+  }
+
+  /// Two 64-bit FNV-1a hashes (different offset bases) of the key, in hex.
+  static func fileName(_ key: String) -> String {
+    func fnv(_ basis: UInt64) -> UInt64 {
+      var hash = basis
+      for byte in key.utf8 {
+        hash ^= UInt64(byte)
+        hash = hash &* 0x0000_0100_0000_01B3
+      }
+      return hash
+    }
+    let a = fnv(0xCBF2_9CE4_8422_2325)
+    let b = fnv(0x84222325_CBF29CE4)
+    return String(format: "%016llx%016llx", a, b)
+  }
+
+  /// The file is there (an index can outlive it: storage cleared by the system).
+  func fileExists(_ key: String) -> Bool {
+    FileManager.default.fileExists(atPath: fileURL(key).path)
+  }
+
+  /// Kept from eviction: the files players opened last (one may be playing).
+  func protect(_ key: String) {
+    locked {
+      protected.removeAll { $0 == key }
+      protected.append(key)
+      if protected.count > 3 { protected.removeFirst() }
+    }
   }
 
   func remove(_ key: String) {
@@ -206,6 +235,7 @@ final class MediaStore {
 
   private var indexURL: URL { directory.appendingPathComponent("index.json") }
   private var savePending = false
+  private var protected: [String] = []
 
   private func locked<T>(_ body: () -> T) -> T {
     lock.lock()
@@ -226,7 +256,7 @@ final class MediaStore {
       var total = index.values.reduce(0) { $0 + Self.ranges($1).count }
       var out: [String] = []
       for (key, entry) in index.sorted(by: { $0.value.lastUsed < $1.value.lastUsed }) where total > max {
-        if key == keeping { continue }
+        if key == keeping || protected.contains(key) { continue }
         total -= Self.ranges(entry).count
         out.append(key)
       }

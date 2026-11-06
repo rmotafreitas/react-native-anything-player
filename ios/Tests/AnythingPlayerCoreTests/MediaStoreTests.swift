@@ -100,3 +100,27 @@ final class StoredResponseTests: XCTestCase {
     XCTAssertNil(store.plan("missing", range: nil))
   }
 }
+
+final class MediaStoreNamesTests: XCTestCase {
+  func testLongKeysWithOneStartGetTheirOwnFiles() {
+    let base = String(repeating: "https://cdn.example/path/", count: 10)
+    XCTAssertNotEqual(MediaStore.fileName(base + "a?sig=1"), MediaStore.fileName(base + "a?sig=2"))
+    XCTAssertEqual(MediaStore.fileName("x").count, 32)
+  }
+
+  func testTheExtensionHoldsOnceBytesAreWrittenAndRecentFilesStay() {
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: dir) }
+    var clock = 0.0
+    let store = MediaStore(directory: dir, maxBytes: 15, now: { clock })
+    store.describe("a", totalLength: 10, contentType: nil, pathExtension: "mp3")
+    store.write("a", offset: 0, data: Data(count: 10))
+    store.describe("a", totalLength: 10, contentType: nil, pathExtension: "m4a")
+    XCTAssertEqual(store.fileURL("a").pathExtension, "mp3")
+    XCTAssertTrue(store.fileExists("a"))
+    store.protect("a")
+    clock += 1
+    store.write("b", offset: 0, data: Data(count: 10))
+    XCTAssertNotNil(store.entry("a"))
+  }
+}

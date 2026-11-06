@@ -51,14 +51,20 @@ final class MediaCache: NSObject {
     let store: MediaStore
     let key: String
     var offset: Int64
+    /// A preload of part of a file: it stops here even if the server sends the whole file.
+    var budget: Int64?
 
-    init(_ job: Job, _ store: MediaStore, _ key: String, _ offset: Int64) {
+    init(_ job: Job, _ store: MediaStore, _ key: String, _ offset: Int64, budget: Int64? = nil) {
       self.job = job
       self.store = store
       self.key = key
       self.offset = offset
+      self.budget = budget
     }
   }
+
+  /// The tasks a download runs, by download id: removing it cancels exactly those.
+  private var downloadTasks: [String: (session: URLSession, task: Int)] = [:]
 
   private var downloads: [String: Download] = [:]
   private var jobs: [Int: Transfer] = [:]
@@ -120,10 +126,15 @@ final class MediaCache: NSObject {
   func completeFile(for source: SourceDescriptor) -> URL? {
     guard source.liveHint != true, source.isNetwork, !Self.isHls(source.uri) else { return nil }
     let key = self.key(of: source)
-    if kept.isComplete(key) { return kept.fileURL(key) }
-    if play.isComplete(key) {
-      play.touch(key)
-      return play.fileURL(key)
+    for store in [kept, play] where store.isComplete(key) {
+      // The index outlived the file (storage cleared by the system): it goes.
+      guard store.fileExists(key) else {
+        store.remove(key)
+        continue
+      }
+      store.touch(key)
+      store.protect(key)
+      return store.fileURL(key)
     }
     return nil
   }
@@ -147,6 +158,7 @@ final class MediaCache: NSObject {
     if let plan = kept.plan(key, range: range) { return (kept, plan) }
     if let plan = play.plan(key, range: range) {
       play.touch(key)
+      play.protect(key)
       return (play, plan)
     }
     return nil
@@ -214,11 +226,10 @@ final class MediaCache: NSObject {
     }
     let key = self.key(of: source)
     if play.isComplete(key) || kept.isComplete(key) { return done(nil) }
-    var request = URLRequest(url: url)
-    source.headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
+    var request = Self.request(url, source.headers)
     if let bytes { request.setValue("bytes=0-\(bytes - 1)", forHTTPHeaderField: "Range") }
     let task = session.dataTask(with: request)
-    jobs[task.taskIdentifier] = Transfer(.preload(key: key, done: done), play, key, 0)
+    jobs[task.taskIdentifier] = Transfer(.preload(key: key, done: done), play, key, 0, budget: bytes)
     task.resume()
   }
 
@@ -232,7 +243,11 @@ final class MediaCache: NSObject {
       throw PlayerError.code(.unsupportedFormat, "DASH cannot be downloaded on iOS (HLS and files can).", recoverable: false)
     }
     let name = id ?? source.uri
-    if downloads[name] != nil { removeDownload(name) }
+    let key = self.key(of: source)
+    // Asked again: the download that is there (going, or done) answers.
+    if let existing = downloads[name], existing.key == key, existing.state != "failed" { return Self.map(existing) }
+    // One download per id, and per file: another one with either goes.
+    for other in downloads.values where other.id == name || other.key == key { removeDownload(other.id) }
     let entry = Download(
       id: name, uri: source.uri, key: key(of: source), headers: source.headers,
       type: Self.isHls(source.uri) ? "hls" : "file", state: "queued")
@@ -254,17 +269,26 @@ final class MediaCache: NSObject {
       else { return fail(d.id, PlayerError.code(.unsupportedFormat, "This HLS item cannot be downloaded.", recoverable: false)) }
       task.taskDescription = d.id
       assetTasks[task.taskIdentifier] = d.id
+      downloadTasks[d.id] = (assetSession, task.taskIdentifier)
       task.resume()
       return
     }
+    // Killed after its last byte: it is done.
+    if kept.isComplete(d.key) {
+      d.state = "completed"
+      d.bytes = kept.heldBytes(d.key)
+      downloads[d.id] = d
+      save()
+      return emit(d)
+    }
     // A file: from where it stopped (the store keeps what arrived).
-    var request = URLRequest(url: url)
-    d.headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
+    var request = Self.request(url, d.headers)
     let from = kept.run(d.key, from: 0)
     if from > 0 { request.setValue("bytes=\(from)-", forHTTPHeaderField: "Range") }
     let task = session.dataTask(with: request)
     task.taskDescription = d.id
     jobs[task.taskIdentifier] = Transfer(.download(id: d.id), kept, d.key, from)
+    downloadTasks[d.id] = (session, task.taskIdentifier)
     task.resume()
   }
 
@@ -273,8 +297,10 @@ final class MediaCache: NSObject {
     for (task, transfer) in jobs {
       if case .download(let owner) = transfer.job, owner == id { jobs.removeValue(forKey: task) }
     }
-    session.getAllTasks { tasks in tasks.filter { $0.taskDescription == id }.forEach { $0.cancel() } }
-    assetSession.getAllTasks { tasks in tasks.filter { $0.taskDescription == id }.forEach { $0.cancel() } }
+    // Exactly its own task (a new download with this id has another).
+    if let running = downloadTasks.removeValue(forKey: id) {
+      running.session.getAllTasks { tasks in tasks.first { $0.taskIdentifier == running.task }?.cancel() }
+    }
     if let package = download.package {
       try? FileManager.default.removeItem(at: URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(package))
     }
@@ -341,6 +367,14 @@ final class MediaCache: NSObject {
   }
 
   // MARK: - Helpers
+
+  /// A request for bytes as they are on the server (offsets hold: no compression).
+  private static func request(_ url: URL, _ headers: [String: String]) -> URLRequest {
+    var request = URLRequest(url: url)
+    headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
+    request.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
+    return request
+  }
 
   private static func need(_ source: SourceDescriptor?) throws -> SourceDescriptor {
     guard let source else { throw PlayerError.code(.invalidArgument, "A cache command needs a source.", recoverable: false) }
@@ -428,6 +462,13 @@ extension MediaCache: URLSessionDataDelegate {
       // The server ignored the range: the file comes again from its start.
       job.store.remove(job.key)
     }
+    // No length: a stream that never ends (a live source without `live: true`).
+    if total == nil, job.budget == nil {
+      finish(
+        dataTask.taskIdentifier,
+        PlayerError.code(.unsupportedFormat, "The source has no length: a live stream cannot be kept.", recoverable: false))
+      return completionHandler(.cancel)
+    }
     if let url = http.url ?? dataTask.originalRequest?.url {
       job.store.describe(job.key, totalLength: total, contentType: headers["content-type"], pathExtension: Self.pathExtension(url, headers["content-type"]))
     }
@@ -441,8 +482,18 @@ extension MediaCache: URLSessionDataDelegate {
 
   func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
     guard let job = jobs[dataTask.taskIdentifier] else { return }
-    job.store.write(job.key, offset: job.offset, data: data)
-    job.offset += Int64(data.count)
+    var chunk = data
+    if let budget = job.budget, job.offset + Int64(chunk.count) > budget {
+      chunk = chunk.prefix(Int(max(0, budget - job.offset)))
+    }
+    job.store.write(job.key, offset: job.offset, data: chunk)
+    job.offset += Int64(chunk.count)
+    // The server sent more than was asked (it ignored the range): enough.
+    if let budget = job.budget, job.offset >= budget {
+      finish(dataTask.taskIdentifier, nil)
+      dataTask.cancel()
+      return
+    }
     if case .download(let id) = job.job, var d = downloads[id] {
       d.bytes = job.store.heldBytes(job.key)
       downloads[id] = d
@@ -474,6 +525,7 @@ extension MediaCache: URLSessionDataDelegate {
     case .preload(_, let done):
       done(error)
     case .download(let id):
+      if downloadTasks[id]?.task == task { downloadTasks.removeValue(forKey: id) }
       if let error {
         if (error.platformCode ?? 0) != NSURLErrorCancelled { fail(id, error) }
         return

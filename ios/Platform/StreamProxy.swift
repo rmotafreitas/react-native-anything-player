@@ -519,7 +519,11 @@ final class StreamProxy {
   }
 
   fileprivate func upstreamData(_ upstream: Upstream, _ data: Data) {
-    guard !upstream.readers.isEmpty else { return }
+    guard !upstream.readers.isEmpty else {
+      // A chunk not relayed is not stored either: later ones would land at the wrong place.
+      upstream.storeOffset = nil
+      return
+    }
     if let offset = upstream.storeOffset, let key = routes[upstream.token]?.cacheKey {
       MediaCache.shared.play.write(key, offset: offset, data: data)
       upstream.storeOffset = offset + Int64(data.count)
@@ -650,13 +654,12 @@ final class StreamProxy {
     }
   }
 
-  /// A remuxed file's playlist or segment (`/r-<token>/<file>`).
   // MARK: - The media cache
 
   /// A finite response for a file the cache writes: where its bytes go.
   private func beginStoring(_ upstream: Upstream, status: Int, headers: [String: String]) {
     guard let route = routes[upstream.token], route.cacheWrites, let key = route.cacheKey, !upstream.endless,
-      upstream.request.httpMethod == "GET"
+      upstream.request.httpMethod == "GET", headers["cache-control"]?.lowercased().contains("no-store") != true
     else { return }
     var offset: Int64 = 0
     var total = headers["content-length"].flatMap { Int64($0) }
@@ -709,12 +712,14 @@ final class StreamProxy {
       content: data,
       completion: .contentProcessed { [weak self, weak downstream] error in
         self?.queue.async {
-          guard let self, let downstream, error == nil else { return }
+          guard let self, let downstream else { return }
+          guard error == nil else { return self.close(downstream) }
           self.sendStored(downstream, store: store, key: key, offset: offset + Int64(data.count), end: end)
         }
       })
   }
 
+  /// A remuxed file's playlist or segment (`/r-<token>/<file>`).
   private func serveRemux(_ downstream: Downstream, path: String, head: Bool) {
     let parts = path.split(separator: "?")[0].split(separator: "/")
     guard parts.count == 2 else { return respond(downstream, status: 400) }
