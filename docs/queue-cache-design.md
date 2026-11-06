@@ -102,7 +102,7 @@ Round-1 changes: the engine's in-memory `prepareNext` and the disk `Cache.preloa
 ```ts
 import { Cache } from 'react-native-anything-player';
 
-Cache.configure({ enabled: true, maxSizeBytes: 512 * 1024 * 1024 }); // defaults: on, 256 MB
+await Cache.configure({ enabled: true, maxSizeBytes: 512 * 1024 * 1024 }); // defaults: off, 256 MB
 
 // Per source (also in queue items):
 player.load({ uri, cache: false });            // never cached
@@ -130,7 +130,7 @@ player.preload(source);          // warm a player for this source: preconnect + 
 - **What is cached:** finite sources: progressive files in every container (MP3, AAC, M4A, FLAC, Ogg, Opus, WAV, MP4, MOV, WebM, MKV, MPEG-TS files, including remuxed ones), and HLS / DASH on-demand segments, playlists and keys (not DRM licenses). Never: live streams (ICY/Icecast, live HLS/DASH, unbounded responses), local files (`file://`, `content://`, `blob:`, `data:`), sources with `cache: false`, responses marked `Cache-Control: no-store`.
 - **Cache on play** (LRU, `maxSizeBytes`): bytes are written as they are played and reused by later plays, seeks and loops; what is partly cached plays from disk where it can and fetches the rest.
 - **Offline replay:** a fully cached or downloaded item plays with no network. The engine's offline rules do not hold back an item the cache can serve whole: `status.network` still reports `offline`, but no `reconnecting` state or probe applies to it.
-- **Downloads** run natively in the background where the OS allows (iOS background `URLSession` / `AVAssetDownloadURLSession`, Android `DownloadManager` service of Media3 with a notification), survive app restarts and resume after network loss.
+- **Downloads** run natively while the app runs and go on at the next launch (iOS HLS downloads in the system's background session); no Android `DownloadService` in v1.
 - **Preload for live sources:** `player.preload(liveSource)` and the queue's next live item only preconnect (DNS + TCP/TLS, no request, #101); nothing reaches the mount, so no listener is counted.
 - **Cache key:** the URL without its fragment, or `cacheKey`. Two sources with the same key share bytes.
 

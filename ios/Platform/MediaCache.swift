@@ -145,7 +145,18 @@ final class MediaCache: NSObject {
     let package: String? = queue.sync {
       downloads.values.first { $0.key == key && $0.type == "hls" && $0.state == "completed" }?.package
     }
-    return package.map { URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent($0) }
+    guard let package else { return nil }
+    let url = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(package)
+    // The package went (storage cleared): the download failed, and the network plays.
+    guard FileManager.default.fileExists(atPath: url.path) else {
+      queue.async {
+        self.fail(
+          self.downloads.values.first { $0.key == key && $0.type == "hls" }?.id ?? "",
+          PlayerError.code(.sourceNotFound, "The downloaded package is gone from the device.", recoverable: true))
+      }
+      return nil
+    }
+    return url
   }
 
   /// The proxy relayed a response for a key it may write: what the file is.
@@ -300,6 +311,9 @@ final class MediaCache: NSObject {
     // Exactly its own task (a new download with this id has another).
     if let running = downloadTasks.removeValue(forKey: id) {
       running.session.getAllTasks { tasks in tasks.first { $0.taskIdentifier == running.task }?.cancel() }
+    } else if download.type == "hls" {
+      // Resumed by the system after a relaunch: found by its description.
+      assetSession.getAllTasks { tasks in tasks.filter { $0.taskDescription == id }.forEach { $0.cancel() } }
     }
     if let package = download.package {
       try? FileManager.default.removeItem(at: URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(package))
@@ -404,9 +418,16 @@ final class MediaCache: NSObject {
     case "audio/mp4", "audio/x-m4a": return "m4a"
     case "audio/flac", "audio/x-flac": return "flac"
     case "audio/wav", "audio/x-wav", "audio/wave": return "wav"
+    case "audio/ogg", "application/ogg": return "ogg"
+    case "audio/opus": return "opus"
+    case "audio/webm", "video/webm": return "webm"
+    case "video/x-matroska", "audio/x-matroska": return "mkv"
+    case "video/mp2t": return "ts"
     case "video/mp4": return "mp4"
     case "video/quicktime": return "mov"
-    default: return "mp3"
+    case let type? where type.hasPrefix("video/"): return "mp4"
+    case let type? where type.hasPrefix("audio/"): return "mp3"
+    default: return "bin"
     }
   }
 
@@ -540,7 +561,7 @@ extension MediaCache: URLSessionDataDelegate {
         return
       }
       guard var d = downloads[id] else { return }
-      d.state = job.store.isComplete(job.key) || d.totalBytes == nil ? "completed" : "failed"
+      d.state = job.store.isComplete(job.key) ? "completed" : "failed"
       if d.state == "failed" {
         d.error = "The connection ended before the whole file arrived."
         d.errorCode = "NETWORK_ERROR"

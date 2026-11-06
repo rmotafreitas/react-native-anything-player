@@ -44,7 +44,7 @@ player.load({ uri: signedUrl, cacheKey: 'episode-42' });
 | A file over HTTP(S) (MP3, AAC, M4A, FLAC, Ogg, Opus, WAV, MP4, MOV, WebM, MKV, MPEG-TS): cache as it plays | ✓ | ✓ audio ¹ | ✓ ² |
 | The same: preload part / all | ✓ / ✓ | ✓ / ✓ | ◐ ³ / ✓ ² |
 | The same: download, offline replay | ✓ | ✓ | ✓ ² |
-| HLS on demand: cache as it plays | ✓ | – ⁴ | – ⁵ |
+| HLS on demand: cache as it plays (replays faster; offline needs a download ¹⁰) | ✓ | – ⁴ | – ⁵ |
 | HLS on demand: preload / download | ✓ / ✓ ⁶ | – / ✓ ⁷ | – ⁵ |
 | DASH on demand | ✓ ⁶ | – ⁸ | – ⁵ |
 | Live streams (internet radio, live HLS / DASH) | – ⁹ | – ⁹ | – ⁹ |
@@ -60,6 +60,7 @@ player.load({ uri: signedUrl, cacheKey: 'episode-42' });
 7. `AVAssetDownloadURLSession`: the system picks the quality and keeps downloading in the background.
 8. iOS plays DASH as rewritten HLS, which `AVAssetDownloadURLSession` cannot take.
 9. A live stream never ends: keeping it would be recording, which is out of scope. `Cache.preload` of a live source does nothing, so the station never counts a listener for it.
+10. The playlists are always read from the network (a live one must never be served stale), so an HLS or DASH item plays offline only when downloaded. `Cache.info` of an HLS or DASH source reports its download, not what the cache holds of it.
 
 ## Where the bytes live
 

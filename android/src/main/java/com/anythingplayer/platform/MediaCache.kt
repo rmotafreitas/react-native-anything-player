@@ -67,6 +67,7 @@ internal object MediaCache {
   private val running = ConcurrentHashMap<String, Future<*>>()
   @Volatile private var enabled = false
   @Volatile private var initialized = false
+  private val attachLock = Any()
 
   private class Download(
     val id: String,
@@ -84,9 +85,16 @@ internal object MediaCache {
 
   /** Main thread, at runtime start: settings and unfinished downloads come back. */
   fun attach(app: Context) {
-    if (initialized) return
-    initialized = true
-    context = app.applicationContext
+    synchronized(attachLock) {
+      if (initialized) return
+      context = app.applicationContext
+      attachLocked()
+      // Last: a reader that sees it sees the context and the settings.
+      initialized = true
+    }
+  }
+
+  private fun attachLocked() {
     val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
     enabled = prefs.getBoolean("enabled", false)
     evictor.maxBytes = prefs.getLong("maxSizeBytes", DEFAULT_MAX)
@@ -201,6 +209,8 @@ internal object MediaCache {
         // Stopped: not a file.
       } catch (_: java.io.InterruptedIOException) {
         // Stopped: not a file.
+      } finally {
+        Thread.interrupted()
       }
     } else {
       // HLS / DASH: its first segments, one quality.
@@ -213,6 +223,8 @@ internal object MediaCache {
         // Stopped at the budget.
       } catch (_: java.util.concurrent.CancellationException) {
         // Stopped at the budget.
+      } finally {
+        Thread.interrupted()
       }
     }
     return info(source)
@@ -241,7 +253,7 @@ internal object MediaCache {
     val download = Download(name, source.uri, key, source.headers, typeOf(source.uri) ?: "file", "queued")
     downloads[name] = download
     admin.execute {
-      replaced.forEach { runCatching { downloaderFor(it).remove() } }
+      replaced.forEach { removeBytes(it) }
       writeIndex()
       start(download)
     }
@@ -254,9 +266,15 @@ internal object MediaCache {
     val download = downloads.remove(id) ?: return
     running.remove(id)?.cancel(true)
     admin.execute {
-      runCatching { downloaderFor(download).remove() }
+      removeBytes(download)
       writeIndex()
     }
+  }
+
+  /** A download's bytes go (its downloader knows an HLS / DASH item's segments; a file is its key). */
+  private fun removeBytes(download: Download) {
+    runCatching { downloaderFor(download).remove() }
+    runCatching { kept.removeResource(download.key) }
   }
 
   fun info(source: SourceDescriptor): WritableMap {
@@ -329,6 +347,8 @@ internal object MediaCache {
           if (download.error == null) download.error = mapDownloadError(error)
         } finally {
           if (current()) running.remove(download.id)
+          // A cancel left this pool thread interrupted: the next work on it must not fail.
+          Thread.interrupted()
         }
         if (!current()) return@submit
         writeIndex()

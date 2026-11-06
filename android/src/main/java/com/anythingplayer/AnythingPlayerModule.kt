@@ -121,6 +121,8 @@ class AnythingPlayerModule(reactContext: ReactApplicationContext) : NativeAnythi
 
   override fun cacheCommand(command: ReadableMap, promise: Promise) {
     val op = command.optString("op")
+    // A command before the runtime started (an app's first line) still finds the cache.
+    MediaCache.attach(reactApplicationContext)
     cacheWork.execute {
       try {
         val source = command.optMap("source")?.let { parseSource(it).first }
