@@ -7,8 +7,7 @@ const DETECTION_POINTS = 128;
 /**
  * A player's boundary detection (`setBoundaryDetection`): feeds its
  * {@link BoundaryFinder} with the titles and audio windows heard, and shares
- * the native sampling with the app's own `setAudioSampling` (its points win;
- * its `audioSample` events stay its own).
+ * the native sampling with the app's own `setAudioSampling` (its points win).
  *
  * The first title of a connection names an item already playing (a tune-in,
  * a reconnect): it has no boundary to find, so only later ones are searched.
@@ -23,11 +22,6 @@ export class BoundaryTracker {
     private readonly onBoundary: (boundary: StreamBoundary) => void,
     private readonly configure: (enabled: boolean, points: number) => boolean
   ) {}
-
-  /** Whether the app asked for `audioSample` events. */
-  get appSampling(): boolean {
-    return this.app.enabled;
-  }
 
   /** The app's `setAudioSampling`. */
   setAppSampling(enabled: boolean, points: number): boolean {

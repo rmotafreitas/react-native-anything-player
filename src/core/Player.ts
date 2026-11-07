@@ -1106,7 +1106,7 @@ export class Player {
           timestamp: event.timestamp as number,
         };
         this.boundaries.sample(sample);
-        if (this.boundaries.appSampling) this.emit('audioSample', sample);
+        this.emit('audioSample', sample);
         break;
       }
       default:

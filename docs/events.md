@@ -41,7 +41,7 @@ off(); // unsubscribe
 | `ended` | – | a file played to its end |
 | `remoteCommand` | `{ command, position? }` | an opted-in remote command (`mediaSession.commands`), or `play` / `togglePlayPause` while nothing is loaded |
 | `diagnostic` | `DiagnosticEntry` | engine trace, only while diagnostics are enabled |
-| `audioSample` | `AudioSample` | decoded-audio window, only while `setAudioSampling` is on ([visualizer](visualizer.md)) |
+| `audioSample` | `AudioSample` | decoded-audio window, while `setAudioSampling` or `setBoundaryDetection` is on ([visualizer](visualizer.md)) |
 | `progress` | `Progress` | every `progressInterval` ms while playing, only when that option is set |
 | `routeChange` | `(route, previous)` | `status.route` changed: AirPlay or Bluetooth chosen, headphones unplugged, casting started or ended |
 | `searchPlay` | `{ request, item }` | a voice assistant or `playFromSearch()` started a catalog item on this player ([Voice assistants](voice.md)) |

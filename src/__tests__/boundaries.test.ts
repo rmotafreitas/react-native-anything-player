@@ -196,7 +196,6 @@ describe('BoundaryTracker', () => {
     expect(configure).toHaveBeenLastCalledWith(true, 128);
     t.setAppSampling(true, 1024);
     expect(configure).toHaveBeenLastCalledWith(true, 1024);
-    expect(t.appSampling).toBe(true);
     t.setAppSampling(false, 1024);
     expect(configure).toHaveBeenLastCalledWith(true, 128);
     t.setDetection(false);
