@@ -791,7 +791,7 @@ internal class ExoPlayerDriver(
         }.getOrDefault("")
       val type =
         when {
-          text.trimStart('﻿', ' ', '\n', '\r', '\t').startsWith("#EXTM3U") -> MimeTypes.APPLICATION_M3U8
+          text.trimStart('\uFEFF', ' ', '\n', '\r', '\t').startsWith("#EXTM3U") -> MimeTypes.APPLICATION_M3U8
           text.contains("<MPD") && dashBuiltIn -> MimeTypes.APPLICATION_MPD
           else -> null
         }
