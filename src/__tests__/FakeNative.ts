@@ -2,6 +2,8 @@
  * In-memory stand-in for the TurboModule: records calls, lets tests push
  * native events, and resolves commands with a status snapshot like native.
  */
+import { QueueModel } from '../web/engine/QueueModel';
+
 type Listener = (event: object) => void;
 
 export interface FakeStatus {
@@ -115,8 +117,70 @@ export class FakeNative {
     this.calls.push(['releasePlayer', id]);
     return Promise.resolve();
   };
-  load = (id: string, source: object, options: object) =>
-    this.command('load', id, source, options);
+  load = (id: string, source: object, options: object) => {
+    const had = (this.queues.get(id)?.length ?? 0) > 0;
+    this.queues.delete(id);
+    const result = this.command('load', id, source, options);
+    // Like native: a plain load empties the queue, and says so.
+    if (had)
+      this.emit({
+        ...this.getQueue(id),
+        playerId: id,
+        type: 'queue',
+        seq: 1e6 + this.calls.length,
+      });
+    return result;
+  };
+  /** Each player's queue, run by the engine's own model. */
+  queues = new Map<string, QueueModel>();
+  queueCommand = (id: string, command: object) => {
+    const c = command as Record<string, unknown>;
+    const q = this.queues.get(id) ?? new QueueModel(1);
+    this.queues.set(id, q);
+    const items = () =>
+      (c.items as Array<{ id: string; live?: boolean }>).map((i) => ({
+        id: i.id,
+        live: i.live === true,
+      }));
+    if (!this.rejectNext) {
+      if (c.op === 'set') q.set(items(), c.startIndex as number);
+      if (c.op === 'add') q.add(items(), c.index as number | undefined);
+      if (c.op === 'remove') q.remove(c.ids as string[]);
+      if (c.op === 'move') q.move(c.from as number, c.to as number);
+      if (c.op === 'clear') q.clear();
+      if (c.op === 'skipTo') q.skipTo(c.id as string);
+      if (c.op === 'next') q.next(false);
+      if (c.op === 'previous') q.previous(0);
+      if (c.op === 'repeat') q.setRepeat(c.mode as 'off' | 'one' | 'all');
+      if (c.op === 'shuffle') q.setShuffle(c.enabled === true, 3);
+    }
+    return this.command('queueCommand', id, command);
+  };
+  /** Cache commands, and what the next one resolves with. */
+  cacheAnswer: object = {};
+  cacheCommand = (command: object) => {
+    this.calls.push(['cacheCommand', command]);
+    if (this.rejectNext) {
+      const error = Object.assign(
+        new Error(this.rejectNext.message),
+        this.rejectNext
+      );
+      this.rejectNext = null;
+      return Promise.reject(error);
+    }
+    return Promise.resolve(this.cacheAnswer);
+  };
+  getQueue = (id: string) => {
+    const q = this.queues.get(id);
+    return {
+      ids: q ? q.items.map((i) => i.id) : [],
+      order: q ? [...q.order] : [],
+      index: q?.index ?? null,
+      currentId: q?.current?.id ?? null,
+      repeat: q?.repeat ?? 'off',
+      shuffle: q?.shuffle ?? false,
+    };
+  };
   play = (id: string) => this.command('play', id);
   pause = (id: string) => this.command('pause', id);
   stop = (id: string) => this.command('stop', id);

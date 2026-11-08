@@ -2,6 +2,8 @@ import { AppState, Image, Platform } from 'react-native';
 import NativeAnythingPlayer from './nativeModule';
 import { PlayerError } from './errors';
 import { WEB_ONLY_SCHEMES, installHost, type PlayerModule } from './core/host';
+import * as subtitleParse from './core/subtitles/parse';
+import * as subtitleVtt from './core/subtitles/vtt';
 
 // The React Native host: the TurboModule (on React Native Web and Expo web,
 // the bundler resolves `nativeModule.web.ts`: the browser engine), AppState
@@ -36,6 +38,7 @@ installHost({
     );
     return () => subscription.remove();
   },
+  subtitleParsers: () => ({ parse: subtitleParse, vtt: subtitleVtt }),
   resolveAsset(module) {
     // React Native Web has no asset resolver: `require()`d audio is a URL there.
     // oxlint-disable-next-line typescript/no-unnecessary-condition -- React Native Web's Image has no resolveAssetSource

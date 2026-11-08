@@ -2,7 +2,7 @@
   {
     "name": "a progressive stream: what it has received at its freshest against the clock, no saw-tooth between chunks",
     "steps": [
-      {"t": 0, "position": 20, "edge": 20, "native": null, "live": true, "expect": {"offset": 0, "settled": false}},
+      {"t": 0, "position": 20, "edge": 20, "native": null, "live": true, "expect": {"offset": null, "settled": false}},
       {"t": 250, "position": 20.25, "edge": 20, "native": null, "live": true},
       {"t": 500, "position": 20.5, "edge": 20, "native": null, "live": true},
       {"t": 750, "position": 20.75, "edge": 20, "native": null, "live": true},
@@ -56,7 +56,7 @@
   {
     "name": "paused with the connection open: the live point moves on, the offset grows by the pause",
     "steps": [
-      {"t": 0, "position": 20, "edge": 20, "native": null, "live": true, "expect": {"offset": 0, "settled": false}},
+      {"t": 0, "position": 20, "edge": 20, "native": null, "live": true, "expect": {"offset": null, "settled": false}},
       {"t": 250, "position": 20.25, "edge": 20, "native": null, "live": true},
       {"t": 500, "position": 20.5, "edge": 20, "native": null, "live": true},
       {"t": 750, "position": 20.75, "edge": 20, "native": null, "live": true},
@@ -126,7 +126,7 @@
   {
     "name": "stalled (nothing arrives): the offset grows by the stall instead of falling with the buffer",
     "steps": [
-      {"t": 0, "position": 20, "edge": 20, "native": null, "live": true, "expect": {"offset": 0, "settled": false}},
+      {"t": 0, "position": 20, "edge": 20, "native": null, "live": true, "expect": {"offset": null, "settled": false}},
       {"t": 250, "position": 20.25, "edge": 20, "native": null, "live": true},
       {"t": 500, "position": 20.5, "edge": 20, "native": null, "live": true},
       {"t": 750, "position": 20.75, "edge": 20, "native": null, "live": true},
@@ -180,7 +180,7 @@
   {
     "name": "a playhead that went back is a new connection: measured again",
     "steps": [
-      {"t": 0, "position": 20, "edge": 20, "native": null, "live": true, "expect": {"offset": 0, "settled": false}},
+      {"t": 0, "position": 20, "edge": 20, "native": null, "live": true, "expect": {"offset": null, "settled": false}},
       {"t": 250, "position": 20.25, "edge": 20, "native": null, "live": true},
       {"t": 500, "position": 20.5, "edge": 20, "native": null, "live": true},
       {"t": 750, "position": 20.75, "edge": 20, "native": null, "live": true},
@@ -1049,6 +1049,23 @@
       {"t": 7500, "position": 22.0, "edge": null, "native": 10, "live": true},
       {"t": 8000, "position": 22.5, "edge": null, "native": 10, "live": true, "expect": {"offset": 10, "settled": false}},
       {"t": 8500, "position": 23.0, "edge": null, "native": 10, "live": true, "expect": {"offset": 10, "settled": true}}
+    ]
+  },
+  {
+    "name": "a connection still opening (its edge at its playhead) has no live point: a slow reconnect does not count its wait",
+    "steps": [
+      {"t": 0, "position": 20, "edge": 26, "native": null, "live": true, "expect": {"offset": 6, "settled": false}},
+      {"t": 1000, "position": 21, "edge": 27, "native": null, "live": true},
+      {"t": 2000, "position": 22, "edge": 28, "native": null, "live": true},
+      {"t": 3000, "position": 23, "edge": 29, "native": null, "live": true, "expect": {"offset": 6, "settled": true}},
+      {"t": 4000, "position": 0, "edge": 0, "native": null, "live": true, "expect": {"offset": null, "settled": false}},
+      {"t": 8000, "position": 0, "edge": 0, "native": null, "live": true},
+      {"t": 12000, "position": 0, "edge": 0, "native": null, "live": true},
+      {"t": 16000, "position": 0, "edge": 0, "native": null, "live": true, "expect": {"offset": null, "settled": false}},
+      {"t": 17000, "position": 0, "edge": 4, "native": null, "live": true, "expect": {"offset": 4, "settled": false}},
+      {"t": 18000, "position": 1, "edge": 5, "native": null, "live": true},
+      {"t": 19000, "position": 2, "edge": 6, "native": null, "live": true},
+      {"t": 20000, "position": 3, "edge": 7, "native": null, "live": true, "expect": {"offset": 4, "settled": true}}
     ]
   }
 ]

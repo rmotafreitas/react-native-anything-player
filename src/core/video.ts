@@ -19,9 +19,12 @@ import { host } from './host';
 import type { SubtitleCue } from './subtitles/types';
 
 // The parsers load with the first subtitle or thumbnail file: a web bundler
-// splits them off, so a page without subtitles never downloads them.
-const parsers = () => import('./subtitles/parse');
-const vtt = () => import('./subtitles/vtt');
+// splits them off, so a page without subtitles never downloads them. React
+// Native's host hands them over instead (see PlayerHost.subtitleParsers).
+const parsers = async () =>
+  host().subtitleParsers?.().parse ?? import('./subtitles/parse');
+const vtt = async () =>
+  host().subtitleParsers?.().vtt ?? import('./subtitles/vtt');
 
 function invalid(message: string): PlayerError {
   return new PlayerError({
@@ -183,7 +186,7 @@ async function fetchOnce(
 }
 
 /** Fetches through the platform (native decodes any charset), with backoff. */
-async function fetchText(
+export async function fetchText(
   uri: string,
   headers: Record<string, string>,
   encoding: string | null,

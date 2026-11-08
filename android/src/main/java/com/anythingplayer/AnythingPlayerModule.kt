@@ -12,11 +12,14 @@ import com.facebook.react.bridge.WritableMap
 import com.anythingplayer.core.ErrorCode
 import com.anythingplayer.core.LoadOutcome
 import com.anythingplayer.core.PlayerError
+import com.anythingplayer.core.QueueState
+import com.anythingplayer.core.RepeatMode
 import com.anythingplayer.core.TrackKind
 import com.anythingplayer.platform.ActivitySource
 import com.anythingplayer.platform.AnythingPlayerRuntime
 import com.anythingplayer.platform.EventSink
 import com.anythingplayer.platform.LicenseRequests
+import com.anythingplayer.platform.MediaCache
 import com.anythingplayer.platform.PlayerController
 import com.anythingplayer.platform.QualityPick
 import com.anythingplayer.platform.SearchRequest
@@ -35,6 +38,7 @@ import com.anythingplayer.platform.toWritableMap
 import com.anythingplayer.platform.parseNowPlaying
 import com.anythingplayer.platform.parseOptions
 import com.anythingplayer.platform.parseSource
+import com.anythingplayer.platform.queueToMap
 import com.anythingplayer.platform.statusToMap
 
 /**
@@ -108,6 +112,61 @@ class AnythingPlayerModule(reactContext: ReactApplicationContext) : NativeAnythi
       }
     }
   }
+
+  // ── Queue ──
+
+  // ── Cache (app-global; disk work off the main thread) ──
+
+  /** A long preload does not hold up `info` or `usage`. */
+  private val cacheWork = java.util.concurrent.Executors.newFixedThreadPool(3)
+
+  override fun cacheCommand(command: ReadableMap, promise: Promise) {
+    val op = command.optString("op")
+    // A command before the runtime started (an app's first line) still finds the cache.
+    MediaCache.attach(reactApplicationContext)
+    cacheWork.execute {
+      try {
+        val source = command.optMap("source")?.let { parseSource(it).first }
+        val result: WritableMap =
+          when (op) {
+            "configure" -> {
+              MediaCache.configure(command.optBoolean("enabled"), command.optDouble("maxSizeBytes")?.toLong())
+              Arguments.createMap()
+            }
+            "preload" ->
+              MediaCache.preload(needSource(source), command.optDouble("bytes")?.toLong(), command.optBoolean("all") == true)
+            "download" -> MediaCache.download(needSource(source), command.optString("id"))
+            "downloads" -> Arguments.createMap().apply { putArray("downloads", Arguments.makeNativeArray(MediaCache.downloadsArray())) }
+            "removeDownload" -> {
+              MediaCache.removeDownload(command.optString("id") ?: "")
+              Arguments.createMap()
+            }
+            "info" -> MediaCache.info(needSource(source))
+            "usage" -> MediaCache.usage()
+            "clear" -> {
+              MediaCache.clear()
+              Arguments.createMap()
+            }
+            else -> throw PlayerError(ErrorCode.INVALID_ARGUMENT, "Unknown cache command \"$op\".", false)
+          }
+        promise.resolve(result)
+      } catch (error: PlayerError) {
+        reject(promise, error)
+      } catch (error: Exception) {
+        val failure = PlayerError(ErrorCode.NETWORK_ERROR, error.message ?: error.javaClass.simpleName, true)
+        reject(promise, failure)
+      }
+    }
+  }
+
+  private fun needSource(source: com.anythingplayer.core.SourceDescriptor?) =
+    source ?: throw PlayerError(ErrorCode.INVALID_ARGUMENT, "A cache command needs a source.", false)
+
+  override fun queueCommand(playerId: String, command: ReadableMap, promise: Promise) =
+    command(playerId, promise) { it.queueCommand(command) }
+
+  override fun getQueue(playerId: String): WritableMap =
+    AnythingPlayerRuntime.players[playerId]?.queueMap() ?: queueToMap(QueueState(emptyList(), emptyList(), null, null, RepeatMode.OFF, false))
 
   override fun getVideoStats(playerId: String): WritableMap =
     AnythingPlayerRuntime.players[playerId]?.statsMap() ?: Arguments.createMap()

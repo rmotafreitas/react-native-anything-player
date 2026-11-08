@@ -108,6 +108,7 @@ internal class PlayerController(
     get() = picture?.primary ?: audioOutput!!.current
   private val driver = RoutingDriver(picture?.output ?: audioOutput!!) { runtime.newRemoteOutput(this) }
   val engine = PlaybackEngine(driver, AndroidClock, options.engine)
+  private val queue = QueueHost(engine)
 
   private var eventSeq = 0L
   @Volatile private var statusSnapshot: Pair<Status, Long> = Status() to 0L
@@ -207,14 +208,8 @@ internal class PlayerController(
     quality: QualityPick? = null,
     completion: LoadCompletion? = null,
   ) {
-    liveOffset.reset()
     runtime.beforeLoad(this, source.isNetwork)
-    sourceFields = fields
-    overrides = NowPlayingFields()
-    trackClock = null
-    streamMetadata = null
-    lastBandwidth = null
-    picture?.load(parts ?: VideoLoadParts())
+    beginItem(fields, parts ?: VideoLoadParts())
     engine.load(source, autoplay, start, quality != null, quality?.id)
     // The app's subtitle files are tracks from the start (their cues follow).
     if (picture != null && parts != null && parts.subtitles.isNotEmpty()) engine.setAppTracks(parts.subtitles)
@@ -222,6 +217,27 @@ internal class PlayerController(
     if (completion != null) pendingLoads[engine.loadId] = completion
     runtime.onNowPlayingChanged(this)
   }
+
+  /** What the host resets for every new item, a load's or the queue's. */
+  private fun beginItem(fields: NowPlayingFields, parts: VideoLoadParts) {
+    liveOffset.reset()
+    sourceFields = fields
+    overrides = NowPlayingFields()
+    trackClock = null
+    streamMetadata = null
+    lastBandwidth = null
+    picture?.load(parts)
+  }
+
+  /** A queue command (`{ op, … }`): see [QueueHost]. */
+  fun queueCommand(command: com.facebook.react.bridge.ReadableMap) = queue.command(command)
+
+  /** The queue's snapshot (any thread). */
+  fun queueMap(): WritableMap = queue.map()
+
+  /** Whether a queue is in use: next / previous are the queue's, not the app's. */
+  val hasQueue: Boolean
+    get() = queue.snapshot.ids.isNotEmpty()
 
   /** Main thread. Builds the native player once the main looper is idle. */
   fun prewarm() {
@@ -507,6 +523,24 @@ internal class PlayerController(
     emit("ended", Arguments.createMap())
   }
 
+  override fun engineQueueChanged() {
+    // A loaded source that joined the queue (`queue.add` after `load`) keeps its fields.
+    queue.adoptLoaded(sourceFields)
+    queue.changed()
+    emit("queue", queue.map())
+    // Next / previous on the session follow the queue.
+    runtime.onNowPlayingChanged(this)
+  }
+
+  override fun engineQueueItemStarts(id: String, opens: Boolean) {
+    // An item a Cast receiver cannot play comes back to this device first.
+    val item = engine.queueItems.firstOrNull { it.id == id }
+    if (opens && item != null) runtime.beforeLoad(this, item.source.isNetwork)
+    val parts = queue[id] ?: return
+    beginItem(parts.fields, parts.video)
+    runtime.onNowPlayingChanged(this)
+  }
+
   override fun engineSleepFired() {
     emit(
       "sleep",
@@ -576,6 +610,7 @@ internal class PlayerController(
   override fun onPlaying(generation: Int) = engine.onPlaying(generation)
   override fun onBuffering(generation: Int) = engine.onBuffering(generation)
   override fun onEnded(generation: Int) = engine.onEnded(generation)
+  override fun onAdvanced(generation: Int, playing: Boolean) = engine.onAdvanced(generation, playing)
   override fun onFailed(generation: Int, error: PlayerError) = engine.onFailed(generation, error)
   override fun onPausedExternally(generation: Int, reason: InterruptionReason) =
     engine.onPausedExternally(generation, reason)

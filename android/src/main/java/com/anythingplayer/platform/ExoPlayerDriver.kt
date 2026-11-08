@@ -13,6 +13,7 @@ import androidx.media3.common.Format
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Metadata
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.Timeline
@@ -23,8 +24,10 @@ import androidx.media3.common.text.CueGroup
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.common.util.Util
 import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.HttpDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.ExoPlaybackException
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.DecoderReuseEvaluation
 import androidx.media3.exoplayer.SeekParameters
@@ -34,6 +37,7 @@ import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.extractor.DefaultExtractorsFactory
 import androidx.media3.extractor.metadata.icy.IcyInfo
 import androidx.media3.extractor.metadata.id3.TextInformationFrame
+import androidx.media3.extractor.metadata.vorbis.VorbisComment
 import com.anythingplayer.core.EngineDriver
 import com.anythingplayer.core.ErrorCode
 import com.anythingplayer.core.InterruptionReason
@@ -57,6 +61,10 @@ internal interface DriverObserver {
   fun onPlaying(generation: Int)
   fun onBuffering(generation: Int)
   fun onEnded(generation: Int)
+  /** The queue's prepared item took over as the current one ended (ExoPlayer's playlist): gapless. */
+  fun onAdvanced(generation: Int, playing: Boolean) {
+    // Drivers without a queue never report it.
+  }
   fun onFailed(generation: Int, error: PlayerError)
   fun onPausedExternally(generation: Int, reason: InterruptionReason)
   fun onStreamMetadata(generation: Int, metadata: StreamMetadata)
@@ -175,6 +183,9 @@ internal class ExoPlayerDriver(
    * with each observation, so staleness is still checked by the engine.
    */
   private val main = Handler(Looper.getMainLooper())
+
+  /** A source's URL and the playlist type its first bytes showed (`""`: looked, none). */
+  private var sniffed: Pair<String, String>? = null
   /** Decoded-PCM tap for visualizers (installed always, silent until enabled). */
   val sampler = AudioSampler(context)
   private var generation = 0
@@ -250,10 +261,14 @@ internal class ExoPlayerDriver(
 
       override fun onPlayerError(error: PlaybackException) {
         val p = player ?: return
+        // The queue's next item failed while ExoPlayer prepared it ahead: its
+        // failure, not the current item's, which plays on.
+        if (preparedFailed(p, error)) return
         val gen = currentGeneration(p) ?: return
         // Past readiness ExoPlayer took the container and the codecs: a
         // decoding or parsing failure now is the pipeline's, worth a re-open.
         val pastReady = playedGeneration == gen || readyGeneration == gen
+        if (!pastReady && sniff(error, gen)) return
         report { observer.onFailed(gen, mapPlaybackException(error, observer.isOffline(), pastReady)) }
       }
 
@@ -300,6 +315,17 @@ internal class ExoPlayerDriver(
       override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
         // A continuation took over seamlessly: drop the finished item.
         val p = player ?: return
+        val nextRequest = prepared
+        val now = currentGeneration(p)
+        if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO && nextRequest != null && now == nextRequest.generation) {
+          adoptPrepared(p, nextRequest)
+        } else if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO && now != null && now == cancelledNext) {
+          // ExoPlayer moved onto it before the cancel reached it: the engine
+          // hears it went on (its current item ended) and opens what is next now.
+          cancelledNext = null
+          val playing = p.isPlaying
+          report { observer.onAdvanced(now, playing) }
+        }
         if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO && p.currentMediaItemIndex > 0) {
           p.removeMediaItems(0, p.currentMediaItemIndex)
           cancelCallsExcept((0 until p.mediaItemCount).map { p.getMediaItemAt(it).mediaId }.toSet())
@@ -340,6 +366,12 @@ internal class ExoPlayerDriver(
         val p = player ?: return
         val gen = currentGeneration(p) ?: return
         if (reportUnplayable(tracks, gen)) return
+        // A file's own tags (ID3, iTunes, Vorbis comments), when the stream has said nothing yet.
+        if (lastStream == null) {
+          tracks.groups.firstNotNullOfOrNull { group ->
+            (0 until group.length).firstNotNullOfOrNull { i -> group.getTrackFormat(i).metadata?.let(::tags) }
+          }?.let { publish(gen, it) }
+        }
         if (!video) return
         val found = ExoVideo.map(tracks)
         mapped = found
@@ -368,23 +400,37 @@ internal class ExoPlayerDriver(
         for (i in 0 until metadata.length()) {
           when (val entry = metadata.get(i)) {
             is IcyInfo -> merged = IcyParser.metadataFromBlock(entry.rawMetadata, titleFormat)
-            is TextInformationFrame -> {
-              val value = entry.values.firstOrNull()?.trim()?.ifEmpty { null } ?: continue
-              val base = merged ?: StreamMetadata()
-              merged =
-                when (entry.id) {
-                  "TIT2", "TT2" -> base.copy(title = value, raw = base.raw + (entry.id to value))
-                  "TPE1", "TP1" -> base.copy(artist = value, raw = base.raw + (entry.id to value))
-                  "TALB", "TAL" -> base.copy(album = value, raw = base.raw + (entry.id to value))
-                  else -> base.copy(raw = base.raw + (entry.id to value))
-                }
-            }
+            is TextInformationFrame -> merged = tag(merged ?: StreamMetadata(), entry) ?: merged
             else -> Unit
           }
         }
         merged?.let { publish(gen, it.copy(station = it.station ?: stationName, genre = it.genre ?: stationGenre)) }
       }
     }
+
+  /** Title, artist and album from ID3 frames (MP3; MP4's iTunes tags come as the same ids) and Vorbis comments. */
+  private fun tags(metadata: Metadata): StreamMetadata? {
+    var found: StreamMetadata? = null
+    for (i in 0 until metadata.length()) found = tag(found ?: StreamMetadata(), metadata.get(i)) ?: found
+    return found?.takeIf { !it.isEmpty }
+  }
+
+  private fun tag(base: StreamMetadata, entry: Metadata.Entry): StreamMetadata? {
+    val (key, raw) =
+      when (entry) {
+        is TextInformationFrame -> entry.id to entry.values.firstOrNull()
+        is VorbisComment -> entry.key.uppercase() to entry.value
+        else -> return null
+      }
+    val value = raw?.trim()?.ifEmpty { null } ?: return null
+    val fields = base.raw + (key to value)
+    return when (key) {
+      "TIT2", "TT2", "TITLE" -> base.copy(title = value, raw = fields)
+      "TPE1", "TP1", "ARTIST" -> base.copy(artist = value, raw = fields)
+      "TALB", "TAL", "ALBUM" -> base.copy(album = value, raw = fields)
+      else -> base.copy(raw = fields)
+    }
+  }
 
   private fun report(block: () -> Unit) {
     main.post(block)
@@ -588,6 +634,9 @@ internal class ExoPlayerDriver(
     val p = ensurePlayer()
     // Close the previous item's sockets now, even a read blocked on a dead one.
     cancelCallsExcept(emptySet())
+    // The playlist starts over: a prepared next item goes with it.
+    prepared = null
+    cancelledNext = null
     generation = request.generation
     currentRequest = request
     continuationCount = 0
@@ -694,10 +743,69 @@ internal class ExoPlayerDriver(
     var extractors = DefaultExtractorsFactory().setConstantBitrateSeekingEnabled(true)
     if (video) extractors = VideoSupport.subtitles(extractors)
     val factory =
-      DefaultMediaSourceFactory(DefaultDataSource.Factory(context, http), extractors)
+      // A download, else the cache, else the network (MediaCache).
+      DefaultMediaSourceFactory(DefaultDataSource.Factory(context, MediaCache.dataSourceFactory(http, request.source)), extractors)
         .setLoadErrorHandlingPolicy(AnythingPlayerLoadErrorPolicy())
     sourceDrm?.let { drm -> factory.setDrmSessionManagerProvider { drm.manager } }
-    return factory.createMediaSource(MediaItem.Builder().setUri(resolveUri(request.source.uri)).setMediaId(mediaId).build())
+    // A downloaded HLS / DASH item plays the quality that was kept (offline, the others are not there).
+    val type = sniffed?.takeIf { it.first == request.source.uri && it.second.isNotEmpty() }?.second
+    val item =
+      MediaItem.Builder()
+        .setUri(resolveUri(request.source.uri))
+        .setMediaId(mediaId)
+        .setStreamKeys(MediaCache.streamKeysFor(request.source))
+        .apply { if (type != null) setMimeType(type) }
+        .build()
+    return factory.createMediaSource(item)
+  }
+
+  /**
+   * A source ExoPlayer could not read as a file, at a URL with no extension
+   * (`/live`, `/playlist?token=…`): its first bytes say whether it is an HLS
+   * or DASH playlist (AVPlayer and the web go by the server's Content-Type),
+   * and if so it opens again as one. Once per source, and only after that
+   * failure (no extra connection for any other source). `true`: handled.
+   */
+  private fun sniff(error: PlaybackException, gen: Int): Boolean {
+    val request = currentRequest ?: return false
+    val uri = request.source.uri
+    val path = uri.substringBefore('#').substringBefore('?')
+    if (error.cause !is androidx.media3.exoplayer.source.UnrecognizedInputFormatException) return false
+    if (!request.source.isNetwork || sniffed?.first == uri || EXTENSION.containsMatchIn(path)) return false
+    sniffed = uri to ""
+    Thread {
+      val text =
+        runCatching {
+          val connection = java.net.URL(uri).openConnection() as java.net.HttpURLConnection
+          request.source.headers.forEach { (name, value) -> connection.setRequestProperty(name, value) }
+          connection.setRequestProperty("Range", "bytes=0-1023")
+          connection.connectTimeout = 8000
+          connection.readTimeout = 8000
+          try {
+            val bytes = ByteArray(1024)
+            val read = connection.inputStream.use { it.read(bytes) }
+            if (read > 0) String(bytes, 0, read, Charsets.UTF_8) else ""
+          } finally {
+            connection.disconnect()
+          }
+        }.getOrDefault("")
+      val type =
+        when {
+          text.trimStart('﻿', ' ', '\n', '\r', '\t').startsWith("#EXTM3U") -> MimeTypes.APPLICATION_M3U8
+          text.contains("<MPD") && dashBuiltIn -> MimeTypes.APPLICATION_MPD
+          else -> null
+        }
+      main.post {
+        if (generation != gen || currentRequest !== request) return@post
+        if (type == null) {
+          observer.onFailed(gen, mapPlaybackException(error, observer.isOffline(), false))
+        } else {
+          sniffed = uri to type
+          open(request)
+        }
+      }
+    }.start()
+    return true
   }
 
   /**
@@ -730,6 +838,158 @@ internal class ExoPlayerDriver(
     p.addMediaSource(buildMediaSource(request, "$MEDIA_ID_PREFIX$gen:c$continuationCount"))
   }
 
+  // ── The queue's next item ──
+
+  /** The queue's next item, appended to the playlist behind the current one. */
+  private var prepared: OpenRequest? = null
+  /** The last prepared item the engine dropped (ExoPlayer may move onto it before the removal lands). */
+  private var cancelledNext: Int? = null
+
+  override val preparesNext: Boolean
+    get() = true
+
+  override fun prepareNext(request: OpenRequest) {
+    val p = ensurePlayer()
+    removePrepared(p)
+    prepared = request
+    // ExoPlayer buffers it once the current item is loaded, and plays it
+    // without a gap (encoder delay and padding trimmed).
+    p.addMediaSource(buildMediaSource(request, "$MEDIA_ID_PREFIX${request.generation}"))
+  }
+
+  override fun cancelNext(generation: Int) {
+    if (prepared?.generation != generation) return
+    player?.let { removePrepared(it) }
+    prepared = null
+    // Still in the playlist (ExoPlayer is moving onto it): told when it does.
+    cancelledNext = generation
+  }
+
+  override fun advance(generation: Int) {
+    val request = prepared?.takeIf { it.generation == generation }
+    val p = player
+    if (request == null || p == null) return
+    if (currentGeneration(p) != generation) {
+      val index = preparedIndex(p, request)
+      if (index < 0) {
+        // Gone from the playlist (the current item ended in error): open it now.
+        prepared = null
+        open(request.copy(playWhenReady = true))
+        return
+      }
+      // A skip to it before the current item ended: it is buffered already.
+      p.seekTo(index, 0)
+      if (index > 0) p.removeMediaItems(0, index)
+      // An error stopped the player earlier: the playlist is kept, the player needs preparing.
+      if (p.playbackState == Player.STATE_IDLE) p.prepare()
+      cancelCallsExcept((0 until p.mediaItemCount).map { p.getMediaItemAt(it).mediaId }.toSet())
+    }
+    adoptPrepared(p, request)
+    p.playWhenReady = true
+  }
+
+  /**
+   * Whether an error is the prepared item's. ExoPlayer tags a source error
+   * (a 404, a timeout) with the period that plays, whichever item it read
+   * for: the request that failed says which. A renderer error is tagged with
+   * the period it came from.
+   */
+  private fun belongsToPrepared(p: ExoPlayer, error: PlaybackException, request: OpenRequest): Boolean {
+    var cause: Throwable? = error
+    while (cause != null) {
+      val failed =
+        when (cause) {
+          is HttpDataSource.HttpDataSourceException -> cause.dataSpec.uri
+          is androidx.media3.exoplayer.source.UnrecognizedInputFormatException -> cause.uri
+          else -> null
+        }
+      if (failed != null) {
+        val uri = failed.toString()
+        val current = currentRequest?.takeIf { it.generation != request.generation }
+        // Exact matches first: the current item's own URL (the same URL queued
+        // twice) is the current item's; the prepared item's is the prepared one's.
+        if (current != null && ownRequest(current, uri)) return false
+        if (ownRequest(request, uri)) return true
+        // Beside the prepared manifest only; beside both, it is not told apart (below).
+        if (besideManifest(request, uri) && (current == null || !besideManifest(current, uri))) return true
+        break
+      }
+      cause = cause.cause
+    }
+    val period = (error as? ExoPlaybackException)?.mediaPeriodId ?: return false
+    val timeline = p.currentTimeline
+    val periodIndex = timeline.getIndexOfPeriod(period.periodUid)
+    if (periodIndex == C.INDEX_UNSET) return false
+    val window = timeline.getPeriod(periodIndex, Timeline.Period()).windowIndex
+    return window != p.currentMediaItemIndex && window == preparedIndex(p, request)
+  }
+
+  /** Whether a failed request is this item's own URL, as ExoPlayer was given it. */
+  private fun ownRequest(request: OpenRequest, failed: String): Boolean =
+    failed.substringBefore('#') == resolveUri(request.source.uri).toString().substringBefore('#')
+
+  /** A request beside an HLS / DASH manifest (a media playlist, a segment); one on another host is not recognised. */
+  private fun besideManifest(request: OpenRequest, failed: String): Boolean {
+    val path = resolveUri(request.source.uri).toString().substringBefore('#').substringBefore('?')
+    val adaptive = path.endsWith(".m3u8", ignoreCase = true) || path.endsWith(".mpd", ignoreCase = true)
+    return adaptive && failed.substringBefore('#').startsWith(path.substringBeforeLast('/') + "/")
+  }
+
+  private fun preparedIndex(p: ExoPlayer, request: OpenRequest): Int {
+    val id = "$MEDIA_ID_PREFIX${request.generation}"
+    return (0 until p.mediaItemCount).firstOrNull { p.getMediaItemAt(it).mediaId == id } ?: -1
+  }
+
+  /**
+   * A playback error that belongs to the prepared item (ExoPlayer reads it
+   * ahead, near the current item's end): reported for its generation, the
+   * item taken out of the playlist and the current one resumed. `false`:
+   * the current item's error.
+   */
+  private fun preparedFailed(p: ExoPlayer, error: PlaybackException): Boolean {
+    val request = prepared ?: return false
+    if (!belongsToPrepared(p, error, request)) return false
+    val gen = request.generation
+    removePrepared(p)
+    prepared = null
+    report { observer.onFailed(gen, mapPlaybackException(error, observer.isOffline(), false)) }
+    // The error stopped the player: the current item goes on where it was.
+    p.prepare()
+    return true
+  }
+
+  /** The prepared item is the current one: its generation's events are the engine's from now on. */
+  private fun adoptPrepared(p: ExoPlayer, request: OpenRequest) {
+    prepared = null
+    generation = request.generation
+    currentRequest = request
+    continuationCount = 0
+    continuationTimes.clear()
+    pendingDiscontinuity = null
+    lastStream = null
+    stationName = null
+    stationGenre = null
+    mapped = null
+    reportedInfo = null
+    val gen = request.generation
+    // The engine hears its facts first (it holds them for the prepared
+    // item), then that it took over.
+    readyGeneration = -1
+    if (p.playbackState == Player.STATE_READY) reportReady(p, gen)
+    val playing = p.isPlaying
+    if (playing) playedGeneration = gen
+    report { observer.onAdvanced(gen, playing) }
+  }
+
+  private fun removePrepared(p: ExoPlayer) {
+    val request = prepared ?: return
+    val id = "$MEDIA_ID_PREFIX${request.generation}"
+    for (i in p.mediaItemCount - 1 downTo 0) {
+      if (i != p.currentMediaItemIndex && p.getMediaItemAt(i).mediaId == id) p.removeMediaItem(i)
+    }
+    cancelCallsExcept((0 until p.mediaItemCount).map { p.getMediaItemAt(it).mediaId }.toSet())
+  }
+
   override fun play() {
     player?.playWhenReady = true
   }
@@ -748,6 +1008,7 @@ internal class ExoPlayerDriver(
   }
 
   override fun releaseConnection() {
+    prepared = null
     val p = player ?: return
     p.playWhenReady = false
     p.stop()
@@ -758,6 +1019,7 @@ internal class ExoPlayerDriver(
   }
 
   override fun unload() {
+    prepared = null
     val p = player ?: return
     p.playWhenReady = false
     p.stop()
@@ -904,6 +1166,9 @@ internal class ExoPlayerDriver(
 internal fun isDashUri(uri: String): Boolean = uri.substringBefore('#').substringBefore('?').lowercase().endsWith(".mpd")
 
 /** Whether Media3's DASH module is in this build (`rnapDash`). */
+/** A path's file extension (`.mp3`, `.m3u8`): a source without one may be a playlist. */
+private val EXTENSION = Regex("\\.[A-Za-z0-9]{2,5}$")
+
 private val dashBuiltIn: Boolean by lazy {
   runCatching { Class.forName("androidx.media3.exoplayer.dash.DashMediaSource") }.isSuccess
 }

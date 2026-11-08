@@ -59,6 +59,45 @@ Normalization rules (identical on both platforms, verified by a shared test file
 
 The lock screen shows stream metadata on top of the source's `metadata`; see [Now Playing precedence](background-and-system.md#what-the-lock-screen-shows).
 
+### Where an item really starts
+
+A title is heard where the station put it in the stream, and that is not
+where its song starts: a station's automation sends the title when it queues
+the item, and Icecast holds it for the next metadata block. Measured on a real
+station (three mounts, MP3 and HE-AAC), titles landed from 0.5 s before to
+2.5 s after the audio they named. An app that times lyrics or a song clock
+from the title is off by that much.
+
+`setBoundaryDetection(true)` reads the audio around each title change instead
+and reports a `boundary` event with when the item's audio starts being heard:
+
+```ts
+player.setBoundaryDetection(true);
+player.on('boundary', ({ title, at, kind }) => {
+  // `at`: epoch ms the item starts being heard (often still ahead).
+  // `kind`: 'gap' | 'onset' | 'title'
+});
+```
+
+- **`gap`**: between items a station leaves digital silence (zeros in MP3,
+  under −105 dB in HE-AAC); the item starts where it ends. Within ~10 ms
+  of the decoded audio on the station measured, every mount.
+- **`onset`**: no gap (a jingle over a fade-out): sound rising after a quiet
+  stretch.
+- **`title`**: the audio shows neither (music running straight on): the
+  title's own time.
+
+It looks from 2.5 s before the title to 4 s after, and reports as soon as it
+sees the start, usually before it is heard, so an app can switch its display
+right on it. A start before the title (a title that came late) is reported
+when the title is heard. The first title of a connection names an item
+already playing: a connection opens with the seconds before live (the
+server's burst), so an item that started within them shows its gap in the
+audio heard first, and that start is reported; one that started earlier is
+not. It samples the audio while on (shared
+with [`setAudioSampling`](visualizer.md), whose points win), and the windows
+reach `audioSample` listeners too: an app can follow the audio it reads.
+
 ## Live edge
 
 A live stream that falls behind (pauses, stalls) plays stale audio when it resumes. RNAP tracks how far behind it is (*drift*) and re-opens the stream at the live edge — but only at moments that are silent anyway:

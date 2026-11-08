@@ -1,6 +1,7 @@
 // Allows cleartext HTTP only to the local test stream server (10.0.2.2 is the
 // host machine from the Android emulator) — the same policy as the bare
-// example, so the `cleartext-blocked` scenario holds in both apps.
+// example, so the `cleartext-blocked` scenario holds in both apps — and to
+// Metro on the loopback (a development build loads its bundle from 127.0.0.1).
 const fs = require('fs');
 const path = require('path');
 const { withAndroidManifest, withDangerousMod } = require('expo/config-plugins');
@@ -10,6 +11,7 @@ const XML = `<?xml version="1.0" encoding="utf-8"?>
   <domain-config cleartextTrafficPermitted="true">
     <domain includeSubdomains="false">10.0.2.2</domain>
     <domain includeSubdomains="false">localhost</domain>
+    <domain includeSubdomains="false">127.0.0.1</domain>
   </domain-config>
 </network-security-config>
 `;

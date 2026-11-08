@@ -143,6 +143,9 @@ final class ConformanceTests: XCTestCase {
         return
       }
       switch native {
+      case "advanced":
+        h.driver.startPrepared(gen, playing: step["playing"] as? Bool ?? false)
+        h.engine.onAdvanced(generation: gen, playing: step["playing"] as? Bool ?? false)
       case "ready":
         let duration = (step["duration"] as? NSNumber)?.doubleValue
         h.engine.onReady(
@@ -246,9 +249,38 @@ final class ConformanceTests: XCTestCase {
     }
   }
 
+  /// `"a"` is `https://cdn.example/a.mp3`; `{ "id", "uri", "live" }` otherwise.
+  private static func queueItems(_ value: Any?) -> [EngineQueueItem] {
+    (value as? [Any] ?? []).map { raw in
+      let o: [String: Any] = (raw as? String).map { ["id": $0] } ?? (raw as? [String: Any] ?? [:])
+      let id = o["id"] as? String ?? ""
+      return EngineQueueItem(
+        id: id, live: o["live"] as? Bool ?? false,
+        source: SourceDescriptor(
+          uri: o["uri"] as? String ?? "https://cdn.example/\(id).mp3", headers: [:], liveHint: o["live"] as? Bool,
+          renditions: renditions(o["renditions"])))
+    }
+  }
+
   private func perform(_ call: String, _ step: [String: Any], _ h: EngineHarness) throws {
     let value = (step["value"] as? NSNumber)?.doubleValue ?? 0
     switch call {
+    case "queueSet":
+      try h.engine.queueSet(
+        Self.queueItems(step["items"]), startIndex: (step["start"] as? NSNumber)?.intValue ?? 0,
+        startPosition: (step["position"] as? NSNumber)?.doubleValue, autoplay: step["autoplay"] as? Bool)
+    case "queueAdd": try h.engine.queueAdd(Self.queueItems(step["items"]), at: (step["index"] as? NSNumber)?.intValue)
+    case "queueRemove": try h.engine.queueRemove(step["ids"] as? [String] ?? [])
+    case "queueMove":
+      try h.engine.queueMove(from: (step["from"] as? NSNumber)?.intValue ?? 0, to: (step["to"] as? NSNumber)?.intValue ?? 0)
+    case "queueClear": try h.engine.queueClear()
+    case "queueSkipTo":
+      try h.engine.queueSkipTo(step["id"] as? String ?? "", position: (step["position"] as? NSNumber)?.doubleValue)
+    case "queueNext": try h.engine.queueNext()
+    case "queuePrevious": try h.engine.queuePrevious()
+    case "repeat": try h.engine.setRepeat(RepeatMode(rawValue: step["value"] as? String ?? "") ?? .off)
+    case "shuffle":
+      try h.engine.setShuffle(step["value"] as? Bool ?? false, seed: (step["seed"] as? NSNumber)?.uint64Value)
     case "load":
       let source = Self.source(step, h, refreshable: step["refreshable"] as? Bool ?? false)
       // `"quality"`: an id, `null` for automatic; absent: keep the pick.
@@ -302,6 +334,20 @@ final class ConformanceTests: XCTestCase {
     }
   }
 
+  private func queueExpect(_ at: String, _ q: QueueState, _ expected: [String: Any]) {
+    for (key, value) in expected {
+      switch key {
+      case "current": XCTAssertEqual(q.currentId, value as? String, "\(at): queue.current")
+      case "index": XCTAssertEqual(q.index, (value as? NSNumber)?.intValue, "\(at): queue.index")
+      case "ids": XCTAssertEqual(q.ids, value as? [String], "\(at): queue.ids")
+      case "order": XCTAssertEqual(q.order, value as? [String], "\(at): queue.order")
+      case "repeat": XCTAssertEqual(q.repeatMode.rawValue, value as? String, "\(at): queue.repeat")
+      case "shuffle": XCTAssertEqual(q.shuffle, value as? Bool, "\(at): queue.shuffle")
+      default: XCTFail("\(at): unknown queue expectation \(key)")
+      }
+    }
+  }
+
   private func check(_ expect: [String: Any], _ h: EngineHarness, _ at: String) {
     let s = h.engine.status
     for (key, value) in expect {
@@ -347,11 +393,15 @@ final class ConformanceTests: XCTestCase {
         XCTAssertEqual(h.engine.wantsScreenAwake, value as? Bool, "\(at): wantsScreenAwake")
       case "refreshes": XCTAssertEqual(h.recorder.refreshes, value as? [String], "\(at): refreshes")
       case "gen": XCTAssertEqual(h.engine.generation, (value as? NSNumber)?.intValue, "\(at): gen")
+      case "loadId": XCTAssertEqual(s.loadId, (value as? NSNumber)?.intValue, "\(at): loadId")
+      case "queue": queueExpect(at, h.engine.queueState, value as? [String: Any] ?? [:])
+      case "queueEvents": XCTAssertEqual(h.recorder.queueEvents, (value as? NSNumber)?.intValue, "\(at): queueEvents")
       case "stats": statsExpect(at, h.engine.stats, value as? [String: Any] ?? [:])
       default: XCTFail("\(at): unknown expectation \(key)")
       }
     }
     h.recorder.refreshes.removeAll()
+    h.recorder.queueEvents = 0
     h.driver.commands.removeAll()
     h.recorder.loads.removeAll()
     h.recorder.errors.removeAll()

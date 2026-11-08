@@ -96,7 +96,8 @@ internal class SessionPlayer : SimpleBasePlayer(Looper.getMainLooper()) {
     val live = track == null && (now.live ?: status.isLive)
     val remote = controller.options.remoteCommands
 
-    val commands = availableCommands(status.seekable, remote)
+    // With a queue, next and previous are the queue's (handled natively).
+    val commands = availableCommands(status.seekable, if (controller.hasQueue) remote + setOf("next", "previous") else remote)
 
     val metadata =
       MediaMetadata.Builder()

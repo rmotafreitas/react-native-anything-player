@@ -52,6 +52,22 @@ export { Player } from '../core/Player';
 export { PlayerError, isPlayerError } from '../errors';
 export { configureHls } from '../core/hls';
 export { configureShaka } from '../core/shaka';
+export { Playlists } from '../core/playlists';
+export { Cache } from '../core/cache';
+export type {
+  CacheInfo,
+  CacheOptions,
+  CacheState,
+  CacheUsage,
+  DownloadInfo,
+  DownloadState,
+} from '../core/cache';
+export type {
+  PlaylistFormat,
+  PlaylistItem,
+  PlaylistOptions,
+} from '../core/playlists';
+export type { PlayerQueue } from '../core/queue';
 export type {
   ShakaLike,
   ShakaPlayerLike,
@@ -113,6 +129,7 @@ export type {
   AudioRouteKind,
   AudioSample,
   AudioSamplingOptions,
+  StreamBoundary,
   BlobInput,
   BrowseOptions,
   CastState,
@@ -146,4 +163,9 @@ export type {
   Source,
   SourceOptions,
   SourceInput,
+  QueueItem,
+  QueueItemInput,
+  QueueSetOptions,
+  QueueState,
+  RepeatMode,
 } from '../types';

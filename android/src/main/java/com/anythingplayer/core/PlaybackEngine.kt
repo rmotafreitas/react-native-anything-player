@@ -92,6 +92,26 @@ interface EngineDriver {
   fun selectTracks(audio: String?, text: String?) {
     // Audio drivers have one track.
   }
+  /** Whether the driver can prepare the queue's next item (`prepareNext`). */
+  val preparesNext: Boolean
+    get() = false
+  /**
+   * The queue's next item: open it behind the current one, paused at its
+   * start (`request.generation` is its own). When the current item ends, the
+   * driver may start it itself, gaplessly, and report `onAdvanced`;
+   * otherwise the engine calls `advance`.
+   */
+  fun prepareNext(request: OpenRequest) {
+    // Drivers that cannot prepare say so (`preparesNext`).
+  }
+  /** Drop the item `prepareNext` was preparing. */
+  fun cancelNext(generation: Int) {
+    // Nothing prepared.
+  }
+  /** The current item ended: play the prepared item now (it becomes the current one). */
+  fun advance(generation: Int) {
+    // Nothing prepared.
+  }
 }
 
 interface EngineClock {
@@ -126,6 +146,20 @@ interface EngineDelegate {
    */
   fun engineRequestsSourceRefresh(loadId: Int, reason: RefreshReason) {
     // Without an answer the engine backs off as for any failure.
+  }
+  /** The queue changed: its items, order, current item, repeat or shuffle (`engine.queueState`). */
+  fun engineQueueChanged() {
+    // Hosts without a queue UI ignore it.
+  }
+  /**
+   * A queue item becomes the current one, before it is opened ([opens]) or
+   * takes over from where it was prepared: the host applies what it keeps
+   * for it (lock-screen fields). An item that opens may first move the
+   * output (a Cast receiver that cannot play it hands it back); one that
+   * takes over stays on the output it was prepared on.
+   */
+  fun engineQueueItemStarts(id: String, opens: Boolean) {
+    // Hosts without per-item state ignore it.
   }
 }
 
@@ -174,6 +208,22 @@ class PlaybackEngine(
   private var rate = 1.0
   /** Repeat a finite item from the start instead of ending. */
   private var loop = false
+
+  // ── Queue ──
+  private val queue = QueueModel<EngineQueueItem>()
+  private var prepared: PreparedNext? = null
+  /** The last prepared item dropped, and the current generation then. */
+  private var dropped: Pair<Int, Int>? = null
+  /** An item whose preparation failed: it is opened normally when its turn comes. */
+  private var unpreparable: String? = null
+  private var itemReadyAt: Long? = null
+  private var prepareDueAt: Long? = null
+  /** `setLoop`'s value; repeat `one` loops on top of it. */
+  private var userLoop = false
+  /** Items skipped in a row for their own errors. */
+  private var skipStreak = 0
+  private var queueDirty = false
+  private var generatedIds = 0
 
   // ── Output ──
   private var route = AudioRoute.UNKNOWN
@@ -426,6 +476,18 @@ class PlaybackEngine(
     quality: String? = null,
   ) {
     ensureAlive()
+    // A plain load replaces the queue: what plays is no longer a queue item.
+    emptyQueue()
+    loadSource(newSource, autoplay, startPosition, qualityGiven, quality)
+  }
+
+  private fun loadSource(
+    newSource: SourceDescriptor,
+    autoplay: Boolean?,
+    startPosition: Double?,
+    qualityGiven: Boolean = false,
+    quality: String? = null,
+  ) {
     if (qualityGiven) chooseQuality(newSource, quality)
     // A fade-out ends with the item it was fading.
     cancelFadeOut()
@@ -538,9 +600,15 @@ class PlaybackEngine(
 
   fun reset() {
     ensureAlive()
+    emptyQueue()
+    resetSource()
+  }
+
+  private fun resetSource() {
     cancelFadeOut()
     settlePendingLoad(LoadOutcome.Superseded)
     cancelSwap("reset")
+    cancelPrepared("reset")
     generation = issueGeneration()
     source = null
     playWhenReady = false
@@ -661,8 +729,8 @@ class PlaybackEngine(
   /** Repeat a finite item from the start (the driver loops it seamlessly where it can). */
   fun setLoop(value: Boolean) {
     ensureAlive()
-    loop = value
-    driver.setLoop(value)
+    userLoop = value
+    applyLoop()
     commit()
   }
 
@@ -689,6 +757,7 @@ class PlaybackEngine(
     cancelFadeOut()
     cancelFadeTo()
     cancelSwap("release")
+    cancelPrepared("release")
     sleepAt = null
     sleepWallAt = null
     playWhenReady = false
@@ -752,11 +821,413 @@ class PlaybackEngine(
     } else {
       // Old-output callbacks are stale; nothing is loaded on the new one.
       cancelSwap("handoff")
+      cancelPrepared("handoff")
       generation = issueGeneration()
       readyForGeneration = false
       if (source != null) connectionReleased = true
     }
     commit()
+  }
+
+  // ── Queue ──
+  //
+  // What plays after the current item, which item a skip or previous goes
+  // to, repeat and shuffle, and the next item prepared behind the current
+  // one so it starts without a gap. The queue's decisions are `QueueModel`'s
+  // (conformance/queue); this section loads what it decides and is held to
+  // conformance/queue.json. Twin: `src/web/engine/EngineQueue.ts`.
+
+  val queueState: QueueState
+    get() =
+      QueueState(
+        ids = queue.items.map { it.id },
+        order = queue.order.toList(),
+        index = queue.index,
+        currentId = queue.current?.id,
+        repeat = queue.repeat,
+        shuffle = queue.shuffle,
+      )
+
+  /** The queue's items, in list order. */
+  val queueItems: List<EngineQueueItem> get() = queue.items
+
+  /** Replaces the queue and loads `startIndex` (an empty list resets the player). */
+  fun queueSet(items: List<EngineQueueItem>, startIndex: Int = 0, startPosition: Double? = null, autoplay: Boolean? = null) {
+    ensureAlive()
+    checkIds(items, emptyList())
+    queue.set(items, startIndex)
+    queueDirty = true
+    skipStreak = 0
+    unpreparable = null
+    val current = queue.current
+    if (current == null) {
+      // No queue: repeat no longer loops anything.
+      applyLoop()
+      resetSource()
+      return
+    }
+    loadItem(current, autoplay, startPosition)
+  }
+
+  /**
+   * Inserts at `index` (default: the end). A source loaded with `load()`
+   * joins the queue first, as its current item; an idle player loads the
+   * first item added, paused.
+   */
+  fun queueAdd(items: List<EngineQueueItem>, index: Int? = null) {
+    ensureAlive()
+    if (items.isEmpty()) return
+    val loaded = source
+    val joins = queue.length == 0 && loaded != null
+    // The loaded source's id too, before it joins.
+    val joining = "loaded-${generatedIds + 1}"
+    checkIds(items, if (joins && loaded != null) queue.items + EngineQueueItem(joining, false, loaded) else queue.items)
+    if (joins && loaded != null) {
+      generatedIds += 1
+      queue.set(listOf(EngineQueueItem(joining, loaded.liveHint == true, loaded)))
+    }
+    val idle = queue.length == 0
+    // A new queue: earlier failures do not count against it.
+    if (idle) skipStreak = 0
+    queue.add(items, index ?: queue.length)
+    queueDirty = true
+    val current = queue.current
+    if (idle && current != null) {
+      loadItem(current, false, null)
+      return
+    }
+    applyLoop()
+    reconsiderNext()
+    commit()
+  }
+
+  /** Removes these ids; when the current item goes, the next one loads (keeping the intent). */
+  fun queueRemove(ids: List<String>) {
+    ensureAlive()
+    val changed = queue.remove(ids)
+    queueDirty = true
+    val current = queue.current
+    if (changed) {
+      if (current == null) {
+        skipStreak = 0
+        applyLoop()
+        resetSource()
+        return
+      }
+      loadItem(current, null, null)
+      return
+    }
+    applyLoop()
+    reconsiderNext()
+    commit()
+  }
+
+  fun queueMove(from: Int, to: Int) {
+    ensureAlive()
+    queue.move(from, to)
+    queueDirty = true
+    reconsiderNext()
+    commit()
+  }
+
+  /** Every item but the current one goes. */
+  fun queueClear() {
+    ensureAlive()
+    queue.clear()
+    queueDirty = true
+    reconsiderNext()
+    commit()
+  }
+
+  fun queueSkipTo(id: String, position: Double? = null) {
+    ensureAlive()
+    val item = queue.find(id) ?: throw PlayerError(ErrorCode.INVALID_ARGUMENT, "No queue item has the id \"$id\".", false)
+    queue.skipTo(id)
+    queueDirty = true
+    skipStreak = 0
+    go(item, position)
+  }
+
+  /** Skips to the next item; `false` (nothing changes) at the end of the queue. */
+  fun queueNext(): Boolean {
+    ensureAlive()
+    val item = queue.next(false) ?: return false
+    queueDirty = true
+    skipStreak = 0
+    go(item, null)
+    return true
+  }
+
+  /** Restarts a finite item more than 3 s in (or with nothing before it), else goes to the item before. */
+  fun queuePrevious() {
+    ensureAlive()
+    if (queue.current == null) return
+    val position = if (source == null) 0.0 else driver.sample().position
+    val action = queue.previous(position)
+    skipStreak = 0
+    when (action) {
+      PreviousAction.None -> return
+      PreviousAction.Restart -> {
+        if (seekable && state != PlaybackState.ERROR && state != PlaybackState.STOPPED) {
+          seek(0.0)
+        } else {
+          loadItem(queue.current!!, null, null)
+        }
+      }
+      is PreviousAction.Item -> {
+        queueDirty = true
+        go(queue.current!!, null)
+      }
+    }
+  }
+
+  fun setRepeat(mode: RepeatMode) {
+    ensureAlive()
+    queue.setRepeat(mode)
+    queueDirty = true
+    applyLoop()
+    reconsiderNext()
+    commit()
+  }
+
+  /** `seed` makes the order reproducible (tests, the twins' conformance). */
+  fun setShuffle(on: Boolean, seed: Long? = null) {
+    ensureAlive()
+    queue.setShuffle(on, seed)
+    queueDirty = true
+    reconsiderNext()
+    commit()
+  }
+
+  /**
+   * The driver started the prepared item itself as the current one ended
+   * (gapless: ExoPlayer's playlist). `playing`: its audio already flows.
+   */
+  fun onAdvanced(generation: Int, playing: Boolean) {
+    if (released) return
+    val p = prepared
+    if (p != null && p.generation == generation) {
+      val next = queue.peekNext(true)
+      if (next != null && next.id == p.itemId) {
+        queue.next(true)
+        queueDirty = true
+        prepared = null
+        takeOver(p, next, playing)
+        commit()
+        return
+      }
+    }
+    val d = dropped
+    if (d != null && d.first == generation && d.second == this.generation) {
+      // It went on to an item the queue no longer wants next: the current
+      // item ended all the same.
+      log("advance to a dropped item", mapOf("gen" to "$generation"))
+      onEnded(this.generation)
+      return
+    }
+    logStale("advanced", generation)
+  }
+
+  private fun isPreparedGeneration(generation: Int): Boolean = !released && prepared?.generation == generation
+
+  private fun preparedNote(event: String, info: ReadyInfo?) {
+    if (event == "ready") prepared?.info = info
+    log("next item", mapOf("event" to event))
+  }
+
+  private fun preparedFailed(error: PlayerError) {
+    val p = prepared ?: return
+    unpreparable = p.itemId
+    dropPrepared("failed: ${error.code.wire}")
+  }
+
+  /** The current item goes (an open, a stop, a reset, a handoff): so does what was prepared behind it. */
+  private fun cancelPrepared(reason: String) {
+    dropPrepared(reason)
+    itemReadyAt = null
+    prepareDueAt = null
+  }
+
+  /** The current item ended with no loop: `true` when the queue's next item took over. */
+  private fun advanceAtEnd(): Boolean {
+    val next = queue.peekNext(true)
+    val current = queue.current
+    if (next == null || current == null || next.id == current.id) return false
+    queue.next(true)
+    queueDirty = true
+    val p = prepared
+    if (p != null && p.itemId == next.id && playWhenReady) {
+      prepared = null
+      driver.advance(p.generation)
+      takeOver(p, next, false)
+    } else {
+      loadItem(next, playWhenReady, null)
+    }
+    return true
+  }
+
+  private fun afterFatalFailure(error: PlayerError, wanted: Boolean) {
+    if (queue.length == 0 || !isItemError(error)) return
+    skipStreak += 1
+    if (skipStreak >= queue.length) {
+      log("queue stopped", mapOf("note" to "every item failed"))
+      return
+    }
+    val failed = queue.current
+    val next = queue.peekNext(false)
+    if (failed == null || next == null || next.id == failed.id) return
+    // After the error's status and event: the app hears that this item failed.
+    pendingEvents.add {
+      if (!released && state == PlaybackState.ERROR && lastError === error && queue.current?.id == failed.id) {
+        queue.next(false)
+        queueDirty = true
+        log("skipped", mapOf("code" to error.code.wire))
+        loadItem(next, wanted, null)
+      }
+    }
+  }
+
+  private fun queueItemReady() {
+    if (itemReadyAt == null) itemReadyAt = now
+    reconsiderNext()
+  }
+
+  private fun queueWakeup(t: Long) {
+    val due = prepareDueAt ?: return
+    if (due > t) return
+    prepareDueAt = null
+    reconsiderNext()
+  }
+
+  private fun emptyQueue() {
+    if (queue.length == 0) return
+    queue.set(emptyList())
+    queueDirty = true
+    unpreparable = null
+    skipStreak = 0
+    applyLoop()
+  }
+
+  private fun checkIds(items: List<EngineQueueItem>, existing: List<EngineQueueItem>) {
+    val seen = existing.map { it.id }.toMutableSet()
+    for (item in items) {
+      if (!seen.add(item.id)) throw PlayerError(ErrorCode.INVALID_ARGUMENT, "Two queue items have the id \"${item.id}\".", false)
+    }
+  }
+
+  /** Loads a queue item as a plain load would, keeping the queue. */
+  private fun loadItem(item: EngineQueueItem, autoplay: Boolean?, startPosition: Double?) {
+    applyLoop()
+    // The intent is decided before the host may move the output.
+    val wanted = autoplay ?: (playWhenReady && continuesIntent(state))
+    delegate?.engineQueueItemStarts(item.id, true)
+    loadSource(item.source, wanted, startPosition)
+  }
+
+  /** Goes to a queue item, through what was prepared when it is that item. */
+  private fun go(item: EngineQueueItem, position: Double?) {
+    val p = prepared
+    if (p != null && p.itemId == item.id && p.info != null && position == null && playWhenReady) {
+      prepared = null
+      driver.advance(p.generation)
+      applyLoop()
+      takeOver(p, item, false)
+      commit()
+      return
+    }
+    loadItem(item, null, position)
+  }
+
+  /** The prepared item becomes the current one, under its own generation. */
+  private fun takeOver(p: PreparedNext, item: EngineQueueItem, playing: Boolean) {
+    delegate?.engineQueueItemStarts(item.id, false)
+    cancelFadeOut()
+    settlePendingLoad(LoadOutcome.Superseded)
+    source = item.source
+    loadId += 1
+    pendingLoadId = loadId
+    isLive = item.source.liveHint ?: false
+    duration = null
+    seekable = false
+    lastError = null
+    interruption = null
+    resetRecovery()
+    resumePosition = null
+    playWhenReady = true
+    videoLoad()
+    log("advance", mapOf("uri" to item.source.uri, "gen" to "${p.generation}"))
+    beginItem(p.generation, null, "advance")
+    itemReadyAt = null
+    prepareDueAt = null
+    videoOpened()
+    val info = p.info
+    if (info != null) {
+      applyFacts(info)
+      readyForGeneration = true
+      setState(PlaybackState.BUFFERING, "ready")
+      beginWaiting()
+      settlePendingLoad(LoadOutcome.Ready)
+      queueItemReady()
+    }
+    if (playing) onPlaying(p.generation)
+  }
+
+  private fun dropPrepared(reason: String) {
+    val p = prepared ?: return
+    prepared = null
+    dropped = p.generation to generation
+    driver.cancelNext(p.generation)
+    log("next item dropped", mapOf("reason" to reason))
+  }
+
+  private fun applyLoop() {
+    // Repeat `one`, or `all` with one item: the item loops, seamlessly.
+    val repeats = queue.repeat == RepeatMode.ONE || (queue.repeat == RepeatMode.ALL && queue.length == 1)
+    val want = userLoop || (queue.length > 0 && repeats)
+    if (want == loop) return
+    loop = want
+    driver.setLoop(want)
+  }
+
+  /** The item to prepare now, if any. */
+  private fun nextToPrepare(): EngineQueueItem? {
+    if (!driver.preparesNext || remote || loop || !readyForGeneration || isLive || duration == null) return null
+    if (state == PlaybackState.ERROR || state == PlaybackState.STOPPED || state == PlaybackState.ENDED || state == PlaybackState.IDLE) {
+      return null
+    }
+    val current = queue.current ?: return null
+    val next = queue.peekNext(true) ?: return null
+    if (next.id == current.id) return null
+    val s = next.source
+    if (next.live || s.liveHint == true || s.renditions != null || s.drm != null || next.id == unpreparable) return null
+    return next
+  }
+
+  /** Drops a prepared item that is no longer next; prepares the next one when due. */
+  private fun reconsiderNext() {
+    val target = nextToPrepare()
+    val p = prepared
+    if (p != null && p.itemId != target?.id) dropPrepared("next changed")
+    val readyAt = itemReadyAt
+    if (target == null || prepared != null || readyAt == null) {
+      prepareDueAt = null
+      return
+    }
+    prepareAt(target, readyAt)
+  }
+
+  private fun prepareAt(target: EngineQueueItem, readyAt: Long) {
+    val lead = kotlin.math.min(RecoveryPolicy.PREPARE_NEXT_AFTER_MS, ((duration ?: 0.0) * 250).toLong())
+    val due = readyAt + lead
+    if (now < due) {
+      prepareDueAt = due
+      return
+    }
+    prepareDueAt = null
+    val nextGeneration = issueGeneration()
+    prepared = PreparedNext(nextGeneration, target.id, null)
+    log("next item prepared", mapOf("uri" to target.source.uri, "gen" to "$nextGeneration"))
+    driver.prepareNext(OpenRequest(nextGeneration, target.source, null, false, allowReconnect = options.reconnect))
   }
 
   // ── Native observations (generation-guarded) ──
@@ -770,9 +1241,11 @@ class PlaybackEngine(
       }
       return swapNote("ready")
     }
+    if (isPreparedGeneration(generation)) return preparedNote("ready", info)
     if (!accepts(generation)) return logStale("ready", generation)
     applyFacts(info)
     readyForGeneration = true
+    queueItemReady()
     if (state == PlaybackState.LOADING) {
       if (playWhenReady) {
         setState(PlaybackState.BUFFERING, "ready")
@@ -791,6 +1264,7 @@ class PlaybackEngine(
   fun onPlaying(generation: Int) {
     // A quality switch's new item plays: it is the current item from now on.
     if (isSwapGeneration(generation)) completeSwap()
+    if (isPreparedGeneration(generation)) return preparedNote("playing", null)
     if (!accepts(generation)) return logStale("playing", generation)
     if (!playWhenReady) {
       // Fading out: the audio keeps going until the fade ends.
@@ -814,6 +1288,7 @@ class PlaybackEngine(
     silentStall = false
     lastOpenAt = null
     nextAttemptAt = null
+    skipStreak = 0
     lastPosition = driver.sample().position
     lastPositionAdvanceAt = t
     playingSince = t
@@ -831,6 +1306,7 @@ class PlaybackEngine(
   /** Playback wanted, waiting for data. */
   fun onBuffering(generation: Int) {
     if (isSwapGeneration(generation)) return swapNote("buffering")
+    if (isPreparedGeneration(generation)) return preparedNote("buffering", null)
     if (!accepts(generation)) return logStale("buffering", generation)
     // Nothing left to fade.
     completeFadeOut()
@@ -849,6 +1325,10 @@ class PlaybackEngine(
       swapFailed(error)
       return commit()
     }
+    if (isPreparedGeneration(generation)) {
+      preparedFailed(error)
+      return commit()
+    }
     if (!accepts(generation)) return logStale("failed", generation)
     completeFadeOut()
     // A stop's fade-out landed: the item is gone.
@@ -862,6 +1342,7 @@ class PlaybackEngine(
 
   fun onEnded(generation: Int) {
     if (isSwapGeneration(generation)) return swapNote("ended")
+    if (isPreparedGeneration(generation)) return preparedNote("ended", null)
     if (!accepts(generation)) return logStale("ended", generation)
     if (state == PlaybackState.ENDED) return logStale("ended again", generation)
     completeFadeOut()
@@ -877,6 +1358,8 @@ class PlaybackEngine(
     } else if (loop && playWhenReady) {
       // The driver could not loop it seamlessly: start over.
       restartFromEnd("loop")
+    } else if (advanceAtEnd()) {
+      // The queue's next item took over: no `ended` in between.
     } else {
       playWhenReady = false
       resumePosition = 0.0
@@ -890,6 +1373,7 @@ class PlaybackEngine(
   /** The platform paused the player without being asked to. */
   fun onPausedExternally(generation: Int, reason: InterruptionReason) {
     if (isSwapGeneration(generation)) return swapNote("paused")
+    if (isPreparedGeneration(generation)) return preparedNote("paused", null)
     if (!accepts(generation)) return logStale("paused externally", generation)
     if (fadeOutThen != null) {
       completeFadeOut()
@@ -1288,6 +1772,7 @@ class PlaybackEngine(
     }
     fireSleepIfDue(t)
     stepFades(t)
+    queueWakeup(t)
     if (heartbeatDue && t - lastHeartbeatAt >= RecoveryPolicy.HEARTBEAT_MS - 50) {
       lastHeartbeatAt = t
       heartbeat(t)
@@ -1432,7 +1917,26 @@ class PlaybackEngine(
   private fun open(startPosition: Double?, reason: String) {
     val source = this.source ?: return
     cancelSwap("open")
-    generation = issueGeneration()
+    cancelPrepared("open")
+    beginItem(issueGeneration(), startPosition, reason)
+    val index = currentRendition
+    val target = if (renditions != null && index != null) renditionSource(index) else source
+    driver.open(
+      OpenRequest(
+        generation,
+        target,
+        startPosition,
+        playWhenReady,
+        allowReconnect = options.reconnect,
+        rendition = if (renditions != null) index else null,
+      ),
+    )
+    videoOpened()
+  }
+
+  /** A new item (an open, or the queue's prepared item taking over) under `newGeneration`. */
+  private fun beginItem(newGeneration: Int, startPosition: Double?, reason: String) {
+    generation = newGeneration
     readyForGeneration = false
     flowedSinceOpen = false
     silentStall = false
@@ -1450,19 +1954,6 @@ class PlaybackEngine(
     lastPositionAdvanceAt = now
     lastHeartbeatAt = now
     setState(PlaybackState.LOADING, reason)
-    val index = currentRendition
-    val target = if (renditions != null && index != null) renditionSource(index) else source
-    driver.open(
-      OpenRequest(
-        generation,
-        target,
-        startPosition,
-        playWhenReady,
-        allowReconnect = options.reconnect,
-        rendition = if (renditions != null) index else null,
-      ),
-    )
-    videoOpened()
   }
 
   private fun reopen(reason: String, startPosition: Double? = null) {
@@ -1554,6 +2045,7 @@ class PlaybackEngine(
   }
 
   private fun fail(error: PlayerError) {
+    val wanted = playWhenReady
     lastError = error
     playWhenReady = false
     resetRecovery()
@@ -1562,6 +2054,7 @@ class PlaybackEngine(
     releaseItemConnection()
     setState(PlaybackState.ERROR, error.code.wire)
     pendingEvents.add { delegate?.engineError(error, true) }
+    afterFatalFailure(error, wanted)
   }
 
   /**
@@ -1571,6 +2064,7 @@ class PlaybackEngine(
    */
   private fun releaseItemConnection() {
     cancelSwap("release")
+    cancelPrepared("release")
     generation = issueGeneration()
     readyForGeneration = false
     silentStall = false
@@ -3003,6 +3497,10 @@ class PlaybackEngine(
 
   /** Publishes the status (if changed) and the next wake-up instant. */
   private fun commit() {
+    if (queueDirty) {
+      queueDirty = false
+      pendingEvents.add { delegate?.engineQueueChanged() }
+    }
     val current = status
     if (current != lastPublished) {
       lastPublished = current
@@ -3023,6 +3521,46 @@ class PlaybackEngine(
     if (heartbeatDue) candidates.add(lastHeartbeatAt + RecoveryPolicy.HEARTBEAT_MS)
     fadeWakeups(candidates)
     videoWakeups(candidates)
+    prepareDueAt?.let { candidates.add(it) }
     return candidates.minOrNull()
   }
+}
+
+/** A queue item: an id, and what to play. */
+data class EngineQueueItem(
+  override val id: String,
+  override val live: Boolean,
+  val source: SourceDescriptor,
+) : QueueEntry
+
+/** The queue's snapshot (`engine.queueState`). */
+data class QueueState(
+  /** The items' ids, in list order. */
+  val ids: List<String>,
+  /** The ids in the order they play (the list's, or shuffled). */
+  val order: List<String>,
+  /** The current item's place in `ids`, `null` when the queue is empty. */
+  val index: Int?,
+  val currentId: String?,
+  val repeat: RepeatMode,
+  val shuffle: Boolean,
+)
+
+private class PreparedNext(val generation: Int, val itemId: String, var info: ReadyInfo?)
+
+/** Errors that are the item's own: the queue goes on to the next one. */
+private val ITEM_ERRORS =
+  setOf(
+    ErrorCode.SOURCE_NOT_FOUND,
+    ErrorCode.UNSUPPORTED_FORMAT,
+    ErrorCode.DECODER_ERROR,
+    ErrorCode.INVALID_SOURCE,
+    ErrorCode.DRM_UNSUPPORTED,
+    ErrorCode.DRM_LICENSE_FAILED,
+  )
+
+private fun isItemError(error: PlayerError): Boolean {
+  if (error.code in ITEM_ERRORS) return true
+  val status = error.httpStatus
+  return error.code == ErrorCode.HTTP_ERROR && status != null && status in 400..499
 }

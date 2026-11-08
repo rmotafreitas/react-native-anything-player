@@ -37,6 +37,8 @@ import {
   type AudioElementLike,
   type VideoElementLike,
 } from './dom';
+import { webCache } from './WebCache';
+import { ENCRYPTED } from './elementErrors';
 import { HLS_MISSING, isHlsType, isHlsUri, needsHlsJs } from './hlsFormats';
 import { elementError } from './elementErrors';
 import type { HlsStream } from './HlsStream';
@@ -44,7 +46,7 @@ import { MediaTracks } from './MediaTracks';
 import { TimedQueue } from './TimedQueue';
 import { createMediaElement } from './mediaElement';
 import { OwnSeeks } from './OwnSeeks';
-import { ItemFacts, elementReadyInfo } from './ItemFacts';
+import { ItemFacts, bufferedEnd, elementReadyInfo } from './ItemFacts';
 import { isDashUri, shakaNamespace, type ShakaLike } from '../../core/shaka';
 import type { DashStream } from './DashStream';
 import { AudioSampler } from './AudioSampler';
@@ -103,13 +105,6 @@ onHlsConfigured(() => {
   loadHlsParts().catch(() => undefined);
 });
 
-// MediaError codes.
-const ENCRYPTED = engineError(
-  'DRM_UNSUPPORTED',
-  'The source is encrypted (DRM): give its key systems and license servers in `drm`.',
-  false
-);
-
 const MEDIA_ERR_ABORTED = 1;
 const MEDIA_ERR_SRC_NOT_SUPPORTED = 4;
 
@@ -142,6 +137,8 @@ export class MediaElementDriver implements EngineDriver {
   private source: SourceDescriptor | null = null;
   /** The current source has played before (in any generation): a later "unsupported" is the server failing. */
   private sourcePlayed = false;
+  /** Native HLS: where its clock must pass (from `playing`) for it to have played. */
+  private nativeAt: number | null = null;
   /** The current source has streamed through fetch: its server allows CORS. */
   private corsProven = false;
   /** The engine allows reconnecting (`OpenRequest.allowReconnect`): a dropped stream may be spliced. */
@@ -214,22 +211,15 @@ export class MediaElementDriver implements EngineDriver {
 
   /** hls.js, Shaka, the remuxer or an MSE stream feeds the element. */
   private get fed(): boolean {
-    return (
-      this.stream != null ||
-      this.hls != null ||
-      this.dash != null ||
-      this.remux != null
+    return [this.stream, this.hls, this.dash, this.remux].some(
+      (f) => f != null
     );
   }
 
   /** Whether the current item is live (read through MSE, or an HLS playlist without an end). */
   private get isLive(): boolean {
-    return (
-      this.stream != null ||
-      this.hls?.live === true ||
-      this.dash?.live === true ||
-      this.remux?.live === true
-    );
+    const adaptive = [this.hls, this.dash, this.remux];
+    return this.stream != null || adaptive.some((f) => f?.live === true);
   }
 
   // ── EngineDriver ──
@@ -244,6 +234,7 @@ export class MediaElementDriver implements EngineDriver {
     this.generation = request.generation;
     if (this.source?.uri !== request.source.uri) {
       this.sourcePlayed = false;
+      this.nativeAt = null;
       this.corsProven = false;
       this.nativeHlsFailed = false;
       this.remuxFallback = null;
@@ -253,7 +244,13 @@ export class MediaElementDriver implements EngineDriver {
     this.flowed = false;
     this.pendingStart = request.startPosition;
     this.variantId = null;
-    if (request.source.drm && !isDashUri(request.source.uri)) {
+    // A file the cache holds whole: its stored bytes, once they are read.
+    const cached = webCache().blobFor(request.source);
+    if (cached != null) {
+      this.drmPending = true;
+      const ready = (uri: string) => this.cachedReady(request, uri);
+      cached.then(ready, () => ready(request.source.uri));
+    } else if (request.source.drm && !isDashUri(request.source.uri)) {
       // The keys first: the element gets the source once they are attached.
       this.drmPending = true;
       this.drm = protect(this._element, request, this.observer, () => {
@@ -265,6 +262,14 @@ export class MediaElementDriver implements EngineDriver {
       this.route(request.source);
     }
     if (request.playWhenReady) this.play();
+  }
+
+  /** A cached file's bytes are read: it plays from them (or from the network if they are gone). */
+  private cachedReady(request: OpenRequest, uri: string): void {
+    if (request.generation !== this.generation || !this.drmPending) return;
+    this.drmPending = false;
+    this.route({ ...request.source, uri });
+    if (this.playRequested) this.play();
   }
 
   /** Plays a source through MSE (live audio, for ICY) or on the element. */
@@ -502,7 +507,9 @@ export class MediaElementDriver implements EngineDriver {
       // rate asked for is the one that plays.
       if (this._element.defaultPlaybackRate !== this.rate) this.applyRate();
       this.flowed = true;
-      this.sourcePlayed = true;
+      // Native HLS can say playing and never play (Chrome on Android, packed audio).
+      if (this.nativeHls) this.nativeAt ??= this.position() + 0.25;
+      else this.sourcePlayed = true;
       this.observer.onPlaying(generation);
       this.timed.pump();
     });
@@ -544,7 +551,10 @@ export class MediaElementDriver implements EngineDriver {
       if (this.userControlled && !this.ownSeeks.isOwn(this.position()))
         this.observer.onUserCommand?.(generation, 'seek', this.position());
     });
-    on('timeupdate', () => this.timed.pump());
+    on('timeupdate', () => {
+      this.timed.pump();
+      this.sourcePlayed ||= this.position() > (this.nativeAt ?? Infinity);
+    });
     on('seeked', () => this.timed.pump());
   }
 
@@ -1140,8 +1150,9 @@ export class MediaElementDriver implements EngineDriver {
     if (!error || error.code === MEDIA_ERR_ABORTED) return;
     // hls.js already reported the failure that stopped the element.
     if (this.hls?.failed || this.dash?.failed || this.remux?.failed) return;
+    // Also native HLS that said playing and never moved (retryWithHls knows).
     if (
-      error.code === MEDIA_ERR_SRC_NOT_SUPPORTED &&
+      (error.code === MEDIA_ERR_SRC_NOT_SUPPORTED || this.nativeAt != null) &&
       (this.retryWithHls(generation) || this.retryWithRemux(generation))
     )
       return;
@@ -1202,11 +1213,6 @@ export class MediaElementDriver implements EngineDriver {
   }
 
   private bufferedEnd(position: number): number {
-    const ranges = this._element.buffered;
-    for (let i = 0; i < ranges.length; i++) {
-      if (ranges.start(i) <= position + 0.1 && ranges.end(i) >= position)
-        return ranges.end(i);
-    }
-    return position;
+    return bufferedEnd(this._element.buffered, position);
   }
 }

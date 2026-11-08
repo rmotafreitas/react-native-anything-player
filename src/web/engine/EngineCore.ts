@@ -590,6 +590,8 @@ export abstract class EngineCore {
     } else if (this.loop && this._playWhenReady) {
       // The driver could not loop it seamlessly: start over.
       this.restartFromEnd('loop');
+    } else if (this.advanceAtEnd()) {
+      // The queue's next item took over: no `ended` in between.
     } else {
       this._playWhenReady = false;
       this.resumePosition = 0;
@@ -809,24 +811,7 @@ export abstract class EngineCore {
     const source = this._source;
     if (source == null) return;
     this.cancelSwap('open');
-    this._generation = this.issueGeneration();
-    this.readyForGeneration = false;
-    this.flowedSinceOpen = false;
-    this.silentStall = false;
-    this.connectionReleased = false;
-    this.stallStartedAt = null;
-    this.pausedAt = null;
-    this.playingSince = null;
-    this.driftMs = 0;
-    this.pauseReleaseAt = null;
-    this.lastOpenAt = this.now;
-    this.openNetworkRevision = this.networkRevision;
-    this.lastPosition = startPosition ?? 0;
-    this.lastBuffered = 0;
-    this.lastBufferedAdvanceAt = this.now;
-    this.lastPositionAdvanceAt = this.now;
-    this.lastHeartbeatAt = this.now;
-    this.setState('loading', reason);
+    this.beginItem(this.issueGeneration(), startPosition, reason);
     const target = this.openTarget(source);
     this.driver.open({
       generation: this._generation,
@@ -917,6 +902,7 @@ export abstract class EngineCore {
   }
 
   protected fail(error: PlayerError): void {
+    const wanted = this._playWhenReady;
     this.lastError = error;
     this._playWhenReady = false;
     this.resetRecovery();
@@ -925,6 +911,7 @@ export abstract class EngineCore {
     this.releaseItemConnection();
     this.setState('error', error.code);
     this.pendingEvents.push(() => this.delegate?.engineError(error, true));
+    this.afterFatalFailure(error, wanted);
   }
 
   protected scheduleReconnect(reason: string): void {
@@ -1086,6 +1073,21 @@ export abstract class EngineCore {
   ): void;
   /** Drops a quality switch in flight (`reason` for the log). */
   protected abstract cancelSwap(reason: string): void;
+
+  // ── Queue (EngineQueue.ts) ──
+  /** A new item (an open, or the queue's prepared item taking over) under `generation`. */
+  protected abstract beginItem(
+    generation: number,
+    startPosition: number | null,
+    reason: string
+  ): void;
+  /** The current item ended with no loop: `true` when the queue's next item took over. */
+  protected abstract advanceAtEnd(): boolean;
+  /** `wanted`: playback was wanted before the failure. */
+  protected abstract afterFatalFailure(
+    error: PlayerError,
+    wanted: boolean
+  ): void;
   /** `true` when the failure waits for the app's new source instead. */
   protected abstract refreshOnFailure(error: PlayerError): boolean;
   /** The audio flows (stats, a stall's end). */

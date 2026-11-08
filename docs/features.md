@@ -61,7 +61,10 @@ Supported: the current and previous version of each browser. Radio titles on iPh
 | Fades on play, pause and stop, `fadeTo` | ✓ | ✓ | ◐ ⁷ | ◐ ⁷ | ◐ ⁷ | – ⁶ |
 | Separate quality files (`renditions`) switched with no gap, a pick that holds across loads | ✓ † | ✓ † | ✓ | ✓ | ✓ | ✓ † |
 | Live renditions (one station's mounts, a live MPEG-TS sound channel, or HLS / DASH with program dates) switched in step with what is heard, no repeat or skip | ◐ † ⁸ | ✓ † | ◐ ⁸ ⁹ | ◐ ⁸ ⁹ | ◐ ⁸ ⁹ | ◐ † ⁸ ⁹ |
-| Queue (next / previous, gapless) | – | – | – | – | – | – |
+| Queue: next / previous, repeat, shuffle, run while JS is frozen | ✓ † | ✓ | ✓ | ✓ | ✓ | ✓ † |
+| The queue's next item started without a gap | ◐ † ¹⁰ | ✓ | ◐ ¹⁰ | ◐ ¹⁰ | ◐ ¹⁰ | ◐ † ¹⁰ ¹¹ |
+| Playlist files (M3U, PLS, XSPF) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Cache as items play, preload, downloads for offline ([what each keeps](cache.md#what-each-platform-keeps)) | ◐ † | ✓ | ◐ | ◐ | ◐ | ◐ † |
 
 1. Leave it out with `rnapHls=false`.
 2. The browser's own HLS where it has one (Chrome on Android), else [hls.js](web.md#hls), registered with `configureHls`.
@@ -72,8 +75,8 @@ Supported: the current and previous version of each browser. Radio titles on iPh
 7. In a hidden tab the browser runs timers less often: fades move in larger steps and the sleep timer can fire late.
 8. A live MPEG-TS channel switches at once, as before, on iOS, and in a browser when it has a picture ([live renditions](playback.md#live-renditions)).
 9. When RNAP reads the stream itself (MSE, hls.js, Shaka; HLS with program dates also on Safari's own player), not on the plain `<audio>` element, where a switch goes ahead with a `discontinuity`. On iPhone and iPad, from iOS 17.1.
-
-A queue is planned: see the [roadmap](roadmap.md).
+10. Near-gapless: the next item is opened and buffered on a second player and started when the current one ends (a few milliseconds), not sample-exact as ExoPlayer's playlist on Android. See [Queue](queue.md#advancing).
+11. Once the page has had a tap on a control that calls the player.
 
 ## Internet radio
 
@@ -155,7 +158,7 @@ A `Player` with a picture ([guide](video.md), [subtitles](subtitles.md)).
 | DRM: license servers, Clear Key keys in the source, or the app's `getLicense` | ◐ ² ⁹ | ✓ ¹ ¹⁰ | ✓ ¹¹ | ✓ ¹¹ | ◐ ⁹ † | ◐ ⁹ † |
 
 1. Opt-in: a build option (`video` in the Expo plugin, `npx rnap add video`). Tried on the Android emulator (a file, separate quality files with SubRip, HLS with two audio languages and WebVTT subtitles, Picture in Picture, fullscreen, controls); not yet on a device †.
-2. Opt-in, as on Android. Written and compiled in CI; not yet run on a simulator or device †.
+2. Opt-in, as on Android. Run on the iOS 27 simulator: files (MP4, HEVC, MOV), HLS and DASH with their qualities, Matroska and MPEG-TS with their audio languages and subtitles, subtitle files, fullscreen and AVKit's controls. Not yet on a device †, nor Picture in Picture (the simulator has none) or FairPlay.
 3. HLS with hls.js ([`configureHls`](web.md#hls)); a video player takes it over Chromium's own HLS, which lists no tracks or qualities.
 4. Safari's own HLS picks its quality itself: no caps or pins there. Separate quality files are RNAP's to switch, under every cap.
 5. iPhone Safari's fullscreen is the system player, with its own controls and captions.

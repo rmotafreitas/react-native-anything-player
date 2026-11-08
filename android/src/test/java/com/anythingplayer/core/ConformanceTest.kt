@@ -175,6 +175,10 @@ class ConformanceTest {
           return
         }
         when (val native = step.getString("native")) {
+          "advanced" -> {
+            h.driver.startPrepared(gen, step.optBoolean("playing", false))
+            h.engine.onAdvanced(gen, step.optBoolean("playing", false))
+          }
           "ready" ->
             h.engine.onReady(
               gen,
@@ -278,9 +282,43 @@ class ConformanceTest {
     }
   }
 
+  /** `"a"` is `https://cdn.example/a.mp3`; `{ "id", "uri", "live" }` otherwise. */
+  private fun queueItems(array: JSONArray): List<EngineQueueItem> =
+    (0 until array.length()).map { i ->
+      val raw = array.get(i)
+      val o = if (raw is String) JSONObject().put("id", raw) else raw as JSONObject
+      val id = o.getString("id")
+      EngineQueueItem(
+        id,
+        o.optBoolean("live", false),
+        SourceDescriptor(
+          if (o.has("uri")) o.getString("uri") else "https://cdn.example/$id.mp3",
+          emptyMap(),
+          if (o.has("live")) o.getBoolean("live") else null,
+          renditions = renditions(o.optJSONArray("renditions")),
+        ),
+      )
+    }
+
   private fun perform(call: String, step: JSONObject, h: EngineHarness) {
     val value = step.optDouble("value", 0.0)
     when (call) {
+      "queueSet" ->
+        h.engine.queueSet(
+          queueItems(step.getJSONArray("items")),
+          step.optInt("start", 0),
+          if (step.has("position")) step.getDouble("position") else null,
+          if (step.has("autoplay")) step.getBoolean("autoplay") else null,
+        )
+      "queueAdd" -> h.engine.queueAdd(queueItems(step.getJSONArray("items")), if (step.has("index")) step.getInt("index") else null)
+      "queueRemove" -> h.engine.queueRemove(stringList(step.getJSONArray("ids")))
+      "queueMove" -> h.engine.queueMove(step.getInt("from"), step.getInt("to"))
+      "queueClear" -> h.engine.queueClear()
+      "queueSkipTo" -> h.engine.queueSkipTo(step.getString("id"), if (step.has("position")) step.getDouble("position") else null)
+      "queueNext" -> h.engine.queueNext()
+      "queuePrevious" -> h.engine.queuePrevious()
+      "repeat" -> h.engine.setRepeat(RepeatMode.from(step.getString("value"))!!)
+      "shuffle" -> h.engine.setShuffle(step.getBoolean("value"), if (step.has("seed")) step.getLong("seed") else null)
       "load" ->
         h.engine.load(
           source(step, h, step.optBoolean("refreshable", false)),
@@ -389,6 +427,9 @@ class ConformanceTest {
         "wantsScreenAwake" -> assertEquals("$at: wantsScreenAwake", v, h.engine.wantsScreenAwake)
         "refreshes" -> assertEquals("$at: refreshes", stringList(v as JSONArray), h.recorder.refreshes)
         "gen" -> assertEquals("$at: gen", (v as Number).toInt(), h.engine.generation)
+        "loadId" -> assertEquals("$at: loadId", (v as Number).toInt(), s.loadId)
+        "queue" -> queueExpect(at, h.engine.queueState, v as JSONObject)
+        "queueEvents" -> assertEquals("$at: queueEvents", (v as Number).toInt(), h.recorder.queueEvents)
         "stats" -> statsExpect(at, h.engine.stats, v as JSONObject)
         else -> fail("$at: unknown expectation $key")
       }
@@ -400,6 +441,22 @@ class ConformanceTest {
     h.recorder.sleeps = 0
     h.recorder.fades = 0
     h.recorder.refreshes.clear()
+    h.recorder.queueEvents = 0
+  }
+
+  private fun queueExpect(at: String, q: QueueState, expected: JSONObject) {
+    for (key in expected.keys()) {
+      val v = nullable(expected, key)
+      when (key) {
+        "current" -> assertEquals("$at: queue.current", v, q.currentId)
+        "index" -> assertEquals("$at: queue.index", (v as Number?)?.toInt(), q.index)
+        "ids" -> assertEquals("$at: queue.ids", stringList(v as JSONArray), q.ids)
+        "order" -> assertEquals("$at: queue.order", stringList(v as JSONArray), q.order)
+        "repeat" -> assertEquals("$at: queue.repeat", v, q.repeat.wire)
+        "shuffle" -> assertEquals("$at: queue.shuffle", v, q.shuffle)
+        else -> fail("$at: unknown queue expectation $key")
+      }
+    }
   }
 
   /** Compares the listed `status.video` fields (`tracks` as their ids). */

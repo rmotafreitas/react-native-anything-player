@@ -135,6 +135,7 @@ export type PlayerErrorCode =
   | 'DRM_LICENSE_FAILED'
   | 'SUBTITLE_LOAD_FAILED'
   | 'QUALITY_SWITCH_FAILED'
+  | 'CACHE_UNAVAILABLE'
   | 'INTERNAL_ERROR';
 
 /**
@@ -424,6 +425,18 @@ export interface SourceOptions {
   thumbnails?: string;
   /** Protected content: the key systems and their license servers (the Video guide, "DRM"). */
   drm?: DrmConfig;
+  /**
+   * Cache this source as it plays (`true`) or never (`false`); default:
+   * `Cache.configure({ enabled })`. Live sources and local files are never
+   * cached.
+   */
+  cache?: boolean;
+  /**
+   * The bytes' identity in the cache and downloads (default: the URL
+   * without its fragment). Give one when the URL changes but the media does
+   * not (a signed URL).
+   */
+  cacheKey?: string;
 }
 
 /**
@@ -554,6 +567,56 @@ export interface LicenseRequest {
 
 /** What `load()` accepts: a {@link Source}, a URI, or `require('./file.mp3')`. */
 export type SourceInput = Source | string | AssetModule;
+
+/** How the queue repeats: not at all, the current item, or the whole queue. */
+export type RepeatMode = 'off' | 'one' | 'all';
+
+/**
+ * What `player.queue.set()` and `add()` take: any source, with an optional
+ * `id` (default `q1`, `q2`…). On the web also a `Blob` or `File`.
+ */
+export type QueueItemInput =
+  | (Source & {
+      /** Unique in the queue (default `q1`, `q2`…). */
+      id?: string;
+    })
+  | string
+  | AssetModule
+  | BlobInput;
+
+/** A queue item: its source (a string or `require()` became `{ uri }`) and its id. */
+export type QueueItem = Source & {
+  /** Unique in the queue; what `remove`, `skipTo` and events use. */
+  id: string;
+  /** The web: the `Blob` or `File` it plays. */
+  blob?: BlobInput;
+};
+
+/** `player.queue.state` and the `queueChange` event. */
+export interface QueueState {
+  /** The items, in list order. */
+  items: QueueItem[];
+  /** The current item's place in `items`, `null` when the queue is empty. */
+  index: number | null;
+  /** The current item, `null` when the queue is empty. */
+  current: QueueItem | null;
+  /** The ids in the order they play: the list's, or shuffled. */
+  order: string[];
+  /** How the queue repeats. */
+  repeat: RepeatMode;
+  /** Whether it plays shuffled. */
+  shuffle: boolean;
+}
+
+/** `player.queue.set()` options. */
+export interface QueueSetOptions {
+  /** The item to start with (default 0). */
+  startIndex?: number;
+  /** Seconds into that item. */
+  startPosition?: number;
+  /** Start playing (default: keep the current intent, as `load()`). */
+  autoplay?: boolean;
+}
 
 /**
  * A `Blob` or `File` for `Player.load()` on the web: a file the user picked or
@@ -715,10 +778,17 @@ export interface PlayerEventMap {
   stateChange: (state: PlaybackState, previous: PlaybackState) => void;
   /** New stream metadata became audible. */
   metadata: (metadata: MediaMetadata) => void;
+  /** Where a live item heard after a title change starts (`setBoundaryDetection`). */
+  boundary: (boundary: StreamBoundary) => void;
   /** A failure. `fatal: false` means recovery is in progress. */
   error: (error: PlayerError, info: { fatal: boolean }) => void;
-  /** A finite source played to its end. */
+  /**
+   * A finite source played to its end. With a queue: only when the last item
+   * ends (repeat `off`); the queue moves on to the next item without it.
+   */
   ended: () => void;
+  /** The queue changed: its items, order, current item, repeat or shuffle. */
+  queueChange: (state: QueueState) => void;
   /** A remote command the app opted into (`mediaSession.commands`). */
   remoteCommand: (event: RemoteCommandEvent) => void;
   /** Structured engine trace (only while diagnostics are enabled). */
@@ -927,6 +997,27 @@ export interface AudioSample {
   outputLatency: number;
   /** Epoch ms when the window was decoded. */
   timestamp: number;
+}
+
+/**
+ * Where a live stream's item starts in what is heard (`boundary` event, while
+ * `setBoundaryDetection` is on). The ICY title is no clock (a station sends it
+ * when an item is queued: up to seconds off), so the audio around it is read.
+ */
+export interface StreamBoundary {
+  /** The item's title (`StreamTitle`). */
+  title: string;
+  /** Epoch ms the title was heard (its `metadata` event). */
+  titleAt: number;
+  /** Epoch ms the item's audio starts being heard (may be before the event: the title came late). */
+  at: number;
+  /**
+   * `gap`: the end of the silence a station leaves between items (to a few
+   * ms); `onset`: sound after a quiet stretch (a jingle over a fade-out);
+   * `title`: the audio showed neither (music running straight on), the title
+   * time is all there is.
+   */
+  kind: 'gap' | 'onset' | 'title';
 }
 
 /** Options for `setAudioSampling()`. */

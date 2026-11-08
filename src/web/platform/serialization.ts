@@ -218,6 +218,10 @@ export function parseSource(
   const renditions = parseRenditions(map.renditions);
   if (renditions != null) descriptor.renditions = renditions;
   if (bool(map.refreshable) === true) descriptor.refreshable = true;
+  const cache = bool(map.cache);
+  if (cache != null) descriptor.cache = cache;
+  const cacheKey = str(map.cacheKey);
+  if (cacheKey != null) descriptor.cacheKey = cacheKey;
   const expiresAt = num(map.expiresAt);
   if (expiresAt != null) descriptor.expiresAt = expiresAt;
   // Validated by normalizeDrm on the way in.

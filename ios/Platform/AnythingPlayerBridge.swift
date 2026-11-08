@@ -388,6 +388,52 @@ public final class AnythingPlayerBridge: NSObject {
     }
   }
 
+  // MARK: Cache
+
+  /// A cache command (`{ op, … }`, app-global): see `MediaCache`.
+  @objc(cacheCommand:resolve:reject:)
+  public func cacheCommand(
+    _ command: NSDictionary,
+    resolve: @escaping (Any?) -> Void, reject: @escaping (String, String, NSError?) -> Void
+  ) {
+    MediaCache.shared.command(command) { result in
+      switch result {
+      case .success(let value): resolve(value)
+      case .failure(let error): Self.reject(reject, error)
+      }
+    }
+  }
+
+  // MARK: Queue
+
+  /// A queue command (`{ op, … }`): see `QueueHost`.
+  @objc(queueCommand:command:resolve:reject:)
+  public func queueCommand(
+    _ id: String, command: NSDictionary,
+    resolve: @escaping (Any?) -> Void, reject: @escaping (String, String, NSError?) -> Void
+  ) {
+    let target = runtime.target(id, owner: owner)
+    DispatchQueue.main.async { [weak self] in
+      guard let controller = self?.runtime.resolve(target, id) else {
+        return Self.reject(reject, PlayerError.code(.playerReleased, "The player was released.", recoverable: false))
+      }
+      do {
+        try controller.queueCommand(command)
+        resolve(controller.statusDictionary())
+      } catch let error as PlayerError {
+        Self.reject(reject, error)
+      } catch {
+        Self.reject(reject, PlayerError.code(.internalError, "\(error)", recoverable: false))
+      }
+    }
+  }
+
+  /// `{ ids, order, index, currentId, repeat, shuffle }` (any thread).
+  @objc(queueSnapshot:)
+  public func queueSnapshot(_ id: String) -> NSDictionary {
+    (runtime.player(id)?.queueDictionary() ?? QueueHost.dictionary(.empty)) as NSDictionary
+  }
+
   // MARK: Video
 
   /// Loop, an exact seek and a refreshed source work for every player; the

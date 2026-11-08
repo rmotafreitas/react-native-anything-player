@@ -1,0 +1,338 @@
+[
+  {
+    "name": "a queue plays its items in turn: the next one is prepared and takes over with no ended in between",
+    "steps": [
+      { "network": "online" },
+      { "call": "queueSet", "items": ["a", "b", "c"], "autoplay": true },
+      { "expect": { "state": "loading", "commands": ["open(gen=1,start=-,play=true)"], "queue": { "current": "a", "index": 0, "ids": ["a", "b", "c"] }, "queueEvents": 1, "loadId": 1 } },
+      { "native": "ready", "duration": 180, "seekable": true },
+      { "native": "playing" },
+      { "advance": 1999 },
+      { "expect": { "state": "playing", "commands": [], "loads": ["1:ready"] } },
+      { "advance": 1 },
+      { "expect": { "commands": ["prepareNext(gen=2)"], "state": "playing" } },
+      { "native": "ready", "gen": 2, "duration": 200, "seekable": true },
+      { "expect": { "state": "playing", "duration": 180, "commands": [], "loads": [] } },
+      { "native": "ended" },
+      { "expect": { "state": "buffering", "playWhenReady": true, "duration": 200, "commands": ["advance(gen=2)"], "ended": 0, "gen": 2, "loadId": 2, "loads": ["2:ready"], "queue": { "current": "b", "index": 1 }, "queueEvents": 1 } },
+      { "native": "playing" },
+      { "advance": 2000 },
+      { "expect": { "state": "playing", "commands": ["prepareNext(gen=3)"] } },
+      { "native": "ended" },
+      { "expect": { "state": "loading", "commands": ["advance(gen=3)"], "ended": 0, "gen": 3, "loadId": 3, "queue": { "current": "c", "index": 2 } } },
+      { "native": "ready", "duration": 100, "seekable": true },
+      { "native": "playing" },
+      { "advance": 3000 },
+      { "expect": { "state": "playing", "commands": [], "loads": ["3:ready"] } },
+      { "native": "ended" },
+      { "expect": { "state": "ended", "playWhenReady": false, "ended": 1, "queue": { "current": "c", "index": 2 }, "queueEvents": 0 } }
+    ]
+  },
+  {
+    "name": "the driver starts the prepared item itself (gapless) and reports it; the old item's late end is stale",
+    "steps": [
+      { "call": "queueSet", "items": ["a", "b"], "autoplay": true },
+      { "native": "ready", "duration": 180, "seekable": true },
+      { "native": "playing" },
+      { "advance": 2000 },
+      { "native": "ready", "gen": 2, "duration": 200, "seekable": true },
+      { "expect": { "commands": ["open(gen=1,start=-,play=true)", "prepareNext(gen=2)"] } },
+      { "native": "advanced", "gen": 2, "playing": true },
+      { "expect": { "state": "playing", "duration": 200, "commands": [], "ended": 0, "gen": 2, "loadId": 2, "loads": ["2:ready"], "queue": { "current": "b", "index": 1 }, "queueEvents": 1 } },
+      { "native": "ended", "gen": 1 },
+      { "expect": { "state": "playing", "ended": 0, "queue": { "current": "b" } } }
+    ]
+  },
+  {
+    "name": "an edit drops a prepared item that is no longer next; a driver that already moved onto it ends the current item all the same",
+    "steps": [
+      { "call": "queueSet", "items": ["a", "b", "c"], "autoplay": true },
+      { "native": "ready", "duration": 180, "seekable": true },
+      { "native": "playing" },
+      { "advance": 2000 },
+      { "expect": { "commands": ["open(gen=1,start=-,play=true)", "prepareNext(gen=2)"] } },
+      { "call": "queueRemove", "ids": ["b"] },
+      { "expect": { "commands": ["cancelNext(gen=2)", "prepareNext(gen=3)"], "queue": { "current": "a", "ids": ["a", "c"] }, "queueEvents": 1, "state": "playing" } },
+      { "native": "advanced", "gen": 2, "playing": true },
+      { "expect": { "commands": ["advance(gen=3)"], "state": "loading", "gen": 3, "ended": 0, "queue": { "current": "c" } } }
+    ]
+  },
+  {
+    "name": "a short item prepares the next after a quarter of its length",
+    "steps": [
+      { "call": "queueSet", "items": ["a", "b"], "autoplay": true },
+      { "native": "ready", "duration": 4, "seekable": true },
+      { "native": "playing" },
+      { "advance": 999 },
+      { "expect": { "commands": ["open(gen=1,start=-,play=true)"] } },
+      { "advance": 1 },
+      { "expect": { "commands": ["prepareNext(gen=2)"] } }
+    ]
+  },
+  {
+    "name": "repeat one loops through the driver and prepares nothing; a skip still goes on",
+    "steps": [
+      { "call": "queueSet", "items": ["a", "b"], "autoplay": true },
+      { "call": "repeat", "value": "one" },
+      { "expect": { "commands": ["open(gen=1,start=-,play=true)", "loop(true)"], "queue": { "repeat": "one" } } },
+      { "native": "ready", "duration": 180, "seekable": true },
+      { "native": "playing" },
+      { "advance": 3000 },
+      { "expect": { "commands": [] } },
+      { "native": "ended" },
+      { "expect": { "state": "buffering", "ended": 0, "queue": { "current": "a" }, "commands": ["seek(0.0)", "play"] } },
+      { "native": "playing" },
+      { "call": "queueNext" },
+      { "expect": { "commands": ["open(gen=2,start=-,play=true)"], "queue": { "current": "b" } } },
+      { "call": "repeat", "value": "off" },
+      { "expect": { "commands": ["loop(false)"] } }
+    ]
+  },
+  {
+    "name": "setLoop and repeat one are separate: turning repeat off keeps the app's loop",
+    "steps": [
+      { "call": "queueSet", "items": ["a", "b"] },
+      { "call": "loop", "value": true },
+      { "call": "repeat", "value": "one" },
+      { "call": "repeat", "value": "off" },
+      { "expect": { "commands": ["open(gen=1,start=-,play=false)", "loop(true)"] } },
+      { "call": "loop", "value": false },
+      { "expect": { "commands": ["loop(false)"] } }
+    ]
+  },
+  {
+    "name": "repeat all wraps from the last item to the first",
+    "steps": [
+      { "call": "queueSet", "items": ["a", "b"], "start": 1, "autoplay": true },
+      { "native": "ready", "duration": 60, "seekable": true },
+      { "native": "playing" },
+      { "advance": 2000 },
+      { "expect": { "commands": ["open(gen=1,start=-,play=true)"] } },
+      { "call": "repeat", "value": "all" },
+      { "expect": { "commands": ["prepareNext(gen=2)"] } },
+      { "native": "ready", "gen": 2, "duration": 50, "seekable": true },
+      { "native": "ended" },
+      { "expect": { "commands": ["advance(gen=2)"], "queue": { "current": "a", "index": 0 }, "ended": 0, "state": "buffering" } }
+    ]
+  },
+  {
+    "name": "an item that fails on its own is skipped after its error; a network failure is recovered, not skipped",
+    "steps": [
+      { "network": "online" },
+      { "call": "queueSet", "items": ["a", "b", "c"], "autoplay": true },
+      { "native": "failed", "code": "SOURCE_NOT_FOUND", "recoverable": false },
+      { "expect": { "state": "loading", "playWhenReady": true, "errors": ["SOURCE_NOT_FOUND:fatal"], "loads": ["1:failed:SOURCE_NOT_FOUND"], "commands": ["open(gen=1,start=-,play=true)", "release", "open(gen=3,start=-,play=true)"], "queue": { "current": "b", "index": 1 } } },
+      { "native": "ready", "duration": 120, "seekable": true },
+      { "native": "playing" },
+      { "native": "failed", "code": "NETWORK_ERROR", "recoverable": true },
+      { "expect": { "state": "reconnecting", "errors": ["NETWORK_ERROR:recoverable"], "queue": { "current": "b" } } }
+    ]
+  },
+  {
+    "name": "a 4xx skips the item; a 5xx that ends recovery does not",
+    "steps": [
+      { "call": "queueSet", "items": ["a", "b"], "autoplay": true },
+      { "native": "failed", "code": "HTTP_ERROR", "recoverable": false, "httpStatus": 410 },
+      { "expect": { "state": "loading", "queue": { "current": "b" }, "errors": ["HTTP_ERROR:fatal"] } },
+      { "native": "failed", "code": "HTTP_ERROR", "recoverable": false, "httpStatus": 503 },
+      { "expect": { "state": "error", "queue": { "current": "b" }, "errors": ["HTTP_ERROR:fatal"] } }
+    ]
+  },
+  {
+    "name": "when every item fails on its own, the queue stops at the last error",
+    "steps": [
+      { "call": "queueSet", "items": ["a", "b"], "autoplay": true },
+      { "native": "failed", "code": "SOURCE_NOT_FOUND", "recoverable": false },
+      { "native": "failed", "code": "UNSUPPORTED_FORMAT", "recoverable": false },
+      { "expect": { "state": "error", "error": "UNSUPPORTED_FORMAT", "queue": { "current": "b" }, "errors": ["SOURCE_NOT_FOUND:fatal", "UNSUPPORTED_FORMAT:fatal"] } }
+    ]
+  },
+  {
+    "name": "previous restarts past three seconds, else goes back; next at the end does nothing",
+    "steps": [
+      { "call": "queueSet", "items": ["a", "b"], "start": 1, "autoplay": true },
+      { "native": "ready", "duration": 100, "seekable": true },
+      { "native": "playing" },
+      { "advance": 5000 },
+      { "call": "queuePrevious" },
+      { "expect": { "commands": ["open(gen=1,start=-,play=true)", "seek(0.0)"], "queue": { "current": "b" } } },
+      { "call": "queuePrevious" },
+      { "expect": { "commands": ["open(gen=2,start=-,play=true)"], "queue": { "current": "a" } } },
+      { "call": "queueNext" },
+      { "expect": { "commands": ["open(gen=3,start=-,play=true)"], "queue": { "current": "b" } } },
+      { "call": "queueNext" },
+      { "expect": { "commands": [], "queue": { "current": "b" }, "queueEvents": 0 } }
+    ]
+  },
+  {
+    "name": "a skip to the prepared item uses it",
+    "steps": [
+      { "call": "queueSet", "items": ["a", "b", "c"], "autoplay": true },
+      { "native": "ready", "duration": 180, "seekable": true },
+      { "native": "playing" },
+      { "advance": 2000 },
+      { "native": "ready", "gen": 2, "duration": 200, "seekable": true },
+      { "call": "queueNext" },
+      { "expect": { "commands": ["open(gen=1,start=-,play=true)", "prepareNext(gen=2)", "advance(gen=2)"], "state": "buffering", "gen": 2, "queue": { "current": "b" } } }
+    ]
+  },
+  {
+    "name": "a plain load empties the queue; an add then makes the loaded source the first item",
+    "steps": [
+      { "call": "queueSet", "items": ["a", "b"] },
+      { "call": "load", "uri": "https://radio.example/live", "live": true, "autoplay": true },
+      { "expect": { "queue": { "ids": [], "current": null, "index": null }, "queueEvents": 2, "commands": ["open(gen=1,start=-,play=false)", "open(gen=2,start=-,play=true)"] } },
+      { "call": "queueAdd", "items": ["c"] },
+      { "expect": { "queue": { "ids": ["loaded-1", "c"], "current": "loaded-1", "index": 0 }, "commands": [], "queueEvents": 1 } }
+    ]
+  },
+  {
+    "name": "an add to an idle player loads the first item, paused",
+    "steps": [
+      { "call": "queueAdd", "items": ["a", "b"] },
+      { "expect": { "state": "loading", "playWhenReady": false, "commands": ["open(gen=1,start=-,play=false)"], "queue": { "current": "a" } } }
+    ]
+  },
+  {
+    "name": "removing the current item loads the next one, keeping the intent; removing every item resets",
+    "steps": [
+      { "call": "queueSet", "items": ["a", "b", "c"], "autoplay": true },
+      { "native": "ready", "duration": 180, "seekable": true },
+      { "native": "playing" },
+      { "call": "queueRemove", "ids": ["a"] },
+      { "expect": { "commands": ["open(gen=1,start=-,play=true)", "open(gen=2,start=-,play=true)"], "queue": { "current": "b", "ids": ["b", "c"] } } },
+      { "call": "queueRemove", "ids": ["b", "c"] },
+      { "expect": { "state": "idle", "commands": ["unload"], "queue": { "current": null, "ids": [] } } }
+    ]
+  },
+  {
+    "name": "a live item is never prepared; after a file it loads when the file ends",
+    "steps": [
+      { "call": "queueSet", "items": ["a", { "id": "radio", "uri": "https://radio.example/live", "live": true }], "autoplay": true },
+      { "native": "ready", "duration": 100, "seekable": true },
+      { "native": "playing" },
+      { "advance": 5000 },
+      { "expect": { "commands": ["open(gen=1,start=-,play=true)"] } },
+      { "native": "ended" },
+      { "expect": { "commands": ["open(gen=2,start=-,play=true)"], "state": "loading", "ended": 0, "queue": { "current": "radio" } } }
+    ]
+  },
+  {
+    "name": "stopping the current item drops what was prepared",
+    "steps": [
+      { "call": "queueSet", "items": ["a", "b"], "autoplay": true },
+      { "native": "ready", "duration": 180, "seekable": true },
+      { "native": "playing" },
+      { "advance": 2000 },
+      { "call": "stop" },
+      { "expect": { "state": "stopped", "orderedCommands": ["prepareNext(gen=2)", "cancelNext(gen=2)", "release"] } },
+      { "native": "advanced", "gen": 2, "playing": true },
+      { "expect": { "state": "stopped", "queue": { "current": "a" } } }
+    ]
+  },
+  {
+    "name": "skipTo an unknown id and duplicate ids throw",
+    "steps": [
+      { "call": "queueSet", "items": ["a", "b"] },
+      { "call": "queueSkipTo", "id": "nope", "throws": "INVALID_ARGUMENT" },
+      { "call": "queueAdd", "items": ["a"], "throws": "INVALID_ARGUMENT" },
+      { "call": "queueSet", "items": ["x", "x"], "throws": "INVALID_ARGUMENT" },
+      { "expect": { "queue": { "ids": ["a", "b"], "current": "a" } } },
+      { "call": "queueSkipTo", "id": "b", "position": 30 },
+      { "expect": { "queue": { "current": "b" }, "commands": ["open(gen=2,start=30.0,play=false)"] } }
+    ]
+  },
+  {
+    "name": "nothing is prepared while casting",
+    "steps": [
+      { "call": "handoff", "route": "cast", "name": "TV", "output": "cast:tv", "resume": true },
+      { "call": "queueSet", "items": ["a", "b"], "autoplay": true },
+      { "native": "ready", "duration": 180, "seekable": true },
+      { "native": "playing" },
+      { "advance": 5000 },
+      { "expect": { "orderedCommands": ["switchOutput(cast:tv)", "open(gen=2,start=-,play=true)"] } },
+      { "native": "ended" },
+      { "expect": { "commands": ["open(gen=3,start=-,play=true)"], "queue": { "current": "b" } } }
+    ]
+  },
+  {
+    "name": "repeat all with one item loops it; a second item ends the loop",
+    "steps": [
+      { "call": "queueSet", "items": ["a"], "autoplay": true },
+      { "call": "repeat", "value": "all" },
+      { "expect": { "commands": ["open(gen=1,start=-,play=true)", "loop(true)"] } },
+      { "call": "queueAdd", "items": ["b"] },
+      { "expect": { "commands": ["loop(false)"], "queue": { "ids": ["a", "b"], "current": "a" } } }
+    ]
+  },
+  {
+    "name": "failures before the queue emptied do not count against the next queue",
+    "steps": [
+      { "call": "queueSet", "items": ["a", "b"], "autoplay": true },
+      { "native": "failed", "code": "SOURCE_NOT_FOUND", "recoverable": false },
+      { "native": "failed", "code": "SOURCE_NOT_FOUND", "recoverable": false },
+      { "expect": { "state": "error", "queue": { "current": "b" } } },
+      { "call": "queueRemove", "ids": ["a", "b"] },
+      { "call": "queueAdd", "items": ["c", "d"] },
+      { "native": "failed", "code": "SOURCE_NOT_FOUND", "recoverable": false },
+      { "expect": { "state": "loading", "queue": { "current": "d" } } }
+    ]
+  },
+  {
+    "name": "a prepared item that fails is dropped and opened normally when its turn comes",
+    "steps": [
+      { "call": "queueSet", "items": ["a", "b"], "autoplay": true },
+      { "native": "ready", "duration": 180, "seekable": true },
+      { "native": "playing" },
+      { "advance": 2000 },
+      { "native": "failed", "gen": 2, "code": "SOURCE_NOT_FOUND", "recoverable": false },
+      { "expect": { "state": "playing", "errors": [], "commands": ["open(gen=1,start=-,play=true)", "prepareNext(gen=2)", "cancelNext(gen=2)"] } },
+      { "advance": 5000 },
+      { "native": "ended" },
+      { "expect": { "commands": ["open(gen=3,start=-,play=true)"], "queue": { "current": "b" }, "ended": 0 } }
+    ]
+  },
+  {
+    "name": "a pause and a seek keep the prepared item",
+    "steps": [
+      { "call": "queueSet", "items": ["a", "b"], "autoplay": true },
+      { "native": "ready", "duration": 180, "seekable": true },
+      { "native": "playing" },
+      { "advance": 2000 },
+      { "native": "ready", "gen": 2, "duration": 200, "seekable": true },
+      { "call": "pause" },
+      { "call": "seek", "value": 179 },
+      { "call": "play" },
+      { "native": "playing" },
+      { "native": "ended" },
+      { "expect": { "orderedCommands": ["prepareNext(gen=2)", "pause", "seek(179.0)", "play", "advance(gen=2)"], "queue": { "current": "b" }, "gen": 2 } }
+    ]
+  },
+  {
+    "name": "an emptied queue stops repeat's loop: the next plain load does not loop",
+    "steps": [
+      { "call": "queueSet", "items": ["a"], "autoplay": true },
+      { "call": "repeat", "value": "one" },
+      { "expect": { "commands": ["open(gen=1,start=-,play=true)", "loop(true)"] } },
+      { "call": "queueSet", "items": [] },
+      { "expect": { "state": "idle", "commands": ["loop(false)", "unload"] } },
+      { "call": "queueAdd", "items": ["b"] },
+      { "call": "repeat", "value": "all" },
+      { "expect": { "commands": ["loop(true)", "open(gen=3,start=-,play=false)"], "queue": { "repeat": "all" } } },
+      { "call": "queueRemove", "ids": ["b"] },
+      { "call": "load", "uri": "https://cdn.example/x.mp3", "autoplay": true },
+      { "expect": { "commands": ["loop(false)", "unload", "open(gen=5,start=-,play=true)"] } }
+    ]
+  },
+  {
+    "name": "an add with an id the queue has throws before the loaded source joins",
+    "steps": [
+      { "call": "load", "uri": "https://cdn.example/x.mp3" },
+      { "call": "queueAdd", "items": ["a", "a"], "throws": "INVALID_ARGUMENT" },
+      { "call": "queueAdd", "items": ["loaded-1"], "throws": "INVALID_ARGUMENT" },
+      { "expect": { "queue": { "ids": [], "current": null }, "queueEvents": 0 } },
+      { "call": "queueAdd", "items": ["a"] },
+      { "expect": { "queue": { "ids": ["loaded-1", "a"] } } }
+    ]
+  }
+]

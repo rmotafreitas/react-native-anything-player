@@ -320,6 +320,8 @@ final class AnythingPlayerRuntime: AudioSessionListener, RemoteCommandTarget {
   func startIfNeeded() {
     guard !started else { return }
     started = true
+    // The media cache: its settings, and downloads a past launch left half-way.
+    _ = MediaCache.shared
     session.listener = self
     nowPlaying.target = self
     network.start()
@@ -458,7 +460,9 @@ final class AnythingPlayerRuntime: AudioSessionListener, RemoteCommandTarget {
       }
       return
     }
-    nowPlaying.configureCommands(forwarded: active.options.remoteCommands, seekable: active.status.seekable)
+    // With a queue, next and previous are the queue's (handled natively).
+    let forwarded = active.hasQueue ? active.options.remoteCommands.union(["next", "previous"]) : active.options.remoteCommands
+    nowPlaying.configureCommands(forwarded: forwarded, seekable: active.status.seekable)
     nowPlaying.update(active.nowPlaying())
   }
 
@@ -555,6 +559,13 @@ final class AnythingPlayerRuntime: AudioSessionListener, RemoteCommandTarget {
         if target.engine.playWhenReady { try target.engine.pause() } else { try target.engine.play() }
       case "stop": try target.engine.stop()
       case "seek": if let position { try target.engine.seek(to: position) }
+      // A queue handles them natively; without one they are the app's.
+      case "next" where target.hasQueue:
+        // At the end of the queue, next is the app's (if it asked for it).
+        if try target.engine.queueNext() { return }
+      case "previous" where target.hasQueue:
+        try target.engine.queuePrevious()
+        return
       default: break
       }
     } catch let error as PlayerError where error.code == .noSource {

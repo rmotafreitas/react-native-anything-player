@@ -10,6 +10,7 @@ import androidx.media3.exoplayer.Renderer
 import androidx.media3.exoplayer.RenderersFactory
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
+import androidx.media3.exoplayer.audio.ForwardingAudioSink
 import androidx.media3.exoplayer.audio.MediaCodecAudioRenderer
 import androidx.media3.exoplayer.audio.TeeAudioProcessor
 import androidx.media3.exoplayer.mediacodec.DefaultMediaCodecAdapterFactory
@@ -41,10 +42,16 @@ internal class AudioSampleWindow(
  * `Visualizer` effect. Each buffer is downmixed to mono and resampled to
  * [points] here, on the playback thread, so JS receives a ready-to-draw window.
  *
- * Output latency (how long until this window is heard) is the queue depth of
- * the sink's `AudioTrack` — the exact lead of the newest written samples over
- * the speaker, in the sink's own clock — smoothed, with a hardware-buffer
- * estimate until the track reports one.
+ * Output latency (how long until this window is heard) is how far the
+ * window's presentation time is ahead of the sink's playback position — the
+ * clock the player's position, its ICY metadata and `liveOffset` use, which
+ * the platform keeps on what is heard (its `AudioTrack` timestamps cover the
+ * mixer and a Bluetooth route). Until the sink reports a position: the
+ * `AudioTrack` buffer, smoothed, or a hardware-buffer estimate.
+ *
+ * Buffers that come too fast to emit one by one (the decoder filling the
+ * output after a connect or a seek) are merged into the next window, not
+ * dropped: whoever reads the audio (boundary detection) sees all of it.
  */
 @OptIn(UnstableApi::class)
 internal class AudioSampler(context: Context) : TeeAudioProcessor.AudioBufferSink {
@@ -60,7 +67,26 @@ internal class AudioSampler(context: Context) : TeeAudioProcessor.AudioBufferSin
   private var encoding = C.ENCODING_PCM_16BIT
   private var lastEmitNanos = 0L
   private var smoothedLatency = -1.0
+  /** Mono samples not emitted yet, and the presentation time (µs) of the first. */
   private var mono = FloatArray(4096)
+  private var pendingFrames = 0
+  private var pendingSumSquares = 0.0
+  private var pendingStartUs = C.TIME_UNSET
+  /** The presentation time (µs) of the buffer the sink is handling now (the one this tee sees). */
+  @Volatile private var bufferPresentationUs = C.TIME_UNSET
+
+  /** The sink, telling the tee which presentation time each buffer it sees has. */
+  private inner class TimedSink(sink: AudioSink) : ForwardingAudioSink(sink) {
+    override fun handleBuffer(buffer: ByteBuffer, presentationTimeUs: Long, encodedAccessUnitCount: Int): Boolean {
+      bufferPresentationUs = presentationTimeUs
+      return super.handleBuffer(buffer, presentationTimeUs, encodedAccessUnitCount)
+    }
+
+    override fun flush() {
+      bufferPresentationUs = C.TIME_UNSET
+      super.flush()
+    }
+  }
 
   /**
    * The player's renderers, whose audio sink carries this tap (always
@@ -75,9 +101,7 @@ internal class AudioSampler(context: Context) : TeeAudioProcessor.AudioBufferSin
     val codecs = DefaultMediaCodecAdapterFactory(context)
     return RenderersFactory { handler, videoListener, audioListener, textOutput, metadataOutput ->
       val sink =
-        DefaultAudioSink.Builder(context)
-          .setAudioProcessors(arrayOf<AudioProcessor>(tee))
-          .build()
+        TimedSink(DefaultAudioSink.Builder(context).setAudioProcessors(arrayOf<AudioProcessor>(tee)).build())
           .also { audioSink = it }
       // The platform's decoders first; the software ones (when built in) for
       // what it cannot decode.
@@ -106,13 +130,14 @@ internal class AudioSampler(context: Context) : TeeAudioProcessor.AudioBufferSin
     this.encoding = encoding
     lastEmitNanos = 0L
     smoothedLatency = -1.0
+    pendingFrames = 0
+    pendingSumSquares = 0.0
+    pendingStartUs = C.TIME_UNSET
   }
 
   override fun handleBuffer(buffer: ByteBuffer) {
     val callback = onWindow
     if (!enabled || callback == null) return
-    val now = System.nanoTime()
-    if (now - lastEmitNanos < MIN_EMIT_INTERVAL_NANOS) return
     val bytesPerSample =
       when (encoding) {
         C.ENCODING_PCM_16BIT -> 2
@@ -123,9 +148,8 @@ internal class AudioSampler(context: Context) : TeeAudioProcessor.AudioBufferSin
     val pcm = buffer.duplicate().order(ByteOrder.LITTLE_ENDIAN)
     val frames = pcm.remaining() / (bytesPerSample * channels)
     if (frames <= 0) return
-    lastEmitNanos = now
-    if (mono.size < frames) mono = FloatArray(frames)
-    var sumSquares = 0.0
+    if (pendingFrames == 0) pendingStartUs = bufferPresentationUs
+    if (mono.size < pendingFrames + frames) mono = mono.copyOf(maxOf(mono.size * 2, pendingFrames + frames))
     for (f in 0 until frames) {
       var sum = 0f
       for (c in 0 until channels) {
@@ -137,21 +161,38 @@ internal class AudioSampler(context: Context) : TeeAudioProcessor.AudioBufferSin
           }
       }
       val v = sum / channels
-      mono[f] = v
-      sumSquares += v * v
+      mono[pendingFrames + f] = v
+      pendingSumSquares += v * v
     }
+    pendingFrames += frames
+    val now = System.nanoTime()
+    // Too soon after the last window (the decoder filling the output): kept for the next.
+    if (now - lastEmitNanos < MIN_EMIT_INTERVAL_NANOS) return
+    lastEmitNanos = now
+    val count = pendingFrames
     callback(
       AudioSampleWindow(
-        waveform = resample(mono, frames, points),
-        level = sqrt(sumSquares / frames).coerceIn(0.0, 1.0),
-        durationSeconds = frames.toDouble() / sampleRate,
-        outputLatencySeconds = outputLatency(),
+        waveform = resample(mono, count, points),
+        level = sqrt(pendingSumSquares / count).coerceIn(0.0, 1.0),
+        durationSeconds = count.toDouble() / sampleRate,
+        outputLatencySeconds = outputLatency(pendingStartUs),
         timestampMs = System.currentTimeMillis(),
       )
     )
+    pendingFrames = 0
+    pendingSumSquares = 0.0
   }
 
-  private fun outputLatency(): Double {
+  /** Seconds until presentation time [startUs] is heard: its lead over the sink's playback position. */
+  private fun outputLatency(startUs: Long): Double {
+    val positionUs = runCatching { audioSink?.getCurrentPositionUs(false) ?: AudioSink.CURRENT_POSITION_NOT_SET }
+      .getOrDefault(AudioSink.CURRENT_POSITION_NOT_SET)
+    if (startUs == C.TIME_UNSET || positionUs == AudioSink.CURRENT_POSITION_NOT_SET) return bufferLatency()
+    return ((startUs - positionUs) / 1_000_000.0).coerceAtLeast(0.0)
+  }
+
+  /** Before the sink reports a position: its `AudioTrack` buffer, smoothed (or a hardware estimate). */
+  private fun bufferLatency(): Double {
     val queuedUs = runCatching { audioSink?.audioTrackBufferSizeUs ?: C.TIME_UNSET }.getOrDefault(C.TIME_UNSET)
     val raw =
       if (queuedUs == C.TIME_UNSET || queuedUs < 0) fallbackLatencySeconds

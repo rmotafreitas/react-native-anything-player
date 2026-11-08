@@ -65,6 +65,13 @@ object RecoveryPolicy {
   /** How often a fade (play, pause, stop, `fadeTo`, the sleep timer) updates the volume. */
   const val FADE_TICK_MS = 50L
 
+  /**
+   * The queue's next item is prepared this long after the current one is
+   * ready (or a quarter of a shorter item's length): its start is not slowed
+   * down, and a skip right away prepares nothing.
+   */
+  const val PREPARE_NEXT_AFTER_MS = 2_000L
+
   // ── Video ──
 
   /** A player without a view this long stops decoding the picture (a move between views keeps it). */

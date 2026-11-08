@@ -152,6 +152,9 @@ describe('where the browser says it plays HLS but cannot open the playlist', () 
     element.startPlaying();
     await flush();
     await play;
+    // Played: its clock moved (a `playing` alone is not enough, see videoDriver.test).
+    element.currentTime = 1;
+    element.dispatch('timeupdate');
     element.fail(4);
     await flush();
     expect(FakeHls.instances).toHaveLength(0);

@@ -51,6 +51,17 @@ export interface EngineDriver {
    * is also how an app's subtitle file is shown: by the overlay).
    */
   selectTracks?(audio: string | null, text: string | null): void;
+  /**
+   * The queue's next item: open it behind the current one, paused at its
+   * start (`request.generation` is its own). When the current item ends,
+   * the driver may start it itself, gaplessly, and report `onAdvanced`;
+   * otherwise the engine calls `advance`.
+   */
+  prepareNext?(request: OpenRequest): void;
+  /** Drop the item `prepareNext` was preparing. */
+  cancelNext?(generation: number): void;
+  /** The current item ended: play the prepared item now (it becomes the current one). */
+  advance?(generation: number): void;
 }
 
 export interface EngineClock {
@@ -73,6 +84,16 @@ export interface EngineDelegate {
   /** Something the app should hear that stops nothing and starts no recovery (a quality switch that failed). */
   engineWarning(error: PlayerError): void;
   engineDidEnd(): void;
+  /** The queue changed: its items, order, current item, repeat or shuffle (`engine.queueState`). */
+  engineQueueChanged?(): void;
+  /**
+   * A queue item becomes the current one, before it is opened (`opens`) or
+   * takes over from where it was prepared: the host applies what it keeps
+   * for it (lock-screen fields). An item that opens may first move the
+   * output (a Cast receiver that cannot play it hands it back); one that
+   * takes over stays on the output it was prepared on.
+   */
+  engineQueueItemStarts?(id: string, opens: boolean): void;
   /** The sleep timer paused the player (`sleep` event). */
   engineSleepFired(): void;
   engineDiagnostic(entry: EngineDiagnostic): void;

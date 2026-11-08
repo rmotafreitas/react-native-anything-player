@@ -14,7 +14,9 @@ package com.anythingplayer.core
  * the player is read. It does not saw-tooth between chunks, it grows while
  * paused or stalled, and it keeps going across a lined-up quality switch
  * (positions are continuous). It starts again on a new connection: a
- * `discontinuity`, or a playhead that went back.
+ * `discontinuity`, or a playhead that went back. A connection whose edge is
+ * not past its playhead yet has received nothing (still opening): it has no
+ * live point until audio arrives.
  *
  * A source with a clock (HLS program dates, a DASH or ExoPlayer live window)
  * is the player's own reading, passed through. Settled: the live point has
@@ -76,6 +78,8 @@ class LiveOffset {
     lastPosition?.let { if (r.position < it - BACK_S) reset() }
     lastPosition = r.position
     val edge = r.edge ?: return Value(null, false)
+    // Nothing received yet: an edge at the playhead is no arrival.
+    if (lastEdge == null && edge <= r.position) return Value(null, false)
     if (since == null) since = t
     if (lastEdge.let { it == null || edge > it }) arrived(t, edge)
     val next = leads.first().lead

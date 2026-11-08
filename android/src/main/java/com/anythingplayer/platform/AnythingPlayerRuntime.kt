@@ -157,6 +157,7 @@ internal object AnythingPlayerRuntime : FocusListener {
     if (initialized) return
     initialized = true
     appContext = context.applicationContext
+    MediaCache.attach(appContext)
     Voice.attach(appContext)
     focus = AudioFocusCoordinator(appContext, this)
     network =
@@ -574,6 +575,20 @@ internal object AnythingPlayerRuntime : FocusListener {
         "pause" -> target.engine.pause()
         "stop" -> target.engine.stop()
         "seek" -> position?.let { target.engine.seek(it) }
+        // A queue handles them natively; without one they are the app's.
+        "next", "previous" ->
+          if (target.hasQueue) {
+            // At the end of the queue, next is the app's (if it asked for it).
+            val moved =
+              when (command) {
+                "next" -> target.engine.queueNext()
+                else -> {
+                  target.engine.queuePrevious()
+                  true
+                }
+              }
+            if (moved) return
+          }
         else -> Unit
       }
     } catch (e: PlayerError) {

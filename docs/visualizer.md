@@ -25,7 +25,7 @@ Windows arrive at about 40 per second, on the JS thread. Turn sampling off while
 
 ## How it works
 
-**Android.** A `TeeAudioProcessor` in ExoPlayer's audio sink sees every decoded buffer on its way to the speaker. No `RECORD_AUDIO` permission is involved, unlike the platform `Visualizer` effect. `outputLatency` is the depth of the `AudioTrack` queue (the exact lead of the newest samples over the speaker), smoothed.
+**Android.** A `TeeAudioProcessor` in ExoPlayer's audio sink sees every decoded buffer on its way to the speaker. No `RECORD_AUDIO` permission is involved, unlike the platform `Visualizer` effect. `outputLatency` is how far the window's presentation time is ahead of the sink's playback position: the clock the player's position, its ICY metadata and `liveOffset` use, kept on what is heard by the platform's `AudioTrack` timestamps (the mixer, a Bluetooth route). Before the sink reports a position, the `AudioTrack` buffer, smoothed. Buffers that come faster than windows are emitted (the decoder filling the output after a connect or a seek) are merged into the next window, never dropped.
 
 **iOS, files.** An `MTAudioProcessingTap` on the player item's audio track. The render thread only downmixes and measures the level; the waveform is resampled and the event emitted on a queue of its own. `outputLatency` is the audio session's output latency plus its I/O buffer, read when the session activates or the route changes (never on the render thread).
 

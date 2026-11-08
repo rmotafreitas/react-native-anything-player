@@ -206,6 +206,28 @@ export class FakeDriver implements EngineDriver {
     this.motion = 'flowing';
   }
 
+  prepareNext(request: OpenRequest): void {
+    this.commands.push(`prepareNext(gen=${request.generation})`);
+  }
+
+  cancelNext(generation: number): void {
+    this.commands.push(`cancelNext(gen=${generation})`);
+  }
+
+  advance(generation: number): void {
+    this.commands.push(`advance(gen=${generation})`);
+    this.startPrepared(generation, false);
+  }
+
+  /** The prepared item became the output's: its playhead starts at 0. */
+  startPrepared(generation: number, playing: boolean): void {
+    this.openGeneration = generation;
+    this.anchorPosition = 0;
+    this.anchorBuffered = playing ? 10 : 0;
+    this.anchorTime = this.clock.monotonicMs;
+    this.motion = playing ? 'flowing' : 'frozen';
+  }
+
   switchOutput(outputId: string): void {
     this.commands.push(`switchOutput(${outputId})`);
     // The playhead stops where it is; the engine re-opens at a position.
@@ -230,6 +252,12 @@ export class Recorder implements EngineDelegate {
   refreshes: string[] = [];
   /** Ordering invariant breaches (an event delivered before its status). */
   violations: string[] = [];
+  /** `engineQueueChanged` calls. */
+  queueEvents = 0;
+
+  engineQueueChanged(): void {
+    this.queueEvents += 1;
+  }
 
   engineRequestsAudioFocus(): FocusResult {
     return this.focus;

@@ -6,6 +6,7 @@
 // the order they were produced, and a command's promise settles after the
 // events it caused.
 
+import { webCache } from './WebCache';
 import { PlayerError, toPlayerError } from '../../errors';
 import type { PlayerModule } from '../../core/host';
 import { browser } from './dom';
@@ -62,12 +63,24 @@ function asError(error: unknown): PlayerError {
   return error instanceof PlayerError ? error : toPlayerError(error);
 }
 
+/** A released player's queue. */
+const EMPTY_QUEUE = {
+  ids: [],
+  order: [],
+  index: null,
+  currentId: null,
+  repeat: 'off',
+  shuffle: false,
+};
+
 export class WebModule implements PlayerModule {
   private readonly runtime = new WebRuntime();
   private readonly outputs = new WebOutputs(this.runtime, (event) =>
     this.emit(event)
   );
   private readonly catalog = new WebCatalog();
+  /** The media cache, made now: its index is read before the first item opens. */
+  private readonly cache = webCache();
   private readonly listeners = new Set<Listener>();
   private queue: object[] = [];
   private flushScheduled = false;
@@ -326,6 +339,39 @@ export class WebModule implements PlayerModule {
     this.catalog.answer(requestId, result);
   }
 
+  // ── Cache ──
+
+  cacheCommand(command: object): Promise<object> {
+    this.cache.onEvent((event) => this.emit(event));
+    return this.cache
+      .command(command as Record<string, unknown>)
+      .catch((error: unknown) => {
+        throw asError(error);
+      });
+  }
+
+  // ── Queue ──
+
+  queueCommand(playerId: string, command: object): Promise<object> {
+    const controller = this.runtime.players.get(playerId);
+    if (!controller) return Promise.reject(released());
+    try {
+      controller.userGesture();
+      controller.queueCommand(command as Record<string, unknown>);
+      // An autoplay refusal leaves the item ready-but-paused, as for load().
+      void controller.takePlayAttempt();
+    } catch (error) {
+      return Promise.reject(asError(error));
+    }
+    return Promise.resolve(controller.statusMap());
+  }
+
+  getQueue(playerId: string): object {
+    const controller = this.runtime.players.get(playerId);
+    if (!controller) return EMPTY_QUEUE;
+    return controller.queueMap();
+  }
+
   // ── Video ──
 
   videoCommand(playerId: string, command: object): Promise<object> {
@@ -406,6 +452,8 @@ export class WebModule implements PlayerModule {
   }
 
   onPlayerEvent(listener: Listener): { remove(): void } {
+    // Downloads a page left half-way report their progress too.
+    this.cache.onEvent((event) => this.emit(event));
     this.listeners.add(listener);
     return { remove: () => this.listeners.delete(listener) };
   }

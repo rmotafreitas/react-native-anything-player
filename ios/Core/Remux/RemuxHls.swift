@@ -180,6 +180,15 @@ enum RemuxHls {
     return (escape(plain), top ? " line:0" : "")
   }
 
+  /// The cues a window's WebVTT segment holds: every one on screen in it, so a
+  /// cue that runs on past its own window is in the next ones' too (a cue
+  /// with no end shows for 4 s, as in `vtt`).
+  static func cues(_ known: [RemuxCue], in window: Window) -> [RemuxCue] {
+    let from = Int((window.start * 1000).rounded())
+    let to = window.last ? Int.max : Int((window.end * 1000).rounded())
+    return known.filter { $0.start < to && ($0.end ?? $0.start + 4000) > from }.sorted { $0.start < $1.start }
+  }
+
   /// A WebVTT segment of a subtitle track's cues (`codec`: `srt`, `ass` or
   /// `vtt`), on the media timeline (the fragments' times, from zero).
   static func vtt(_ cues: [RemuxCue], codec: String?) -> String {

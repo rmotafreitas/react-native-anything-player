@@ -3,6 +3,9 @@ import { WEB_ONLY_SCHEMES, host } from './host';
 import { answerLicense, type LicenseRequestEvent } from './drm';
 import { dispatchModuleEvent } from './moduleEvents';
 import type { SubtitleCue } from './subtitles/types';
+import { PlayerQueue } from './queue';
+import { BoundaryTracker } from './boundaryTracker';
+import { isPlaylistUri, resolvePlaylistSource } from './playlists';
 import {
   callRefresh,
   normalizeVideoSource,
@@ -11,6 +14,7 @@ import {
   ThumbnailTrack,
 } from './video';
 import type {
+  AudioSample,
   ArtworkInput,
   AudioRoute,
   AudioSamplingOptions,
@@ -27,6 +31,7 @@ import type {
   PlayerOptions,
   PlayerStatus,
   Progress,
+  QueueItem,
   RemoteCommandEvent,
   SearchPlayEvent,
   SleepTimer,
@@ -102,6 +107,25 @@ function isBlob(value: unknown): value is BlobInput {
   return typeof Blob === 'function' && value instanceof Blob;
 }
 
+function namesPlaylist(source: SourceInput | BlobInput): boolean {
+  if (typeof source === 'string') return isPlaylistUri(source);
+  if (typeof source !== 'object' || isBlob(source)) return false;
+  return typeof source.uri === 'string' && isPlaylistUri(source.uri);
+}
+
+/** A playlist file given to `load()` (a station's `listen.pls`): its first entry. */
+async function resolveLoadPlaylist(
+  source: SourceInput | BlobInput
+): Promise<SourceInput | BlobInput> {
+  if (typeof source === 'string') {
+    return isPlaylistUri(source)
+      ? resolvePlaylistSource({ uri: source })
+      : source;
+  }
+  if (typeof source !== 'object' || isBlob(source)) return source;
+  return resolvePlaylistSource(source);
+}
+
 /** A picked file's name without its extension: what the lock screen shows for it. */
 function titleOfFile(name: string): string {
   const dot = name.lastIndexOf('.');
@@ -122,6 +146,17 @@ export function normalizeBlob(blob: BlobInput): Record<string, unknown> {
   const out: Record<string, unknown> = { uri: '', blob };
   if (typeof name === 'string' && name !== '')
     out.metadata = { title: titleOfFile(name) };
+  return out;
+}
+
+/** A source's `cache` and `cacheKey`, checked. */
+function cacheFields(source: Source): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  if (typeof source.cache === 'boolean') out.cache = source.cache;
+  if (source.cacheKey == null) return out;
+  if (typeof source.cacheKey !== 'string' || source.cacheKey === '')
+    throw invalidSource('`cacheKey` must be a non-empty string.');
+  out.cacheKey = source.cacheKey;
   return out;
 }
 
@@ -161,6 +196,7 @@ export function normalizeSource(input: SourceInput): Record<string, unknown> {
   const out: Record<string, unknown> = { uri };
   if (source.headers) out.headers = { ...source.headers };
   if (typeof source.live === 'boolean') out.live = source.live;
+  Object.assign(out, cacheFields(source));
   if (source.metadata) out.metadata = normalizeNowPlaying(source.metadata);
   return { ...out, ...normalizeVideoSource(source, artworkUri) };
 }
@@ -301,6 +337,12 @@ function assertFinite(name: string, value: number): void {
 export class Player {
   /** Native player id (stable for the player's lifetime). */
   readonly id: string;
+  /**
+   * The queue: what plays after the current item, next / previous, repeat
+   * and shuffle. Run by the engine, so it advances while JavaScript is
+   * frozen. See the Queue guide.
+   */
+  readonly queue: PlayerQueue;
   private _status: NativeStatus;
   /** The native player behind this one (see `NativeStatus`), when native says. */
   private readonly nativeInstance: number | undefined;
@@ -311,11 +353,24 @@ export class Player {
   private refreshSource: Source['refresh'] | null = null;
   /** Counts the loads, so an answer for an earlier one changes nothing. */
   private loads = 0;
+  /** What `load()` last loaded, as the app gave it. */
+  private lastLoaded: Source | null = null;
+  /** Counts the commands that replace what plays (`load`, `queue.set`). */
+  private replaceTurns = 0;
   /** The current source's `drm.getLicense`. */
   private licenseHook: NonNullable<Source['drm']>['getLicense'] | null = null;
   private sourceHeaders: Record<string, string> = {};
   private thumbnails: ThumbnailTrack | null = null;
   private cuesOnScreen: SubtitleCue[] = [];
+  private readonly boundaries = new BoundaryTracker(
+    (boundary) => this.emit('boundary', boundary),
+    (enabled, points) =>
+      !this.released && native().setAudioSampling(this.id, enabled, points),
+    () => {
+      const offset = this.released ? null : this.getProgress().liveOffset;
+      return offset == null ? null : offset * 1000;
+    }
+  );
   private readonly subtitles = new SubtitleLoader({
     sendCues: async (session, trackId, cues) => {
       await native().videoCommand(this.id, {
@@ -377,6 +432,25 @@ export class Player {
       });
     }
     if (options.diagnostics) native().setDiagnosticsEnabled(this.id, true);
+    this.queue = new PlayerQueue({
+      replaceTurn: () => this.replaceTurn(),
+      currentReplaceTurn: () => this.replaceTurns,
+      command: (command) =>
+        this.run(() => native().queueCommand(this.id, command)),
+      read: () => native().getQueue(this.id),
+      normalize: (input) =>
+        isBlob(input) ? normalizeBlob(input) : normalizeSource(input),
+      itemStarted: (item) => this.queueItemStarted(item),
+      loaded: () => this.lastLoaded,
+      changed: (state) => this.emit('queueChange', state),
+    });
+    // Attached to a native player that already has a queue (a binary
+    // without the queue has nothing to read).
+    try {
+      this.queue._refresh();
+    } catch {
+      // No queue in this native module.
+    }
   }
 
   // ── State ──
@@ -442,6 +516,15 @@ export class Player {
     options: LoadOptions = {}
   ): Promise<void> {
     this.ensureAlive();
+    // A radio station's `listen.pls` / `.m3u` / `.xspf`: its first entry
+    // plays. Anything else goes to the module in this same tick (a play()
+    // must stay inside the user's tap on the web).
+    const current = this.replaceTurn();
+    if (namesPlaylist(source)) {
+      source = await resolveLoadPlaylist(source);
+      // A newer load or queue replaced this one while the playlist was fetched.
+      if (!current()) return;
+    }
     const normalized = isBlob(source)
       ? normalizeBlob(source)
       : normalizeSource(source);
@@ -456,7 +539,11 @@ export class Player {
       nativeOptions.quality = options.quality;
     }
     this._metadata = null;
+    this.boundaries.reset();
     const full = typeof source === 'object' && !isBlob(source) ? source : null;
+    this.lastLoaded = full ?? {
+      uri: typeof normalized.uri === 'string' ? normalized.uri : '',
+    };
     this.beginVideoLoad(full, normalized);
     const loading = this.run(() =>
       native().load(this.id, normalized, nativeOptions)
@@ -485,6 +572,32 @@ export class Player {
     const session = this.subtitles.begin();
     // Subtitle files are a video player's; an audio load stays as it was.
     if (this._status.video != null) normalized.subtitleSession = session;
+  }
+
+  /**
+   * A queue item became current (the engine moved on, or a queue command):
+   * its refresh, license hook and thumbnails answer from now on.
+   */
+  private queueItemStarted(item: QueueItem | null): void {
+    if (item == null) return;
+    this._metadata = null;
+    // The previous item's subtitle files are not this one's.
+    this.subtitles.cancel();
+    this.loads += 1;
+    this.refreshSource = item.refresh?.bind(item) ?? null;
+    this.licenseHook = item.drm?.getLicense?.bind(item.drm) ?? null;
+    this.sourceHeaders = { ...item.headers };
+    this.thumbnails =
+      item.thumbnails != null
+        ? new ThumbnailTrack(item.thumbnails, this.sourceHeaders)
+        : null;
+    this.cuesOnScreen = [];
+  }
+
+  private replaceTurn(): () => boolean {
+    this.replaceTurns += 1;
+    const turn = this.replaceTurns;
+    return () => turn === this.replaceTurns && !this.released;
   }
 
   /** Starts or resumes playback (re-opens live streams at the live edge when needed). */
@@ -828,7 +941,19 @@ export class Player {
     if (this.released) return false;
     const points = options.points ?? 1024;
     assertFinite('points', points);
-    return native().setAudioSampling(this.id, options.enabled, points);
+    return this.boundaries.setAppSampling(options.enabled, points);
+  }
+
+  /**
+   * Reports where each live item heard after a title change really starts
+   * (`boundary` events), read from the audio around its ICY title: a station
+   * sends titles when items are queued, up to seconds off. Samples the audio
+   * meanwhile (shared with `setAudioSampling`). Returns whether the platform
+   * can.
+   */
+  setBoundaryDetection(enabled: boolean): boolean {
+    if (this.released) return false;
+    return this.boundaries.setDetection(enabled);
   }
 
   /** The last ~300 engine traces (kept natively even while diagnostics are off). */
@@ -897,6 +1022,7 @@ export class Player {
         const meta = event.metadata as MediaMetadata;
         this._metadata = meta;
         this.emit('metadata', meta);
+        this.boundaries.metadata(meta);
         break;
       }
       case 'error':
@@ -914,6 +1040,9 @@ export class Player {
         break;
       case 'ended':
         this.emit('ended');
+        break;
+      case 'queue':
+        this.queue._apply(event);
         break;
       case 'remoteCommand':
         this.emit('remoteCommand', {
@@ -949,6 +1078,7 @@ export class Player {
         });
         break;
       case 'discontinuity':
+        this.boundaries.reset();
         this.emit('discontinuity', {
           position: event.position as number,
           reason: event.reason === 'switch' ? 'switch' : 'reconnect',
@@ -971,15 +1101,18 @@ export class Player {
           () => undefined
         );
         break;
-      case 'audioSample':
-        this.emit('audioSample', {
+      case 'audioSample': {
+        const sample: AudioSample = {
           waveform: event.waveform as number[],
           level: event.level as number,
           duration: event.duration as number,
           outputLatency: event.outputLatency as number,
           timestamp: event.timestamp as number,
-        });
+        };
+        this.boundaries.sample(sample);
+        this.emit('audioSample', sample);
         break;
+      }
       default:
         break;
     }

@@ -315,6 +315,30 @@ static void RNAPInstallIntentHandler(void)
   [_bridge playFromSearch:request playerId:playerId resolve:resolve reject:reject];
 }
 
+#pragma mark - Cache
+
+- (void)cacheCommand:(NSDictionary *)command
+             resolve:(RCTPromiseResolveBlock)resolve
+              reject:(RCTPromiseRejectBlock)reject
+{
+  [_bridge cacheCommand:command resolve:resolve reject:reject];
+}
+
+#pragma mark - Queue
+
+- (void)queueCommand:(NSString *)playerId
+             command:(NSDictionary *)command
+             resolve:(RCTPromiseResolveBlock)resolve
+              reject:(RCTPromiseRejectBlock)reject
+{
+  [_bridge queueCommand:playerId command:command resolve:resolve reject:reject];
+}
+
+- (NSDictionary *)getQueue:(NSString *)playerId
+{
+  return [_bridge queueSnapshot:playerId];
+}
+
 #pragma mark - Video
 
 - (void)videoCommand:(NSString *)playerId

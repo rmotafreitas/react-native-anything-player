@@ -123,6 +123,23 @@ class FakeDriver(private val clock: FakeClock) : EngineDriver {
   override fun unload() { commands.add("unload") }
   override fun setVolume(effective: Double) { commands.add("volume(${f2(effective)})") }
   override fun setRate(rate: Double) { commands.add("rate(${f2(rate)})") }
+  override val preparesNext: Boolean get() = true
+  override fun prepareNext(request: OpenRequest) { commands.add("prepareNext(gen=${request.generation})") }
+  override fun cancelNext(generation: Int) { commands.add("cancelNext(gen=$generation)") }
+  override fun advance(generation: Int) {
+    commands.add("advance(gen=$generation)")
+    startPrepared(generation, false)
+  }
+
+  /** The prepared item became the output's: its playhead starts at 0. */
+  fun startPrepared(generation: Int, playing: Boolean) {
+    openGeneration = generation
+    anchorPosition = 0.0
+    anchorBuffered = if (playing) 10.0 else 0.0
+    anchorTime = clock.monotonicMs
+    motion = if (playing) Motion.FLOWING else Motion.FROZEN
+  }
+
   override fun switchOutput(outputId: String) {
     commands.add("switchOutput($outputId)")
     // The playhead stops where it is; the engine re-opens at a position.
@@ -147,6 +164,10 @@ class Recorder : EngineDelegate {
   val refreshes = mutableListOf<String>()
   /** Ordering invariant breaches (an event delivered before its status). */
   val violations = mutableListOf<String>()
+  /** `engineQueueChanged` calls. */
+  var queueEvents = 0
+
+  override fun engineQueueChanged() { queueEvents += 1 }
 
   override fun engineRequestsAudioFocus() = focus
   override fun engineStatusChanged(status: Status) { statuses.add(status) }

@@ -13,7 +13,7 @@
 // Twins: `ios/Core/PlaybackEngine.swift`, `android/.../core/PlaybackEngine.kt`.
 // All three run `conformance/`.
 
-import { EngineVideo } from './EngineVideo';
+import { EngineQueue } from './EngineQueue';
 import { RecoveryPolicy } from './RecoveryPolicy';
 import { continuesIntent } from './status';
 import {
@@ -38,7 +38,7 @@ const WAITING_STATES: ReadonlySet<PlaybackState> = new Set<PlaybackState>([
   'loading',
 ]);
 
-export class PlaybackEngine extends EngineVideo {
+export class PlaybackEngine extends EngineQueue {
   // ── Output ──
 
   /** The local output changed (headphones, AirPlay, Bluetooth). Ignored while casting. */

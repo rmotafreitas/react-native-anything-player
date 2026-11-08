@@ -56,6 +56,8 @@
 //               GET /control?drop=1       destroy every open stream now
 //               GET /control?delay=MS     answer every new stream connection
 //                                         MS late (a slow reconnect)
+//               GET /control?offline=1|0  drop every file request (no network:
+//                                         what plays must come from the device)
 // Stats:        GET /stats → { active, total, byPath, events[], capabilities }
 // CORS:         every response allows any origin and exposes the ICY headers,
 //               as Icecast does, so browsers can read streams with fetch().
@@ -250,7 +252,7 @@ const TITLES = [
   ['RNAP Test', 'Signal Six'],
 ];
 
-const state = { down: false, stall: false, delay: 0 };
+const state = { down: false, stall: false, delay: 0, offline: false };
 const active = new Set();
 const stats = { total: 0, byPath: {}, events: [] };
 const record = (event) => {
@@ -622,6 +624,10 @@ function hls(req, res, url) {
 
 function staticFile(req, res, url) {
   const file = FILES[url.pathname];
+  if (state.offline) {
+    record({ kind: 'offline', path: url.pathname });
+    return req.socket.destroy();
+  }
   const delay = Number(url.searchParams.get('delay') ?? 0);
   if (!Number.isFinite(delay) || delay < 0 || delay > MAX_DELAY_MS) {
     res.writeHead(400);
@@ -707,6 +713,7 @@ const server = createServer((req, res) => {
     if (q.has('down')) state.down = q.get('down') === '1';
     if (q.has('stall')) state.stall = q.get('stall') === '1';
     if (q.has('delay')) state.delay = delay;
+    if (q.has('offline')) state.offline = q.get('offline') === '1';
     if (q.get('drop') === '1') [...active].forEach((c) => c.finish?.(true));
     record({ kind: 'control', ...Object.fromEntries(q) });
     res.writeHead(200, { 'Content-Type': 'application/json' });

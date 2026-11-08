@@ -42,6 +42,12 @@ export interface PlayerModule {
   playFromSearch(request: object, playerId: string | null): Promise<object>;
   setSearchHandlerEnabled(enabled: boolean): void;
   resolveSearchRequest(requestId: string, result: object): void;
+  /** A cache command (`{ op, … }`, app-global): see src/core/cache.ts. */
+  cacheCommand(command: object): Promise<object>;
+  /** A queue command (`{ op, … }`); resolves with the status after it. */
+  queueCommand(playerId: string, command: object): Promise<object>;
+  /** The queue's snapshot: `{ ids, order, index, currentId, repeat, shuffle }`. */
+  getQueue(playerId: string): object;
   /** A video command (`{ op, … }`); resolves with the status after it. */
   videoCommand(playerId: string, command: object): Promise<object>;
   /** Quality-of-experience numbers since the last load (`getStats`). */
@@ -85,6 +91,16 @@ export interface PlayerHost {
   ): void;
   /** The web: a view goes; the picture leaves `element` only if it is still there. */
   detachVideo?(playerId: string, element: unknown): void;
+  /**
+   * React Native: the subtitle parsers, in the bundle. A development build
+   * cannot load the lazy bundle of an `import()` from outside the app's
+   * folder (a monorepo, the example apps), and a release build holds them
+   * anyway. Without it they are imported when first needed.
+   */
+  subtitleParsers?(): {
+    parse: typeof import('./subtitles/parse');
+    vtt: typeof import('./subtitles/vtt');
+  };
 }
 
 let installed: PlayerHost | null = null;

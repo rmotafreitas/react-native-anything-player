@@ -57,6 +57,23 @@ final class DashToHlsTests: XCTestCase {
     }
   }
 
+  /// Captions inside the picture are offered only where the manifest declares them.
+  func testClosedCaptionsOnlyWhenDeclared() throws {
+    func master(_ accessibility: String) throws -> String {
+      let mpd = """
+        <MPD type="static" mediaPresentationDuration="PT4S"><Period>
+        <AdaptationSet mimeType="video/mp4" codecs="avc1.42c01e">\(accessibility)<SegmentTemplate timescale="1000"
+        duration="2000" media="v-$Number$.m4s" initialization="v-init.mp4"/><Representation id="v" bandwidth="1"
+        width="640" height="360"/></AdaptationSet></Period></MPD>
+        """
+      return try DashToHls.convert(mpd, url: URL(string: "https://x/m.mpd")!).master
+    }
+    XCTAssertTrue(try master("").contains("CLOSED-CAPTIONS=NONE"))
+    XCTAssertFalse(
+      try master(#"<Accessibility schemeIdUri="urn:scte:dash:cc:cea-608:2015" value="CC1=eng"/>"#)
+        .contains("CLOSED-CAPTIONS"))
+  }
+
   func testTemplates() {
     XCTAssertEqual(
       DashToHls.fill("$RepresentationID$/$Number%05d$-$Bandwidth$$$.m4s", id: "v1", bandwidth: 800, number: 42, time: nil),

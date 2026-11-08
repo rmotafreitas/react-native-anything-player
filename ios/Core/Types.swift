@@ -157,6 +157,10 @@ struct SourceDescriptor: Equatable {
   var expiresAt: Int64? = nil
   /// The source is encrypted: its key systems and license servers (`nil`: clear).
   var drm: DrmDescriptor? = nil
+  /// Cache it as it plays (`nil`: the cache's setting). The platform's cache reads it; the engine does not.
+  var cache: Bool? = nil
+  /// Its identity in the cache (default: the URL without its fragment).
+  var cacheKey: String? = nil
   /// Whether the source is fetched over the network (http/https).
   var isNetwork: Bool {
     let lower = uri.lowercased()
