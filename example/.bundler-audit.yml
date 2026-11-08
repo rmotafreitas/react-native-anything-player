@@ -1,0 +1,8 @@
+# Reviewed exceptions for `bundler-audit check` (CI's audit-ruby job).
+ignore:
+  # activesupport 7.2.4, Possible DoS in safe_constantize (2026-11-04).
+  # Fixed only in 8.0.5.2 and 8.1.4.1, but CocoaPods (1.17.0, the newest)
+  # needs activesupport < 8. The flaw is reached through Action Cable on a
+  # Rails server; here activesupport runs inside `pod install` on a developer
+  # machine, with no untrusted input. Drop this once CocoaPods takes 8.x.
+  - GHSA-8474-xrp6-wh69
