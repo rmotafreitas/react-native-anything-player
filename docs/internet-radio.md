@@ -91,7 +91,10 @@ It looks from 2.5 s before the title to 4 s after, and reports as soon as it
 sees the start, usually before it is heard, so an app can switch its display
 right on it. A start before the title (a title that came late) is reported
 when the title is heard. The first title of a connection names an item
-already playing and is not searched. It samples the audio while on (shared
+already playing: a connection opens with the seconds before live (the
+server's burst), so an item that started within them shows its gap in the
+audio heard first, and that start is reported; one that started earlier is
+not. It samples the audio while on (shared
 with [`setAudioSampling`](visualizer.md), whose points win), and the windows
 reach `audioSample` listeners too: an app can follow the audio it reads.
 

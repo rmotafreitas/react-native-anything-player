@@ -89,7 +89,12 @@ const powerDb = (
 
 export class BoundaryFinder {
   private spans: Span[] = [];
-  private pending: { title: string; titleAt: number } | null = null;
+  private pending: {
+    title: string;
+    titleAt: number;
+    /** A connection's first title: only a gap within [from, to] (the audio before live), else nothing. */
+    opening?: { from: number; to: number };
+  } | null = null;
   /** The last boundary reported: the next item cannot start before it. */
   private previous = -Infinity;
 
@@ -97,6 +102,23 @@ export class BoundaryFinder {
   title(title: string, titleAt: number): Boundary | null {
     const previous = this.pending ? this.settle(true) : null;
     this.pending = { title, titleAt };
+    return previous ?? this.settle(false);
+  }
+
+  /**
+   * A connection's first title, heard at `titleAt`, names an item already
+   * playing. A connection opens with the audio from before live, heard from
+   * `from` to `to`: an item that started within it shows its gap there, and
+   * that is its boundary. Otherwise it started earlier and nothing is reported.
+   */
+  opening(
+    title: string,
+    titleAt: number,
+    from: number,
+    to: number
+  ): Boundary | null {
+    const previous = this.pending ? this.settle(true) : null;
+    this.pending = { title, titleAt, opening: { from, to } };
     return previous ?? this.settle(false);
   }
 
@@ -146,24 +168,32 @@ export class BoundaryFinder {
   private settle(final: boolean): Boundary | null {
     const pending = this.pending;
     if (!pending) return null;
-    const to = pending.titleAt + LOOK_AHEAD_MS;
+    const opening = pending.opening;
+    const to = opening?.to ?? pending.titleAt + LOOK_AHEAD_MS;
     const after = this.previous + AFTER_PREVIOUS_MS;
-    const from = Math.max(after, pending.titleAt - LOOK_BACK_MS);
+    const from =
+      opening?.from ?? Math.max(after, pending.titleAt - LOOK_BACK_MS);
     const gap = this.gapEnd(from, to);
     const cut = this.cut(from, to);
     if (gap === WAIT || cut === WAIT) return null;
-    const onset = this.onset(
-      Math.max(after, pending.titleAt - ONSET_LOOK_BACK_MS),
-      to
-    );
+    // An opening reports a gap or nothing: sound rising in the audio from
+    // before live could be anything in the song.
+    const onset = opening
+      ? null
+      : this.onset(Math.max(after, pending.titleAt - ONSET_LOOK_BACK_MS), to);
     const candidates: Array<Pick<Boundary, 'at' | 'kind'>> = [];
     if (gap != null) candidates.push({ at: gap, kind: 'gap' });
     if (cut != null) candidates.push({ at: cut, kind: 'gap' });
     if (onset != null) candidates.push({ at: onset, kind: 'onset' });
     let found = candidates.sort((a, b) => a.at - b.at)[0] ?? null;
     const heardUpTo = this.spans.at(-1)?.end ?? -Infinity;
-    if (!found && (final || heardUpTo >= to))
+    if (!found && (final || heardUpTo >= to)) {
+      if (opening) {
+        this.pending = null;
+        return null;
+      }
       found = { at: pending.titleAt, kind: 'title' };
+    }
     if (!found) return null;
     this.pending = null;
     this.previous = found.at;

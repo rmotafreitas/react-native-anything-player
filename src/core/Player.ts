@@ -365,7 +365,11 @@ export class Player {
   private readonly boundaries = new BoundaryTracker(
     (boundary) => this.emit('boundary', boundary),
     (enabled, points) =>
-      !this.released && native().setAudioSampling(this.id, enabled, points)
+      !this.released && native().setAudioSampling(this.id, enabled, points),
+    () => {
+      const offset = this.released ? null : this.getProgress().liveOffset;
+      return offset == null ? null : offset * 1000;
+    }
   );
   private readonly subtitles = new SubtitleLoader({
     sendCues: async (session, trackId, cues) => {

@@ -202,7 +202,7 @@ describe('BoundaryTracker', () => {
     expect(configure).toHaveBeenLastCalledWith(false, 128);
   });
 
-  it("does not search the connection's first title: it names an item already playing", () => {
+  it("without the lag, a connection's first title is not searched; later ones are", () => {
     const found: StreamBoundary[] = [];
     const t = new BoundaryTracker(
       (b) => found.push(b),
@@ -236,6 +236,60 @@ describe('BoundaryTracker', () => {
     t.reset();
     t.metadata(metadata('After reconnect', base + 7_000));
     expect(found).toHaveLength(1);
+  });
+
+  it("finds a connection's first item when it started in the audio from before live", () => {
+    const found: StreamBoundary[] = [];
+    // The connection opens 5 s behind live.
+    const t = new BoundaryTracker(
+      (b) => found.push(b),
+      () => true,
+      () => 5_000
+    );
+    t.setDetection(true);
+    const base = 1_000_000;
+    // The item named at connect started 2.6 s into what is heard first.
+    const windows = audio(
+      [
+        ['music', 2_000],
+        ['zeros', 600],
+        ['music', 6_000],
+      ],
+      base
+    );
+    t.metadata(metadata('Started just before tune-in', base + 50));
+    for (const w of windows) t.sample(sample(w));
+    expect(found).toEqual([
+      {
+        title: 'Started just before tune-in',
+        titleAt: base + 50,
+        at: near(base + 2_600),
+        kind: 'gap',
+      },
+    ]);
+  });
+
+  it("reports nothing for a connection's first item that started before its opening audio", () => {
+    const found: StreamBoundary[] = [];
+    const t = new BoundaryTracker(
+      (b) => found.push(b),
+      () => true,
+      () => 5_000
+    );
+    t.setDetection(true);
+    const base = 1_000_000;
+    // A gap after the opening audio (past live) is not this item's start.
+    const windows = audio(
+      [
+        ['music', 6_000],
+        ['zeros', 400],
+        ['music', 2_000],
+      ],
+      base
+    );
+    t.metadata(metadata('Playing for a while', base + 50));
+    for (const w of windows) t.sample(sample(w));
+    expect(found).toEqual([]);
   });
 
   it('a repeated title is not a change', () => {
