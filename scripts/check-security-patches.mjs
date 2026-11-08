@@ -35,8 +35,8 @@ export async function verifySecurityPatch(name, cwd = process.cwd()) {
     assert.equal(library.sprintf("%.0g", 1.25), "1");
   } else if (name === "glob") {
     // GHSA-3g3m-2fjr-6pw4: an aborted walk rejected but kept reading
-    // directories. Fixed upstream in 14.0.2; the Expo CLI's 13.0.6 is patched
-    // to stop, and its entry is the unminified build that the patch covers.
+    // directories. Fixed upstream in 14.0.2 and backported to 13.0.7, the copy
+    // @expo/fingerprint installs (its minified entry included).
     const root = mkdtempSync(path.join(tmpdir(), "rnap-glob-"));
     try {
       for (const dir of ["a/x", "a/y", "b/x", "b/y", "c/x"]) mkdirSync(path.join(root, dir), { recursive: true });
