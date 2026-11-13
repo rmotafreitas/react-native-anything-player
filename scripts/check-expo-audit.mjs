@@ -5,11 +5,9 @@ import path from "node:path";
 import { verifySecurityPatch } from "./check-security-patches.mjs";
 
 // Each reviewed advisory: the package, its installed version, and the folder
-// its copy is required from. glob 13.0.7 carries the upstream fix but npm's
-// advisory range (<= 14.0.1) still names it, so it is tested, not patched.
+// its copy is required from.
 const patched = new Map([
   ["GHSA-vfj7-8cjw-p6xm", ["braces", "3.0.3", "."]],
-  ["GHSA-3g3m-2fjr-6pw4", ["glob", "13.0.7", "node_modules/@expo/fingerprint"]],
   ["GHSA-g3hv-75wg-m249", ["minimatch", "10.2.6", "."]],
 ]);
 for (const [name, version, dir] of patched.values()) {
