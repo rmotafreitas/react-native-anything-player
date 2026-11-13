@@ -25,7 +25,8 @@
 // new one 12 s of audio later). So its first title names the item playing where
 // the audio begins. That item was under way before the connection unless a
 // start shows in the audio: without one nothing is reported for it, and a
-// start found after the title is left for the title that follows as well.
+// start found around it is left for the title that follows as well (a title
+// lands up to seconds after its audio: the start may be the next item's).
 
 import type { StreamBoundary as Boundary } from '../types';
 
@@ -122,9 +123,10 @@ export class BoundaryFinder {
 
   /**
    * A connection's first title, heard at `titleAt`: its item may have been
-   * under way before the connection opened. A start in the audio is its
-   * boundary like any title's; without one nothing is reported (the title's
-   * time says nothing of an item under way).
+   * under way before the connection opened. A start in the audio is reported
+   * for it like any title's, as a candidate (it may be the next item's, and
+   * is found again for that one's title); without one nothing is reported
+   * (the title's time says nothing of an item under way).
    */
   first(title: string, titleAt: number): Boundary | null {
     const previous = this.pending ? this.settle(true) : null;
@@ -204,10 +206,17 @@ export class BoundaryFinder {
     }
     if (!found) return null;
     this.pending = null;
-    // A start after a connection's first title may be the next item's (the
-    // first being under way): the title that follows finds it again.
-    if (!pending.first || found.at <= pending.titleAt) this.previous = found.at;
-    return { title: pending.title, titleAt: pending.titleAt, ...found };
+    // A start around a connection's first title may be the next item's (the
+    // first being under way, the next one's title not heard yet): it is not
+    // kept from the title that follows.
+    const boundary = {
+      title: pending.title,
+      titleAt: pending.titleAt,
+      ...found,
+    };
+    if (pending.first) return { ...boundary, first: true };
+    this.previous = found.at;
+    return boundary;
   }
 
   /**

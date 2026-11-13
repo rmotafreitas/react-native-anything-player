@@ -95,8 +95,11 @@ server's burst), with their titles where they were, so its first title names
 the item playing where that audio begins: an item under way. It gets a
 `boundary` only if a start shows in the audio around it; without one nothing
 is reported, where a change would be given its title's time. A start found
-after that first title may be the next item's, so it is reported again for
-the title that follows. A reconnect opens a new connection the same way.
+around that first title may be the next item's (a title lands up to seconds
+after its audio), so it is a candidate only, marked `first: true`, and is
+reported again for the title that follows: check it against what you know of
+the item (its start time, its length) before placing it. A reconnect opens a new connection the
+same way.
 
 It samples the audio while on (shared
 with [`setAudioSampling`](visualizer.md), whose points win), and the windows

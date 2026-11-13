@@ -1006,6 +1006,11 @@ export interface AudioSample {
  * Where a live stream's item starts in what is heard (`boundary` event, while
  * `setBoundaryDetection` is on). The ICY title is no clock (a station sends it
  * when an item is queued: up to seconds off), so the audio around it is read.
+ *
+ * A connection's first title names an item that was under way as a rule: a
+ * boundary for it is marked {@link StreamBoundary.first} and is a candidate
+ * only (the start may be the next item's, and is then reported for that title
+ * too). Check it against what you know of the item before placing it there.
  */
 export interface StreamBoundary {
   /** The item's title (`StreamTitle`). */
@@ -1021,6 +1026,12 @@ export interface StreamBoundary {
    * time is all there is.
    */
   kind: 'gap' | 'onset' | 'title';
+  /**
+   * `true` for a connection's first title (after a load or a reconnect): the
+   * item was under way as a rule, so `at` is a candidate that may be the next
+   * item's start. Absent otherwise.
+   */
+  first?: true;
 }
 
 /** Options for `setAudioSampling()`. */

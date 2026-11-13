@@ -267,6 +267,7 @@ describe('BoundaryTracker', () => {
           titleAt: base + 2_000,
           at: near(base + 1_400),
           kind: 'gap',
+          first: true,
         },
       ]);
     });
@@ -288,8 +289,30 @@ describe('BoundaryTracker', () => {
       );
       const start = { at: near(base + 3_400), kind: 'gap' };
       expect(found).toEqual([
-        { title: 'Under way', titleAt: base + 400, ...start },
+        { title: 'Under way', titleAt: base + 400, ...start, first: true },
         { title: 'Next', titleAt: base + 3_600, ...start },
+      ]);
+    });
+
+    it('a start before it is left for the title that follows too: that title may not have been heard yet', () => {
+      const { t, found } = tracker();
+      // The next item starts 1 s in; the first title, 2 s in, still names the one before; its own comes 3 s in.
+      play(
+        t,
+        [
+          ['music', 600],
+          ['zeros', 400],
+          ['music', 8_000],
+        ],
+        [
+          ['Under way', 2_000],
+          ['Next', 3_000],
+        ]
+      );
+      const start = { at: near(base + 1_000), kind: 'gap' };
+      expect(found).toEqual([
+        { title: 'Under way', titleAt: base + 2_000, ...start, first: true },
+        { title: 'Next', titleAt: base + 3_000, ...start },
       ]);
     });
 
@@ -367,6 +390,8 @@ describe('BoundaryTracker', () => {
           titleAt: base + 9_000,
           at: near(base + 9_400),
           kind: 'gap',
+          // Marked: this connection has reported no title before it.
+          first: true,
         },
       ]);
     });
