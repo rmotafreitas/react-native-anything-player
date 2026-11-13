@@ -414,6 +414,84 @@ describe('BoundaryTracker', () => {
     expect(found).toEqual([]);
   });
 
+  describe('after a reconnect (the title playing is not reported again)', () => {
+    const base = 1_000_000;
+    /** A tracker that heard 'Playing', then got a fresh connection at `base`, its lag read by `lag`. */
+    const reconnect = (lag: () => { ms: number; settled: boolean }) => {
+      const found: StreamBoundary[] = [];
+      const t = new BoundaryTracker(
+        (b) => found.push(b),
+        () => true,
+        lag
+      );
+      t.setDetection(true);
+      t.metadata(metadata('Playing', base - 60_000));
+      t.reconnected(base);
+      return { t, found };
+    };
+
+    it("searches the new connection's opening audio for the start of the item playing", () => {
+      const { t, found } = reconnect(() => ({ ms: 5_000, settled: true }));
+      const windows = audio(
+        [
+          ['music', 2_000],
+          ['zeros', 600],
+          ['music', 6_000],
+        ],
+        base
+      );
+      for (const w of windows) t.sample(sample(w));
+      expect(found).toEqual([
+        {
+          title: 'Playing',
+          titleAt: base,
+          at: near(base + 2_600),
+          kind: 'gap',
+        },
+      ]);
+    });
+
+    it('the next title is a change like any other, its start found around it', () => {
+      const { t, found } = reconnect(() => ({ ms: 3_000, settled: true }));
+      const windows = audio(
+        [
+          ['music', 9_000],
+          ['zeros', 400],
+          ['music', 6_000],
+        ],
+        base
+      );
+      for (const w of windows) {
+        if (w.at >= base + 9_000 && w.at < base + 9_000 + WINDOW_MS)
+          t.metadata(metadata('Next', base + 9_000));
+        t.sample(sample(w));
+      }
+      expect(found).toEqual([
+        {
+          title: 'Next',
+          titleAt: base + 9_000,
+          at: near(base + 9_400),
+          kind: 'gap',
+        },
+      ]);
+    });
+
+    it('a new title while the lag is still settling is the connection’s first: the item changed meanwhile', () => {
+      let lag = { ms: 5_000, settled: false };
+      const { t, found } = reconnect(() => lag);
+      // No gap in the opening audio: 'Changed meanwhile' started before it.
+      const windows = audio([['music', 8_000]], base);
+      for (const w of windows) {
+        if (w.at >= base + 400 && w.at < base + 400 + WINDOW_MS)
+          t.metadata(metadata('Changed meanwhile', base + 400));
+        if (w.at >= base + 4_000) lag = { ms: 5_000, settled: true };
+        t.sample(sample(w));
+      }
+      // Not placed at its title, as a change without a gap would be.
+      expect(found).toEqual([]);
+    });
+  });
+
   it('a repeated title is not a change', () => {
     const t = new BoundaryTracker(
       () => {},

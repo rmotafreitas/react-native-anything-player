@@ -95,7 +95,9 @@ already playing: a connection opens with the seconds before live (the
 server's burst), so an item that started within them shows its gap in the
 audio heard first. Its start is the last gap in that audio (an earlier one
 starts the item before it), reported once those seconds have been heard; an
-item that started earlier is not reported. It samples the audio while on (shared
+item that started earlier is not reported. A reconnect opens a new connection
+the same way: its first seconds are searched for the start of the item still
+playing, and the title after it is a change like any other. It samples the audio while on (shared
 with [`setAudioSampling`](visualizer.md), whose points win), and the windows
 reach `audioSample` listeners too: an app can follow the audio it reads.
 

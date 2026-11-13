@@ -320,18 +320,18 @@ export class BoundaryFinder {
 
   /** The first cut in [from, to]: `CUT_QUIET_MS` under `CUT_DB`, then loud within `CUT_RISE_MS`. */
   private cut(from: number, to: number): Search {
-    let since: number | null = null;
+    // Quiet audio heard in a row (ms): a hole between two windows is not quiet.
+    let quiet = 0;
     for (let i = 0; i < this.spans.length; i++) {
       const span = this.spans[i]!;
-      const quietLongEnough = since != null && span.at - since >= CUT_QUIET_MS;
       const rises =
-        quietLongEnough &&
+        quiet >= CUT_QUIET_MS &&
         span.db >= CUT_DB &&
         span.at >= from &&
         span.at <= to;
       const rise = rises ? this.loudWithin(i, CUT_RISE_MS) : null;
       if (rise != null) return rise;
-      since = span.db < CUT_DB ? (since ?? span.at) : null;
+      quiet = span.db < CUT_DB ? quiet + (span.end - span.at) : 0;
     }
     return null;
   }

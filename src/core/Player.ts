@@ -1083,7 +1083,7 @@ export class Player {
         });
         break;
       case 'discontinuity':
-        this.boundaries.reset();
+        this.boundaries.reconnected(event.timestamp as number);
         this.emit('discontinuity', {
           position: event.position as number,
           reason: event.reason === 'switch' ? 'switch' : 'reconnect',

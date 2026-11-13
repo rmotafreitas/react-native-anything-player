@@ -52,7 +52,11 @@ export class BoundaryTracker {
     if (!this.detecting) return;
     const title = metadata.raw?.StreamTitle?.trim();
     if (!title || title === this.lastTitle) return;
-    const first = this.lastTitle == null;
+    // A connection's first title: none yet, or a new one while a reconnect's
+    // audio is still the opening being searched (the item changed meanwhile).
+    const first =
+      this.lastTitle == null ||
+      (this.opening != null && this.lag()?.settled === false);
     this.lastTitle = title;
     this.opening = null;
     if (!first) {
@@ -80,12 +84,28 @@ export class BoundaryTracker {
     );
   }
 
-  /** A new connection or item: what was heard before says nothing about it. */
+  /** A new item: what was heard before says nothing about it. */
   reset(): void {
     this.finder.reset();
     this.lastTitle = null;
     this.opening = null;
     this.firstAudioAt = null;
+  }
+
+  /**
+   * A fresh connection replaced the one playing, at `at` (a reconnect, a
+   * switch not lined up). A player does not repeat a title it already
+   * reported, so the item playing keeps its title: the new connection's
+   * opening audio is searched for its start, and the next title is a change
+   * like any other.
+   */
+  reconnected(at: number): void {
+    this.finder.reset();
+    this.firstAudioAt = null;
+    this.opening =
+      this.lastTitle == null
+        ? null
+        : { title: this.lastTitle, at, searching: false };
   }
 
   /**
