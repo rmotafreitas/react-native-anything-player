@@ -371,6 +371,26 @@ describe('BoundaryTracker', () => {
     ]);
   });
 
+  it("the silence a connection's audio begins with is no gap (a decoder starting mid-stream)", () => {
+    const found: StreamBoundary[] = [];
+    const t = new BoundaryTracker(
+      (b) => found.push(b),
+      () => true,
+      () => ({ ms: 4_000, settled: true })
+    );
+    t.setDetection(true);
+    const base = 1_000_000;
+    // As an Android decoder opens an MP3 stream: 14 ms of zeros, then the
+    // music, its first windows timed a little apart while the output fills.
+    const windows = [
+      { at: base, duration: 14, points: new Array<number>(128).fill(0) },
+      ...audio([['music', 6_000]], base + 38),
+    ];
+    t.metadata(metadata('Playing for a while', base + 50));
+    for (const w of windows) t.sample(sample(w));
+    expect(found).toEqual([]);
+  });
+
   it("reports nothing for a connection's first item that started before its opening audio", () => {
     const found: StreamBoundary[] = [];
     const t = new BoundaryTracker(

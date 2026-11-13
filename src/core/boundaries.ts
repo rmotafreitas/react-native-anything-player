@@ -112,6 +112,13 @@ export class BoundaryFinder {
   } | null = null;
   /** The last boundary reported: the next item cannot start before it. */
   private previous = -Infinity;
+  /**
+   * Sound was heard since the last reset. A connection's audio begins with
+   * silence of its own (a decoder starting mid-stream: 14 ms of zeros on
+   * Android, its next window timed up to 30 ms on), which is no gap between
+   * items: nothing is kept until the first sound.
+   */
+  private sounded = false;
 
   /** A title was heard at `titleAt`: returns its boundary if the audio already shows it. */
   title(title: string, titleAt: number): Boundary | null {
@@ -181,6 +188,7 @@ export class BoundaryFinder {
     this.spans = [];
     this.pending = null;
     this.previous = -Infinity;
+    this.sounded = false;
   }
 
   /** Points [from, to) of a window as a span; overlapping windows (a browser analyser) add only what is new. */
@@ -189,11 +197,10 @@ export class BoundaryFinder {
     const at = window.at + (from / n) * window.duration;
     const last = this.spans.at(-1);
     if (to <= from || (last && at < last.end - 0.5)) return;
-    this.spans.push({
-      at,
-      end: window.at + (to / n) * window.duration,
-      db: powerDb(window.points, from, to),
-    });
+    const db = powerDb(window.points, from, to);
+    if (!this.sounded && db < CUT_DB) return;
+    this.sounded = true;
+    this.spans.push({ at, end: window.at + (to / n) * window.duration, db });
   }
 
   /** The pending title's boundary if known (or `final`: the best the audio shows). */
