@@ -224,7 +224,11 @@ export class AudioSampler {
   }
 }
 
-/** Resamples one frame of samples to `points` values and measures its loudness. */
+/**
+ * Resamples one frame of samples to `points` values and measures its loudness.
+ * The samples are the newest: they end now, so the window is timed from its
+ * first sample, one window back (the time every platform gives).
+ */
 function toWindow(
   samples: Float32Array,
   points: number,
@@ -238,12 +242,13 @@ function toWindow(
     const v = samples[Math.min(samples.length - 1, Math.floor(i * step))]!;
     return Math.max(-1, Math.min(1, v));
   });
+  const durationSeconds = samples.length / sampleRate;
   return {
     waveform,
     level: Math.min(1, Math.sqrt(sum / samples.length)),
-    durationSeconds: samples.length / sampleRate,
+    durationSeconds,
     outputLatencySeconds,
-    timestampMs: Date.now(),
+    timestampMs: Date.now() - durationSeconds * 1000,
   };
 }
 

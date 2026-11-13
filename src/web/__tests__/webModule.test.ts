@@ -1043,6 +1043,10 @@ describe('visualizer', () => {
     expect(sample).toMatchObject({ level: 0.5, outputLatency: 0.03 });
     expect(sample.waveform).toHaveLength(64);
     expect(sample.duration).toBeCloseTo(2048 / 48000);
+    // The analyser's samples end now: the window is timed from its first one.
+    const age = Date.now() - (sample.timestamp as number);
+    expect(age).toBeGreaterThanOrEqual(42);
+    expect(age).toBeLessThan(100);
 
     // A cross-origin file on the tapped element would play as silence: a fresh element takes it.
     await module.setVolume(id, 0.4);
