@@ -172,6 +172,8 @@ final class StreamVisualizer {
   private static let windowSeconds = 1024.0 / 44_100
   /// Windows further ahead than this are dropped (bounded memory).
   private static let maxQueueSeconds = 40.0
+  /// A due window this far behind the playhead is no longer sent (the playhead jumped ahead).
+  private static let staleSeconds = 0.5
 
   /// Set from any thread; applied on the visualizer queue.
   var points: Int {
@@ -296,13 +298,18 @@ final class StreamVisualizer {
     guard let timebase, let callback = handler, !windows.isEmpty else { return }
     let now = CMTimebaseGetTime(timebase).seconds
     guard now.isFinite else { return }
-    // Everything at or before the playhead is due; only the newest is drawn.
+    // Everything at or before the playhead is due. Each is timed at its first
+    // frame on the playhead's clock, not at this tick, and none is skipped
+    // when a tick comes late: a reader of the audio (where an item starts)
+    // needs every window at its own time. Stale ones (a jump ahead) are not sent.
     guard let index = windows.lastIndex(where: { $0.time <= now }) else { return }
-    let window = windows[index]
+    let wall = Date().timeIntervalSince1970
+    for window in windows[...index] where now - window.time <= Self.staleSeconds {
+      callback(
+        AudioWindow(
+          waveform: window.waveform, level: window.level, duration: window.duration,
+          outputLatency: 0, timestampMs: Int64((wall - (now - window.time)) * 1000)))
+    }
     windows.removeFirst(index + 1)
-    callback(
-      AudioWindow(
-        waveform: window.waveform, level: window.level, duration: window.duration,
-        outputLatency: 0, timestampMs: Int64(Date().timeIntervalSince1970 * 1000)))
   }
 }
