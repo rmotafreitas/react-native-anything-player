@@ -176,6 +176,25 @@ describe('BoundaryFinder', () => {
     ]);
   });
 
+  it('a title superseded as a start is only half heard keeps its own time: the start is the next title’s', () => {
+    // The gap ends 21 ms before the audio heard so far does: too little to tell sound from a blip.
+    const heard = 37 * WINDOW_MS;
+    const windows = audio([
+      ['music', 3_000],
+      ['zeros', heard - 21 - 3_000],
+      ['music', 6_000],
+    ]);
+    expect(
+      run(windows, [
+        ['Runs on', 1_000],
+        ['Next', Math.floor(heard) - 5],
+      ])
+    ).toEqual([
+      { title: 'Runs on', kind: 'title', at: 1_000 },
+      { title: 'Next', kind: 'gap', at: near(heard - 21) },
+    ]);
+  });
+
   it('a title superseded before its search ends settles with what was heard', () => {
     const w = audio([['music', 9_000]]);
     expect(

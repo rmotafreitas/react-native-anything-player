@@ -194,8 +194,10 @@ export class BoundaryFinder {
     const to = pending.titleAt + LOOK_AHEAD_MS;
     const over = final || (this.spans.at(-1)?.end ?? -Infinity) >= to;
     const start = this.startOf(pending, to, over, final);
-    if (start === WAIT) return null;
-    let found = start;
+    if (start === WAIT && !final) return null;
+    // Superseded with a start only half heard: that one is for the title
+    // that takes over, and this one keeps its own time.
+    let found = start === WAIT ? null : start;
     if (!found && over) {
       // A connection's first item with no start in its audio was under way.
       if (pending.first) {
