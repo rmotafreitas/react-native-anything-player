@@ -117,6 +117,8 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
   private var packetClock: StreamDecoder?
   /// When relayed audio last arrived (monotonic ms; guarded by `feedLock`).
   private var packetClockFedAt: Int64 = 0
+  /// Audio bytes the packet clock was fed (guarded by `feedLock`): with its seconds, the stream's byte rate.
+  private var packetClockBytes: Int64 = 0
   /// A progressive stream AVFoundation reads itself (a video, protected audio): no packet clock.
   private var directProgressive = false
   private static let recentAudioLimit = 512 * 1024
@@ -177,6 +179,11 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
   private static let spliceHeardAfter = 0.1
   /// Media times (s) where a spliced upstream's audio starts, not heard yet.
   private var pendingSplices: [Double] = []
+  /// From each splice's media time (s) on, how late (s) its upstream's titles
+  /// are delivered: the proxy keeps the metadata cadence AVPlayer counts, so
+  /// a new connection's blocks wait for the next boundary (up to one block:
+  /// 2 s on a 64 kbps stream).
+  private var titleDelays: [(from: Double, late: Double)] = []
 
   // MARK: Video
   /// A video player: a picture, tracks, variants, cues; never proxied.
@@ -302,11 +309,20 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
             // Proxy queue, before any of the new upstream's audio is relayed:
             // everything parsed so far is the old one's, so this is where the
             // new audio starts on the item's timeline.
-            let at: Double? = self.feedLock.sync { self.packetClock?.parsedSeconds }
+            let clock: (at: Double, bytes: Int64)? = self.feedLock.sync {
+              self.packetClock.map { ($0.parsedSeconds, self.packetClockBytes) }
+            }
+            let at = clock?.at
+            // Bytes to seconds at the stream's own rate so far.
+            let delayBytes = Double(details["titleDelayBytes"] ?? "") ?? 0
+            let late = clock.map { $0.bytes > 0 ? delayBytes * $0.at / Double($0.bytes) : 0 } ?? 0
             DispatchQueue.main.async { [weak self] in
               guard let self else { return }
               self.observer?.driverNote(generation: gen, event: "upstream spliced", details: details)
-              if self.generation == gen, let at { self.pendingSplices.append(at) }
+              if self.generation == gen, let at {
+                self.pendingSplices.append(at)
+                self.titleDelays.append((from: at, late: late))
+              }
             }
           },
           onAudio: { [weak self] data, contentType in
@@ -323,6 +339,7 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
               // Every packet before this chunk is parsed: this is its start time.
               self.recentAudio.append((self.packetClock?.parsedSeconds ?? 0, data))
               self.recentBytes += data.count
+              self.packetClockBytes += Int64(data.count)
               self.packetClock?.feed(data)
               self.packetClockFedAt = SystemClock.shared.monotonicMs
               while self.recentBytes > Self.recentAudioLimit, self.recentAudio.count > 1 {
@@ -348,6 +365,7 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
       recentBytes = 0
       recentContentType = nil
       packetClock = nil
+      packetClockBytes = 0
     }
     if samplingEnabled { startStreamFeed() }
     // The headers go to AVFoundation even when proxied: it sends them itself
@@ -762,8 +780,16 @@ final class AVPlayerDriver: NSObject, EngineDriver, AVPlayerItemMetadataOutputPu
     for at in heard { observer?.driverDiscontinuity(generation: generation, position: at, reason: "reconnect", jump: nil) }
   }
 
+  /// How late (s) a title delivered now for `generation` is: 0 until a spliced upstream's audio plays.
+  func titleLate(generation gen: Int) -> Double {
+    guard gen == generation, !titleDelays.isEmpty else { return 0 }
+    let position = currentPosition
+    return titleDelays.last { $0.from <= position }?.late ?? 0
+  }
+
   private func tearDownItem() {
     pendingSplices = []
+    titleDelays = []
     lastClock = nil
     // The stream visualizer (decoder, queued windows, its timer) belongs to
     // the item: the next item restarts it while sampling is on (`open`,

@@ -108,6 +108,33 @@ final class IcyFramingTests: XCTestCase {
     XCTAssertEqual(titles, ["first"] + Array(repeating: "second", count: 4))
   }
 
+  /// A spliced upstream's blocks are written late by a constant the reframer
+  /// tells at the splice: the audio left until the cadence's next boundary.
+  func testSpliceDelayIsHowLateItsBlocksAreWritten() {
+    for cut in [1, 13, 39, 40, 57, 80] {
+      let first = body(metaint: 40, chunks: 4, titles: [nil])
+      let second = body(metaint: 40, chunks: 4, titles: ["second"])
+      var reframer = IcyReframer(metaint: 40)
+      var old = IcyDeinterleaver(metaint: 40)
+      // `cut` audio bytes of the first upstream, then the splice.
+      let kept = old.consume(Array(first.body.prefix(cut + cut / 40)))
+      var downstream = reframer.frame(kept, audioEnd: old.audioBytes)
+      XCTAssertEqual(kept.audio.count, cut)
+      let delay = reframer.spliceDelay
+      XCTAssertEqual(delay, (40 - cut % 40) % 40, "cut \(cut)")
+      var fresh = IcyDeinterleaver(metaint: 40)
+      let out = fresh.consume(second.body)
+      downstream += reframer.frame(out, audioEnd: fresh.audioBytes)
+      // Where the reader of the re-framed body finds the new upstream's titles,
+      // against where they were in its audio.
+      var reader = IcyDeinterleaver(metaint: 40)
+      let found = reader.consume(downstream).blocks.map { Int($0.audioOffset) - cut }
+      let placed = second.blocks.map { Int($0.0) }
+      XCTAssertFalse(found.isEmpty)
+      for (at, was) in zip(found, placed) { XCTAssertEqual(at - was, delay, "cut \(cut)") }
+    }
+  }
+
   func testGarbageNeverCrashes() {
     var generator = SplitMix(seed: 7)
     var d = IcyDeinterleaver(metaint: 16)

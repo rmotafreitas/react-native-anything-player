@@ -775,7 +775,8 @@ final class PlayerController: EngineDelegate, DriverObserver {
 
   func driverMetadata(generation: Int, metadata: StreamMetadata) {
     guard engine.accepts(generation) else { return }
-    let at = SystemClock.shared.wallMs
+    // When it is heard, less what a spliced connection's titles are held back by.
+    let at = SystemClock.shared.wallMs - Int64(driver.titleLate(generation: generation) * 1000)
     lock.sync { snapshotMetadata = (metadata, at) }
     emit("metadata", ["metadata": Serialization.metadata(metadata, timestamp: at)])
     runtime.nowPlayingChanged(self)

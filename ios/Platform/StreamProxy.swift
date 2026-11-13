@@ -562,6 +562,8 @@ final class StreamProxy {
       proxyLog.debug("upstream ended (\(cause, privacy: .public)) after \(Self.now - since) ms: splicing")
       routes[upstream.token]?.onSplice([
         "cause": cause, "upstreamMs": "\(Self.now - since)", "splice": "\(upstream.splices)",
+        // The new upstream's titles reach AVPlayer this many audio bytes after their place.
+        "titleDelayBytes": "\(upstream.reframer.spliceDelay)",
       ])
       return connect(upstream)
     }

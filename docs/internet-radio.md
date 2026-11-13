@@ -20,7 +20,7 @@ radio.on('remoteCommand', ({ command }) => { /* next/previous → switch station
 **iOS.** AVPlayer plays the stream through a small in-process HTTP proxy bound to `127.0.0.1`; the connection to the station is made by the app's own `URLSession`. AVPlayer still sees a genuine live HTTP stream (its own buffering, its own ICY metadata parsing), while RNAP owns the sockets:
 
 - the connection is closed the moment the player stops, re-opens, or is released, and late requests for a discarded item are answered locally — AVFoundation's internal retries can otherwise keep a discarded stream downloading in the background indefinitely (reproduced);
-- when the station drops the connection after streaming for a while, the proxy reconnects and continues the same response, so playback goes on from the buffer without a gap (ICY metadata is re-framed across the new connection);
+- when the station drops the connection after streaming for a while, the proxy reconnects and continues the same response, so playback goes on from the buffer without a gap (ICY metadata is re-framed across the new connection: its titles reach AVPlayer up to one metadata block late, at the cadence the first connection set, and each `metadata` event's `timestamp` is put back by exactly that);
 - AVFoundation occasionally opens two identical requests for one item; the proxy serves both from one station connection.
 
 ![iOS stream proxy: AVPlayer talks to a loopback proxy; the app's URLSession owns the station connection, splices dropped connections and refuses late retries](assets/diagrams/ios-stream-proxy.svg)

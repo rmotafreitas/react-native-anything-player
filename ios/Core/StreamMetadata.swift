@@ -307,6 +307,14 @@ struct IcyReframer {
     pendingBlock = payload
   }
 
+  /// How many audio bytes late every block of an upstream spliced in now is
+  /// written: its blocks come every `metaint` bytes from here, and each waits
+  /// for the next boundary of the cadence kept downstream. 0 at a boundary.
+  var spliceDelay: Int {
+    guard metaint > 0 else { return 0 }
+    return (metaint - sinceBlock % metaint) % metaint
+  }
+
   /// Frames audio. A boundary's block is written lazily, just before the
   /// audio that follows it, so a block queued exactly at a boundary lands
   /// there: an unspliced stream comes out byte-identical.
