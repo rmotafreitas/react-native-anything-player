@@ -350,6 +350,89 @@ describe('BoundaryTracker', () => {
       ]);
     });
 
+    it('superseded before its window was heard, the title after a first keeps its own time, not the shared start', () => {
+      const { t, found } = tracker();
+      // The ID's start is all the song's window shows when a third title is heard, 1.2 s after the song's.
+      play(
+        t,
+        [
+          ['music', 300],
+          ['zeros', 200],
+          ['music', 10_000],
+        ],
+        [
+          ['ID', 1_500],
+          ['Song', 2_800],
+          ['Third', 4_000],
+        ]
+      );
+      expect(found).toEqual([
+        {
+          title: 'ID',
+          titleAt: base + 1_500,
+          at: near(base + 500),
+          kind: 'gap',
+          first: true,
+        },
+        {
+          title: 'Song',
+          titleAt: base + 2_800,
+          at: base + 2_800,
+          kind: 'title',
+        },
+        {
+          title: 'Third',
+          titleAt: base + 4_000,
+          at: base + 4_000,
+          kind: 'title',
+        },
+      ]);
+    });
+
+    it('known limit: a few-second item right after the item under way takes the start of the one after it', () => {
+      const { t, found } = tracker();
+      // The other reading of two starts: the first is the ID's own (the item
+      // under way ended there), the second the song's. The audio cannot tell
+      // it from a short first item and the song after it, which is the reading
+      // taken: the ID is placed late and the song by its title.
+      play(
+        t,
+        [
+          ['music', 600],
+          ['zeros', 400],
+          ['music', 2_300],
+          ['zeros', 400],
+          ['music', 9_000],
+        ],
+        [
+          ['Under way', 2_000],
+          ['ID', 3_000],
+          ['Song', 4_500],
+        ]
+      );
+      expect(found).toEqual([
+        {
+          title: 'Under way',
+          titleAt: base + 2_000,
+          at: near(base + 1_000),
+          kind: 'gap',
+          first: true,
+        },
+        {
+          title: 'ID',
+          titleAt: base + 3_000,
+          at: near(base + 3_700),
+          kind: 'gap',
+        },
+        {
+          title: 'Song',
+          titleAt: base + 4_500,
+          at: base + 4_500,
+          kind: 'title',
+        },
+      ]);
+    });
+
     it('titles later in the audio a connection opens with are changes like any other', () => {
       const { t, found } = tracker();
       // As the 64 kbps mount opens: the item before, then a jingle and a song, each at its place.

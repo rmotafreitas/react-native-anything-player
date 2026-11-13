@@ -98,7 +98,9 @@ is reported, where a change would be given its title's time. A start found
 around that first title may be the next item's (a title lands up to seconds
 after its audio), so it is a candidate only, marked `first: true`, and is
 reported again for the title that follows, unless another start shows in
-that title's own window (two starts are the first item's and its own): check
+that title's own window (two starts are taken for the first item's and its
+own; with an item of a few seconds right as a connection opens that reading
+can be the wrong one of two, and the audio alone cannot tell): check
 a `first` start against what you know of the item (its start time, its
 length) before placing it. A reconnect opens a new connection the
 same way.

@@ -28,7 +28,11 @@
 // start found around it is left for the title that follows as well (a title
 // lands up to seconds after its audio: the start may be the next item's).
 // That title takes it unless another start shows in its own window: silence
-// falls only between items, so two starts are the first item's and its own.
+// falls only between items, so two starts are taken for the first item's and
+// its own. That is one of two readings: when the start was the next item's
+// and that item lasts only seconds, the later one is the item's after it,
+// which is then placed late and its follower by its title. A short item right
+// as a connection opens cannot be told either way from the audio alone.
 
 import type { StreamBoundary as Boundary } from '../types';
 
@@ -213,7 +217,9 @@ export class BoundaryFinder {
         to
       );
       if (later === WAIT || (!later && !over)) return null;
-      found = later ?? found;
+      // Superseded before its window was heard: nothing showed the shared
+      // start to be its own, so it keeps its title's time.
+      found = later ?? (final ? null : found);
     }
     if (!found && over) {
       // A connection's first item with no start in its audio was under way.
