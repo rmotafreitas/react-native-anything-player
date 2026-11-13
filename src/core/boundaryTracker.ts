@@ -52,11 +52,12 @@ export class BoundaryTracker {
     if (!this.detecting) return;
     const title = metadata.raw?.StreamTitle?.trim();
     if (!title || title === this.lastTitle) return;
-    // A connection's first title: none yet, or a new one while a reconnect's
-    // audio is still the opening being searched (the item changed meanwhile).
+    // A connection's first title: none yet, or a new one heard within a
+    // reconnect's opening audio (the item changed meanwhile). A title heard
+    // after that audio was sent after the connection opened: a change.
     const first =
       this.lastTitle == null ||
-      (this.opening != null && this.lag()?.settled === false);
+      (this.opening != null && this.inOpening(metadata.timestamp));
     this.lastTitle = title;
     this.opening = null;
     if (!first) {
@@ -106,6 +107,13 @@ export class BoundaryTracker {
       this.lastTitle == null
         ? null
         : { title: this.lastTitle, at, searching: false };
+  }
+
+  /** Whether `at` is within the connection's opening audio (never, where the lag cannot be measured: it is not searched). */
+  private inOpening(at: number): boolean {
+    const lag = this.lag();
+    if (lag == null) return false;
+    return this.firstAudioAt == null || at <= this.firstAudioAt + lag.ms;
   }
 
   /**

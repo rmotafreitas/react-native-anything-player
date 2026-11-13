@@ -476,7 +476,42 @@ describe('BoundaryTracker', () => {
       ]);
     });
 
-    it('a new title while the lag is still settling is the connection’s first: the item changed meanwhile', () => {
+    it('a title heard after the opening audio is a change, though the lag has not settled', () => {
+      // 2 s behind live, and still unsettled when the next title is heard 3 s in.
+      const { t, found } = reconnect(() => ({ ms: 2_000, settled: false }));
+      const windows = audio(
+        [
+          ['music', 800],
+          ['zeros', 200],
+          ['music', 2_000],
+          ['zeros', 400],
+          ['music', 6_000],
+        ],
+        base
+      );
+      for (const w of windows) {
+        if (w.at >= base + 3_000 && w.at < base + 3_000 + WINDOW_MS)
+          t.metadata(metadata('Next', base + 3_000));
+        t.sample(sample(w));
+      }
+      // 'Playing' started in the opening audio; 'Next' at its own gap, not there.
+      expect(found).toEqual([
+        {
+          title: 'Playing',
+          titleAt: base,
+          at: near(base + 1_000),
+          kind: 'gap',
+        },
+        {
+          title: 'Next',
+          titleAt: base + 3_000,
+          at: near(base + 3_400),
+          kind: 'gap',
+        },
+      ]);
+    });
+
+    it('a new title within the opening audio is the connection’s first: the item changed meanwhile', () => {
       let lag = { ms: 5_000, settled: false };
       const { t, found } = reconnect(() => lag);
       // No gap in the opening audio: 'Changed meanwhile' started before it.
