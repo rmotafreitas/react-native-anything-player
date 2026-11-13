@@ -316,6 +316,40 @@ describe('BoundaryTracker', () => {
       ]);
     });
 
+    it('a short first item keeps its own start: the title after it takes the next one in its window', () => {
+      const { t, found } = tracker();
+      // A 2 s station ID starts 0.5 s in, the song after it 2.7 s in; their titles are heard 1.5 and 2.8 s in.
+      play(
+        t,
+        [
+          ['music', 300],
+          ['zeros', 200],
+          ['music', 2_000],
+          ['zeros', 200],
+          ['music', 8_000],
+        ],
+        [
+          ['ID', 1_500],
+          ['Song', 2_800],
+        ]
+      );
+      expect(found).toEqual([
+        {
+          title: 'ID',
+          titleAt: base + 1_500,
+          at: near(base + 500),
+          kind: 'gap',
+          first: true,
+        },
+        {
+          title: 'Song',
+          titleAt: base + 2_800,
+          at: near(base + 2_700),
+          kind: 'gap',
+        },
+      ]);
+    });
+
     it('titles later in the audio a connection opens with are changes like any other', () => {
       const { t, found } = tracker();
       // As the 64 kbps mount opens: the item before, then a jingle and a song, each at its place.

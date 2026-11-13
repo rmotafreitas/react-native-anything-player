@@ -27,6 +27,8 @@
 // start shows in the audio: without one nothing is reported for it, and a
 // start found around it is left for the title that follows as well (a title
 // lands up to seconds after its audio: the start may be the next item's).
+// That title takes it unless another start shows in its own window: silence
+// falls only between items, so two starts are the first item's and its own.
 
 import type { StreamBoundary as Boundary } from '../types';
 
@@ -103,9 +105,13 @@ export class BoundaryFinder {
     titleAt: number;
     /** A connection's first title: its item may have been under way (see {@link first}). */
     first?: boolean;
+    /** The start a connection's first title was given, found for this title too: its own unless a later one shows. */
+    held?: Pick<Boundary, 'at' | 'kind'>;
   } | null = null;
   /** The last boundary reported: the next item cannot start before it. */
   private previous = -Infinity;
+  /** The start given to a connection's first title, which the title after it may claim. */
+  private candidate: number | null = null;
   /**
    * Sound was heard since the last reset. A connection's audio begins with
    * silence of its own (a decoder starting mid-stream: 14 ms of zeros on
@@ -161,6 +167,7 @@ export class BoundaryFinder {
     this.spans = [];
     this.pending = null;
     this.previous = -Infinity;
+    this.candidate = null;
     this.sounded = false;
   }
 
@@ -182,21 +189,33 @@ export class BoundaryFinder {
     if (!pending) return null;
     const to = pending.titleAt + LOOK_AHEAD_MS;
     const after = this.previous + AFTER_PREVIOUS_MS;
-    const from = Math.max(after, pending.titleAt - LOOK_BACK_MS);
-    const gap = this.gapEnd(from, to);
-    const cut = this.cut(from, to);
-    if (gap === WAIT || cut === WAIT) return null;
-    const onset = this.onset(
-      Math.max(after, pending.titleAt - ONSET_LOOK_BACK_MS),
-      to
-    );
-    const candidates: Array<Pick<Boundary, 'at' | 'kind'>> = [];
-    if (gap != null) candidates.push({ at: gap, kind: 'gap' });
-    if (cut != null) candidates.push({ at: cut, kind: 'gap' });
-    if (onset != null) candidates.push({ at: onset, kind: 'onset' });
-    let found = candidates.sort((a, b) => a.at - b.at)[0] ?? null;
-    const heardUpTo = this.spans.at(-1)?.end ?? -Infinity;
-    if (!found && (final || heardUpTo >= to)) {
+    const over = final || (this.spans.at(-1)?.end ?? -Infinity) >= to;
+    let found =
+      pending.held ??
+      this.earliest(
+        Math.max(after, pending.titleAt - LOOK_BACK_MS),
+        Math.max(after, pending.titleAt - ONSET_LOOK_BACK_MS),
+        to
+      );
+    if (found === WAIT) return null;
+    // The start a connection's first title was given is this item's or that
+    // one's own. Silence falls only between items, so another start after it
+    // in this window settles it: that one is this item's, the earlier one the
+    // first's. Without another, this item's, once the window was heard.
+    const shared = pending.first ? null : this.candidate;
+    if (found && shared != null && Math.abs(found.at - shared) < 1) {
+      // Held while the window is heard on: the audio it is in is not kept that long.
+      pending.held = found;
+      const from = shared + AFTER_PREVIOUS_MS;
+      const later = this.earliest(
+        from,
+        Math.max(from, pending.titleAt - ONSET_LOOK_BACK_MS),
+        to
+      );
+      if (later === WAIT || (!later && !over)) return null;
+      found = later ?? found;
+    }
+    if (!found && over) {
       // A connection's first item with no start in its audio was under way.
       if (pending.first) {
         this.pending = null;
@@ -206,17 +225,38 @@ export class BoundaryFinder {
     }
     if (!found) return null;
     this.pending = null;
-    // A start around a connection's first title may be the next item's (the
-    // first being under way, the next one's title not heard yet): it is not
-    // kept from the title that follows.
     const boundary = {
       title: pending.title,
       titleAt: pending.titleAt,
       ...found,
     };
-    if (pending.first) return { ...boundary, first: true };
+    // A start around a connection's first title may be the next item's (the
+    // first being under way, the next one's title not heard yet): it is not
+    // kept from the title that follows.
+    if (pending.first) {
+      this.candidate = found.at;
+      return { ...boundary, first: true };
+    }
+    this.candidate = null;
     this.previous = found.at;
     return boundary;
+  }
+
+  /** The earliest start the audio shows in [from, to] (an onset, from `onsetFrom`), `WAIT` while one cannot be told yet. */
+  private earliest(
+    from: number,
+    onsetFrom: number,
+    to: number
+  ): Pick<Boundary, 'at' | 'kind'> | typeof WAIT | null {
+    const gap = this.gapEnd(from, to);
+    const cut = this.cut(from, to);
+    if (gap === WAIT || cut === WAIT) return WAIT;
+    const onset = this.onset(onsetFrom, to);
+    const candidates: Array<Pick<Boundary, 'at' | 'kind'>> = [];
+    if (gap != null) candidates.push({ at: gap, kind: 'gap' });
+    if (cut != null) candidates.push({ at: cut, kind: 'gap' });
+    if (onset != null) candidates.push({ at: onset, kind: 'onset' });
+    return candidates.sort((x, y) => x.at - y.at)[0] ?? null;
   }
 
   /**
