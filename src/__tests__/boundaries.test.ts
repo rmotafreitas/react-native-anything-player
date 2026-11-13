@@ -203,6 +203,31 @@ describe('BoundaryTracker', () => {
     raw: { StreamTitle: title },
     timestamp: at,
   });
+  const base = 1_000_000;
+  /** Feeds `stretches` of audio from `base`, each title as its time comes; the boundaries reported. */
+  const play = (
+    t: BoundaryTracker,
+    stretches: Array<[Kind, number]>,
+    titles: Array<[string, number]>
+  ) => {
+    const pending = [...titles];
+    for (const w of audio(stretches, base)) {
+      while (pending.length && base + pending[0]![1] <= w.at) {
+        const [title, at] = pending.shift()!;
+        t.metadata(metadata(title, base + at));
+      }
+      t.sample(sample(w));
+    }
+  };
+  const tracker = () => {
+    const found: StreamBoundary[] = [];
+    const t = new BoundaryTracker(
+      (b) => found.push(b),
+      () => true
+    );
+    t.setDetection(true);
+    return { t, found };
+  };
 
   it('shares the sampling: detection alone asks for a few points, the app its own', () => {
     const configure = jest.fn(() => true);
@@ -217,270 +242,125 @@ describe('BoundaryTracker', () => {
     expect(configure).toHaveBeenLastCalledWith(false, 128);
   });
 
-  it("without the lag, a connection's first title is not searched; later ones are", () => {
-    const found: StreamBoundary[] = [];
-    const t = new BoundaryTracker(
-      (b) => found.push(b),
-      () => true
-    );
-    t.setDetection(true);
-    const base = 1_000_000;
-    const windows = audio(
-      [
-        ['music', 3_000],
-        ['zeros', 400],
-        ['music', 3_000],
-      ],
-      base
-    );
-    t.metadata(metadata('Playing at tune-in', base + 500));
-    for (const w of windows) {
-      if (w.at >= base + 2_000 && w.at < base + 2_000 + WINDOW_MS)
-        t.metadata(metadata('Next', base + 2_000));
-      t.sample(sample(w));
-    }
-    expect(found).toEqual([
-      {
-        title: 'Next',
-        titleAt: base + 2_000,
-        at: near(base + 3_400),
-        kind: 'gap',
-      },
-    ]);
-    // A reconnect: the next title is a tune-in again.
-    t.reset();
-    t.metadata(metadata('After reconnect', base + 7_000));
-    expect(found).toHaveLength(1);
-  });
+  describe("a connection's first title (the item playing where its audio begins)", () => {
+    it('reports nothing when the audio shows no start: the item was under way', () => {
+      const { t, found } = tracker();
+      // Not even its title's time, as a change without a gap would get.
+      play(t, [['music', 8_000]], [['Under way', 400]]);
+      expect(found).toEqual([]);
+    });
 
-  it("finds a connection's first item when it started in the audio from before live", () => {
-    const found: StreamBoundary[] = [];
-    // The connection opens 5 s behind live.
-    const t = new BoundaryTracker(
-      (b) => found.push(b),
-      () => true,
-      () => ({ ms: 5_000, settled: true })
-    );
-    t.setDetection(true);
-    const base = 1_000_000;
-    // The item named at connect started 2.6 s into what is heard first.
-    const windows = audio(
-      [
-        ['music', 2_000],
-        ['zeros', 600],
-        ['music', 6_000],
-      ],
-      base
-    );
-    t.metadata(metadata('Started just before tune-in', base + 50));
-    for (const w of windows) t.sample(sample(w));
-    expect(found).toEqual([
-      {
-        title: 'Started just before tune-in',
-        titleAt: base + 50,
-        at: near(base + 2_600),
-        kind: 'gap',
-      },
-    ]);
-  });
-
-  it("a connection's first item starts at the last gap of its opening audio, told once that was heard", () => {
-    const found: StreamBoundary[] = [];
-    const t = new BoundaryTracker(
-      (b) => found.push(b),
-      () => true,
-      () => ({ ms: 5_000, settled: true })
-    );
-    t.setDetection(true);
-    const base = 1_000_000;
-    // A jingle started 1 s into what is heard first, the item named 3.4 s in.
-    const windows = audio(
-      [
-        ['music', 800],
-        ['zeros', 200],
-        ['music', 2_000],
-        ['zeros', 400],
-        ['music', 5_000],
-      ],
-      base
-    );
-    t.metadata(metadata('After a jingle', base + 50));
-    for (const w of windows) {
-      t.sample(sample(w));
-      // Not while a later gap may still come.
-      if (w.at < base + 4_800) expect(found).toEqual([]);
-    }
-    expect(found).toEqual([
-      {
-        title: 'After a jingle',
-        titleAt: base + 50,
-        at: near(base + 3_400),
-        kind: 'gap',
-      },
-    ]);
-  });
-
-  it('searches the opening audio as far as the lag grows while the burst arrives', () => {
-    const found: StreamBoundary[] = [];
-    // A slow link: 1.5 s behind live at the first audio, 5 s once all of the burst is in.
-    let lag = { ms: 1_500, settled: false };
-    const t = new BoundaryTracker(
-      (b) => found.push(b),
-      () => true,
-      () => lag
-    );
-    t.setDetection(true);
-    const base = 1_000_000;
-    const windows = audio(
-      [
-        ['music', 2_000],
-        ['zeros', 600],
-        ['music', 6_000],
-      ],
-      base
-    );
-    t.metadata(metadata('Started just before tune-in', base + 50));
-    for (const w of windows) {
-      if (w.at >= base + 1_000) lag = { ms: 5_000, settled: false };
-      if (w.at >= base + 4_000) lag = { ms: 5_000, settled: true };
-      t.sample(sample(w));
-    }
-    expect(found).toEqual([
-      {
-        title: 'Started just before tune-in',
-        titleAt: base + 50,
-        at: near(base + 2_600),
-        kind: 'gap',
-      },
-    ]);
-  });
-
-  it('an opening whose lag never settles is told when the next title is heard', () => {
-    const found: StreamBoundary[] = [];
-    const t = new BoundaryTracker(
-      (b) => found.push(b),
-      () => true,
-      () => ({ ms: 5_000, settled: false })
-    );
-    t.setDetection(true);
-    const base = 1_000_000;
-    const windows = audio(
-      [
-        ['music', 2_000],
-        ['zeros', 600],
-        ['music', 6_000],
-      ],
-      base
-    );
-    t.metadata(metadata('First', base + 50));
-    for (const w of windows) t.sample(sample(w));
-    expect(found).toEqual([]);
-    t.metadata(metadata('Next', base + 8_600));
-    expect(found).toEqual([
-      {
-        title: 'First',
-        titleAt: base + 50,
-        at: near(base + 2_600),
-        kind: 'gap',
-      },
-    ]);
-  });
-
-  it("the silence a connection's audio begins with is no gap (a decoder starting mid-stream)", () => {
-    const found: StreamBoundary[] = [];
-    const t = new BoundaryTracker(
-      (b) => found.push(b),
-      () => true,
-      () => ({ ms: 4_000, settled: true })
-    );
-    t.setDetection(true);
-    const base = 1_000_000;
-    // As an Android decoder opens an MP3 stream: 14 ms of zeros, then the
-    // music, its first windows timed a little apart while the output fills.
-    const windows = [
-      { at: base, duration: 14, points: new Array<number>(128).fill(0) },
-      ...audio([['music', 6_000]], base + 38),
-    ];
-    t.metadata(metadata('Playing for a while', base + 50));
-    for (const w of windows) t.sample(sample(w));
-    expect(found).toEqual([]);
-  });
-
-  it("reports nothing for a connection's first item that started before its opening audio", () => {
-    const found: StreamBoundary[] = [];
-    const t = new BoundaryTracker(
-      (b) => found.push(b),
-      () => true,
-      () => ({ ms: 5_000, settled: true })
-    );
-    t.setDetection(true);
-    const base = 1_000_000;
-    // A gap after the opening audio (past live) is not this item's start.
-    const windows = audio(
-      [
-        ['music', 6_000],
-        ['zeros', 400],
-        ['music', 2_000],
-      ],
-      base
-    );
-    t.metadata(metadata('Playing for a while', base + 50));
-    for (const w of windows) t.sample(sample(w));
-    expect(found).toEqual([]);
-  });
-
-  describe('after a reconnect (the title playing is not reported again)', () => {
-    const base = 1_000_000;
-    /** A tracker that heard 'Playing', then got a fresh connection at `base`, its lag read by `lag`. */
-    const reconnect = (lag: () => { ms: number; settled: boolean }) => {
-      const found: StreamBoundary[] = [];
-      const t = new BoundaryTracker(
-        (b) => found.push(b),
-        () => true,
-        lag
-      );
-      t.setDetection(true);
-      t.metadata(metadata('Playing', base - 60_000));
-      t.reconnected(base);
-      return { t, found };
-    };
-
-    it("searches the new connection's opening audio for the start of the item playing", () => {
-      const { t, found } = reconnect(() => ({ ms: 5_000, settled: true }));
-      const windows = audio(
+    it('is given a start heard before it: the item began as the connection opened', () => {
+      const { t, found } = tracker();
+      play(
+        t,
         [
-          ['music', 2_000],
-          ['zeros', 600],
+          ['music', 900],
+          ['zeros', 500],
           ['music', 6_000],
         ],
-        base
+        [['Just started', 2_000]]
       );
-      for (const w of windows) t.sample(sample(w));
       expect(found).toEqual([
         {
-          title: 'Playing',
-          titleAt: base,
-          at: near(base + 2_600),
+          title: 'Just started',
+          titleAt: base + 2_000,
+          at: near(base + 1_400),
           kind: 'gap',
         },
       ]);
     });
 
-    it('the next title is a change like any other, its start found around it', () => {
-      const { t, found } = reconnect(() => ({ ms: 3_000, settled: true }));
-      const windows = audio(
+    it('a start after it is left for the title that follows: it is that item’s', () => {
+      const { t, found } = tracker();
+      // 'Under way' ends at a gap 3.4 s in; the title of the item after it is heard late, 3.6 s in.
+      play(
+        t,
+        [
+          ['music', 3_000],
+          ['zeros', 400],
+          ['music', 8_000],
+        ],
+        [
+          ['Under way', 400],
+          ['Next', 3_600],
+        ]
+      );
+      const start = { at: near(base + 3_400), kind: 'gap' };
+      expect(found).toEqual([
+        { title: 'Under way', titleAt: base + 400, ...start },
+        { title: 'Next', titleAt: base + 3_600, ...start },
+      ]);
+    });
+
+    it('titles later in the audio a connection opens with are changes like any other', () => {
+      const { t, found } = tracker();
+      // As the 64 kbps mount opens: the item before, then a jingle and a song, each at its place.
+      play(
+        t,
+        [
+          ['music', 5_000],
+          ['zeros', 300],
+          ['music', 4_000],
+          ['zeros', 300],
+          ['music', 6_000],
+        ],
+        [
+          ['Before', 2_000],
+          ['Jingle', 5_000],
+          ['Song', 9_500],
+        ]
+      );
+      expect(found).toEqual([
+        {
+          title: 'Jingle',
+          titleAt: base + 5_000,
+          at: near(base + 5_300),
+          kind: 'gap',
+        },
+        {
+          title: 'Song',
+          titleAt: base + 9_500,
+          at: near(base + 9_600),
+          kind: 'gap',
+        },
+      ]);
+    });
+
+    it("the silence a connection's audio begins with is no start (a decoder starting mid-stream)", () => {
+      const { t, found } = tracker();
+      // As an Android decoder opens an MP3 stream: 14 ms of zeros, then the
+      // music, its first windows timed a little apart while the output fills.
+      const windows = [
+        { at: base, duration: 14, points: new Array<number>(128).fill(0) },
+        ...audio([['music', 6_000]], base + 38),
+      ];
+      t.metadata(metadata('Under way', base + 50));
+      for (const w of windows) t.sample(sample(w));
+      expect(found).toEqual([]);
+    });
+  });
+
+  describe('after a reconnect (the title playing is not reported again)', () => {
+    /** A tracker that heard 'Playing', then got a fresh connection. */
+    const reconnected = () => {
+      const made = tracker();
+      made.t.metadata(metadata('Playing', base - 60_000));
+      made.t.reconnected();
+      return made;
+    };
+
+    it('the next title keeps the start found around it', () => {
+      const { t, found } = reconnected();
+      play(
+        t,
         [
           ['music', 9_000],
           ['zeros', 400],
           ['music', 6_000],
         ],
-        base
+        [['Next', 9_000]]
       );
-      for (const w of windows) {
-        if (w.at >= base + 9_000 && w.at < base + 9_000 + WINDOW_MS)
-          t.metadata(metadata('Next', base + 9_000));
-        t.sample(sample(w));
-      }
       expect(found).toEqual([
         {
           title: 'Next',
@@ -491,63 +371,35 @@ describe('BoundaryTracker', () => {
       ]);
     });
 
-    it('a title heard after the opening audio is a change, though the lag has not settled', () => {
-      // 2 s behind live, and still unsettled when the next title is heard 3 s in.
-      const { t, found } = reconnect(() => ({ ms: 2_000, settled: false }));
-      const windows = audio(
-        [
-          ['music', 800],
-          ['zeros', 200],
-          ['music', 2_000],
-          ['zeros', 400],
-          ['music', 6_000],
-        ],
-        base
-      );
-      for (const w of windows) {
-        if (w.at >= base + 3_000 && w.at < base + 3_000 + WINDOW_MS)
-          t.metadata(metadata('Next', base + 3_000));
-        t.sample(sample(w));
-      }
-      // 'Playing' started in the opening audio; 'Next' at its own gap, not there.
-      expect(found).toEqual([
-        {
-          title: 'Playing',
-          titleAt: base,
-          at: near(base + 1_000),
-          kind: 'gap',
-        },
-        {
-          title: 'Next',
-          titleAt: base + 3_000,
-          at: near(base + 3_400),
-          kind: 'gap',
-        },
-      ]);
+    it('a different title is not placed at its own time: the item may have changed while away', () => {
+      const { t, found } = reconnected();
+      play(t, [['music', 8_000]], [['Changed meanwhile', 400]]);
+      expect(found).toEqual([]);
     });
 
-    it('a new title within the opening audio is the connection’s first: the item changed meanwhile', () => {
-      let lag = { ms: 5_000, settled: false };
-      const { t, found } = reconnect(() => lag);
-      // No gap in the opening audio: 'Changed meanwhile' started before it.
-      const windows = audio([['music', 8_000]], base);
-      for (const w of windows) {
-        if (w.at >= base + 400 && w.at < base + 400 + WINDOW_MS)
-          t.metadata(metadata('Changed meanwhile', base + 400));
-        if (w.at >= base + 4_000) lag = { ms: 5_000, settled: true };
-        t.sample(sample(w));
-      }
-      // Not placed at its title, as a change without a gap would be.
-      expect(found).toEqual([]);
+    it('audio from before the reconnect says nothing about what follows it', () => {
+      const made = tracker();
+      // A gap heard on the old connection, then the reconnect within the look-back of the next title.
+      play(
+        made.t,
+        [
+          ['music', 1_000],
+          ['zeros', 400],
+          ['music', 600],
+        ],
+        [['Playing', 100]]
+      );
+      made.found.length = 0;
+      made.t.reconnected();
+      for (const w of audio([['music', 6_000]], base + 2_100))
+        made.t.sample(sample(w));
+      made.t.metadata(metadata('Changed meanwhile', base + 2_500));
+      expect(made.found).toEqual([]);
     });
   });
 
   it('a repeated title is not a change', () => {
-    const t = new BoundaryTracker(
-      () => {},
-      () => true
-    );
-    t.setDetection(true);
+    const { t } = tracker();
     const finder = (t as unknown as { finder: BoundaryFinder }).finder;
     const title = jest.spyOn(finder, 'title');
     t.metadata(metadata('A', 1));

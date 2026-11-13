@@ -90,14 +90,15 @@ player.on('boundary', ({ title, at, kind }) => {
 It looks from 2.5 s before the title to 4 s after, and reports as soon as it
 sees the start, usually before it is heard, so an app can switch its display
 right on it. A start before the title (a title that came late) is reported
-when the title is heard. The first title of a connection names an item
-already playing: a connection opens with the seconds before live (the
-server's burst), so an item that started within them shows its gap in the
-audio heard first. Its start is the last gap in that audio (an earlier one
-starts the item before it), reported once those seconds have been heard; an
-item that started earlier is not reported. A reconnect opens a new connection
-the same way: its first seconds are searched for the start of the item still
-playing, and the title after it is a change like any other. It samples the audio while on (shared
+when the title is heard. A connection opens with the seconds before live (the
+server's burst), with their titles where they were, so its first title names
+the item playing where that audio begins: an item under way. It gets a
+`boundary` only if a start shows in the audio around it; without one nothing
+is reported, where a change would be given its title's time. A start found
+after that first title may be the next item's, so it is reported again for
+the title that follows. A reconnect opens a new connection the same way.
+
+It samples the audio while on (shared
 with [`setAudioSampling`](visualizer.md), whose points win), and the windows
 reach `audioSample` listeners too: an app can follow the audio it reads.
 

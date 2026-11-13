@@ -365,16 +365,7 @@ export class Player {
   private readonly boundaries = new BoundaryTracker(
     (boundary) => this.emit('boundary', boundary),
     (enabled, points) =>
-      !this.released && native().setAudioSampling(this.id, enabled, points),
-    () => {
-      const progress = this.released ? null : this.getProgress();
-      return progress?.liveOffset == null
-        ? null
-        : {
-            ms: progress.liveOffset * 1000,
-            settled: progress.liveOffsetSettled,
-          };
-    }
+      !this.released && native().setAudioSampling(this.id, enabled, points)
   );
   private readonly subtitles = new SubtitleLoader({
     sendCues: async (session, trackId, cues) => {
@@ -1083,7 +1074,7 @@ export class Player {
         });
         break;
       case 'discontinuity':
-        this.boundaries.reconnected(event.timestamp as number);
+        this.boundaries.reconnected();
         this.emit('discontinuity', {
           position: event.position as number,
           reason: event.reason === 'switch' ? 'switch' : 'reconnect',
