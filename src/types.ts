@@ -995,7 +995,10 @@ export interface AudioSample {
    * Delay drawing by this much to match what the listener hears.
    */
   outputLatency: number;
-  /** Epoch ms of the window's first sample: it is heard {@link outputLatency} later. */
+  /**
+   * Epoch ms the window is timed from: `timestamp + outputLatency * 1000` is
+   * when its first sample is heard, on every platform.
+   */
   timestamp: number;
 }
 

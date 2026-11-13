@@ -19,7 +19,7 @@ player.setAudioSampling({ enabled: false });
 | `level` | RMS loudness of the window, 0…1 |
 | `duration` | seconds of audio in the window (~23 ms) |
 | `outputLatency` | seconds until the window is heard; delay drawing by this much |
-| `timestamp` | epoch ms of the window's first sample; it is heard `outputLatency` later |
+| `timestamp` | epoch ms the window is timed from: its first sample is heard at `timestamp + outputLatency`, on every platform |
 
 Windows arrive at about 40 per second, on the JS thread. Turn sampling off while the visualizer is not on screen.
 

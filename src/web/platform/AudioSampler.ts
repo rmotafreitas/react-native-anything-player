@@ -226,8 +226,9 @@ export class AudioSampler {
 
 /**
  * Resamples one frame of samples to `points` values and measures its loudness.
- * The samples are the newest: they end now, so the window is timed from its
- * first sample, one window back (the time every platform gives).
+ * The samples are the newest: they end now, so the window is timed one window
+ * back, where its first sample is (`timestamp + outputLatency` is when that
+ * sample is heard, as on Android and iOS).
  */
 function toWindow(
   samples: Float32Array,

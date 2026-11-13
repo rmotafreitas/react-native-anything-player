@@ -133,6 +133,21 @@ describe('BoundaryFinder', () => {
     ]);
   });
 
+  it('a hole between two windows is not silence: a few quiet ms before it are no cut', () => {
+    const head = audio([['music', 3_000]]);
+    const end = head.at(-1)!.at + WINDOW_MS;
+    // 14 ms of zeros, then the next window timed 24 ms later (windows timed
+    // apart, as while an output fills): 38 ms by the clock, 14 ms of audio.
+    const windows = [
+      ...head,
+      { at: end, duration: 14, points: new Array<number>(128).fill(0) },
+      ...audio([['music', 6_000]], end + 38),
+    ];
+    expect(run(windows, [['Runs on', 2_800]])).toEqual([
+      { title: 'Runs on', kind: 'title', at: 2_800 },
+    ]);
+  });
+
   it("a jingle starts at its onset; the song after it at its own gap, not the jingle's start", () => {
     const w = audio([
       ['music', 2_000],
