@@ -192,35 +192,10 @@ export class BoundaryFinder {
     const pending = this.pending;
     if (!pending) return null;
     const to = pending.titleAt + LOOK_AHEAD_MS;
-    const after = this.previous + AFTER_PREVIOUS_MS;
     const over = final || (this.spans.at(-1)?.end ?? -Infinity) >= to;
-    let found =
-      pending.held ??
-      this.earliest(
-        Math.max(after, pending.titleAt - LOOK_BACK_MS),
-        Math.max(after, pending.titleAt - ONSET_LOOK_BACK_MS),
-        to
-      );
-    if (found === WAIT) return null;
-    // The start a connection's first title was given is this item's or that
-    // one's own. Silence falls only between items, so another start after it
-    // in this window settles it: that one is this item's, the earlier one the
-    // first's. Without another, this item's, once the window was heard.
-    const shared = pending.first ? null : this.candidate;
-    if (found && shared != null && Math.abs(found.at - shared) < 1) {
-      // Held while the window is heard on: the audio it is in is not kept that long.
-      pending.held = found;
-      const from = shared + AFTER_PREVIOUS_MS;
-      const later = this.earliest(
-        from,
-        Math.max(from, pending.titleAt - ONSET_LOOK_BACK_MS),
-        to
-      );
-      if (later === WAIT || (!later && !over)) return null;
-      // Superseded before its window was heard: nothing showed the shared
-      // start to be its own, so it keeps its title's time.
-      found = later ?? (final ? null : found);
-    }
+    const start = this.startOf(pending, to, over, final);
+    if (start === WAIT) return null;
+    let found = start;
     if (!found && over) {
       // A connection's first item with no start in its audio was under way.
       if (pending.first) {
@@ -246,6 +221,42 @@ export class BoundaryFinder {
     this.candidate = null;
     this.previous = found.at;
     return boundary;
+  }
+
+  /** The start the audio shows for `pending`, searched up to `to`: `WAIT` while it cannot be told yet, `null` for none. */
+  private startOf(
+    pending: NonNullable<BoundaryFinder['pending']>,
+    to: number,
+    over: boolean,
+    final: boolean
+  ): Pick<Boundary, 'at' | 'kind'> | typeof WAIT | null {
+    const after = this.previous + AFTER_PREVIOUS_MS;
+    const found =
+      pending.held ??
+      this.earliest(
+        Math.max(after, pending.titleAt - LOOK_BACK_MS),
+        Math.max(after, pending.titleAt - ONSET_LOOK_BACK_MS),
+        to
+      );
+    // The start a connection's first title was given is this item's or that
+    // one's own. Silence falls only between items, so another start after it
+    // in this window settles it: that one is this item's, the earlier one the
+    // first's. Without another, this item's, once the window was heard.
+    const shared = pending.first ? null : this.candidate;
+    if (!found || found === WAIT || shared == null) return found;
+    if (Math.abs(found.at - shared) >= 1) return found;
+    // Held while the window is heard on: the audio it is in is not kept that long.
+    pending.held = found;
+    const from = shared + AFTER_PREVIOUS_MS;
+    const later = this.earliest(
+      from,
+      Math.max(from, pending.titleAt - ONSET_LOOK_BACK_MS),
+      to
+    );
+    if (later === WAIT || (!later && !over)) return WAIT;
+    // Superseded before its window was heard: nothing showed the shared
+    // start to be its own, so it keeps its title's time.
+    return later ?? (final ? null : found);
   }
 
   /** The earliest start the audio shows in [from, to] (an onset, from `onsetFrom`), `WAIT` while one cannot be told yet. */
