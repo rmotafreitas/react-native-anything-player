@@ -367,8 +367,13 @@ export class Player {
     (enabled, points) =>
       !this.released && native().setAudioSampling(this.id, enabled, points),
     () => {
-      const offset = this.released ? null : this.getProgress().liveOffset;
-      return offset == null ? null : offset * 1000;
+      const progress = this.released ? null : this.getProgress();
+      return progress?.liveOffset == null
+        ? null
+        : {
+            ms: progress.liveOffset * 1000,
+            settled: progress.liveOffsetSettled,
+          };
     }
   );
   private readonly subtitles = new SubtitleLoader({

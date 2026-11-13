@@ -244,7 +244,7 @@ describe('BoundaryTracker', () => {
     const t = new BoundaryTracker(
       (b) => found.push(b),
       () => true,
-      () => 5_000
+      () => ({ ms: 5_000, settled: true })
     );
     t.setDetection(true);
     const base = 1_000_000;
@@ -269,12 +269,114 @@ describe('BoundaryTracker', () => {
     ]);
   });
 
+  it("a connection's first item starts at the last gap of its opening audio, told once that was heard", () => {
+    const found: StreamBoundary[] = [];
+    const t = new BoundaryTracker(
+      (b) => found.push(b),
+      () => true,
+      () => ({ ms: 5_000, settled: true })
+    );
+    t.setDetection(true);
+    const base = 1_000_000;
+    // A jingle started 1 s into what is heard first, the item named 3.4 s in.
+    const windows = audio(
+      [
+        ['music', 800],
+        ['zeros', 200],
+        ['music', 2_000],
+        ['zeros', 400],
+        ['music', 5_000],
+      ],
+      base
+    );
+    t.metadata(metadata('After a jingle', base + 50));
+    for (const w of windows) {
+      t.sample(sample(w));
+      // Not while a later gap may still come.
+      if (w.at < base + 4_800) expect(found).toEqual([]);
+    }
+    expect(found).toEqual([
+      {
+        title: 'After a jingle',
+        titleAt: base + 50,
+        at: near(base + 3_400),
+        kind: 'gap',
+      },
+    ]);
+  });
+
+  it('searches the opening audio as far as the lag grows while the burst arrives', () => {
+    const found: StreamBoundary[] = [];
+    // A slow link: 1.5 s behind live at the first audio, 5 s once all of the burst is in.
+    let lag = { ms: 1_500, settled: false };
+    const t = new BoundaryTracker(
+      (b) => found.push(b),
+      () => true,
+      () => lag
+    );
+    t.setDetection(true);
+    const base = 1_000_000;
+    const windows = audio(
+      [
+        ['music', 2_000],
+        ['zeros', 600],
+        ['music', 6_000],
+      ],
+      base
+    );
+    t.metadata(metadata('Started just before tune-in', base + 50));
+    for (const w of windows) {
+      if (w.at >= base + 1_000) lag = { ms: 5_000, settled: false };
+      if (w.at >= base + 4_000) lag = { ms: 5_000, settled: true };
+      t.sample(sample(w));
+    }
+    expect(found).toEqual([
+      {
+        title: 'Started just before tune-in',
+        titleAt: base + 50,
+        at: near(base + 2_600),
+        kind: 'gap',
+      },
+    ]);
+  });
+
+  it('an opening whose lag never settles is told when the next title is heard', () => {
+    const found: StreamBoundary[] = [];
+    const t = new BoundaryTracker(
+      (b) => found.push(b),
+      () => true,
+      () => ({ ms: 5_000, settled: false })
+    );
+    t.setDetection(true);
+    const base = 1_000_000;
+    const windows = audio(
+      [
+        ['music', 2_000],
+        ['zeros', 600],
+        ['music', 6_000],
+      ],
+      base
+    );
+    t.metadata(metadata('First', base + 50));
+    for (const w of windows) t.sample(sample(w));
+    expect(found).toEqual([]);
+    t.metadata(metadata('Next', base + 8_600));
+    expect(found).toEqual([
+      {
+        title: 'First',
+        titleAt: base + 50,
+        at: near(base + 2_600),
+        kind: 'gap',
+      },
+    ]);
+  });
+
   it("reports nothing for a connection's first item that started before its opening audio", () => {
     const found: StreamBoundary[] = [];
     const t = new BoundaryTracker(
       (b) => found.push(b),
       () => true,
-      () => 5_000
+      () => ({ ms: 5_000, settled: true })
     );
     t.setDetection(true);
     const base = 1_000_000;

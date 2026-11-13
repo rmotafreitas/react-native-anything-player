@@ -18,6 +18,11 @@
 // earliest, not the best: a short jingle's onset comes before the gap that
 // starts the song after it. A title the audio does not show (music running
 // straight on) is its own boundary once the search is over.
+//
+// A connection's first title names an item already playing. The connection
+// opens with the audio from before live: the item started at the last gap in
+// it (an earlier one starts the item before, a jingle), known once that audio
+// has been heard through.
 
 import type { StreamBoundary as Boundary } from '../types';
 
@@ -77,6 +82,16 @@ interface Span {
   db: number;
 }
 
+/** The search of a connection's opening audio, heard from `from` to `to`. */
+interface Opening {
+  from: number;
+  to: number;
+  /** `to` may still move later: the lag is not settled. */
+  growing: boolean;
+  /** The last gap end found so far. */
+  last: number | null;
+}
+
 const powerDb = (
   points: ArrayLike<number>,
   from: number,
@@ -92,8 +107,8 @@ export class BoundaryFinder {
   private pending: {
     title: string;
     titleAt: number;
-    /** A connection's first title: only a gap within [from, to] (the audio before live), else nothing. */
-    opening?: { from: number; to: number };
+    /** A connection's first title: only the last gap within [from, to] (the audio before live), else nothing. */
+    opening?: Opening;
   } | null = null;
   /** The last boundary reported: the next item cannot start before it. */
   private previous = -Infinity;
@@ -109,17 +124,34 @@ export class BoundaryFinder {
    * A connection's first title, heard at `titleAt`, names an item already
    * playing. A connection opens with the audio from before live, heard from
    * `from` to `to`: an item that started within it shows its gap there, and
-   * that is its boundary. Otherwise it started earlier and nothing is reported.
+   * the last one is its boundary, reported once the audio up to `to` was
+   * heard. Otherwise it started earlier and nothing is reported. `growing`:
+   * `to` is not final yet (the lag is still being measured), see
+   * {@link openingEnds}.
    */
   opening(
     title: string,
     titleAt: number,
     from: number,
-    to: number
+    to: number,
+    growing = false
   ): Boundary | null {
     const previous = this.pending ? this.settle(true) : null;
-    this.pending = { title, titleAt, opening: { from, to } };
+    this.pending = {
+      title,
+      titleAt,
+      opening: { from, to, growing, last: null },
+    };
     return previous ?? this.settle(false);
+  }
+
+  /** The opening audio is now known to end at `to` (it only grows while the lag is measured). */
+  openingEnds(to: number, growing: boolean): Boundary | null {
+    const opening = this.pending?.opening;
+    if (!opening) return null;
+    opening.to = Math.max(opening.to, to);
+    opening.growing = growing;
+    return this.settle(false);
   }
 
   /**
@@ -168,36 +200,66 @@ export class BoundaryFinder {
   private settle(final: boolean): Boundary | null {
     const pending = this.pending;
     if (!pending) return null;
-    const opening = pending.opening;
-    const to = opening?.to ?? pending.titleAt + LOOK_AHEAD_MS;
+    if (pending.opening) return this.settleOpening(pending.opening, final);
+    const to = pending.titleAt + LOOK_AHEAD_MS;
     const after = this.previous + AFTER_PREVIOUS_MS;
-    const from =
-      opening?.from ?? Math.max(after, pending.titleAt - LOOK_BACK_MS);
+    const from = Math.max(after, pending.titleAt - LOOK_BACK_MS);
     const gap = this.gapEnd(from, to);
     const cut = this.cut(from, to);
     if (gap === WAIT || cut === WAIT) return null;
-    // An opening reports a gap or nothing: sound rising in the audio from
-    // before live could be anything in the song.
-    const onset = opening
-      ? null
-      : this.onset(Math.max(after, pending.titleAt - ONSET_LOOK_BACK_MS), to);
+    const onset = this.onset(
+      Math.max(after, pending.titleAt - ONSET_LOOK_BACK_MS),
+      to
+    );
     const candidates: Array<Pick<Boundary, 'at' | 'kind'>> = [];
     if (gap != null) candidates.push({ at: gap, kind: 'gap' });
     if (cut != null) candidates.push({ at: cut, kind: 'gap' });
     if (onset != null) candidates.push({ at: onset, kind: 'onset' });
     let found = candidates.sort((a, b) => a.at - b.at)[0] ?? null;
     const heardUpTo = this.spans.at(-1)?.end ?? -Infinity;
-    if (!found && (final || heardUpTo >= to)) {
-      if (opening) {
-        this.pending = null;
-        return null;
-      }
+    if (!found && (final || heardUpTo >= to))
       found = { at: pending.titleAt, kind: 'title' };
-    }
     if (!found) return null;
     this.pending = null;
     this.previous = found.at;
     return { title: pending.title, titleAt: pending.titleAt, ...found };
+  }
+
+  /**
+   * The pending opening's boundary: the last gap that ends in its audio, once
+   * that audio was heard through (or `final`). A gap or nothing: sound rising
+   * in the audio from before live could be anything in the song.
+   */
+  private settleOpening(opening: Opening, final: boolean): Boundary | null {
+    const pending = this.pending!;
+    let next = this.nextOpeningGap(opening);
+    while (typeof next === 'number') {
+      opening.last = next;
+      next = this.nextOpeningGap(opening);
+    }
+    if (next === WAIT && !final) return null;
+    const heardUpTo = this.spans.at(-1)?.end ?? -Infinity;
+    if (!final && (opening.growing || heardUpTo < opening.to)) return null;
+    this.pending = null;
+    if (opening.last == null) return null;
+    this.previous = opening.last;
+    return {
+      title: pending.title,
+      titleAt: pending.titleAt,
+      at: opening.last,
+      kind: 'gap',
+    };
+  }
+
+  /** The first gap end in an opening's audio after the last one found there. */
+  private nextOpeningGap(opening: Opening): Search {
+    const from =
+      opening.last == null ? opening.from : opening.last + AFTER_PREVIOUS_MS;
+    const gap = this.gapEnd(from, opening.to);
+    const cut = this.cut(from, opening.to);
+    if (gap === WAIT || cut === WAIT) return WAIT;
+    if (gap == null && cut == null) return null;
+    return Math.min(gap ?? Infinity, cut ?? Infinity);
   }
 
   /**
