@@ -358,3 +358,60 @@ export class IcyDeinterleaver {
     return i + take;
   }
 }
+
+const ICY_MARKER = Array.from("StreamTitle='", (c) => c.charCodeAt(0));
+
+const startsWithAt = (
+  bytes: Uint8Array,
+  at: number,
+  marker: readonly number[]
+): boolean => marker.every((code, k) => bytes[at + k] === code);
+
+/** Whether `block` reads as ICY metadata: fields ending in `';`, then NUL padding only. */
+function isIcyBlock(block: Uint8Array): boolean {
+  let end = block.length;
+  while (end > 0 && block[end - 1] === 0) end--;
+  if (end < ICY_MARKER.length + 2) return false;
+  if (block[end - 1] !== 0x3b || block[end - 2] !== 0x27) return false;
+  return !block.subarray(0, end).includes(0);
+}
+
+/**
+ * The metadata interval of an ICY body whose `icy-metaint` header cannot be
+ * read (a cross-origin server that does not expose it), from the body's first
+ * bytes: a server sends the title with a connection's first block, so the
+ * first `StreamTitle='` sits one length byte after `metaint` audio bytes.
+ *
+ * Returns the interval once a block checks out (its length byte, its fields,
+ * its padding, and the next block's length byte when the bytes reach it),
+ * `'more'` while the bytes cannot tell yet, and `null` when they show a
+ * title that is no such block (not an ICY body laid out this way).
+ */
+export function findIcyInterval(bytes: Uint8Array): number | 'more' | null {
+  for (let at = 2; at + ICY_MARKER.length <= bytes.length; at++) {
+    const verdict = startsWithAt(bytes, at, ICY_MARKER)
+      ? icyIntervalAt(bytes, at)
+      : undefined;
+    if (verdict !== undefined) return verdict;
+  }
+  return 'more';
+}
+
+/** {@link findIcyInterval} for a `StreamTitle='` at `at`; `undefined` when it is no block's start (the same text inside the audio). */
+function icyIntervalAt(
+  bytes: Uint8Array,
+  at: number
+): number | 'more' | null | undefined {
+  const length = bytes[at - 1]! * 16;
+  // Not after a length byte.
+  if (length === 0) return undefined;
+  const end = at + length;
+  if (end > bytes.length) return 'more';
+  if (!isIcyBlock(bytes.subarray(at, end))) return undefined;
+  const metaint = at - 1;
+  // The next block, when it is there: empty, or a title again.
+  const next = end + metaint;
+  if (next >= bytes.length || bytes[next] === 0) return metaint;
+  if (next + 1 + ICY_MARKER.length > bytes.length) return 'more';
+  return startsWithAt(bytes, next + 1, ICY_MARKER) ? metaint : null;
+}

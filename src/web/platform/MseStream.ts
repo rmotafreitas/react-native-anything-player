@@ -18,6 +18,7 @@ import type { PlayerError } from '../../errors';
 import {
   IcyDeinterleaver,
   IcyParser,
+  findIcyInterval,
   type StreamMetadata,
   type StreamTitleFormat,
 } from '../engine/StreamMetadata';
@@ -190,8 +191,22 @@ function typeOfUri(uri: string): string | null {
 
 /** Drops a response body we will not read. */
 export function discard(response: ResponseLike): void {
-  response.body?.getReader().cancel().catch(ignore);
+  try {
+    response.body?.getReader().cancel().catch(ignore);
+  } catch {
+    // Being read already: its reader ends it.
+  }
 }
+
+/**
+ * How much of a body is read (bytes, ms) to find an ICY interval its
+ * cross-origin server does not expose: intervals up to 32 768 bytes (servers
+ * use 8 192 or 16 000) and their block. A server's burst brings that at
+ * once; a stream that carries no metadata costs this wait once, on its first
+ * connection.
+ */
+const SNIFF_BYTES = 37_000;
+const SNIFF_MS = 1_500;
 
 export class MseStream {
   private mediaSource: MediaSourceLike | null = null;
@@ -210,8 +225,10 @@ export class MseStream {
   private codec: AudioCodec | null = null;
   /** The next audio is a connection's first. */
   private fresh = true;
-  /** Ask for ICY metadata (dropped when a cross-origin server hides `icy-metaint`). */
+  /** Ask for ICY metadata (dropped when a cross-origin server hides `icy-metaint` and the body does not show it). */
   private wantIcy = true;
+  /** The ICY interval found in the body of a server that hides `icy-metaint`. */
+  private hiddenMetaint: number | null = null;
   /** Audio bytes appended over all connections. */
   private totalBytes = 0;
   /** Byte → media time after the last two appends (metadata timing). */
@@ -321,24 +338,28 @@ export class MseStream {
     });
   }
 
-  private async run(first: boolean): Promise<void> {
+  private async run(first: boolean, accepted = false): Promise<void> {
     const response = await this.request(first);
-    if (!response || !(await this.accept(response, first))) return;
+    if (!response) return;
+    if (!accepted && !(await this.accept(response, first))) return;
+    const reader = response.body!.getReader();
+    const icy = await this.intervalOf(response, reader);
+    if (icy === null) return;
+    if (icy === 'again') {
+      await this.run(first, true);
+      return;
+    }
     this.listener.onConnected();
     this.announceStation(response);
-    const metaint = Number.parseInt(
-      response.headers.get('icy-metaint') ?? '0',
-      10
-    );
-    const reader = response.body!.getReader();
     this.fresh = true;
     const base = this.totalBytes;
     const openedAt = monotonicNow();
-    const failure = await this.pump(
-      reader,
-      new IcyDeinterleaver(Number.isFinite(metaint) ? metaint : 0),
-      base
-    );
+    const deinterleaver = new IcyDeinterleaver(icy.metaint);
+    // What was read to find a hidden interval comes first.
+    const failure =
+      icy.head && !(await this.deliver(icy.head, deinterleaver, base))
+        ? null
+        : await this.pump(reader, deinterleaver, base);
     if (!this.closed && !this.halted) {
       this.connectionEnded(first, {
         bytes: this.totalBytes - base,
@@ -346,6 +367,43 @@ export class MseStream {
         failure,
       });
     }
+  }
+
+  /**
+   * The response's ICY interval (0: none), with what was read of the body to
+   * find one a cross-origin server hides. `'again'`: the body does not show
+   * it, and is asked for again without metadata; `null`: closed meanwhile.
+   */
+  private async intervalOf(
+    response: ResponseLike,
+    reader: ReaderLike
+  ): Promise<{ metaint: number; head: Uint8Array | null } | 'again' | null> {
+    const header = Number.parseInt(
+      response.headers.get('icy-metaint') ?? '0',
+      10
+    );
+    if (!this.mayHideIcy(response))
+      return { metaint: Number.isFinite(header) ? header : 0, head: null };
+    // The server may be interleaving metadata behind a header CORS hides:
+    // read as audio, the body would be corrupt. Its first bytes show the
+    // interval.
+    if (this.hiddenMetaint != null)
+      return { metaint: this.hiddenMetaint, head: null };
+    const found = await this.sniff(reader);
+    if (this.closed) return null;
+    if (found) {
+      this.hiddenMetaint = found.metaint;
+      this.listener.onNote('icy interval found', {
+        metaint: String(found.metaint),
+      });
+      return found;
+    }
+    reader.cancel().catch(ignore);
+    this.wantIcy = false;
+    this.listener.onNote('icy unavailable', {
+      reason: 'icy-metaint not exposed (CORS)',
+    });
+    return 'again';
   }
 
   /** Fetches the stream; `null` when it failed (already reported) or was closed. */
@@ -377,17 +435,51 @@ export class MseStream {
       else this.endStream(`splice got HTTP ${response.status}`);
       return null;
     }
-    if (this.mayHideIcy(response)) {
-      // The server may be interleaving metadata behind a header CORS hides:
-      // the body would be corrupt. Ask again without metadata.
-      discard(response);
-      this.wantIcy = false;
-      this.listener.onNote('icy unavailable', {
-        reason: 'icy-metaint not exposed (CORS)',
-      });
-      return this.request(first);
-    }
     return response;
+  }
+
+  /**
+   * Reads a body's first bytes for its ICY interval (see `findIcyInterval`);
+   * `null` when they do not show one within `SNIFF_BYTES` / `SNIFF_MS`.
+   */
+  private async sniff(
+    reader: ReaderLike
+  ): Promise<{ metaint: number; head: Uint8Array } | null> {
+    const until = monotonicNow() + SNIFF_MS;
+    let head = new Uint8Array(0);
+    while (head.length < SNIFF_BYTES) {
+      const chunk = await this.readWithin(reader, until - monotonicNow());
+      if (this.closed || !chunk?.value || chunk.done) return null;
+      const joined = new Uint8Array(head.length + chunk.value.length);
+      joined.set(head);
+      joined.set(chunk.value, head.length);
+      head = joined;
+      const metaint = findIcyInterval(head);
+      if (metaint === null) return null;
+      if (metaint !== 'more') return { metaint, head };
+    }
+    return null;
+  }
+
+  /** The reader's next chunk, or `null` when it does not come within `ms` or fails. */
+  private readWithin(
+    reader: ReaderLike,
+    ms: number
+  ): Promise<{ done: boolean; value?: Uint8Array } | null> {
+    if (ms <= 0) return Promise.resolve(null);
+    return new Promise((resolve) => {
+      const timer = browser().setTimeout(() => resolve(null), ms);
+      reader.read().then(
+        (chunk) => {
+          browser().clearTimeout(timer);
+          resolve(chunk);
+        },
+        () => {
+          browser().clearTimeout(timer);
+          resolve(null);
+        }
+      );
+    });
   }
 
   /** Whether a cross-origin response may interleave ICY metadata behind a header CORS hides. */

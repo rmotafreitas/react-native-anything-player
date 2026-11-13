@@ -169,6 +169,8 @@ describe('choosing the type', () => {
       'content-type': 'audio/mpeg',
     });
     expect(buffer().type).toBe('audio/mpeg');
+    // Cross-origin with no `icy-metaint` to read: the body shows no interval, and is asked for again.
+    await jest.advanceTimersByTimeAsync(1_500);
     const audio = mp3Frames(3);
     body().push(audio);
     await flush();
@@ -188,6 +190,8 @@ describe('choosing the type', () => {
     const { id, element, body } = await openStream({
       'content-type': 'audio/mpeg',
     });
+    // Cross-origin with no `icy-metaint` to read: the body shows no interval, and is asked for again.
+    await jest.advanceTimersByTimeAsync(1_500);
     body().push(new Uint8Array(40_000).fill(7));
     await flush();
     expect(diagnostics(id)).not.toContain('plain playback');

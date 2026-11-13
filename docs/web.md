@@ -110,7 +110,7 @@ Access-Control-Allow-Headers: Icy-MetaData
 Access-Control-Expose-Headers: icy-metaint, icy-name, icy-genre
 ```
 
-If `icy-metaint` is not exposed, RNAP asks again without ICY (a hidden metadata interval would corrupt the audio): the stream plays without titles. Set `live: false` on file sources served from the same host as a stream, to skip the probe request.
+If `icy-metaint` is not exposed, RNAP reads the interval from the body: a server sends the title with a connection's first block, so the first `StreamTitle='` sits one length byte after the interval, and the titles work as they do with the header. Only when the first 37 KB (or 1.5 s) of the body show no such block does it ask again without ICY (a hidden interval would corrupt the audio), and the stream plays without titles. Exposing the header saves that reading. Set `live: false` on file sources served from the same host as a stream, to skip the probe request.
 
 ### Browser support
 

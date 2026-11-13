@@ -8,6 +8,7 @@ import { Backoff } from '../engine/RecoveryPolicy';
 import {
   IcyDeinterleaver,
   IcyParser,
+  findIcyInterval,
   type IcyBlock,
   type StreamTitleFormat,
 } from '../engine/StreamMetadata';
@@ -164,5 +165,67 @@ describe('IcyDeinterleaver', () => {
     const data = Uint8Array.of(1, 2, 3);
     expect(d.consume(data)).toEqual({ audio: data, blocks: [] });
     expect(d.audioBytes).toBe(3);
+  });
+});
+
+describe('findIcyInterval (a hidden icy-metaint, read from the body)', () => {
+  const block = (text: string): number[] => {
+    const payload = [...new TextEncoder().encode(text)];
+    const blocks = Math.ceil(payload.length / 16);
+    while (payload.length < blocks * 16) payload.push(0);
+    return [blocks, ...payload];
+  };
+  const audio = (n: number, fill = 1) => Array.from({ length: n }, () => fill);
+  const TITLE = "StreamTitle='Artist - Song';";
+
+  it('is the audio before the first title block', () => {
+    const bytes = Uint8Array.from([...audio(8_192), ...block(TITLE)]);
+    expect(findIcyInterval(bytes)).toBe(8_192);
+  });
+
+  it('takes more fields in the block, and an empty block after it', () => {
+    const bytes = Uint8Array.from([
+      ...audio(16_000),
+      ...block(`${TITLE}StreamUrl='https://radio.example';`),
+      ...audio(16_000),
+      0,
+      ...audio(50),
+    ]);
+    expect(findIcyInterval(bytes)).toBe(16_000);
+  });
+
+  it('waits for the rest of a block cut by the chunk, and for one at all', () => {
+    const whole = [...audio(1_000), ...block(TITLE)];
+    expect(findIcyInterval(Uint8Array.from(audio(1_000)))).toBe('more');
+    expect(findIcyInterval(Uint8Array.from(whole.slice(0, 1_010)))).toBe(
+      'more'
+    );
+    expect(findIcyInterval(Uint8Array.from(whole))).toBe(1_000);
+  });
+
+  it('is not fooled by the same text inside the audio', () => {
+    const text = [...new TextEncoder().encode(TITLE)];
+    // After a zero byte: no length. After another byte: no padding where the block would end.
+    const bytes = Uint8Array.from([
+      ...audio(100),
+      0,
+      ...text,
+      ...audio(100, 7),
+      2,
+      ...text,
+      ...audio(4_000, 7),
+    ]);
+    expect(findIcyInterval(bytes)).toBe('more');
+  });
+
+  it('refuses a body whose next block is not where the interval puts it', () => {
+    const bytes = Uint8Array.from([
+      ...audio(1_000),
+      ...block(TITLE),
+      ...audio(1_000),
+      9,
+      ...audio(200, 5),
+    ]);
+    expect(findIcyInterval(bytes)).toBeNull();
   });
 });

@@ -701,16 +701,52 @@ describe('live streams through MSE', () => {
     });
   });
 
-  it('asks again without ICY when a cross-origin server hides icy-metaint', async () => {
-    world.fetch.respond({ headers: { 'content-type': 'audio/mpeg' } });
-    const { id } = await openStream({
-      headers: { 'content-type': 'audio/mpeg' },
+  describe('a cross-origin server that hides icy-metaint', () => {
+    const HIDDEN = { headers: { 'content-type': 'audio/mpeg' } };
+
+    it('finds the interval in the body and keeps the titles, on the same connection', async () => {
+      const { id, element, body } = await openStream(HIDDEN);
+      // As a burst brings it: the first block and the one after it.
+      body().push(icyChunk(16_000, 'Artist - Song'));
+      body().push(icyChunk(16_000, null));
+      await flush();
+      expect(world.fetch.requests).toHaveLength(1);
+      expect(diagnostics(id)).toContain('icy interval found');
+      // The audio goes on without the metadata bytes in it.
+      const appended = element.mediaSource!.buffers[0]!.appended;
+      expect(appended.reduce((sum, part) => sum + part.length, 0)).toBe(32_000);
+      element.becomeReady(Number.POSITIVE_INFINITY);
+      element.startPlaying();
+      element.currentTime = 1;
+      await jest.advanceTimersByTimeAsync(1_100);
+      expect(ofType('metadata').pop()).toMatchObject({
+        metadata: { title: 'Song', artist: 'Artist' },
+      });
     });
-    expect(world.fetch.requests).toHaveLength(2);
-    expect(world.fetch.requests[0]!.headers['Icy-MetaData']).toBe('1');
-    expect(world.fetch.requests[1]!.headers['Icy-MetaData']).toBeUndefined();
-    expect(world.fetch.requests[0]!.body.cancelled).toBe(true);
-    expect(diagnostics(id)).toContain('icy unavailable');
+
+    it('asks again without ICY when the body shows no interval', async () => {
+      const { id } = await openStream(HIDDEN);
+      world.fetch.respond(HIDDEN);
+      // Plain audio, past what is read to look for one.
+      world.fetch.requests[0]!.body.push(new Uint8Array(37_000).fill(1));
+      await flush();
+      expect(world.fetch.requests).toHaveLength(2);
+      expect(world.fetch.requests[0]!.headers['Icy-MetaData']).toBe('1');
+      expect(world.fetch.requests[1]!.headers['Icy-MetaData']).toBeUndefined();
+      expect(world.fetch.requests[0]!.body.cancelled).toBe(true);
+      expect(diagnostics(id)).toContain('icy unavailable');
+    });
+
+    it('does not wait on a body that is slow to show one', async () => {
+      await openStream(HIDDEN);
+      world.fetch.respond(HIDDEN);
+      world.fetch.requests[0]!.body.push(new Uint8Array(4_000).fill(1));
+      await jest.advanceTimersByTimeAsync(1_400);
+      expect(world.fetch.requests).toHaveLength(1);
+      await jest.advanceTimersByTimeAsync(200);
+      expect(world.fetch.requests).toHaveLength(2);
+      expect(world.fetch.requests[1]!.headers['Icy-MetaData']).toBeUndefined();
+    });
   });
 
   it('trusts a same-origin response without icy-metaint', async () => {
