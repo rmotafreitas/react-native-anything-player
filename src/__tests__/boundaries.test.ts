@@ -18,11 +18,13 @@ const AMPLITUDE: Record<Kind, number> = {
   tail: 10 ** (-104 / 20),
 };
 
-/** Windows for consecutive stretches `[kind, ms]`, from `base` (epoch ms). */
+/** Windows of `frames` (44.1 kHz) for consecutive stretches `[kind, ms]`, from `base` (epoch ms). */
 function audio(
   stretches: Array<[Kind, number]>,
-  base = 1_000_000
+  base = 1_000_000,
+  frames = 4096
 ): BoundaryWindow[] {
+  const windowMs = (frames / 44100) * 1000;
   const edges: Array<{ until: number; kind: Kind }> = [];
   let t = 0;
   for (const [kind, ms] of stretches) edges.push({ until: (t += ms), kind });
@@ -33,13 +35,13 @@ function audio(
   let seed = 7;
   const noise = () =>
     ((seed = (seed * 16807) % 2147483647) / 2147483647) * 2 - 1;
-  for (let at = 0; at < total; at += WINDOW_MS) {
+  for (let at = 0; at < total; at += windowMs) {
     const points: number[] = [];
     for (let i = 0; i < POINTS; i++) {
-      const ms = at + (i / POINTS) * WINDOW_MS;
+      const ms = at + (i / POINTS) * windowMs;
       points.push(AMPLITUDE[kindAt(ms)] * Math.SQRT2 * noise());
     }
-    windows.push({ at: base + at, duration: WINDOW_MS, points });
+    windows.push({ at: base + at, duration: windowMs, points });
   }
   return windows;
 }
@@ -205,6 +207,61 @@ describe('BoundaryFinder', () => {
     ).toEqual([
       { title: 'A', kind: 'title', at: 1_000 },
       { title: 'B', kind: 'title', at: 2_000 },
+    ]);
+  });
+});
+
+// Android cuts the decoded audio into the visualizer's fixed windows, 1024
+// frames (~23 ms) of the same 128 points: the same starts are found in them.
+describe('BoundaryFinder on 1024-frame windows', () => {
+  const at1024 = (stretches: Array<[Kind, number]>) =>
+    audio(stretches, undefined, 1024);
+  it.each<[string, Array<[Kind, number]>, number, number]>([
+    [
+      'a title sent early',
+      [
+        ['music', 3_000],
+        ['zeros', 600],
+        ['dither', 700],
+        ['music', 3_000],
+      ],
+      2_100,
+      3_600,
+    ],
+    [
+      'a title sent late',
+      [
+        ['music', 3_000],
+        ['zeros', 300],
+        ['music', 4_000],
+      ],
+      4_600,
+      3_300,
+    ],
+    [
+      'an HE-AAC gap',
+      [
+        ['music', 3_000],
+        ['aacGap', 500],
+        ['dither', 800],
+        ['music', 3_000],
+      ],
+      3_200,
+      3_500,
+    ],
+    [
+      'a short smeared gap',
+      [
+        ['music', 3_000],
+        ['smeared', 60],
+        ['music', 4_000],
+      ],
+      4_000,
+      3_060,
+    ],
+  ])('%s', (_name, stretches, title, start) => {
+    expect(run(at1024(stretches), [['Song', title]])).toEqual([
+      { title: 'Song', kind: 'gap', at: near(start) },
     ]);
   });
 });
