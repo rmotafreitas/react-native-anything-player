@@ -16,16 +16,18 @@ import androidx.media3.exoplayer.audio.TeeAudioProcessor
 import androidx.media3.exoplayer.mediacodec.DefaultMediaCodecAdapterFactory
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.metadata.MetadataRenderer
+import com.anythingplayer.core.WindowCutter
+import com.anythingplayer.core.WindowTimeline
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.sqrt
 
-/** Ceiling on the event rate (the tap fires per decoded buffer, ~40–100 Hz). */
+/** Ceiling on how often windows are emitted: the tap fires per decoded buffer (~20–100 Hz), windows come ~43 per second. */
 private const val MIN_EMIT_INTERVAL_NANOS = 8_000_000L
 private const val MAX_OUTPUT_LATENCY_SECONDS = 0.6
 private const val LATENCY_SMOOTHING = 0.85
 
-/** One decoded window, downmixed to mono and resampled to the requested size. */
+/** One decoded window (~23 ms: 1024 frames at 44.1 kHz), downmixed to mono and resampled to the requested size. */
 internal class AudioSampleWindow(
   val waveform: FloatArray,
   val level: Double,
@@ -49,9 +51,14 @@ internal class AudioSampleWindow(
  * mixer and a Bluetooth route). Until the sink reports a position: the
  * `AudioTrack` buffer, smoothed, or a hardware-buffer estimate.
  *
- * Buffers that come too fast to emit one by one (the decoder filling the
- * output after a connect or a seek) are merged into the next window, not
- * dropped: whoever reads the audio (boundary detection) sees all of it.
+ * The decoded audio is cut into windows of one fixed length ([WindowCutter]:
+ * ~23 ms, as on iOS and the web), not one window per decoder buffer, whose
+ * size depends on the codec (an HE-AAC buffer is 46 ms). When buffers come
+ * too fast to emit one by one (the decoder filling the output after a
+ * connect or a seek), their windows wait and go out together with the next
+ * ones, timed end to end ([WindowTimeline]), so whoever reads the audio
+ * (boundary detection) sees all of it; only a flush, a format change or a
+ * jump drops the part of a window still waiting.
  */
 @OptIn(UnstableApi::class)
 internal class AudioSampler(context: Context) : TeeAudioProcessor.AudioBufferSink {
@@ -67,11 +74,14 @@ internal class AudioSampler(context: Context) : TeeAudioProcessor.AudioBufferSin
   private var encoding = C.ENCODING_PCM_16BIT
   private var lastEmitNanos = 0L
   private var smoothedLatency = -1.0
-  /** Mono samples not emitted yet, and the presentation time (µs) of the first. */
+  /** The buffer being handled, downmixed to mono. */
   private var mono = FloatArray(4096)
-  private var pendingFrames = 0
-  private var pendingSumSquares = 0.0
-  private var pendingStartUs = C.TIME_UNSET
+  /** Mono audio not emitted yet, cut into the visualizer's windows. */
+  private val cutter = WindowCutter()
+  /** Whether the last buffer was sampled: audio waiting from before a pause in sampling is stale. */
+  private var sampling = false
+  /** When the emitted windows are heard, end to end. */
+  private val timeline = WindowTimeline()
   /** The presentation time (µs) of the buffer the sink is handling now (the one this tee sees). */
   @Volatile private var bufferPresentationUs = C.TIME_UNSET
 
@@ -130,14 +140,21 @@ internal class AudioSampler(context: Context) : TeeAudioProcessor.AudioBufferSin
     this.encoding = encoding
     lastEmitNanos = 0L
     smoothedLatency = -1.0
-    pendingFrames = 0
-    pendingSumSquares = 0.0
-    pendingStartUs = C.TIME_UNSET
+    cutter.reset(sampleRate)
+    timeline.reset()
   }
 
   override fun handleBuffer(buffer: ByteBuffer) {
     val callback = onWindow
-    if (!enabled || callback == null) return
+    if (!enabled || callback == null) {
+      sampling = false
+      return
+    }
+    if (!sampling) {
+      cutter.reset(sampleRate)
+      timeline.reset()
+      sampling = true
+    }
     val bytesPerSample =
       when (encoding) {
         C.ENCODING_PCM_16BIT -> 2
@@ -148,8 +165,7 @@ internal class AudioSampler(context: Context) : TeeAudioProcessor.AudioBufferSin
     val pcm = buffer.duplicate().order(ByteOrder.LITTLE_ENDIAN)
     val frames = pcm.remaining() / (bytesPerSample * channels)
     if (frames <= 0) return
-    if (pendingFrames == 0) pendingStartUs = bufferPresentationUs
-    if (mono.size < pendingFrames + frames) mono = mono.copyOf(maxOf(mono.size * 2, pendingFrames + frames))
+    if (mono.size < frames) mono = FloatArray(maxOf(mono.size * 2, frames))
     for (f in 0 until frames) {
       var sum = 0f
       for (c in 0 until channels) {
@@ -160,27 +176,33 @@ internal class AudioSampler(context: Context) : TeeAudioProcessor.AudioBufferSin
             else -> ((pcm.get().toInt() and 0xFF) - 128) / 128f
           }
       }
-      val v = sum / channels
-      mono[pendingFrames + f] = v
-      pendingSumSquares += v * v
+      mono[f] = sum / channels
     }
-    pendingFrames += frames
+    cutter.append(mono, frames, bufferPresentationUs)
     val now = System.nanoTime()
-    // Too soon after the last window (the decoder filling the output): kept for the next.
+    // Too soon after the last windows (the decoder filling the output): kept for the next.
     if (now - lastEmitNanos < MIN_EMIT_INTERVAL_NANOS) return
+    val windows = cutter.cut()
+    if (windows.isEmpty()) return
     lastEmitNanos = now
-    val count = pendingFrames
-    callback(
-      AudioSampleWindow(
-        waveform = resample(mono, count, points),
-        level = sqrt(pendingSumSquares / count).coerceIn(0.0, 1.0),
-        durationSeconds = count.toDouble() / sampleRate,
-        outputLatencySeconds = outputLatency(pendingStartUs),
-        timestampMs = System.currentTimeMillis(),
+    // One reading of the sink for the whole batch (see WindowTimeline).
+    val timestampMs = System.currentTimeMillis()
+    val durations = DoubleArray(windows.size) { windows[it].samples.size.toDouble() / sampleRate }
+    val latencies = timeline.latencies(timestampMs, outputLatency(windows[0].startUs), windows[0].startUs, durations)
+    for ((i, window) in windows.withIndex()) {
+      val samples = window.samples
+      var squares = 0.0
+      for (v in samples) squares += v * v
+      callback(
+        AudioSampleWindow(
+          waveform = resample(samples, samples.size, points),
+          level = sqrt(squares / samples.size).coerceIn(0.0, 1.0),
+          durationSeconds = durations[i],
+          outputLatencySeconds = latencies[i],
+          timestampMs = timestampMs,
+        )
       )
-    )
-    pendingFrames = 0
-    pendingSumSquares = 0.0
+    }
   }
 
   /** Seconds until presentation time [startUs] is heard: its lead over the sink's playback position. */
