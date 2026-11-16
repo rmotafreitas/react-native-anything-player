@@ -50,10 +50,12 @@ import com.anythingplayer.core.QualityConstraints
 import com.anythingplayer.core.VideoInfo
 import com.anythingplayer.core.VideoVariant
 import com.anythingplayer.core.ReadyInfo
+import com.anythingplayer.core.SourceDescriptor
 import com.anythingplayer.core.IcyParser
 import com.anythingplayer.core.StreamMetadata
 import com.anythingplayer.core.StreamTitleFormat
 import java.io.File
+import okhttp3.HttpUrl.Companion.toHttpUrl
 
 /** What the ExoPlayer adapter reports, always tagged with the generation it belongs to. */
 internal interface DriverObserver {
@@ -774,27 +776,7 @@ internal class ExoPlayerDriver(
     if (!request.source.isNetwork || sniffed?.first == uri || EXTENSION.containsMatchIn(path)) return false
     sniffed = uri to ""
     Thread {
-      val text =
-        runCatching {
-          val connection = java.net.URL(uri).openConnection() as java.net.HttpURLConnection
-          request.source.headers.forEach { (name, value) -> connection.setRequestProperty(name, value) }
-          connection.setRequestProperty("Range", "bytes=0-1023")
-          connection.connectTimeout = 8000
-          connection.readTimeout = 8000
-          try {
-            val bytes = ByteArray(1024)
-            val read = connection.inputStream.use { it.read(bytes) }
-            if (read > 0) String(bytes, 0, read, Charsets.UTF_8) else ""
-          } finally {
-            connection.disconnect()
-          }
-        }.getOrDefault("")
-      val type =
-        when {
-          text.trimStart('\uFEFF', ' ', '\n', '\r', '\t').startsWith("#EXTM3U") -> MimeTypes.APPLICATION_M3U8
-          text.contains("<MPD") && dashBuiltIn -> MimeTypes.APPLICATION_MPD
-          else -> null
-        }
+      val type = playlistType(firstBytes(request.source))
       main.post {
         if (generation != gen || currentRequest !== request) return@post
         if (type == null) {
@@ -807,6 +789,32 @@ internal class ExoPlayerDriver(
     }.start()
     return true
   }
+
+  /** A source's first kilobyte as text, empty when it cannot be read. Blocking: call on a worker. */
+  private fun firstBytes(source: SourceDescriptor): String =
+    runCatching {
+      // Read as OkHttp reads it, the way the player was given the URL.
+      val connection = source.uri.toHttpUrl().toUrl().openConnection() as java.net.HttpURLConnection
+      source.headers.forEach { (name, value) -> connection.setRequestProperty(name, value) }
+      connection.setRequestProperty("Range", "bytes=0-1023")
+      connection.connectTimeout = 8000
+      connection.readTimeout = 8000
+      try {
+        val bytes = ByteArray(1024)
+        val read = connection.inputStream.use { it.read(bytes) }
+        if (read > 0) String(bytes, 0, read, Charsets.UTF_8) else ""
+      } finally {
+        connection.disconnect()
+      }
+    }.getOrDefault("")
+
+  /** The playlist a body's first bytes are, if one this build plays. */
+  private fun playlistType(text: String): String? =
+    when {
+      text.trimStart('\uFEFF', ' ', '\n', '\r', '\t').startsWith("#EXTM3U") -> MimeTypes.APPLICATION_M3U8
+      text.contains("<MPD") && dashBuiltIn -> MimeTypes.APPLICATION_MPD
+      else -> null
+    }
 
   /**
    * A live stream's connection ended (server kick, proxy timeout) while the
@@ -895,26 +903,15 @@ internal class ExoPlayerDriver(
    * the period it came from.
    */
   private fun belongsToPrepared(p: ExoPlayer, error: PlaybackException, request: OpenRequest): Boolean {
-    var cause: Throwable? = error
-    while (cause != null) {
-      val failed =
-        when (cause) {
-          is HttpDataSource.HttpDataSourceException -> cause.dataSpec.uri
-          is androidx.media3.exoplayer.source.UnrecognizedInputFormatException -> cause.uri
-          else -> null
-        }
-      if (failed != null) {
-        val uri = failed.toString()
-        val current = currentRequest?.takeIf { it.generation != request.generation }
-        // Exact matches first: the current item's own URL (the same URL queued
-        // twice) is the current item's; the prepared item's is the prepared one's.
-        if (current != null && ownRequest(current, uri)) return false
-        if (ownRequest(request, uri)) return true
-        // Beside the prepared manifest only; beside both, it is not told apart (below).
-        if (besideManifest(request, uri) && (current == null || !besideManifest(current, uri))) return true
-        break
-      }
-      cause = cause.cause
+    val uri = failedUri(error)
+    if (uri != null) {
+      val current = currentRequest?.takeIf { it.generation != request.generation }
+      // Exact matches first: the current item's own URL (the same URL queued
+      // twice) is the current item's; the prepared item's is the prepared one's.
+      if (current != null && ownRequest(current, uri)) return false
+      if (ownRequest(request, uri)) return true
+      // Beside the prepared manifest only; beside both, it is not told apart (below).
+      if (besideManifest(request, uri) && (current == null || !besideManifest(current, uri))) return true
     }
     val period = (error as? ExoPlaybackException)?.mediaPeriodId ?: return false
     val timeline = p.currentTimeline
@@ -923,6 +920,18 @@ internal class ExoPlayerDriver(
     val window = timeline.getPeriod(periodIndex, Timeline.Period()).windowIndex
     return window != p.currentMediaItemIndex && window == preparedIndex(p, request)
   }
+
+  /** The URL of the request that failed: the first cause that names one. */
+  private fun failedUri(error: PlaybackException): String? =
+    generateSequence<Throwable>(error) { it.cause }
+      .firstNotNullOfOrNull { cause ->
+        when (cause) {
+          is HttpDataSource.HttpDataSourceException -> cause.dataSpec.uri
+          is androidx.media3.exoplayer.source.UnrecognizedInputFormatException -> cause.uri
+          else -> null
+        }
+      }
+      ?.toString()
 
   /** Whether a failed request is this item's own URL, as ExoPlayer was given it. */
   private fun ownRequest(request: OpenRequest, failed: String): Boolean =

@@ -359,7 +359,7 @@ export class IcyDeinterleaver {
   }
 }
 
-const ICY_MARKER = Array.from("StreamTitle='", (c) => c.charCodeAt(0));
+const ICY_MARKER = Array.from("StreamTitle='", (c) => c.codePointAt(0) ?? 0);
 
 const startsWithAt = (
   bytes: Uint8Array,

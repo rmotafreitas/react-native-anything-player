@@ -20,6 +20,7 @@ import kotlin.math.roundToInt
 import com.anythingplayer.core.AudioRouteKind
 import com.anythingplayer.core.PlaybackState
 import com.anythingplayer.core.PlayerError
+import com.anythingplayer.core.Status
 
 /**
  * The player the Media3 session (notification, lock screen, headset, Bluetooth,
@@ -76,14 +77,7 @@ internal class SessionPlayer : SimpleBasePlayer(Looper.getMainLooper()) {
   override fun getState(): State {
     val controller = AnythingPlayerRuntime.active
     val status = controller?.status
-    if (controller == null || status == null || status.state == PlaybackState.IDLE) {
-      // Nothing is loaded. With a catalog an assistant may still ask for
-      // something to play ("play Jazz FM"): it sets an item, prepares and plays.
-      return State.Builder()
-        .setAvailableCommands(if (Voice.hasItems()) idleCommands else Player.Commands.EMPTY)
-        .setPlaybackState(Player.STATE_IDLE)
-        .build()
-    }
+    if (controller == null || status == null || status.state == PlaybackState.IDLE) return idleState()
     val now = controller.nowPlaying()
     val reading = controller.progress()
     val elapsed = (AndroidClock.monotonicMs - reading.takenAtMonotonic).coerceAtLeast(0)
@@ -99,33 +93,12 @@ internal class SessionPlayer : SimpleBasePlayer(Looper.getMainLooper()) {
     // With a queue, next and previous are the queue's (handled natively).
     val commands = availableCommands(status.seekable, if (controller.hasQueue) remote + setOf("next", "previous") else remote)
 
-    val metadata =
-      MediaMetadata.Builder()
-        .setTitle(now.title)
-        .setArtist(now.artist)
-        .setAlbumTitle(now.album)
-        .also { setArtwork(it, now.artwork) }
-        .setIsPlayable(true)
-        .setIsBrowsable(false)
-        .setMediaType(if (status.isLive) MediaMetadata.MEDIA_TYPE_RADIO_STATION else MediaMetadata.MEDIA_TYPE_MUSIC)
-        .build()
-    val itemBuilder =
-      MediaItemData.Builder("anythingplayer")
-        .setMediaItem(MediaItem.Builder().setMediaId("anythingplayer").setMediaMetadata(metadata).build())
-        .setMediaMetadata(metadata)
-        .setIsSeekable(status.seekable)
-        .setIsDynamic(live)
-        .setDurationUs(
-          (track?.duration ?: status.duration)?.let { (it * 1_000_000).toLong() } ?: C.TIME_UNSET
-        )
-    if (live) itemBuilder.setLiveConfiguration(MediaItem.LiveConfiguration.Builder().build())
-
     val interruption = status.interruption
     val builder =
       State.Builder()
         .setAvailableCommands(commands)
         .also { withReceiverVolume(it, status.route.kind == AudioRouteKind.CAST) }
-        .setPlaylist(listOf(itemBuilder.build()))
+        .setPlaylist(listOf(mediaItem(now, status, live)))
         .setCurrentMediaItemIndex(0)
         .setPlaybackParameters(PlaybackParameters(status.rate.toFloat()))
         .setContentPositionMs(
@@ -159,6 +132,41 @@ internal class SessionPlayer : SimpleBasePlayer(Looper.getMainLooper()) {
       }
     }
     return builder.build()
+  }
+
+  /**
+   * Nothing is loaded. With a catalog an assistant may still ask for
+   * something to play ("play Jazz FM"): it sets an item, prepares and plays.
+   */
+  private fun idleState(): State =
+    State.Builder()
+      .setAvailableCommands(if (Voice.hasItems()) idleCommands else Player.Commands.EMPTY)
+      .setPlaybackState(Player.STATE_IDLE)
+      .build()
+
+  /** The session's one item: what plays, as the app describes it. */
+  private fun mediaItem(now: NowPlaying, status: Status, live: Boolean): MediaItemData {
+    val metadata =
+      MediaMetadata.Builder()
+        .setTitle(now.title)
+        .setArtist(now.artist)
+        .setAlbumTitle(now.album)
+        .also { setArtwork(it, now.artwork) }
+        .setIsPlayable(true)
+        .setIsBrowsable(false)
+        .setMediaType(if (status.isLive) MediaMetadata.MEDIA_TYPE_RADIO_STATION else MediaMetadata.MEDIA_TYPE_MUSIC)
+        .build()
+    val item =
+      MediaItemData.Builder("anythingplayer")
+        .setMediaItem(MediaItem.Builder().setMediaId("anythingplayer").setMediaMetadata(metadata).build())
+        .setMediaMetadata(metadata)
+        .setIsSeekable(status.seekable)
+        .setIsDynamic(live)
+        .setDurationUs(
+          (now.track?.duration ?: status.duration)?.let { (it * 1_000_000).toLong() } ?: C.TIME_UNSET
+        )
+    if (live) item.setLiveConfiguration(MediaItem.LiveConfiguration.Builder().build())
+    return item.build()
   }
 
   /**

@@ -38,9 +38,8 @@ import {
   type VideoElementLike,
 } from './dom';
 import { webCache } from './WebCache';
-import { ENCRYPTED } from './elementErrors';
+import { ENCRYPTED, elementError } from './elementErrors';
 import { HLS_MISSING, isHlsType, isHlsUri, needsHlsJs } from './hlsFormats';
-import { elementError } from './elementErrors';
 import type { HlsStream } from './HlsStream';
 import { MediaTracks } from './MediaTracks';
 import { TimedQueue } from './TimedQueue';

@@ -151,7 +151,9 @@ export class BoundaryFinder {
    */
   push(window: BoundaryWindow): Boundary | null {
     const n = window.points.length;
-    if (n === 0 || !(window.duration > 0)) return null;
+    // "More than": a length that is not a number is no audio either.
+    const heard = n > 0 && window.duration > 0;
+    if (!heard) return null;
     const count = Math.max(1, Math.round(window.duration / SPAN_MS));
     for (let k = 0; k < count; k++) {
       this.addSpan(
@@ -275,7 +277,8 @@ export class BoundaryFinder {
     if (gap != null) candidates.push({ at: gap, kind: 'gap' });
     if (cut != null) candidates.push({ at: cut, kind: 'gap' });
     if (onset != null) candidates.push({ at: onset, kind: 'onset' });
-    return candidates.sort((x, y) => x.at - y.at)[0] ?? null;
+    candidates.sort((x, y) => x.at - y.at);
+    return candidates[0] ?? null;
   }
 
   /**
@@ -348,7 +351,7 @@ export class BoundaryFinder {
   /** Span `i`'s start if a span within `ms` of it is loud (`ONSET_DB`); `WAIT` if not heard that far yet. */
   private loudWithin(i: number, ms: number): Search {
     const at = this.spans[i]!.at;
-    const loud = this.spans.find(
+    const loud = this.spans.some(
       (span, j) => j >= i && span.at <= at + ms && span.db > ONSET_DB
     );
     if (loud) return at;

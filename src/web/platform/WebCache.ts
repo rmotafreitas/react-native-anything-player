@@ -119,7 +119,7 @@ export function cacheable(source: SourceDescriptor): boolean {
 export class WebCache {
   private readonly index = new Map<string, Entry>();
   private store: Promise<CacheLike> | null = null;
-  private readonly loaded: Promise<void>;
+  private loading: Promise<void> | null = null;
   private isLoaded = false;
   private enabled = false;
   private maxSize = DEFAULT_MAX;
@@ -147,7 +147,15 @@ export class WebCache {
   constructor() {
     // No Cache Storage (an insecure page, an old browser): nothing to wait for.
     this.isLoaded = g().caches == null;
-    this.loaded = this.load();
+  }
+
+  /**
+   * The stored index, read once: whatever needs it waits for this. The
+   * page's cache reads it as it is made (`webCache`).
+   */
+  ready(): Promise<void> {
+    this.loading ??= this.load();
+    return this.loading;
   }
 
   /** Where `download` events go (the module's event stream). */
@@ -158,7 +166,7 @@ export class WebCache {
   // ── Commands (`cacheCommand`) ──
 
   async command(command: Record<string, unknown>): Promise<object> {
-    await this.loaded;
+    await this.ready();
     switch (command.op) {
       case 'configure':
         if (typeof command.enabled === 'boolean')
@@ -207,7 +215,7 @@ export class WebCache {
   blobFor(source: SourceDescriptor): Promise<string> | null {
     if (!cacheable(source)) return null;
     if (!this.isLoaded) {
-      return this.loaded.then(
+      return this.ready().then(
         () => this.blobForLoaded(source) ?? Promise.reject(notHeld())
       );
     }
@@ -231,7 +239,7 @@ export class WebCache {
     const timer = browser().setTimeout(() => {
       this.timers.delete(player);
       // A page that just opened may not have read that it holds the file.
-      this.loaded
+      this.ready()
         .then(() =>
           this.index.get(key)?.complete ? undefined : this.fill(source, null)
         )
@@ -244,7 +252,7 @@ export class WebCache {
 
   private blobForLoaded(source: SourceDescriptor): Promise<string> | null {
     const entry = this.index.get(cacheKeyOf(source));
-    if (entry == null || !entry.complete) return null;
+    if (!entry?.complete) return null;
     entry.lastUsed = Date.now();
     this.changed(entry.key);
     const key = entry.key;
@@ -379,7 +387,7 @@ export class WebCache {
         if (adoptComplete(local, entry)) this.emitDownload(local);
       }
       // What another page removed (and this one did not touch) goes here too.
-      for (const key of [...this.index.keys()]) {
+      for (const key of this.index.keys()) {
         if (!stored.has(key) && this.known.has(key)) this.index.delete(key);
       }
       this.known = new Set(stored.keys());
@@ -875,7 +883,11 @@ let shared: WebCache | null = null;
 
 /** The page's one media cache. */
 export function webCache(): WebCache {
-  shared ??= new WebCache();
+  if (shared == null) {
+    shared = new WebCache();
+    // Read at once: a download a page left half-way starts again.
+    void shared.ready();
+  }
   return shared;
 }
 

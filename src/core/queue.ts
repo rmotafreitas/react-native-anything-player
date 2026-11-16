@@ -176,7 +176,7 @@ export class PlayerQueue {
     if (this.snapshot === before) this.owner.changed(this.state);
     // The same current id: its new hooks answer from now on.
     const now = this.current;
-    if (now != null && now.id === before.currentId) this.owner.itemStarted(now);
+    if (now?.id === before.currentId) this.owner.itemStarted(now);
   }
 
   /** Inserts at `index` (default: the end). The current item plays on. */
@@ -270,7 +270,8 @@ export class PlayerQueue {
     if (sameQueue(previous, next)) return;
     this.snapshot = next;
     const kept = new Set(next.ids);
-    for (const id of [...this.entries.keys()]) {
+    // A Map may lose entries while it is walked.
+    for (const id of this.entries.keys()) {
       if (!kept.has(id)) this.entries.delete(id);
     }
     // A source loaded with `load()` that joined the queue (`add`): the

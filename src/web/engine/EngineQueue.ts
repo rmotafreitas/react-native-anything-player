@@ -339,9 +339,9 @@ export abstract class EngineQueue extends EngineVideo {
   onAdvanced(generation: number, playing: boolean): void {
     if (this.isReleased) return;
     const prepared = this.prepared;
-    if (prepared != null && prepared.generation === generation) {
+    if (prepared?.generation === generation) {
       const next = this.queue.peekNext(true);
-      if (next != null && next.id === prepared.itemId) {
+      if (next?.id === prepared.itemId) {
         this.queue.next(true);
         this.queueDirty = true;
         this.prepared = null;
@@ -352,8 +352,7 @@ export abstract class EngineQueue extends EngineVideo {
     }
     const dropped = this.dropped;
     if (
-      dropped != null &&
-      dropped.generation === generation &&
+      dropped?.generation === generation &&
       dropped.under === this._generation
     ) {
       // It went on to an item the queue no longer wants next: the current
@@ -463,11 +462,7 @@ export abstract class EngineQueue extends EngineVideo {
     this.queue.next(true);
     this.queueDirty = true;
     const prepared = this.prepared;
-    if (
-      prepared != null &&
-      prepared.itemId === next.id &&
-      this._playWhenReady
-    ) {
+    if (prepared?.itemId === next.id && this._playWhenReady) {
       this.prepared = null;
       this.driver.advance?.(prepared.generation);
       this.takeOver(prepared, next, false);

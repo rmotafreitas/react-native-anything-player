@@ -259,7 +259,7 @@ function xmlText(value: string | undefined): string | undefined {
  * whose lower case is longer, which would shift every offset after it.
  */
 function sameLengthLower(text: string): string {
-  return text.replace(/\u0130/g, 'I').toLowerCase();
+  return text.replaceAll('\u0130', 'I').toLowerCase();
 }
 
 /** A field's text in a track body, by a bounded scan (no backtracking on untrusted text). */

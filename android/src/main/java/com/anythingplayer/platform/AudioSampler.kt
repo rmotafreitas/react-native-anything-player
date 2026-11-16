@@ -155,16 +155,29 @@ internal class AudioSampler(context: Context) : TeeAudioProcessor.AudioBufferSin
       timeline.reset()
       sampling = true
     }
+    val frames = downmix(buffer)
+    if (frames <= 0) return
+    cutter.append(mono, frames, bufferPresentationUs)
+    val now = System.nanoTime()
+    // Too soon after the last windows (the decoder filling the output): kept for the next.
+    if (now - lastEmitNanos < MIN_EMIT_INTERVAL_NANOS) return
+    val windows = cutter.cut()
+    if (windows.isEmpty()) return
+    lastEmitNanos = now
+    emit(windows, callback)
+  }
+
+  /** The buffer's frames mixed down into [mono]: how many, none for an encoding not read here. */
+  private fun downmix(buffer: ByteBuffer): Int {
     val bytesPerSample =
       when (encoding) {
         C.ENCODING_PCM_16BIT -> 2
         C.ENCODING_PCM_FLOAT -> 4
         C.ENCODING_PCM_8BIT -> 1
-        else -> return // 24/32-bit integer PCM: not produced by the decoders used here
+        else -> return 0 // 24/32-bit integer PCM: not produced by the decoders used here
       }
     val pcm = buffer.duplicate().order(ByteOrder.LITTLE_ENDIAN)
     val frames = pcm.remaining() / (bytesPerSample * channels)
-    if (frames <= 0) return
     if (mono.size < frames) mono = FloatArray(maxOf(mono.size * 2, frames))
     for (f in 0 until frames) {
       var sum = 0f
@@ -178,13 +191,11 @@ internal class AudioSampler(context: Context) : TeeAudioProcessor.AudioBufferSin
       }
       mono[f] = sum / channels
     }
-    cutter.append(mono, frames, bufferPresentationUs)
-    val now = System.nanoTime()
-    // Too soon after the last windows (the decoder filling the output): kept for the next.
-    if (now - lastEmitNanos < MIN_EMIT_INTERVAL_NANOS) return
-    val windows = cutter.cut()
-    if (windows.isEmpty()) return
-    lastEmitNanos = now
+    return frames
+  }
+
+  /** The windows cut, each with its level and when it is heard. */
+  private fun emit(windows: List<WindowCutter.Window>, callback: (AudioSampleWindow) -> Unit) {
     // One reading of the sink for the whole batch (see WindowTimeline).
     val timestampMs = System.currentTimeMillis()
     val durations = DoubleArray(windows.size) { windows[it].samples.size.toDouble() / sampleRate }

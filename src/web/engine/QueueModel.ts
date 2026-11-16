@@ -131,7 +131,7 @@ export class QueueModel<T extends QueueEntry = QueueEntry> {
         this.playOrder.splice(pos + 1 + this.random.below(slots), 0, item.id);
       }
     }
-    if (this.currentId == null) this.currentId = this.playOrder[0] ?? null;
+    this.currentId ??= this.playOrder[0] ?? null;
   }
 
   /**
@@ -178,7 +178,7 @@ export class QueueModel<T extends QueueEntry = QueueEntry> {
 
   /** Makes this item current. */
   skipTo(id: string): boolean {
-    if (this.find(id) == null) return false;
+    if (!this.list.some((item) => item.id === id)) return false;
     this.currentId = id;
     return true;
   }
@@ -224,7 +224,7 @@ export class QueueModel<T extends QueueEntry = QueueEntry> {
     if (pos < 0) return null;
     const wraps = this.repeatMode !== 'off';
     let id = pos > 0 ? this.playOrder[pos - 1] : undefined;
-    if (id == null && wraps) id = this.playOrder[this.playOrder.length - 1];
+    if (id == null && wraps) id = this.playOrder.at(-1);
     return id == null ? null : this.find(id);
   }
 

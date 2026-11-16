@@ -268,7 +268,7 @@ export class SwapDriver implements LocalDriver {
   /** The current item ended: the prepared one plays (from the spare, without a network wait, when it is there). */
   advance(generation: number): void {
     const next = this.next;
-    if (next == null || next.request.generation !== generation) return;
+    if (next?.request.generation !== generation) return;
     this.next = null;
     this.drop();
     const spare = this.spare;
@@ -300,11 +300,10 @@ export class SwapDriver implements LocalDriver {
     if (this.pending != null || this.next?.onSpare === true) return;
     const spare = (this.spare ??= this.make(this.proxy));
     this.spareUnlocked = true;
-    try {
-      spare.element.play().catch(() => undefined);
-    } catch {
-      // Nothing to play: the restriction is lifted all the same.
-    }
+    // An async body runs synchronously up to its first await: play() is
+    // still called inside the gesture, and a synchronous throw becomes a
+    // rejection. Nothing to play: the restriction is lifted all the same.
+    (async () => spare.element.play())().catch(() => undefined);
   }
 
   play(): void {

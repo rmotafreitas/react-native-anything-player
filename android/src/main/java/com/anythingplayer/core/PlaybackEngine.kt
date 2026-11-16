@@ -877,12 +877,12 @@ class PlaybackEngine(
   fun queueAdd(items: List<EngineQueueItem>, index: Int? = null) {
     ensureAlive()
     if (items.isEmpty()) return
-    val loaded = source
-    val joins = queue.length == 0 && loaded != null
+    // The loaded source, when the queue is empty: it joins first.
+    val loaded = source?.takeIf { queue.length == 0 }
     // The loaded source's id too, before it joins.
     val joining = "loaded-${generatedIds + 1}"
-    checkIds(items, if (joins && loaded != null) queue.items + EngineQueueItem(joining, false, loaded) else queue.items)
-    if (joins && loaded != null) {
+    checkIds(items, if (loaded != null) queue.items + EngineQueueItem(joining, false, loaded) else queue.items)
+    if (loaded != null) {
       generatedIds += 1
       queue.set(listOf(EngineQueueItem(joining, loaded.liveHint == true, loaded)))
     }
@@ -1351,21 +1351,22 @@ class PlaybackEngine(
       commit()
       return
     }
-    // Unknown duration reads as a live stream that dropped, unless the app
-    // said the source is a file (`live: false`).
-    if (source?.liveHint != false && (isLive || duration == null)) {
-      handleFailure(PlayerError(ErrorCode.STREAM_ENDED, "The stream closed the connection.", true))
-    } else if (loop && playWhenReady) {
+    when {
+      // Unknown duration reads as a live stream that dropped, unless the app
+      // said the source is a file (`live: false`).
+      source?.liveHint != false && (isLive || duration == null) ->
+        handleFailure(PlayerError(ErrorCode.STREAM_ENDED, "The stream closed the connection.", true))
       // The driver could not loop it seamlessly: start over.
-      restartFromEnd("loop")
-    } else if (advanceAtEnd()) {
+      loop && playWhenReady -> restartFromEnd("loop")
       // The queue's next item took over: no `ended` in between.
-    } else {
-      playWhenReady = false
-      resumePosition = 0.0
-      stallStartedAt = null
-      setState(PlaybackState.ENDED, "end of media")
-      pendingEvents.add { delegate?.engineDidEnd() }
+      advanceAtEnd() -> Unit
+      else -> {
+        playWhenReady = false
+        resumePosition = 0.0
+        stallStartedAt = null
+        setState(PlaybackState.ENDED, "end of media")
+        pendingEvents.add { delegate?.engineDidEnd() }
+      }
     }
     commit()
   }

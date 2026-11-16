@@ -2,6 +2,7 @@ package com.anythingplayer.platform
 
 import android.content.Context
 import android.net.Uri
+import android.util.Log
 import androidx.annotation.OptIn
 import androidx.media3.common.C
 import androidx.media3.common.MimeTypes
@@ -201,46 +202,51 @@ internal object MediaCache {
         .setCacheKeyFactory(keyFactory(source))
     val type = typeOf(source.uri)
     val budget = if (all) C.LENGTH_UNSET.toLong() else (bytes ?: DEFAULT_PRELOAD)
-    if (type == null) {
-      val spec = DataSpec.Builder().setUri(Uri.parse(source.uri)).setLength(budget).setKey(keyOf(source)).build()
-      var writer: CacheWriter? = null
-      var endless = false
-      writer =
-        CacheWriter(factory.createDataSource(), spec, null) { requestLength, _, newBytes ->
-          // Still no length once bytes arrive: a stream that never ends (a live source
-          // without `live: true`). The first call comes before the request, with no length yet.
-          if (requestLength == C.LENGTH_UNSET.toLong() && newBytes > 0) {
-            endless = true
-            writer?.cancel()
-          }
-        }
-      try {
-        writer.cache()
-      } catch (_: InterruptedException) {
-        // Stopped: not a file.
-      } catch (_: java.io.InterruptedIOException) {
-        // Stopped: not a file.
-      } finally {
-        Thread.interrupted()
-      }
-      // A stream with no length keeps nothing.
-      if (endless) play.removeResource(keyOf(source))
-    } else {
-      // HLS / DASH: its first segments, one quality.
-      val downloader = downloader(factory, source.uri, keyOf(source), type, streamKeys(source, type))
-      try {
-        downloader.download { _, downloaded, _ ->
-          if (!all && downloaded >= budget) downloader.cancel()
-        }
-      } catch (_: InterruptedException) {
-        // Stopped at the budget.
-      } catch (_: java.util.concurrent.CancellationException) {
-        // Stopped at the budget.
-      } finally {
-        Thread.interrupted()
-      }
-    }
+    if (type == null) preloadFile(factory, source, budget) else preloadSegments(factory, source, type, budget.takeUnless { all })
     return info(source)
+  }
+
+  /** A file: its first [budget] bytes (`C.LENGTH_UNSET`: all of it). */
+  private fun preloadFile(factory: CacheDataSource.Factory, source: SourceDescriptor, budget: Long) {
+    val spec = DataSpec.Builder().setUri(Uri.parse(source.uri)).setLength(budget).setKey(keyOf(source)).build()
+    var writer: CacheWriter? = null
+    var endless = false
+    writer =
+      CacheWriter(factory.createDataSource(), spec, null) { requestLength, _, newBytes ->
+        // Still no length once bytes arrive: a stream that never ends (a live source
+        // without `live: true`). The first call comes before the request, with no length yet.
+        if (requestLength == C.LENGTH_UNSET.toLong() && newBytes > 0) {
+          endless = true
+          writer?.cancel()
+        }
+      }
+    try {
+      writer.cache()
+    } catch (_: InterruptedException) {
+      // Stopped: not a file.
+    } catch (_: java.io.InterruptedIOException) {
+      // Stopped: not a file.
+    } finally {
+      Thread.interrupted()
+    }
+    // A stream with no length keeps nothing.
+    if (endless) play.removeResource(keyOf(source))
+  }
+
+  /** HLS / DASH: its first segments, one quality, up to [budget] bytes (`null`: all of them). */
+  private fun preloadSegments(factory: CacheDataSource.Factory, source: SourceDescriptor, type: String, budget: Long?) {
+    val downloader = downloader(factory, source.uri, keyOf(source), type, streamKeys(source, type))
+    try {
+      downloader.download { _, downloaded, _ ->
+        if (budget != null && downloaded >= budget) downloader.cancel()
+      }
+    } catch (_: InterruptedException) {
+      // Stopped at the budget.
+    } catch (_: java.util.concurrent.CancellationException) {
+      // Stopped at the budget.
+    } finally {
+      Thread.interrupted()
+    }
   }
 
   fun download(source: SourceDescriptor, id: String?): WritableMap {
@@ -296,7 +302,8 @@ internal object MediaCache {
   /** A download's bytes go (its downloader knows an HLS / DASH item's segments; a file is its key). */
   private fun removeBytes(download: Download) {
     // Not while its task still writes (bounded: a stuck read gives up).
-    download.ended.await(5, java.util.concurrent.TimeUnit.SECONDS)
+    val ended = download.ended.await(5, java.util.concurrent.TimeUnit.SECONDS)
+    if (!ended) Log.w("RNAP", "download ${download.id} still writes: its bytes go all the same")
     // Its stored manifest names the segments: nothing is fetched to remove them.
     runCatching { downloaderFor(download, removing = true).remove() }
     runCatching { kept.removeResource(download.key) }
@@ -349,56 +356,76 @@ internal object MediaCache {
     val task =
       work.submit {
         // Removed or replaced while it ran: nothing of it is told or written.
-        val current = { downloads[download.id] === download }
-        if (!current()) {
+        if (!isCurrent(download)) {
           ended.countDown()
           return@submit
         }
-        try {
-          download.state = "downloading"
-          emit(download)
-          var told = 0L
-          val downloader = downloaderFor(download)
-          downloader.download { contentLength, bytesDownloaded, _ ->
-            // A file with no length: a stream that never ends.
-            if (download.type == "file" && contentLength == C.LENGTH_UNSET.toLong() && bytesDownloaded > 0) {
-              download.error = PlayerError(ErrorCode.UNSUPPORTED_FORMAT, "The source has no length: a live stream cannot be downloaded.", false)
-              downloader.cancel()
-            }
-            download.bytes = bytesDownloaded
-            if (contentLength > 0) download.totalBytes = contentLength
-            val now = android.os.SystemClock.elapsedRealtime()
-            if (now - told >= PROGRESS_MS) {
-              told = now
-              emit(download)
-            }
+        val settled =
+          try {
+            fetch(download)
+          } finally {
+            self?.let { running.remove(download.id, it) }
+            // A cancel left this pool thread interrupted: the next work on it must not fail.
+            Thread.interrupted()
+            ended.countDown()
           }
-          download.state = "completed"
-          // The same bytes are not kept twice.
-          if (download.type == "file") play.removeResource(download.key)
-        } catch (_: InterruptedException) {
-          if (download.error == null) return@submit
-          download.state = "failed"
-        } catch (error: Exception) {
-          if (!current()) return@submit
-          download.state = "failed"
-          if (download.error == null) download.error = mapDownloadError(error)
-        } finally {
-          // A stream that never ends keeps nothing (however the cancel surfaced).
-          if (download.type == "file" && download.error?.code == ErrorCode.UNSUPPORTED_FORMAT) {
-            runCatching { kept.removeResource(download.key) }
-          }
-          self?.let { running.remove(download.id, it) }
-          // A cancel left this pool thread interrupted: the next work on it must not fail.
-          Thread.interrupted()
-          ended.countDown()
-        }
-        if (!current()) return@submit
+        if (!settled || !isCurrent(download)) return@submit
         writeIndex()
         emit(download)
       }
     self = task
     running[download.id] = task
+  }
+
+  /** Whether this download is still its id's (not removed, not replaced). */
+  private fun isCurrent(download: Download): Boolean = downloads[download.id] === download
+
+  /**
+   * Fetches a download on this thread, to `completed` or `failed`. `false`: it
+   * was stopped, removed or replaced meanwhile, and nothing of it is told or written.
+   */
+  private fun fetch(download: Download): Boolean {
+    try {
+      download.state = "downloading"
+      emit(download)
+      val downloader = downloaderFor(download)
+      downloader.download(progressOf(download, downloader))
+      download.state = "completed"
+      // The same bytes are not kept twice.
+      if (download.type == "file") play.removeResource(download.key)
+    } catch (_: InterruptedException) {
+      if (download.error == null) return false
+      download.state = "failed"
+    } catch (error: Exception) {
+      if (!isCurrent(download)) return false
+      download.state = "failed"
+      if (download.error == null) download.error = mapDownloadError(error)
+    } finally {
+      // A stream that never ends keeps nothing (however the cancel surfaced).
+      if (download.type == "file" && download.error?.code == ErrorCode.UNSUPPORTED_FORMAT) {
+        runCatching { kept.removeResource(download.key) }
+      }
+    }
+    return true
+  }
+
+  /** A download's progress: counted, told once a [PROGRESS_MS], and stopped for a file that has no end. */
+  private fun progressOf(download: Download, downloader: Downloader): Downloader.ProgressListener {
+    var told = 0L
+    return Downloader.ProgressListener { contentLength, bytesDownloaded, _ ->
+      // A file with no length: a stream that never ends.
+      if (download.type == "file" && contentLength == C.LENGTH_UNSET.toLong() && bytesDownloaded > 0) {
+        download.error = PlayerError(ErrorCode.UNSUPPORTED_FORMAT, "The source has no length: a live stream cannot be downloaded.", false)
+        downloader.cancel()
+      }
+      download.bytes = bytesDownloaded
+      if (contentLength > 0) download.totalBytes = contentLength
+      val now = android.os.SystemClock.elapsedRealtime()
+      if (now - told >= PROGRESS_MS) {
+        told = now
+        emit(download)
+      }
+    }
   }
 
 
