@@ -303,7 +303,8 @@ internal object MediaCache {
   private fun removeBytes(download: Download) {
     // Not while its task still writes (bounded: a stuck read gives up).
     val ended = download.ended.await(5, java.util.concurrent.TimeUnit.SECONDS)
-    if (!ended) Log.w("RNAP", "download ${download.id} still writes: its bytes go all the same")
+    // Told only: a JVM test has no Log, and the bytes go all the same.
+    if (!ended) runCatching { Log.w("RNAP", "download ${download.id} still writes as its bytes go") }
     // Its stored manifest names the segments: nothing is fetched to remove them.
     runCatching { downloaderFor(download, removing = true).remove() }
     runCatching { kept.removeResource(download.key) }
@@ -427,7 +428,6 @@ internal object MediaCache {
       }
     }
   }
-
 
   private fun downloaderFor(d: Download, removing: Boolean = false): Downloader {
     val factory = CacheDataSource.Factory().setCache(kept).setUpstreamDataSourceFactory(http(d.headers))

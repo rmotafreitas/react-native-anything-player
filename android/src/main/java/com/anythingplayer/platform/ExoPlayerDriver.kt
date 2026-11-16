@@ -793,7 +793,8 @@ internal class ExoPlayerDriver(
   /** A source's first kilobyte as text, empty when it cannot be read. Blocking: call on a worker. */
   private fun firstBytes(source: SourceDescriptor): String =
     runCatching {
-      // Read as OkHttp reads it, the way the player was given the URL.
+      // Parsed as the player's own requests are (OkHttpDataSource): a URL that
+      // got as far as the format error is one OkHttp reads, and this asks for the same.
       val connection = source.uri.toHttpUrl().toUrl().openConnection() as java.net.HttpURLConnection
       source.headers.forEach { (name, value) -> connection.setRequestProperty(name, value) }
       connection.setRequestProperty("Range", "bytes=0-1023")
